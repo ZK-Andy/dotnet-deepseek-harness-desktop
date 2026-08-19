@@ -141,6 +141,29 @@ public sealed class HarnessRuntimeHost : IDisposable
         return WebUrl;
     }
 
+    /// <summary>重启 dsh 子进程（先 Stop 再 StartAsync），返回新 URL。崩溃恢复用。</summary>
+    /// <param name="timeout">等待新 URL 的时限。</param>
+    /// <param name="ct">取消令牌。</param>
+    public async Task<Uri?> RestartAsync(TimeSpan timeout, CancellationToken ct = default)
+    {
+        Stop();
+        return await StartAsync(timeout, ct);
+    }
+
+    /// <summary>当 dsh 子进程退出时完成（用于崩溃监督；子进程不存在时立即完成）。</summary>
+    public Task WaitForExitAsync()
+    {
+        if (_process is not { HasExited: false } p)
+        {
+            return Task.CompletedTask;
+        }
+
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        p.EnableRaisingEvents = true;
+        p.Exited += (_, _) => tcs.TrySetResult();
+        return tcs.Task;
+    }
+
     /// <summary>停止并回收 dsh 子进程（整棵进程树）。</summary>
     public void Stop()
     {
