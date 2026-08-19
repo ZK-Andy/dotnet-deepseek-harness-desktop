@@ -31,9 +31,10 @@ rm -rf "$STAGE" && mkdir -p "$STAGE/$DEST"
 # 1) publish 全量
 cp -r "$PUBLISH_DIR/." "$STAGE/$DEST/"
 
-# 2) resources/runtime（脚本/CI 生成的捆绑运行时）并入包
+# 2) resources/runtime（脚本/CI 生成的捆绑运行时）并入包 —— 必须保持 resources/runtime/ 结构（RuntimeLocator 按此找）
 if [[ -d "$ROOT/resources/runtime" ]]; then
   echo "   并入 resources/runtime"
+  mkdir -p "$STAGE/$DEST/resources"
   cp -r "$ROOT/resources/runtime" "$STAGE/$DEST/resources/"
 fi
 chmod +x "$STAGE/$DEST/DeepSeek.Harness.Desktop"
