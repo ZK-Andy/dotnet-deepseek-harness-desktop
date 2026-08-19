@@ -1,0 +1,47 @@
+name: package-linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '包版本（默认 0.1.0；tag 触发时取 tag）'
+        required: false
+        default: '0.1.0'
+  push:
+    tags: ['v*']
+
+jobs:
+  build-linux-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 安装 rpmbuild
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: 生成捆绑运行时（下载 Node + npm 安装 dsh 闭包）
+        run: bash scripts/bundle-runtime-ci.sh linux-x64
+
+      - name: 确定版本
+        run: |
+          V="${{ inputs.version }}"
+          if [ "${{ github.event_name }}" = "push" ]; then V="${GITHUB_REF_NAME#v}"; fi
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "打包版本: $V"
+
+      - name: dotnet publish（自包含 linux-x64，关 AOT）
+        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r linux-x64 -p:PublishAot=false --self-contained true -o artifacts/publish-linux-x64
+
+      - name: 打 Linux 安装包（deb + rpm）
+        run: bash scripts/package-linux.sh artifacts/publish-linux-x64
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64-packages
+          path: |
+            artifacts/linux-x64/*.deb
+            artifacts/linux-x64/rpmbuild/RPMS/**/*.rpm
