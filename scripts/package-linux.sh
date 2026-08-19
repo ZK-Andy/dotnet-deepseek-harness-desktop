@@ -89,7 +89,10 @@ License: MIT
 URL: https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop
 Packager: $MAINTAINER
 BuildArch: ${ARCH/amd64/x86_64}
-Requires: webkit2gtk-4.1
+# webkit 由 Ryn 运行时 dlopen 加载、包名随发行版而异（Fedora: webkit2gtk4.1）→ 用弱依赖，不阻塞安装
+Recommends: webkit2gtk4.1
+# 排除 .NET 运行时可选追踪组件（libcoreclrtraceptprovider.so）对 liblttng-ust 的自动硬依赖
+%__requires_exclude ^liblttng-ust\\.so\\.0$
 %description
 Desktop client for DeepSeek Harness (Ryn native webview shell + bundled runtime).
 
