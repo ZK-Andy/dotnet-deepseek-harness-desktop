@@ -2,4 +2,17 @@
 /HANDOFF.md
 /.plan/
 
-# .NET 通用忽略条目（第二步按实际结构补齐）
+# .NET 通用忽略
+bin/
+obj/
+.vs/
+*.user
+artifacts/
+TestResults/
+*.nupkg
+
+# dotnet 首用/包的本地缓存（沙箱 /home 只读重定向）
+/.dotnet-cache/
+
+# Ryn 运行时生成的 saucer 会话缓存（SQLite 文件）
+/.saucer
