@@ -62,8 +62,8 @@ def main() -> int:
     for md in sorted(root.rglob("*.md")):
         if not args.include_skills and "skills" in md.parts:
             continue
-        # 第三方/生成物目录：NuGet 包缓存（README 带仓库相对链接）、构建产物
-        if any(seg in md.parts for seg in (".dotnet-cache", "bin", "obj", "node_modules")):
+        # 第三方/生成物目录：NuGet 包缓存、捆绑运行时（README 带仓库相对链接）、构建产物
+        if any(seg in md.parts for seg in (".dotnet-cache", "resources", "bin", "obj", "node_modules")):
             continue
         text = md.read_text(encoding="utf-8")
         for target in LINK_RE.findall(text):

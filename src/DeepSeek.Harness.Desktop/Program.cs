@@ -15,8 +15,9 @@ public static class Program
     [STAThread]
     public static void Main()
     {
-        using var host = new HarnessRuntimeHost();
+        using var host = new HarnessRuntimeHost(RuntimeLocator.TryLocateBundled(RuntimeLocator.ResolveRuntimeDirectory()));
         var webUrl = host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
+        Console.WriteLine($"[host] runtime = {host.RuntimeDescription}");
         if (webUrl is not null)
         {
             Console.WriteLine($"[host] dsh web = {webUrl}");

@@ -3,13 +3,26 @@ using System.Text;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
-/// <summary>托管 dsh 运行时子进程：spawn `dsh --profile web --port 0`，解析 `dsh web:` URL，管理生命周期。</summary>
-/// <remarks>对应 proposed architecture ADR：壳只负责运行时生命周期，组合的 Harness 插件树即应用运行时。</remarks>
+/// <summary>托管 dsh 运行时子进程：spawn dsh web（`--profile web --port 0`），解析 `dsh web:` URL，管理生命周期。</summary>
+/// <remarks>对应 proposed architecture ADR：壳只负责运行时生命周期，组合的 Harness 插件树即应用运行时。
+/// 支持捆绑运行时（<paramref name="bundled"/> 指定 node + dsh bin.js）；为 null 时回退 PATH 里的 dsh。</remarks>
 public sealed class HarnessRuntimeHost : IDisposable
 {
     private const int StderrTailCapacity = 40;
 
+    private readonly (string NodeExe, string DshEntry)? _bundled;
     private Process? _process;
+
+    /// <summary>创建运行时宿主。</summary>
+    /// <param name="bundled">捆绑运行时 (node 可执行, dsh bin.js)；null 表示用 PATH 的 dsh。</param>
+    public HarnessRuntimeHost((string NodeExe, string DshEntry)? bundled = null)
+    {
+        _bundled = bundled;
+    }
+
+    /// <summary>本次采用的运行时描述（日志/恢复屏用）。</summary>
+    public string RuntimeDescription =>
+        _bundled is { } b ? $"bundled node={b.NodeExe} bin={b.DshEntry}" : "PATH dsh";
     private readonly List<string> _stderrTail = new(StderrTailCapacity);
     private readonly object _stderrLock = new();
 
@@ -57,12 +70,21 @@ public sealed class HarnessRuntimeHost : IDisposable
 
         var psi = new ProcessStartInfo
         {
-            FileName = "dsh",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             WorkingDirectory = AppContext.BaseDirectory,
         };
+        if (_bundled is { } b)
+        {
+            psi.FileName = b.NodeExe;
+            psi.ArgumentList.Add(b.DshEntry);
+        }
+        else
+        {
+            psi.FileName = "dsh";
+        }
+
         psi.ArgumentList.Add("--profile");
         psi.ArgumentList.Add("web");
         psi.ArgumentList.Add("--port");

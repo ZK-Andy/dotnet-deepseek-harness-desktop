@@ -16,3 +16,6 @@ TestResults/
 
 # Ryn 运行时生成的 saucer 会话缓存（SQLite 文件）
 /.saucer
+
+# 捆绑的 dsh 运行时（由 scripts/bundle-runtime.sh 生成，发布时组装）
+resources/runtime/
