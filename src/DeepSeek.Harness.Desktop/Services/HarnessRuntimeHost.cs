@@ -110,6 +110,13 @@ public sealed class HarnessRuntimeHost : IDisposable
         psi.ArgumentList.Add(port?.ToString() ?? "0");
         psi.Environment["DSH_HOME"] = home;
 
+        // 桌面环境可能 /home 只读：把 pnpm store/cache 重定向到可写的 DSH_HOME 下，
+        // 否则 dsh-market 等插件安装走 pnpm 会因 store 写入失败（EROFS）而失败。
+        psi.Environment["pnpm_config_store_dir"] = Path.Combine(home, ".pnpm-store");
+        psi.Environment["pnpm_config_cache_dir"] = Path.Combine(home, ".pnpm-cache");
+        Directory.CreateDirectory(Path.Combine(home, ".pnpm-store"));
+        Directory.CreateDirectory(Path.Combine(home, ".pnpm-cache"));
+
         // 桌面插件覆盖层：DSH_DESKTOP_PATCH=<path> 时作为 --patch 叠加（插件装入 DSH_HOME profile 亦可）
         var patchEnv = Environment.GetEnvironmentVariable("DSH_DESKTOP_PATCH");
         if (!string.IsNullOrWhiteSpace(patchEnv))
