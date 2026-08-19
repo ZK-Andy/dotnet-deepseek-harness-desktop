@@ -16,7 +16,7 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 - **Native, lightweight shell** — C# backend, HTML/CSS/JS frontend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
 - **Full runtime bundled** — `resources/runtime/` ships a Node binary + the `@deepseek-ai/dsh` dependency closure; `dsh web` is spawned by the shell with a private `DSH_HOME`, and the UI loads at `dsh web:` URL. No PATH `dsh`/`node` required (falls back to PATH `dsh` if the bundle is absent).
 - **Crash recovery** — the shell supervises the runtime child: on exit it shows a recovery screen, restarts the child, and navigates the same window to the new URL. The port is kept stable so the Web UI's origin (and its in-page session memory) survives a restart — you return to your previous conversation.
-- **Plugin ecosystem** — plugins install into the user's `DSH_HOME` profile (`dsh plugin --profile web add …`); `DSH_DESKTOP_PATCH` adds a desktop-side `--patch` overlay. **A plugin market (e.g. [dsh-market](https://github.com/dsh-market/dsh-market)) is NOT pre-bundled** — dsh ships no market by default; users install it themselves (e.g. `dsh plugin --profile web add dshmarket`).
+- **Plugin ecosystem** — plugins install into the user's `DSH_HOME` profile (`dsh plugin --profile web add …`); `DSH_DESKTOP_PATCH` adds a desktop-side `--patch` overlay.
 - **Testable host layer** — `HarnessRuntimeHost` / `RuntimeSupervisor` / URL parser are unit- and e2e-tested (xunit); gates scripted in `scripts/`.
 
 ## Quick start (development)
@@ -54,4 +54,4 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 - This project: MIT.
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) — the runtime this shell hosts.
 - [Ryn](https://github.com/Yupmoh/Ryn) (MIT) — the desktop shell framework.
-- Packaging approach inspired by [pilot-harness](https://github.com/op7418/pilot-harness); plugin discovery via [dsh-market](https://github.com/dsh-market/dsh-market).
+- Packaging approach inspired by [pilot-harness](https://github.com/op7418/pilot-harness).
