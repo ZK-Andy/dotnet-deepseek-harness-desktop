@@ -110,6 +110,14 @@ public sealed class HarnessRuntimeHost : IDisposable
         psi.ArgumentList.Add(port?.ToString() ?? "0");
         psi.Environment["DSH_HOME"] = home;
 
+        // 桌面插件覆盖层：DSH_DESKTOP_PATCH=<path> 时作为 --patch 叠加（插件装入 DSH_HOME profile 亦可）
+        var patchEnv = Environment.GetEnvironmentVariable("DSH_DESKTOP_PATCH");
+        if (!string.IsNullOrWhiteSpace(patchEnv))
+        {
+            psi.ArgumentList.Add("--patch");
+            psi.ArgumentList.Add(Path.GetFullPath(patchEnv));
+        }
+
         _process = Process.Start(psi)
             ?? throw new InvalidOperationException("无法启动 dsh 进程。");
         _process.ErrorDataReceived += (_, e) =>
