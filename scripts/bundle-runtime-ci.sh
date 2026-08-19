@@ -35,7 +35,10 @@ pnpm --version
 mkdir -p "$TMP/app"
 cd "$TMP/app"
 npm init -y >/dev/null 2>&1
-pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod
+# 允许原生绑定（pty/FFI/proto）运行构建脚本，否则闭包缺 native 二进制且 pnpm11 直接报错
+pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod \
+  --allow-build=node-pty --allow-build=koffi --allow-build=protobufjs \
+  --allow-build=@google/genai --allow-build=@deepseek-ai/dsh-subprocess-local
 
 echo "== [3/3] 组装 resources/runtime/dsh（pnpm symlink 布局 → 解引用为真实闭包）"
 rm -rf "$DEST/dsh"
