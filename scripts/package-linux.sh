@@ -90,8 +90,8 @@ URL: https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop
 Packager: $MAINTAINER
 BuildArch: ${ARCH/amd64/x86_64}
 # webkit 由 saucer 链接 libwebkitgtk-6.0.so.4 → rpm 从 ELF 自动生成精确依赖（跨发行版），无需手写
-# 排除 .NET 运行时可选追踪组件（libcoreclrtraceptprovider.so）对 liblttng-ust 的自动硬依赖
-%global __requires_exclude ^liblttng-ust\.so\.0$
+# 排除 .NET 运行时可选追踪组件（libcoreclrtraceptprovider.so）对 liblttng-ust 的自动硬依赖（注意需求实际形如 liblttng-ust.so.0()(64bit)）
+%global __requires_exclude ^liblttng-ust
 %description
 Desktop client for DeepSeek Harness (Ryn native webview shell + bundled runtime).
 
