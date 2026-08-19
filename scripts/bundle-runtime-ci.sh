@@ -27,11 +27,15 @@ cp "$TMP/$NODE_BIN" "$DEST/node"
 chmod +x "$DEST/node"
 
 echo "== [2/3] pnpm 安装 @deepseek-ai/dsh@${DSH_VERSION} 依赖闭包"
-command -v pnpm >/dev/null || npm install -g pnpm@11 >/dev/null 2>&1
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "    未发现 pnpm，npm install -g pnpm@11"
+  npm install -g pnpm@11
+fi
+pnpm --version
 mkdir -p "$TMP/app"
 cd "$TMP/app"
 npm init -y >/dev/null 2>&1
-pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod --silent
+pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod
 
 echo "== [3/3] 组装 resources/runtime/dsh（pnpm symlink 布局 → 解引用为真实闭包）"
 rm -rf "$DEST/dsh"
