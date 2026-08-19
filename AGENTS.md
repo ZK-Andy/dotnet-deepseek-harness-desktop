@@ -52,5 +52,5 @@ scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 
 ## 参考
 
-- 体系方法论文档在工作区根（git 之外）：`适配方案.md`、`dsh.txt`。
+- 体系方法论文档在本目录 `docs/`（本地工作文档，未纳入 git 提交）：`适配方案.md`、`适配经验总结.md`、`dsh.txt`；交接见同层的 `HANDOFF.md`。
 - 本仓库技能均原版源自 `deepseek-ai/deepseek-harness`（MIT），出处见 `.agents/AGENTS.md`。
