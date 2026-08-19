@@ -72,6 +72,7 @@ Section: devel
 Priority: optional
 Architecture: $ARCH
 Maintainer: $MAINTAINER
+Depends: libwebkit2gtk-4.1-0
 Description: DeepSeek Harness Desktop for .NET (native shell + bundled runtime)
 EOF
 mkdir -p "$OUT"
@@ -88,6 +89,7 @@ License: MIT
 URL: https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop
 Packager: $MAINTAINER
 BuildArch: ${ARCH/amd64/x86_64}
+Requires: webkit2gtk-4.1
 %description
 Desktop client for DeepSeek Harness (Ryn native webview shell + bundled runtime).
 
