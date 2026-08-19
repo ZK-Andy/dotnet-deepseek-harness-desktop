@@ -84,7 +84,8 @@ public class HarnessRuntimeHostTests
             host.Stop();
 
             Assert.NotNull(restarted);
-            Assert.NotEqual(first, restarted);
+            // 稳定端口：重启后 URL 相同（origin 不变），Web UI 才能记住上一会话
+            Assert.Equal(first, restarted);
         }
         finally
         {

@@ -11,6 +11,7 @@ public sealed class HarnessRuntimeHost : IDisposable
     private const int StderrTailCapacity = 40;
 
     private readonly (string NodeExe, string DshEntry)? _bundled;
+    private int? _port;
     private Process? _process;
 
     /// <summary>创建运行时宿主。</summary>
@@ -60,11 +61,29 @@ public sealed class HarnessRuntimeHost : IDisposable
     /// <param name="timeout">等待 URL 的时限。</param>
     /// <param name="ct">取消令牌。</param>
     /// <returns>dsh web UI 的 URL；未在时限内给出则为 null。</returns>
+    /// <remarks>首次用 OS 分配端口并记住；重启复用同端口，保证 WebView origin 不变（Web UI 的页面级会话记忆依赖同 origin）。</remarks>
     public async Task<Uri?> StartAsync(TimeSpan timeout, CancellationToken ct = default)
     {
         Stop();
         WebUrl = null;
+        Uri? url = await StartCoreAsync(_port, timeout, ct);
+        if (url is null && _port is not null)
+        {
+            // 固定端口被占（kill 后未及时释放等）：回退 OS 分配
+            url = await StartCoreAsync(null, timeout, ct);
+        }
 
+        WebUrl = url;
+        if (url is not null)
+        {
+            _port = url.Port;
+        }
+
+        return WebUrl;
+    }
+
+    private async Task<Uri?> StartCoreAsync(int? port, TimeSpan timeout, CancellationToken ct = default)
+    {
         var home = ResolveDshHome();
         Directory.CreateDirectory(home);
 
@@ -88,7 +107,7 @@ public sealed class HarnessRuntimeHost : IDisposable
         psi.ArgumentList.Add("--profile");
         psi.ArgumentList.Add("web");
         psi.ArgumentList.Add("--port");
-        psi.ArgumentList.Add("0");
+        psi.ArgumentList.Add(port?.ToString() ?? "0");
         psi.Environment["DSH_HOME"] = home;
 
         _process = Process.Start(psi)
