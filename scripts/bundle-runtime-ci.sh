@@ -26,17 +26,19 @@ mkdir -p "$DEST"
 cp "$TMP/$NODE_BIN" "$DEST/node"
 chmod +x "$DEST/node"
 
-echo "== [2/3] npm 安装 @deepseek-ai/dsh@${DSH_VERSION} 依赖闭包"
+echo "== [2/3] pnpm 安装 @deepseek-ai/dsh@${DSH_VERSION} 依赖闭包"
+command -v pnpm >/dev/null || npm install -g pnpm@11 >/dev/null 2>&1
 mkdir -p "$TMP/app"
 cd "$TMP/app"
 npm init -y >/dev/null 2>&1
-npm install "@deepseek-ai/dsh@${DSH_VERSION}" --no-save --omit=dev >/dev/null 2>&1
+pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod --silent
 
-echo "== [3/3] 组装 resources/runtime/dsh"
+echo "== [3/3] 组装 resources/runtime/dsh（pnpm symlink 布局 → 解引用为真实闭包）"
 rm -rf "$DEST/dsh"
 mkdir -p "$DEST/dsh"
-cp -r node_modules/@deepseek-ai/dsh/. "$DEST/dsh/"
+cp -rL node_modules/@deepseek-ai/dsh/. "$DEST/dsh/"
 
 echo "== 完成 → $DEST"
 "$DEST/node" -v
 echo "dsh 版本: $(grep '"version"' "$DEST/dsh/package.json" | head -1)"
+du -sh "$DEST" | cut -f1

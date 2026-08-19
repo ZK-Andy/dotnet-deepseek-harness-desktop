@@ -22,7 +22,14 @@ jobs:
       - name: 安装 rpmbuild
         run: sudo apt-get update && sudo apt-get install -y rpm
 
-      - name: 生成捆绑运行时（下载 Node + npm 安装 dsh 闭包）
+      - name: 缓存 pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-v1
+          restore-keys: pnpm-store-v1
+
+      - name: 生成捆绑运行时（下载 Node + pnpm 安装 dsh 闭包）
         run: bash scripts/bundle-runtime-ci.sh linux-x64
 
       - name: 确定版本
