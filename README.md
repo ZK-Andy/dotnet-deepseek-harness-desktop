@@ -4,8 +4,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![build & test](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml)
-![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7)
-![.NET](https://img.shields.io/badge/.NET-net10.0-512bd4)
+[![tests](https://img.shields.io/badge/tests-12%2F12-brightgreen)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/badge/coverage-3.6%25-red)](docs/testing.md)
+[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases)
+[![.NET](https://img.shields.io/badge/.NET-net10.0-512bd4)](https://dotnet.microsoft.com/download/dotnet/10.0)
+[![docs](https://img.shields.io/badge/docs-architecture%2Ftesting%2Fdevelopment-blue)](docs/architecture.md)
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端**，基于 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 原生 WebView 框架）。桌面壳**内置完整 DeepSeek Harness 运行时**——终端用户**无需单独安装 Node / DeepSeek Harness**。
 
