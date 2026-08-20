@@ -21,5 +21,22 @@ jobs:
           python3 scripts/verify-md-links.py
       - name: build
         run: dotnet build dotnet-deepseek-harness-desktop.slnx -c Debug
-      - name: test
-        run: dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build
+      - name: test with coverage
+        run: dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build --collect:"XPlat Code Coverage" --results-directory TestResults -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+      - name: coverage summary
+        if: always()
+        run: |
+          echo "== coverage files =="
+          find TestResults -name "*.xml" -type f | head -20
+          if ls TestResults/**/coverage.cobertura.xml 1>/dev/null 2>&1; then
+            echo "== cobertura 摘要 =="
+            grep -E "line-rate|branch-rate" TestResults/**/coverage.cobertura.xml | head -20
+          fi
+      - name: upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-cobertura
+          path: TestResults/**/coverage.cobertura.xml
+          if-no-files-found: warn
+          retention-days: 7
