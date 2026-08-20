@@ -4,15 +4,15 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![build & test](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-28%2F28-brightgreen)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml)
-[![coverage](https://img.shields.io/badge/coverage-24.3%25-orange)](docs/testing.md)
+[![tests](https://img.shields.io/badge/tests-25%2F25-brightgreen)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml)
+[![coverage](https://img.shields.io/badge/coverage-26.4%25-orange)](docs/testing.md)
 [![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases)
 [![.NET](https://img.shields.io/badge/.NET-net10.0-512bd4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![docs](https://img.shields.io/badge/docs-architecture%2Ftesting%2Fdevelopment-blue)](docs/architecture.md)
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端**，基于 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 原生 WebView 框架）。桌面壳**内置完整 DeepSeek Harness 运行时**——终端用户**无需单独安装 Node / DeepSeek Harness**。
 
-> 现状：`v0.1.12`（`28/28` 单测 `24.3%` 覆盖 + 门禁全绿，`CI` 双绿）——原生壳 + 内置运行时 + 崩溃恢复 + 插件市场已闭环；`Wayland`/`图标` 已正，`0.1.11` 起市场随包 `497K` 真包 + 后台 `JSON` 检测/迁移/`allowBuilds` 自愈，`0.1.12` 后台装完自动重启即现。
+> 现状：`v0.1.12`（`25/25` 单测 `26.4%` 覆盖 + 门禁全绿，`CI` 双绿）——原生壳 + 内置运行时 + 崩溃恢复 + 插件市场已闭环；`Wayland`/`图标` 已正，`0.1.11` 起市场随包 `497K` 真包 + 后台 `JSON` 检测/迁移/`allowBuilds` 自愈，`0.1.12` 后台装完自动重启即现。
 
 ## 亮点
 
@@ -21,7 +21,7 @@
 - **崩溃恢复**：壳监督运行时子进程——退出即显示恢复屏、重启子进程、把同一窗口导航到新 URL；**端口保持稳定**，Web UI 的 origin（及页面级会话记忆）在重启后存活——**崩溃后回到之前对话**。
 - **插件市场预装**：`dsh-market`（`https://github.com/dsh-market/dsh-market`）已随包 `497K` 真包到 `resources/runtime/dshmarket.tgz`——首启后台 `file://` 静默安装到 `DSH_HOME`（`System.Text.Json` 精确检测、`app` 假依赖迁移、`pnpm-workspace.yaml 6` 项 `allowBuilds` 自愈），装完由 `RuntimeSupervisor` 重启即现，`1200+` 插件可搜一键装（`0.1.8` 阻塞→`0.1.11` 真包→`0.1.12` 即时重启）。
 - **原生图标**：`assets/icon.png`（`hairyf/deepseek-harness-desktop` 同款 `512`）随包，`deb/rpm` 安装到 `hicolor` 并在 `.desktop` 设 `Icon=deepseek-harness-desktop`，`ryn.json:identifier` 与 `StartupWMClass` 均为 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`，`Wayland`/`X11` 任务栏均正确关联。
-- **可测试宿主层**：`HarnessRuntimeHost` / `RuntimeSupervisor` / `RuntimeLocator` / `MarketInstallHelper` / URL 解析器均带 xunit 单测（`28/28`，`MarketInstallHelper 84%`）与门禁；`package-linux.sh` 在 `staging` 即 `fail loud` 校验真包。
+- **可测试宿主层**：`HarnessRuntimeHost` / `RuntimeSupervisor` / `RuntimeLocator` / `MarketInstallHelper` / URL 解析器均带 xunit 单测（`25/25`，`MarketInstallHelper 84%`）与门禁；`package-linux.sh` 在 `staging` 即 `fail loud` 校验真包。
 
 ## 快速开始（开发）
 
@@ -46,12 +46,12 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ## 目录
 
 ```
-├── src/DeepSeek.Harness.Desktop/   # Ryn 壳：Program（后台市场+重启）、Services/HarnessRuntimeHost、RuntimeSupervisor、RuntimeLocator、HarnessUrlParser、Commands
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 12/12
+├── src/DeepSeek.Harness.Desktop/   # Ryn 壳：Program（后台市场+重启）、Services/HarnessRuntimeHost、RuntimeSupervisor、RuntimeLocator、MarketInstallHelper、HarnessUrlParser
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 25/25
 ├── resources/runtime/              # 内置 Node + dsh 闭包 + dshmarket.tgz 497K（生成物，gitignore，staging 校验真包）
-├── scripts/                        # 门禁 + bundle-runtime{-ci,}.sh + package-linux.sh
+├── scripts/                        # 门禁 + bundle-runtime-ci.sh（bundle-runtime.sh 为透传）+ package-linux.sh
 ├── .agents/notes/implemented/bug-fix/2026-08-20-dshmarket-background-install.md  # 市场链路 ADR
-└── docs/                           # 项目文档（待建）
+└── docs/architecture.md、testing.md、development.md  # 项目文档
 ```
 
 ## 许可与致谢

@@ -9,41 +9,16 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
             background: #0f0f13; color: #e6e6ea;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            height: 100vh; gap: 24px;
+            height: 100vh; gap: 16px; text-align: center;
         }
-        h1 { font-size: 2em; color: #7c3aed; }
-        .card {
-            background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 12px;
-            padding: 24px; width: 420px;
-        }
-        .card h2 { font-size: 1.1em; color: #a78bfa; margin-bottom: 12px; }
-        .row { display: flex; gap: 8px; margin-bottom: 12px; }
-        input, button { padding: 8px 16px; border-radius: 8px; border: 1px solid #33334a;
-            background: #23233a; color: #e6e6ea; font-size: 14px; }
-        button { background: #7c3aed; border: none; cursor: pointer; font-weight: 600; }
-        button:hover { background: #6d28d9; }
-        .result { background: #0d0d18; border: 1px solid #2a2a3a; border-radius: 8px;
-            padding: 12px; font-family: monospace; min-height: 40px; margin-top: 8px; }
-        .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+        h1 { font-size: 1.8em; color: #7c3aed; }
+        p { color: #a1a1b5; max-width: 520px; line-height: 1.6; }
+        code { background: #1a1a24; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
     </style>
 </head>
 <body>
     <h1>DeepSeek Harness Desktop</h1>
-    <div class="card">
-        <h2>Ryn Shell 活体检测</h2>
-        <div class="row">
-            <input id="name" type="text" placeholder="Your name" value="World" />
-            <button onclick="doHello()">Call C#</button>
-        </div>
-        <div class="label">Result:</div>
-        <div class="result" id="result">点击 "Call C#" 调用 C# 端 IPC</div>
-    </div>
-    <script>
-        async function doHello() {
-            const name = document.getElementById('name').value;
-            const result = await window.__ryn.invoke('app.hello', { name });
-            document.getElementById('result').textContent = result;
-        }
-    </script>
+    <p>运行时未就绪（<code>dsh web</code> 未在时限内给出 URL）。</p>
+    <p>请检查 <code>DEEPSEEK_API_KEY</code> 与日志，或重启应用。</p>
 </body>
 </html>

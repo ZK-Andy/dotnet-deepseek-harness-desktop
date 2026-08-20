@@ -27,9 +27,6 @@ public sealed class HarnessRuntimeHost : IDisposable
     private readonly List<string> _stderrTail = new(StderrTailCapacity);
     private readonly object _stderrLock = new();
 
-    /// <summary>解析到的 dsh web UI URL；启动失败或超时为 null。</summary>
-    public Uri? WebUrl { get; private set; }
-
     /// <summary>失败时可读的诊断尾巴（stderr 末 N 行）。</summary>
     public IReadOnlyList<string> StderrTail
     {
@@ -65,7 +62,6 @@ public sealed class HarnessRuntimeHost : IDisposable
     public async Task<Uri?> StartAsync(TimeSpan timeout, CancellationToken ct = default)
     {
         Stop();
-        WebUrl = null;
         Uri? url = await StartCoreAsync(_port, timeout, ct);
         if (url is null && _port is not null)
         {
@@ -73,13 +69,12 @@ public sealed class HarnessRuntimeHost : IDisposable
             url = await StartCoreAsync(null, timeout, ct);
         }
 
-        WebUrl = url;
         if (url is not null)
         {
             _port = url.Port;
         }
 
-        return WebUrl;
+        return url;
     }
 
     private async Task<Uri?> StartCoreAsync(int? port, TimeSpan timeout, CancellationToken ct = default)
@@ -116,14 +111,6 @@ public sealed class HarnessRuntimeHost : IDisposable
         psi.Environment["pnpm_config_cache_dir"] = Path.Combine(home, ".pnpm-cache");
         Directory.CreateDirectory(Path.Combine(home, ".pnpm-store"));
         Directory.CreateDirectory(Path.Combine(home, ".pnpm-cache"));
-
-        // 桌面覆盖层：DSH_DESKTOP_PATCH=<path> 时作为 --patch 叠加（0.1.8 的自动预装 dsh-market 因首启 pnpm 阻塞致重启循环，已回退为手动安装）
-        var patchEnv = Environment.GetEnvironmentVariable("DSH_DESKTOP_PATCH");
-        if (!string.IsNullOrWhiteSpace(patchEnv))
-        {
-            psi.ArgumentList.Add("--patch");
-            psi.ArgumentList.Add(Path.GetFullPath(patchEnv));
-        }
 
         _process = Process.Start(psi)
             ?? throw new InvalidOperationException("无法启动 dsh 进程。");
@@ -165,14 +152,12 @@ public sealed class HarnessRuntimeHost : IDisposable
 
         try
         {
-            WebUrl = await tcs.Task.WaitAsync(cts.Token);
+            return await tcs.Task.WaitAsync(cts.Token);
         }
         catch (OperationCanceledException)
         {
-            WebUrl = null;
+            return null;
         }
-
-        return WebUrl;
     }
 
     /// <summary>重启 dsh 子进程（先 Stop 再 StartAsync），返回新 URL。崩溃恢复用。</summary>

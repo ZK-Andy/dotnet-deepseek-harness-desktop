@@ -1,4 +1,3 @@
-using DeepSeek.Harness.Desktop.Commands;
 using DeepSeek.Harness.Desktop.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Core;
@@ -71,7 +70,6 @@ public static class Program
             .ConfigureServices(services =>
             {
                 services.AddRynCommands();
-                services.AddAppCommands();
             })
             .Build();
 

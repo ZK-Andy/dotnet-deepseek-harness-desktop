@@ -24,7 +24,7 @@
 ## 运行时定位与启动
 
 * `Services/RuntimeLocator`：`ResolveRuntimeDirectory()` 优先 `DSH_DESKTOP_RUNTIME_DIR` 否则 `AppContext.BaseDirectory/resources/runtime`；`TryLocateBundled` 判 `node` + `node_modules/@deepseek-ai/dsh/lib/bin.js`（`pilot-harness` 整树入口）。
-* `Services/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；可选 `DSH_DESKTOP_PATCH --patch`。`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`，占位回退 `0`。
+* `Services/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`，占位回退 `0`。
 * `Services/HarnessUrlParser`：单行解析 `dsh web: http://127.0.0.1:<port>`。
 
 ## 崩溃监督
@@ -51,4 +51,4 @@
 
 * `appsettings.json`：`DevTools:false`（`DSH_DEVTOOLS=1` 开启）。
 * `ryn.json`：`identifier/capabilities`。
-* `DSH_DESKTOP_PATCH` 环境变量叠加 `--patch`。
+* 扩展点：`DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DSH_HOME` 覆盖。

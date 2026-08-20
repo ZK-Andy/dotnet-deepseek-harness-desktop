@@ -18,17 +18,15 @@ scripts/  bundle-runtime{-ci,}.sh, package-linux.sh, verify-*.py
 ```
 
 * `appsettings.json`：`DevTools:false`；`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
-* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（覆盖 `resources/runtime`）、`DSH_DESKTOP_DSH_HOME`（覆盖 `~/.local/share/DeepSeek.Harness.Desktop/dsh`）、`DSH_DESKTOP_PATCH`（`--patch` 叠加）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。
+* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（覆盖 `resources/runtime`）、`DSH_DESKTOP_DSH_HOME`（覆盖 `~/.local/share/DeepSeek.Harness.Desktop/dsh`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。
 
 ## 捆绑运行时
 
 ```sh
-# CI 同款（下载 Node + pnpm 闭包 + curl 497K tgz，~421M）
+# 统一入口（CI 同款，下载 Node + pnpm 闭包 + curl 497K tgz，~421M）
 bash scripts/bundle-runtime-ci.sh linux-x64
-# 本机已有 node/dsh 时快拷（或 --from-ci 委托上条）
-scripts/bundle-runtime.sh
-# 或
-scripts/bundle-runtime.sh --from-ci
+# 兼容 wrapper
+bash scripts/bundle-runtime.sh
 ```
 
 * 入口校验：`resources/runtime/node` + `node_modules/@deepseek-ai/dsh/lib/bin.js` + `dshmarket.tgz 497K`；`package-linux.sh --stage-only` 在错布局/假包时 `fail loud`。

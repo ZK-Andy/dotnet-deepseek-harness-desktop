@@ -1,6 +1,6 @@
 # Testing
 
-> `28/28` 通过（`24.3%` 行覆盖，`MarketInstallHelper 84%`），`v0.1.12` 基线。
+> `25/25` 通过（`26.4%` 行覆盖，`MarketInstallHelper 84%`），`v0.1.12` 基线。
 
 ## 单测
 
