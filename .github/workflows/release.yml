@@ -49,12 +49,32 @@ jobs:
           done
           echo "error: 等待三平台产物超时" >&2; exit 1
 
-      - name: 下载三平台产物
-        uses: actions/download-artifact@v4
-        with:
-          pattern: '*-packages'
-          path: release-assets
-          merge-multiple: true
+      - name: 下载三平台产物（跨 run，经 API）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"; sha="$GITHUB_SHA"
+          mkdir -p release-assets
+          # download-artifact@v4 只能拉当前 run 的产物；三平台产物在其它 workflow run，
+          # 故经 API 按 workflow_run.head_sha（= 本次 tag 构建）跨 run 逐一拉取解压。
+          jq_urls="[.artifacts[]|select(.expired==false and (.workflow_run.head_sha==\"$sha\") and (.name|test(\"-packages$\")))|{name,url:.archive_download_url}]"
+          gh api "repos/$repo/actions/artifacts?per_page=100" --jq "$jq_urls" > /tmp/arts.json
+          GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
+          import json, subprocess, os
+          arts = json.load(open('/tmp/arts.json'))
+          if not arts:
+              raise SystemExit('error: 未找到本次 tag 构建的产物')
+          for a in arts:
+              print(f'下载 {a["name"]}')
+              subprocess.run(['curl', '-sSL', '-H', f'Authorization: Bearer {os.environ["GH_TOKEN"]}',
+                              '-H', 'Accept: application/vnd.github+json',
+                              '-o', '/tmp/artifact.zip', a['url']], check=True)
+              subprocess.run(['unzip', '-oq', '/tmp/artifact.zip', '-d', 'release-assets'], check=True)
+          os.remove('/tmp/artifact.zip')
+          print(f'共下载 {len(arts)} 个产物')
+          PY
+          echo "== 下载结果 =="; find release-assets -type f | sort
 
       - name: 生成合并 SHA256SUMS
         run: |
