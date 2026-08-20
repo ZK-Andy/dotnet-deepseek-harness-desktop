@@ -8,6 +8,16 @@ namespace DeepSeek.Harness.Desktop.Tests;
 public class HarnessRuntimeHostTests
 {
     [Fact]
+    public void BuildDshWebArgs_IncludesNoOpen_SoShellDoesNotHandOffToOsBrowser()
+    {
+        // rc.8+ 的 dsh web 默认 openBrowser=true，会把 URL 交给 OS 默认浏览器；
+        // 桌面壳自渲染内嵌 WebView，必须传 --no-open 避免与桌面窗口重复弹出。
+        var args = HarnessRuntimeHost.BuildDshWebArgs(0);
+        Assert.Contains("--no-open", args);
+        Assert.Equal("web", args[1]);
+    }
+
+    [Fact]
     public async Task StartAsync_ParsesRealDshWebUrl_WhenEnabled()
     {
         if (Environment.GetEnvironmentVariable("DSH_TEST_E2E") != "1")

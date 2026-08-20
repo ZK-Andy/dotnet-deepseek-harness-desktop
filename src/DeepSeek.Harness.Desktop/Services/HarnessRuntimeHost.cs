@@ -77,6 +77,19 @@ public sealed class HarnessRuntimeHost : IDisposable
         return url;
     }
 
+    /// <summary>构造 dsh web 参数。含 <c>--no-open</c>：桌面壳把返回的 <c>dsh web:</c> URL
+    /// 渲染进内嵌 WebView 即可，若把它交给 dsh 默认行为（rc.8+ <c>openBrowser</c> 默认开）
+    /// 会额外弹出 OS 默认浏览器，与桌面窗口重复。</summary>
+    /// <param name="port">固定端口；<c>null</c> 时让 OS 分配（<c>--port 0</c>）。</param>
+    internal static string[] BuildDshWebArgs(int? port) => new[]
+    {
+        "--profile",
+        "web",
+        "--port",
+        port?.ToString() ?? "0",
+        "--no-open",
+    };
+
     private async Task<Uri?> StartCoreAsync(int? port, TimeSpan timeout, CancellationToken ct = default)
     {
         var home = ResolveDshHome();
@@ -99,10 +112,11 @@ public sealed class HarnessRuntimeHost : IDisposable
             psi.FileName = "dsh";
         }
 
-        psi.ArgumentList.Add("--profile");
-        psi.ArgumentList.Add("web");
-        psi.ArgumentList.Add("--port");
-        psi.ArgumentList.Add(port?.ToString() ?? "0");
+        foreach (var arg in BuildDshWebArgs(port))
+        {
+            psi.ArgumentList.Add(arg);
+        }
+
         psi.Environment["DSH_HOME"] = home;
 
         // 桌面环境可能 /home 只读：把 pnpm store/cache 重定向到可写的 DSH_HOME 下，

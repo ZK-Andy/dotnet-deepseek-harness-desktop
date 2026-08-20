@@ -22,4 +22,8 @@
     <Content Include="..\..\assets\icon.png" Link="icon.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="DeepSeek.Harness.Desktop.Tests" />
+  </ItemGroup>
+
 </Project>
