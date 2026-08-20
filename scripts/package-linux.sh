@@ -67,7 +67,7 @@ Exec=$APP
 Icon=$APP
 Terminal=false
 Categories=Development;IDE;Utility;
-StartupWMClass=deepseek-harness-desktop
+StartupWMClass=DeepSeek.Harness.Desktop
 EOF
 
 # 3b) 图标（对齐 pilot-harness assets/icon.png → hicolor 512 + brand-icon）
@@ -144,6 +144,13 @@ cp -r "$STAGE/usr" %{buildroot}/
 /usr/share/pixmaps
 EOF
 rpmbuild --define "_topdir $OUT/rpmbuild" --define "_specdir $OUT" -bb "$SPEC"
+# 重命名去掉 Release 后缀（用户期望 deepseek-harness-desktop-0.1.5.x86_64.rpm 而非 -1）
+for f in "$OUT/rpmbuild/RPMS"/*/*.rpm; do
+  [[ -f "$f" ]] || continue
+  if [[ "$f" == *"-1."* ]]; then
+    mv "$f" "${f/-1./.}"
+  fi
+done
 
 echo "== 产物:"
 ls -lh "$OUT"/*.deb "$OUT"/rpmbuild/RPMS/**/*.rpm 2>&1 | grep -E "^-|deepseek" || true
