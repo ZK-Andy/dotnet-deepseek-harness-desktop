@@ -121,16 +121,6 @@ if ! $CP_A node_modules/. "$DEST/node_modules/" 2>/dev/null; then
   [[ -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 拷贝后仍缺入口" >&2; exit 1; }
 fi
 
-# 体积裁剪（可选，TRIM=1 时启用）：移除文档/源码/测试，保留运行时必需
-if [[ "${TRIM:-0}" == "1" ]]; then
-  echo "   裁剪：移除 *.md/*.ts/*.map 等非运行时文件"
-  find "$DEST/node_modules" -type f \( -name "*.md" ! -name "LICENSE*" \) -delete 2>/dev/null || true
-  find "$DEST/node_modules" -type f -name "*.ts" ! -path "*lib/*" -delete 2>/dev/null || true
-  find "$DEST/node_modules" -type f -name "*.map" -delete 2>/dev/null || true
-  find "$DEST/node_modules" -type d -name "__tests__" -prune -exec rm -rf {} + 2>/dev/null || true
-  echo "   裁剪后：$(du -sh "$DEST" | cut -f1)（原 ~421M）"
-fi
-
 echo "== [4/4] 自检：spawn dsh web 应给出 URL（Linux 强校验，mac/win 轻校验）"
 if [[ "$PLATFORM" == linux-* ]]; then
   SMOKE_HOME="$(mktemp -d)"
