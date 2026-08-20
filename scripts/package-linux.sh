@@ -137,7 +137,8 @@ Depends: libwebkitgtk-6.0-4
 Description: DeepSeek Harness Desktop for .NET (native shell + bundled runtime)
 EOF
 mkdir -p "$OUT"
-dpkg-deb --root-owner-group --build "$STAGE" "$OUT/${APP}_${VERSION}_${ARCH}.deb"
+# 文件名加入 linux 标识，避免与 macos/windows 混淆（原 _amd64.deb 无平台前缀；deb 控制内 Architecture 仍为 amd64/arm64，文件名仅作发布区分）
+dpkg-deb --root-owner-group --build "$STAGE" "$OUT/${APP}_${VERSION}_linux-${ARCH}.deb"
 
 echo "== [rpm]"
 SPEC="$OUT/$APP.spec"
@@ -172,17 +173,36 @@ cp -r "$STAGE/usr" %{buildroot}/
 /usr/share/pixmaps
 EOF
 rpmbuild --define "_topdir $OUT/rpmbuild" --define "_specdir $OUT" -bb "$SPEC"
-# 重命名去掉 Release 后缀（用户期望 deepseek-harness-desktop-0.1.5.x86_64.rpm 而非 -1）
+# 重命名去掉 Release 后缀并加入 linux 标识（发布区分；rpm 内 BuildArch 仍为 x86_64/aarch64）
 for f in "$OUT/rpmbuild/RPMS"/*/*.rpm; do
   [[ -f "$f" ]] || continue
   if [[ "$f" == *"-1."* ]]; then
     mv "$f" "${f/-1./.}"
+    f="${f/-1./.}"
   fi
+  # deepseek-harness-desktop-0.1.15.x86_64.rpm → deepseek-harness-desktop-0.1.15_linux-x86_64.rpm
+  if [[ "$f" != *"_linux-"* && "$f" != *"-linux."* ]]; then
+    dir="$(dirname "$f")"
+    base="$(basename "$f")"
+    # base: deepseek-harness-desktop-0.1.15.x86_64.rpm → deepseek-harness-desktop-0.1.15_linux-x86_64.rpm
+    newbase="${base/.${RPM_ARCH}.rpm/_linux-${RPM_ARCH}.rpm}"
+    if [[ "$newbase" != "$base" ]]; then
+      mv "$f" "$dir/$newbase"
+    fi
+  fi
+done
+# 将 rpm 移到 $OUT 顶层以便统一产物清单与 CI 上传（保留原 rpmbuild 目录结构亦可）
+mkdir -p "$OUT"
+for f in "$OUT"/rpmbuild/RPMS/*/*.rpm; do
+  [[ -f "$f" ]] || continue
+  cp -n "$f" "$OUT/" 2>/dev/null || true
 done
 
 echo "== 产物:"
-ls -lh "$OUT"/*.deb "$OUT"/rpmbuild/RPMS/**/*.rpm 2>&1 | grep -E "^-|deepseek" || true
+ls -lh "$OUT"/*.deb "$OUT"/*.rpm 2>&1 | grep -E "^-|deepseek" || true
+ls -lh "$OUT"/rpmbuild/RPMS/**/*.rpm 2>&1 | grep -E "^-|deepseek" || true
 echo "== deb 校验（如可用）:"
-dpkg-deb -I "$OUT/${APP}_${VERSION}_${ARCH}.deb" 2>&1 | head -20 || true
+dpkg-deb -I "$OUT/${APP}_${VERSION}_linux-${ARCH}.deb" 2>&1 | head -20 || true
 echo "== rpm 校验（如可用）:"
-rpm -qp --requires "$OUT/rpmbuild/RPMS"/*/*.rpm 2>&1 | head -30 || true
+rpm -qp --requires "$OUT"/*.rpm 2>&1 | head -30 || true
+rpm -qp --requires "$OUT"/rpmbuild/RPMS/*/*.rpm 2>&1 | head -30 || true

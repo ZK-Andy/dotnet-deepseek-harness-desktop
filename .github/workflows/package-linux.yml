@@ -104,8 +104,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "== deb control =="; dpkg-deb -I "artifacts/${{ matrix.rid }}/"*.deb 2>&1 | head -40 || true
-          echo "== rpm Requires（应仅含 libwebkitgtk-6.0.so.4，无 aarch64/musl/perl）=="; rpm -qp --requires artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm 2>&1 | head -60 || true
-          echo "== 产物清单 =="; ls -lh artifacts/${{ matrix.rid }}/*.deb artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm
+          echo "== rpm Requires（应仅含 libwebkitgtk-6.0.so.4，无 aarch64/musl/perl）=="; rpm -qp --requires artifacts/${{ matrix.rid }}/*.rpm 2>&1 | head -60 || rpm -qp --requires artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm 2>&1 | head -60 || true
+          echo "== 产物清单 =="; ls -lh artifacts/${{ matrix.rid }}/*.deb artifacts/${{ matrix.rid }}/*.rpm artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm 2>&1 | head -40 || true
 
       - name: 上传预览/发布产物（7 天，与 pilot-harness pilot-harness-* 一致） 
         uses: actions/upload-artifact@v4
@@ -113,6 +113,7 @@ jobs:
           name: linux-${{ matrix.arch }}-packages
           path: |
             artifacts/${{ matrix.rid }}/*.deb
+            artifacts/${{ matrix.rid }}/*.rpm
             artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm
           if-no-files-found: error
           retention-days: 7

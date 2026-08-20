@@ -29,8 +29,8 @@ Referencing [Ryn](https://github.com/Yupmoh/Ryn)'s `ryn bundle` (`macOS .app` / 
 
 | Platform | Arch | Package | Runner | Test | Client |
 |---|---|---|---|---|---|
-| `Linux` | `x64` | `deb`/`rpm` | `ubuntu-latest` | ✅ `CI` (`staging` + `rpm -qp`) | 🟡 `deb` / 🟢 `rpm` |
-| `Linux` | `arm64` | `deb`/`rpm` | `ubuntu-24.04-arm` | ✅ `CI` (matrix) | 🟡 `deb` / 🟢 `rpm` |
+| `Linux` | `x64` | `deb`/`rpm` (`…_linux-amd64.deb` / `…_linux-x86_64.rpm`) | `ubuntu-latest` | ✅ `CI` (`staging` + `rpm -qp`) | 🟡 `deb` / 🟢 `rpm` |
+| `Linux` | `arm64` | `deb`/`rpm` (`…_linux-arm64.deb` / `…_linux-aarch64.rpm`) | `ubuntu-24.04-arm` | ✅ `CI` (matrix) | 🟡 `deb` / 🟢 `rpm` |
 | `macOS` | `arm64` | `zip` (`.app`) + `dmg` | `macos-latest` | ✅ `CI` (single runner, `…_macos-arm64.zip/.dmg`) | 🟡 |
 | `macOS` | `x64` | `zip` (`.app`) + `dmg` | `macos-latest` | ✅ `CI` (cross, `…_macos-x64.zip/.dmg`) | 🟡 |
 | `Windows` | `x64` | `zip` + `exe` installer | `windows-latest` | ✅ `CI` (`zip→7z→tar→powershell` + `Inno Setup` `…_windows-x64-setup.exe`) | 🟡 |
