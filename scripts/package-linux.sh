@@ -90,9 +90,11 @@ URL: https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop
 Packager: $MAINTAINER
 BuildArch: ${ARCH/amd64/x86_64}
 # webkit 由 saucer 链接 libwebkitgtk-6.0.so.4 → rpm 从 ELF 自动生成精确依赖（跨发行版），无需手写
-# 排除 .NET 运行时可选追踪组件（libcoreclrtraceptprovider.so）对 liblttng-ust 的自动硬依赖（注意需求实际形如 liblttng-ust.so.0()(64bit)）
-%global __requires_exclude ^liblttng-ust
-# node_modules 内含跨平台 prebuild 等，rpm 的 brp-strip/debuginfo 会误伤 → 整体禁用
+# 自动依赖已禁用：整库 node_modules 的跨平台 prebuild 会生成 aarch64/musl/ld-linux/perl 等一堆无意义依赖
+AutoReqProv: no
+# 真实运行库：WebKitGTK6（GTK4）——其包会连带拉 GTK/JavaScriptCore/soup/cairo 等
+Requires: libwebkitgtk-6.0.so.4
+# node_modules 内含跨平台 prebuild，rpm 的 brp-strip/debuginfo 会误伤 → 整体禁用
 %global _enable_debug_packages 0
 %define __os_install_post %{nil}
 %description
