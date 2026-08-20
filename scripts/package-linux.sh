@@ -67,7 +67,7 @@ Exec=$APP
 Icon=$APP
 Terminal=false
 Categories=Development;IDE;Utility;
-StartupWMClass=$APP
+StartupWMClass=io.github.ZK-Andy.dotnet-deepseek-harness-desktop
 EOF
 
 # 3b) 图标（对齐 pilot-harness assets/icon.png → hicolor 512 + brand-icon）

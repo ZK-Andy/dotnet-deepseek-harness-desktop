@@ -1,4 +1,5 @@
 {
+  "identifier": "io.github.ZK-Andy.dotnet-deepseek-harness-desktop",
   "capabilities": {
     "app": true
   }

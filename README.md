@@ -16,8 +16,8 @@
 - **原生轻量壳**：C# 后端 + HTML/CSS/JS 前端，跑在系统 WebView（WebView2 / WKWebView / WebKitGTK），NativeAOT 就绪，能力沙箱 deny-by-default（`ryn.json`）。
 - **完整运行时内置**：`resources/runtime/` 内置 Node 二进制 + `@deepseek-ai/dsh` 依赖闭包；壳以私有 `DSH_HOME` 拉起 `dsh web`，UI 加载 `dsh web:` URL。无 PATH `dsh`/`node` 也能跑（缺内置时回退 PATH dsh）。
 - **崩溃恢复**：壳监督运行时子进程——退出即显示恢复屏、重启子进程、把同一窗口导航到新 URL；**端口保持稳定**，Web UI 的 origin（及页面级会话记忆）在重启后存活——**崩溃后回到之前对话**。
-- **插件市场**：推荐 `dsh-market`（`https://github.com/dsh-market/dsh-market`）——`DSH_HOME=~/.local/share/DeepSeek.Harness.Desktop/dsh dsh plugin add dshmarket` 一键安装后 `Web UI` 即有可视化商店，`1200+` 插件可搜一键装；`0.1.4` 的自动预装因首启阻塞已回退，后续将改为后台非阻塞预装。
-- **原生图标**：`assets/icon.png`（`DeepSeek Harness` 风格 `512` 深色 `DSH`）随包，`deb/rpm` 安装到 `hicolor` 并在 `.desktop` 设 `Icon=deepseek-harness-desktop`，任务栏/启动器与窗口图标一致。
+- **插件市场预装**：`dsh-market`（`https://github.com/dsh-market/dsh-market`）已随包预装到 `resources/runtime`——首启即在 `Web UI` 出现可视化商店，`1200+` 插件可搜一键装，无需命令行（`0.1.4` 的首启阻塞已修复：市场随闭包预装，`patch` 无需联网）。
+- **原生图标**：`assets/icon.png`（`hairyf/deepseek-harness-desktop` 同款 `512`）随包，`deb/rpm` 安装到 `hicolor` 并在 `.desktop` 设 `Icon=deepseek-harness-desktop`，`ryn.json:identifier` 与 `StartupWMClass` 均为 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`，`Wayland`/`X11` 任务栏均正确关联。
 - **可测试宿主层**：`HarnessRuntimeHost` / `RuntimeSupervisor` / URL 解析器均带 xunit 单测与 e2e；门禁脚本化在 `scripts/`。
 
 ## 快速开始（开发）
