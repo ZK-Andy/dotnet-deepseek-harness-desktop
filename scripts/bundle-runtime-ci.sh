@@ -5,7 +5,7 @@
 # 产物：resources/runtime/{node, node_modules/...}（gitignore，发布时由 package-linux.sh 组装）
 #   node: 来自 nodejs.org 的平台二进制
 #   node_modules: pnpm 安装的完整依赖树（含跨平台 prebuild，原样保留 symlink 结构，入口同 pilot-harness apps/desktop/src/main.ts）
-# 用法：bash scripts/bundle-runtime-ci.sh [linux-x64|linux-arm64]
+# 用法：bash scripts/bundle-runtime-ci.sh [linux-x64|linux-arm64|win-x64|osx-x64|osx-arm64]
 set -euo pipefail
 
 PLATFORM="${1:-linux-x64}"
@@ -17,17 +17,25 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 case "$PLATFORM" in
-  linux-x64) NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"; NODE_BIN="node-v${NODE_VERSION}-linux-x64/bin/node" ;;
-  linux-arm64) NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz"; NODE_BIN="node-v${NODE_VERSION}-linux-arm64/bin/node" ;;
+  linux-x64) NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"; NODE_BIN="node-v${NODE_VERSION}-linux-x64/bin/node"; NODE_DST="node" ;;
+  linux-arm64) NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz"; NODE_BIN="node-v${NODE_VERSION}-linux-arm64/bin/node"; NODE_DST="node" ;;
+  win-x64) NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip"; NODE_BIN="node-v${NODE_VERSION}-win-x64/node.exe"; NODE_DST="node.exe" ;;
+  osx-x64) NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-darwin-x64.tar.gz"; NODE_BIN="node-v${NODE_VERSION}-darwin-x64/bin/node"; NODE_DST="node" ;;
+  osx-arm64) NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-darwin-arm64.tar.gz"; NODE_BIN="node-v${NODE_VERSION}-darwin-arm64/bin/node"; NODE_DST="node" ;;
   *) echo "error: 暂不支持平台 $PLATFORM" >&2; exit 1 ;;
 esac
 
 echo "== [1/3] 下载 Node v${NODE_VERSION} ($PLATFORM)"
-curl -fsSL "$NODE_URL" -o "$TMP/node.tar.xz"
-tar -xJf "$TMP/node.tar.xz" -C "$TMP"
+if [[ "$NODE_URL" == *.zip ]]; then
+  curl -fsSL "$NODE_URL" -o "$TMP/node.zip"
+  unzip -q "$TMP/node.zip" -d "$TMP"
+else
+  curl -fsSL "$NODE_URL" -o "$TMP/node.tar.xz"
+  if [[ "$NODE_URL" == *.tar.gz ]]; then tar -xzf "$TMP/node.tar.xz" -C "$TMP"; else tar -xJf "$TMP/node.tar.xz" -C "$TMP"; fi
+fi
 mkdir -p "$DEST"
-cp "$TMP/$NODE_BIN" "$DEST/node"
-chmod +x "$DEST/node"
+cp "$TMP/$NODE_BIN" "$DEST/$NODE_DST"
+if [[ "$NODE_DST" == "node" ]]; then chmod +x "$DEST/node"; fi
 
 echo "== [2/3] pnpm 安装 @deepseek-ai/dsh@${DSH_VERSION} + dshmarket 依赖闭包（dshmarket 随包预装，首启后台 file:// 安装，不阻塞 dsh web:）"
 if ! command -v pnpm >/dev/null 2>&1; then
@@ -95,6 +103,16 @@ rm -rf "$DEST/dsh" "$DEST/node_modules"
 mkdir -p "$DEST/node_modules"
 # 保留 pnpm 内部相对 symlink 结构整树拷入；pilot-harness 亦保留 node_modules 原样（含 prebuild），不走 asar
 cp -a node_modules/. "$DEST/node_modules/"
+
+# 体积裁剪（可选，TRIM=1 时启用）：移除文档/源码/测试，保留运行时必需
+if [[ "${TRIM:-0}" == "1" ]]; then
+  echo "   裁剪：移除 *.md/*.ts/*.map 等非运行时文件"
+  find "$DEST/node_modules" -type f \( -name "*.md" ! -name "LICENSE*" \) -delete 2>/dev/null || true
+  find "$DEST/node_modules" -type f -name "*.ts" ! -path "*lib/*" -delete 2>/dev/null || true
+  find "$DEST/node_modules" -type f -name "*.map" -delete 2>/dev/null || true
+  find "$DEST/node_modules" -type d -name "__tests__" -prune -exec rm -rf {} + 2>/dev/null || true
+  echo "   裁剪后：$(du -sh "$DEST" | cut -f1)（原 ~421M）"
+fi
 
 echo "== [4/4] 自检：spawn dsh web 应给出 URL（pilot-harness apps/desktop/src/main.ts 60s 超时同款，失败打印尾部）"
 SMOKE_HOME="$(mktemp -d)"

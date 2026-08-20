@@ -24,11 +24,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-linux-x64:
-    runs-on: ubuntu-latest
+  build-linux:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            rid: linux-x64
+            runs-on: ubuntu-latest
+          - arch: arm64
+            rid: linux-arm64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
     env:
       DOTNET_NOLOGO: '1'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
 
@@ -68,7 +78,7 @@ jobs:
           echo "Release tag 版本: $tag"
 
       - name: 生成捆绑运行时（下载 Node + pnpm 安装 dsh 闭包，pilot-harness 整树方案）
-        run: bash scripts/bundle-runtime-ci.sh linux-x64
+        run: bash scripts/bundle-runtime-ci.sh ${{ matrix.rid }}
 
       - name: 确定打包版本
         shell: bash
@@ -81,43 +91,43 @@ jobs:
             V="${GITHUB_REF_NAME#v}"
           fi
           echo "VERSION=$V" >> "$GITHUB_ENV"
-          echo "打包版本: $V (ref=${{ github.ref }} event=${{ github.event_name }})"
+          echo "打包版本: $V (ref=${{ github.ref }} event=${{ github.event_name }}) arch=${{ matrix.arch }} rid=${{ matrix.rid }}"
 
-      - name: dotnet publish（自包含 linux-x64，关 AOT，对齐 pilot-harness 打包前 build）
-        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r linux-x64 -p:PublishAot=false --self-contained true -o artifacts/publish-linux-x64
+      - name: dotnet publish（自包含，关 AOT，对齐 pilot-harness 打包前 build）
+        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} -p:PublishAot=false --self-contained true -o artifacts/publish-${{ matrix.rid }}
 
       - name: 打 Linux 安装包（deb + rpm，参照 pilot-harness electron-builder 的 linux 产物）
-        run: bash scripts/package-linux.sh artifacts/publish-linux-x64
+        run: bash scripts/package-linux.sh artifacts/publish-${{ matrix.rid }}
 
       - name: 校验产物（deb control / rpm Requires，参照 pilot 的 bundle verification）
         shell: bash
         run: |
           set -euo pipefail
-          echo "== deb control =="; dpkg-deb -I "artifacts/linux-x64/"*.deb 2>&1 | head -40 || true
-          echo "== rpm Requires（应仅含 libwebkitgtk-6.0.so.4，无 aarch64/musl/perl）=="; rpm -qp --requires artifacts/linux-x64/rpmbuild/RPMS/**/*.rpm 2>&1 | head -60 || true
-          echo "== 产物清单 =="; ls -lh artifacts/linux-x64/*.deb artifacts/linux-x64/rpmbuild/RPMS/**/*.rpm
+          echo "== deb control =="; dpkg-deb -I "artifacts/${{ matrix.rid }}/"*.deb 2>&1 | head -40 || true
+          echo "== rpm Requires（应仅含 libwebkitgtk-6.0.so.4，无 aarch64/musl/perl）=="; rpm -qp --requires artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm 2>&1 | head -60 || true
+          echo "== 产物清单 =="; ls -lh artifacts/${{ matrix.rid }}/*.deb artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm
 
       - name: 上传预览/发布产物（7 天，与 pilot-harness pilot-harness-* 一致） 
         uses: actions/upload-artifact@v4
         with:
-          name: linux-x64-packages
+          name: linux-${{ matrix.arch }}-packages
           path: |
-            artifacts/linux-x64/*.deb
-            artifacts/linux-x64/rpmbuild/RPMS/**/*.rpm
+            artifacts/${{ matrix.rid }}/*.deb
+            artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm
           if-no-files-found: error
           retention-days: 7
 
   publish-release:
     name: Publish GitHub Release
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-    needs: [build-linux-x64]
+    needs: [build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: linux-x64-packages
+          pattern: linux-*-packages
           path: release-assets
           merge-multiple: true
 

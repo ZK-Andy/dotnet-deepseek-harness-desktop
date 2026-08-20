@@ -43,9 +43,10 @@
 
 ## 打包
 
-* `scripts/bundle-runtime-ci.sh`：下载 `Node 22.23.1` + `pnpm add @deepseek-ai/dsh@0.1.0-rc.7 --allow-build=*` + `dshmarket@1.15.0 --allow-build=esbuild`（`--store-dir $TMP/store`），`curl` 官方 `497K` `dshmarket.tgz`（`>10K/name` 双校验）→ `cp -a node_modules/. resources/runtime/node_modules/`，`60s` 抓 `dsh web:` 自检。
-* `scripts/package-linux.sh`：`dotnet publish -r linux-x64 --self-contained` → `staging` 校验 `node + dsh/lib/bin.js + dshmarket.tgz 497K` → `deb (Depends: libwebkitgtk-6.0-4)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4, _enable_debug_packages 0, __os_install_post nil)`。
-* `resources/runtime` 含整树 `node_modules` + `node` + `dshmarket.tgz`，随 `usr/lib/deepseek-harness-desktop/resources/runtime` 进包；`CI` (`package-linux.yml`) `concurrency` + `7 天 Artifacts` + `SHA256SUMS` 发布。
+* `scripts/bundle-runtime-ci.sh`：下载 `Node 22.23.1`（`linux-x64/arm64`, `win-x64`, `osx-x64/arm64`）+ `pnpm add @deepseek-ai/dsh@0.1.0-rc.7 --allow-build=*` + `dshmarket@1.15.0 --allow-build=esbuild`（`--store-dir $TMP/store`），`curl` 官方 `497K` `dshmarket.tgz`（`>10K/name` 双校验）→ `cp -a node_modules/. resources/runtime/node_modules/`，`TRIM=1` 时裁剪 `*.md/*.ts`，`60s` 抓 `dsh web:` 自检。
+* `scripts/package-linux.sh`：`dotnet publish -r linux-(x64|arm64)` → `staging` 校验 `node + dsh/lib/bin.js + dshmarket.tgz 497K` → `deb (Depends: libwebkitgtk-6.0-4, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4, BuildArch x86_64/aarch64)`。
+* `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → `zip`（`DeepSeek.Harness.Desktop.app` 或 `DeepSeek.Harness.Desktop/`），签名占位（`codesign`/`signtool` 待证书）。
+* `resources/runtime` 含整树 `node_modules` + `node(.exe)` + `dshmarket.tgz`，随 `usr/lib`/`Contents/Resources`/`stage` 进包；`CI`（`package-linux/macos/windows.yml`）`concurrency` + `7 天 Artifacts` + `SHA256SUMS` 发布。
 
 ## 配置与扩展
 

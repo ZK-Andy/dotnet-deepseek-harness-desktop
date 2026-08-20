@@ -64,13 +64,20 @@ scripts/change-scope.sh origin/main HEAD
 ```sh
 # 仅校验布局（沙箱可用）
 bash scripts/package-linux.sh --stage-only artifacts/publish-linux-x64
-# 全量（需 dpkg-deb + rpmbuild，CI 走此路）
+ARCH=arm64 bash scripts/package-linux.sh --stage-only artifacts/publish-linux-arm64
+bash scripts/package-macos.sh --stage-only artifacts/publish-osx-arm64
+bash scripts/package-windows.sh --stage-only artifacts/publish-win-x64
+# 全量（需 dpkg-deb/rpmbuild/zip，CI 走此路）
 dotnet publish src/DeepSeek.Harness.Desktop -c Release -r linux-x64 -p:PublishAot=false --self-contained true -o artifacts/publish-linux-x64
 VERSION=0.1.12 bash scripts/package-linux.sh artifacts/publish-linux-x64
-# 产物：artifacts/linux-x64/*.deb + rpmbuild/RPMS/**/*.rpm + SHA256SUMS（tag 触发）
+ARCH=arm64 VERSION=0.1.12 bash scripts/package-linux.sh artifacts/publish-linux-arm64
+bash scripts/package-macos.sh artifacts/publish-osx-arm64  # + osx-x64
+bash scripts/package-windows.sh artifacts/publish-win-x64
+# 产物：artifacts/linux-{x64,arm64}/*.deb + rpmbuild/RPMS/**/*.rpm, artifacts/osx-*/*.zip, artifacts/win-x64/*.zip + SHA256SUMS（tag 触发）
+# 裁剪：TRIM=1 bash scripts/bundle-runtime-ci.sh linux-x64
 ```
 
-* `CI`：`ci.yml`（门禁+build+test）与 `package-linux.yml`（`concurrency` + `7 天 Artifacts` + `Release`）。
+* `CI`：`ci.yml`（门禁+build+test+coverage）与 `package-linux/macos/windows.yml`（`concurrency` + `7 天 Artifacts` + `Release`）。
 
 ## 常见问题
 

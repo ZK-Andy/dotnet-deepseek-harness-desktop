@@ -11,7 +11,7 @@
 # 用法：
 #   scripts/package-linux.sh [publish_dir]          # 全量（需 dpkg-deb + rpmbuild；Ubuntu runner 自带 dpkg-deb，rpm 需 apt 安装）
 #   scripts/package-linux.sh --stage-only [dir]     # 仅组装 staging，供无工具机校验布局与 RuntimeLocator
-# 环境：VERSION（默认 0.1.0，CI 由 tag/inputs.version 注入）、MAINTAINER、ARCH
+# 环境：VERSION（默认 0.1.0，CI 由 tag/inputs.version 注入）、MAINTAINER、ARCH（amd64/x86_64/arm64/aarch64）
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,12 +19,19 @@ ARG1="${1:-}"
 STAGE_ONLY=0
 if [[ "$ARG1" == "--stage-only" ]]; then STAGE_ONLY=1; ARG1="${2:-}"; fi
 
-PUBLISH_DIR="${ARG1:-$ROOT/artifacts/publish-linux-x64}"
+# 归一化 ARCH：amd64/x86_64 → amd64，arm64/aarch64 → arm64
+ARCH_RAW="${ARCH:-amd64}"
+case "$ARCH_RAW" in
+  amd64|x86_64) ARCH="amd64"; RPM_ARCH="x86_64"; RID="linux-x64"; OUT_SUFFIX="linux-x64" ;;
+  arm64|aarch64) ARCH="arm64"; RPM_ARCH="aarch64"; RID="linux-arm64"; OUT_SUFFIX="linux-arm64" ;;
+  *) echo "error: 不支持 ARCH=$ARCH_RAW（仅 amd64/arm64）" >&2; exit 1 ;;
+esac
+
+PUBLISH_DIR="${ARG1:-$ROOT/artifacts/publish-$RID}"
 VERSION="${VERSION:-0.1.0}"
-ARCH="${ARCH:-amd64}"
 APP="deepseek-harness-desktop"
 MAINTAINER="${MAINTAINER:-zhangkun <253117546@qq.com>}"
-OUT="$ROOT/artifacts/linux-x64"
+OUT="$ROOT/artifacts/$OUT_SUFFIX"
 STAGE="$OUT/stage/$APP-$VERSION"
 
 [[ -d "$PUBLISH_DIR" ]] || { echo "error: publish 目录不存在: $PUBLISH_DIR" >&2; exit 1; }
@@ -142,7 +149,7 @@ Summary: DeepSeek Harness Desktop for .NET
 License: MIT
 URL: https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop
 Packager: $MAINTAINER
-BuildArch: ${ARCH/amd64/x86_64}
+BuildArch: $RPM_ARCH
 # 参照 pilot-harness asar:false 与数万文件闭包：rpm 自动依赖扫描会把 node_modules 跨平台 prebuild
 #（aarch64/musl/ld-linux/perl 等）误判为运行依赖，导致 dnf 安装失败 → 整体禁用自动依赖，显式声明真实依赖。
 AutoReqProv: no

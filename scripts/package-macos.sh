@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# package-macos.sh — 从 .NET publish 输出打 macOS 包（zip，含 app bundle 雏形）。
+# 参照 pilot-harness 的 mac 打包：此处为 .NET 自包含 publish + resources/runtime 手工组装。
+# 布局：
+#   DeepSeek.Harness.Desktop.app/Contents/MacOS/  = dotnet publish 全量
+#   DeepSeek.Harness.Desktop.app/Contents/Resources/runtime/ = resources/runtime（含对应架构的 node）
+# 用法：
+#   scripts/package-macos.sh [publish_dir]          # 全量（需 zip）
+#   scripts/package-macos.sh --stage-only [dir]     # 仅组装 staging
+# 环境：VERSION、ARCH（x64/arm64）、APP
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ARG1="${1:-}"
+STAGE_ONLY=0
+if [[ "$ARG1" == "--stage-only" ]]; then STAGE_ONLY=1; ARG1="${2:-}"; fi
+
+ARCH_RAW="${ARCH:-arm64}"
+case "$ARCH_RAW" in
+  x64|amd64|x86_64) ARCH="x64"; RID="osx-x64"; OUT_SUFFIX="osx-x64" ;;
+  arm64|aarch64) ARCH="arm64"; RID="osx-arm64"; OUT_SUFFIX="osx-arm64" ;;
+  *) echo "error: 不支持 ARCH=$ARCH_RAW（仅 x64/arm64）" >&2; exit 1 ;;
+esac
+
+PUBLISH_DIR="${ARG1:-$ROOT/artifacts/publish-$RID}"
+VERSION="${VERSION:-0.1.0}"
+APP="DeepSeek Harness Desktop"
+APP_BUNDLE="DeepSeek.Harness.Desktop.app"
+OUT="$ROOT/artifacts/$OUT_SUFFIX"
+STAGE="$OUT/stage"
+
+[[ -d "$PUBLISH_DIR" ]] || { echo "error: publish 目录不存在: $PUBLISH_DIR" >&2; exit 1; }
+
+echo "== 组装 staging: $STAGE/$APP_BUNDLE"
+rm -rf "$STAGE" && mkdir -p "$STAGE/$APP_BUNDLE/Contents/MacOS" "$STAGE/$APP_BUNDLE/Contents/Resources"
+
+cp -r "$PUBLISH_DIR/." "$STAGE/$APP_BUNDLE/Contents/MacOS/"
+if [[ -d "$ROOT/resources/runtime" ]]; then
+  echo "   并入 resources/runtime"
+  cp -a "$ROOT/resources/runtime" "$STAGE/$APP_BUNDLE/Contents/Resources/"
+  if [[ ! -f "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/node" && ! -f "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
+    echo "warn: staging 的 resources/runtime 可能架构不匹配（$RID）" >&2
+    ls -R "$STAGE/$APP_BUNDLE/Contents/Resources/runtime" 2>&1 | head -20 >&2
+  fi
+  # 校验 dshmarket
+  if [[ -f "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/dshmarket.tgz" ]]; then
+    SZ=$(stat -c%s "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/dshmarket.tgz" 2>/dev/null || stat -f%z "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/dshmarket.tgz" 2>/dev/null || echo 0)
+    if [[ "$SZ" -lt 10240 ]]; then
+      echo "error: dshmarket.tgz 过小（${SZ}B）" >&2; exit 1
+    fi
+  fi
+fi
+chmod +x "$STAGE/$APP_BUNDLE/Contents/MacOS/DeepSeek.Harness.Desktop" 2>/dev/null || true
+
+# 最小 Info.plist（签名占位，未做 codesign）
+cat > "$STAGE/$APP_BUNDLE/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>DeepSeek Harness Desktop</string>
+  <key>CFBundleIdentifier</key><string>io.github.ZK-Andy.dotnet-deepseek-harness-desktop</string>
+  <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>CFBundleExecutable</key><string>DeepSeek.Harness.Desktop</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+</dict></plist>
+EOF
+
+echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
+if [[ $STAGE_ONLY -eq 1 ]]; then
+  find "$STAGE" -maxdepth 3 -type d | sort | head -20
+  ls -lh "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/node" 2>&1 | head -1 || echo "node 缺失"
+  exit 0
+fi
+
+command -v zip >/dev/null || { echo "error: 缺 zip" >&2; exit 1; }
+mkdir -p "$OUT"
+ZIP="$OUT/DeepSeek.Harness.Desktop_${VERSION}_${ARCH}.zip"
+rm -f "$ZIP"
+(cd "$STAGE" && zip -r -q "$ZIP" "$APP_BUNDLE")
+echo "== 产物: $ZIP ($(du -h "$ZIP" | cut -f1))"
+# 签名占位：未做 codesign（需 Apple 证书），此处仅校验
+echo "== zip 校验 =="
+unzip -l "$ZIP" | head -20
+
+# 体积裁剪提示
+echo "== 体积: $(du -sh "$STAGE" | cut -f1) → $(du -h "$ZIP" | cut -f1) (zip)"
