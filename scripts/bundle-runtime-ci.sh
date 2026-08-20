@@ -35,19 +35,59 @@ if ! command -v pnpm >/dev/null 2>&1; then
   npm install -g pnpm@11
 fi
 pnpm --version
-mkdir -p "$TMP/app"
+mkdir -p "$TMP/app" "$TMP/store"
 cd "$TMP/app"
 npm init -y >/dev/null 2>&1
 # 允许原生绑定构建脚本，否则 pnpm 11 将拒绝执行且闭包缺 .node 二进制
-pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod \
+# 使用临时 store 避免默认 ~/.local/share/pnpm/store 的 sqlite 锁/RO 残留
+pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod --store-dir "$TMP/store" \
   --allow-build=node-pty --allow-build=koffi --allow-build=protobufjs \
   --allow-build=@google/genai --allow-build=@deepseek-ai/dsh-subprocess-local
-# 预装市场：与 dsh 同闭包，随包收入；另 pack 出 tgz 供首启后后台 file:// 安装到 DSH_HOME（不阻塞 dsh web:）
-pnpm add "dshmarket@1.15.0" --prod --allow-build=esbuild
-pnpm pack dshmarket --pack-destination "$TMP" >/dev/null 2>&1 || true
-if ls "$TMP"/*.tgz >/dev/null 2>&1; then
-  cp "$TMP"/*.tgz "$DEST/dshmarket.tgz" 2>/dev/null || true
-  echo "   dshmarket tgz 已随包：$DEST/dshmarket.tgz"
+# 预装市场：与 dsh 同闭包，随包收入；另取官方已构建 tgz 供首启后后台 file:// 安装到 DSH_HOME（不阻塞 dsh web:）
+# 旧版 pnpm pack dshmarket 会误打 app 包（394B），已改为直接拉 registry 官方 tgz（已含 lib/client，无需 tsc 构建）
+pnpm add "dshmarket@1.15.0" --prod --store-dir "$TMP/store" --allow-build=esbuild
+echo "   拉取 dshmarket 官方 tgz（跳过本地 pack 的 tsc/prepare 坑）"
+if curl -fsSL "https://registry.npmjs.org/dshmarket/-/dshmarket-1.15.0.tgz" -o "$DEST/dshmarket.tgz" 2>/dev/null; then
+  echo "   dshmarket tgz 已随包：$DEST/dshmarket.tgz ($(du -h "$DEST/dshmarket.tgz" | cut -f1))"
+  # 轻量校验：包内应为 dshmarket 而非 app（直接校验 package.json 的 name）
+  if ! tar -xOzf "$DEST/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name": "dshmarket"'; then
+    echo "warn: tgz 非 dshmarket 包，删除后回退" >&2
+    rm -f "$DEST/dshmarket.tgz"
+  fi
+fi
+# 回退：若 curl 失败（离线 CI），用已装的本地目录 tar 出正确包（package/ 前缀，跳过 lifecycle）
+if [[ ! -s "$DEST/dshmarket.tgz" ]]; then
+  echo "   官方 tgz 拉取失败，改由本地 node_modules/dshmarket 目录 tar（免构建）"
+  REAL_DIR="$(realpath "$TMP/app/node_modules/dshmarket" 2>/dev/null || echo "")"
+  if [[ -z "$REAL_DIR" ]]; then
+    REAL_DIR="$(find "$TMP/app/node_modules/.pnpm" -type d -path "*dshmarket@1.15.0*/node_modules/dshmarket" -print -quit 2>/dev/null || echo "")"
+  fi
+  if [[ -n "$REAL_DIR" && -d "$REAL_DIR" ]]; then
+    # 官方 tgz 仅含 package.json/cordis.patch.yml/lib/client/README/LICENSE 等，不含 node_modules
+    # 直接用 tar 打 package/ 前缀，避免触发 npm 的 prepack/tsc
+    rm -f "$DEST/dshmarket.tgz"
+    (cd "$REAL_DIR" && tar -czf "$DEST/dshmarket.tgz" --transform 's,^\./,package/,' --transform 's,^\.,package,' package.json cordis.patch.yml lib client README.md README.zh.md LICENSE 2>/dev/null) || \
+    (cd "$REAL_DIR" && tar -czf "$DEST/dshmarket.tgz" --transform 's,^,package/,' package.json cordis.patch.yml lib client 2>/dev/null) || true
+    # 校验
+    if ! tar -xOzf "$DEST/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name": "dshmarket"'; then
+      echo "warn: 本地 tar 仍异常，删除" >&2
+      rm -f "$DEST/dshmarket.tgz"
+    else
+      echo "   本地 tar 已随包：$DEST/dshmarket.tgz ($(du -h "$DEST/dshmarket.tgz" | cut -f1))"
+    fi
+  else
+    echo "warn: 未找到本地 dshmarket 目录，tgz 缺失，后续首启将走 registry 直装" >&2
+    rm -f "$DEST/dshmarket.tgz"
+  fi
+fi
+# 最终校验：错包特征 394B / app 名称
+if [[ -f "$DEST/dshmarket.tgz" ]]; then
+  SZ=$(stat -c%s "$DEST/dshmarket.tgz" 2>/dev/null || stat -f%z "$DEST/dshmarket.tgz" 2>/dev/null || echo 0)
+  if [[ "$SZ" -lt 10240 ]]; then
+    echo "error: dshmarket.tgz 过小（${SZ}B），疑似仍为 app 壳包" >&2
+    tar -tzf "$DEST/dshmarket.tgz" 2>&1 | head -20 >&2
+    exit 1
+  fi
 fi
 
 echo "== [3/3] 组装 resources/runtime（整棵 node_modules，pilot-harness 同款）"

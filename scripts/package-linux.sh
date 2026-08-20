@@ -49,6 +49,27 @@ if [[ -d "$ROOT/resources/runtime" ]]; then
     ls -R "$STAGE/$DEST/resources/runtime" 2>&1 | head -60
     exit 1
   fi
+  # 校验 dshmarket 随包（0.1.10 曾为 394B 假包，需 fail loud）
+  if [[ -f "$STAGE/$DEST/resources/runtime/dshmarket.tgz" ]]; then
+    SZ=$(stat -c%s "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>/dev/null || stat -f%z "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>/dev/null || echo 0)
+    if [[ "$SZ" -lt 10240 ]]; then
+      echo "error: staging 的 dshmarket.tgz 过小（${SZ}B），疑似 0.1.10 假包" >&2
+      tar -tzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>&1 | head -20 >&2
+      exit 1
+    fi
+    if ! tar -xOzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name": "dshmarket"'; then
+      echo "error: staging 的 dshmarket.tgz 非 dshmarket 包" >&2
+      tar -tzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>&1 | head -20 >&2
+      exit 1
+    fi
+    echo "   校验 dshmarket.tgz OK ($(du -h "$STAGE/$DEST/resources/runtime/dshmarket.tgz" | cut -f1))"
+  else
+    echo "warn: staging 缺 dshmarket.tgz，首启将回退 registry 直装（需联网）" >&2
+  fi
+  # 额外校验 runtime 的 dshmarket 目录（file: 回退路径）
+  if [[ ! -d "$STAGE/$DEST/resources/runtime/node_modules/dshmarket" ]]; then
+    echo "warn: staging 缺 resources/runtime/node_modules/dshmarket，回退路径缺失" >&2
+  fi
 else
   echo "warn: 未找到 $ROOT/resources/runtime，包将回退 PATH dsh（安装环境通常无 dsh，导致启动失败）" >&2
 fi
