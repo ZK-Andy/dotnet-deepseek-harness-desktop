@@ -53,7 +53,7 @@ fi
 
 echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
 if [[ $STAGE_ONLY -eq 1 ]]; then
-  find "$STAGE" -maxdepth 2 -type d | sort | head -20
+  find "$STAGE" -maxdepth 2 -type d | sort | head -20 || true
   ls -lh "$STAGE/resources/runtime/node"* 2>&1 | head -5 || echo "node 缺失"
   exit 0
 fi
@@ -112,9 +112,9 @@ create_zip() {
       dst_win="$(echo "$dst_win" | sed 's#^c:#C:#; s#^d:#D:#')"
     fi
     echo "   ps src=$src_win dst=$dst_win"
-    "$ps" -NoProfile -Command "Compress-Archive -Path '$src_win' -DestinationPath '$dst_win' -Force" 2>&1 | head -20
+    "$ps" -NoProfile -Command "Compress-Archive -Path '$src_win' -DestinationPath '$dst_win' -Force" 2>&1 | head -20 || true
     if [[ -f "$dst" ]]; then return 0; fi
-    "$ps" -NoProfile -Command "Compress-Archive -Path '$src_win\\*' -DestinationPath '$dst_win' -Force" 2>&1 | head -20
+    "$ps" -NoProfile -Command "Compress-Archive -Path '$src_win\\*' -DestinationPath '$dst_win' -Force" 2>&1 | head -20 || true
     if [[ -f "$dst" ]]; then return 0; fi
   fi
   return 1
@@ -125,11 +125,11 @@ if ! create_zip "$STAGE" "$ZIP"; then
 fi
 echo "== 产物 zip: $ZIP ($(du -h "$ZIP" 2>/dev/null | cut -f1 || ls -lh "$ZIP" | awk '{print $5}'))"
 if command -v unzip >/dev/null 2>&1; then
-  unzip -l "$ZIP" 2>&1 | head -20
+  unzip -l "$ZIP" 2>&1 | head -20 || true
 elif command -v 7z >/dev/null 2>&1; then
-  7z l "$ZIP" 2>&1 | head -40
+  7z l "$ZIP" 2>&1 | head -40 || true
 elif command -v tar >/dev/null 2>&1; then
-  tar -tf "$ZIP" 2>&1 | head -20
+  tar -tf "$ZIP" 2>&1 | head -20 || true
 else
   local ps2="powershell"; command -v pwsh >/dev/null 2>&1 && ps2="pwsh"
   if command -v cygpath >/dev/null 2>&1; then
@@ -137,7 +137,8 @@ else
   else
     ZIP_WIN="$ZIP"
   fi
-  "$ps2" -NoProfile -Command "Get-ChildItem '$ZIP_WIN' | Format-List; try { (Get-ChildItem '$ZIP_WIN').Length } catch {}" 2>/dev/null | head -20 || ls -lh "$ZIP" | head -5
+  "$ps2" -NoProfile -Command "Get-ChildItem '$ZIP_WIN' | Format-List; try { (Get-ChildItem '$ZIP_WIN').Length } catch {}" 2>/dev/null | head -20 || true
+  ls -lh "$ZIP" 2>&1 | head -5 || true
 fi
 
 # 额外产出安装器 exe（Windows 期待 exe 安装器；Linux 已有 deb/rpm，macOS 已有 zip+dmg）
@@ -219,7 +220,7 @@ Name: "{autodesktop}\\DeepSeek Harness Desktop"; Filename: "{app}\\DeepSeek.Harn
 Filename: "{app}\\DeepSeek.Harness.Desktop.exe"; Description: "{cm:LaunchProgram,DeepSeek Harness Desktop}"; Flags: nowait postinstall skipifsilent
 ISS_EOF
     echo "   ISS: $iss_file"
-    cat "$iss_file" | head -40
+    cat "$iss_file" 2>&1 | head -40 || true
     if "$iscc" /Q "$iss_file" 2>&1 | tail -30; then
       if [[ -f "$installer" ]]; then
         echo "== 产物 installer exe (Inno Setup): $installer ($(du -h "$installer" 2>/dev/null | cut -f1 || ls -lh "$installer" | awk '{print $5}'))"
@@ -266,7 +267,7 @@ Section "Uninstall"
   Delete "\$DESKTOP\\DeepSeek Harness Desktop.lnk"
 SectionEnd
 NSIS_EOF
-    cat "$nsi_file" | head -30
+    cat "$nsi_file" 2>&1 | head -30 || true
     if "$makensis" "$nsi_file" 2>&1 | tail -30; then
       if [[ -f "$installer" ]]; then
         echo "== 产物 installer exe (NSIS): $installer ($(du -h "$installer" 2>/dev/null | cut -f1 || ls -lh "$installer" | awk '{print $5}'))"

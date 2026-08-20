@@ -53,7 +53,7 @@ if [[ -d "$ROOT/resources/runtime" ]]; then
   if [[ ! -f "$STAGE/$DEST/resources/runtime/node" || ! -f "$STAGE/$DEST/resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
     echo "error: staging 的 resources/runtime 不符合 RuntimeLocator 预期" >&2
     echo "  期望：resources/runtime/node + resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" >&2
-    ls -R "$STAGE/$DEST/resources/runtime" 2>&1 | head -60
+    ls -R "$STAGE/$DEST/resources/runtime" 2>&1 | head -60 || true
     exit 1
   fi
   # 校验 dshmarket 随包（0.1.10 曾为 394B 假包，需 fail loud）
@@ -61,12 +61,12 @@ if [[ -d "$ROOT/resources/runtime" ]]; then
     SZ=$(stat -c%s "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>/dev/null || stat -f%z "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>/dev/null || echo 0)
     if [[ "$SZ" -lt 10240 ]]; then
       echo "error: staging 的 dshmarket.tgz 过小（${SZ}B），疑似 0.1.10 假包" >&2
-      tar -tzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>&1 | head -20 >&2
+      tar -tzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>&1 | head -20 >&2 || true
       exit 1
     fi
     if ! tar -xOzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name": "dshmarket"'; then
       echo "error: staging 的 dshmarket.tgz 非 dshmarket 包" >&2
-      tar -tzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>&1 | head -20 >&2
+      tar -tzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>&1 | head -20 >&2 || true
       exit 1
     fi
     echo "   校验 dshmarket.tgz OK ($(du -h "$STAGE/$DEST/resources/runtime/dshmarket.tgz" | cut -f1))"
@@ -114,7 +114,7 @@ fi
 echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
 if [[ $STAGE_ONLY -eq 1 ]]; then
   echo "(--stage-only 校验布局)："
-  find "$STAGE" -maxdepth 3 -type d | sort | head -30
+  find "$STAGE" -maxdepth 3 -type d | sort | head -30 || true
   echo "--- 入口 ---"
   ls -lh "$STAGE/$DEST/resources/runtime/node" 2>&1 | head -1 || echo "node 缺失"
   ls -lh "$STAGE/$DEST/resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" 2>&1 | head -1 || echo "bin.js 缺失"

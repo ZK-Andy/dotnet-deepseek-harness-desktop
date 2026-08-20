@@ -40,7 +40,7 @@ if [[ -d "$ROOT/resources/runtime" ]]; then
   cp -a "$ROOT/resources/runtime" "$STAGE/$APP_BUNDLE/Contents/Resources/"
   if [[ ! -f "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/node" && ! -f "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
     echo "warn: staging 的 resources/runtime 可能架构不匹配（$RID）" >&2
-    ls -R "$STAGE/$APP_BUNDLE/Contents/Resources/runtime" 2>&1 | head -20 >&2
+    ls -R "$STAGE/$APP_BUNDLE/Contents/Resources/runtime" 2>&1 | head -20 >&2 || true
   fi
   # 校验 dshmarket
   if [[ -f "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/dshmarket.tgz" ]]; then
@@ -67,7 +67,7 @@ EOF
 
 echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
 if [[ $STAGE_ONLY -eq 1 ]]; then
-  find "$STAGE" -maxdepth 3 -type d | sort | head -20
+  find "$STAGE" -maxdepth 3 -type d | sort | head -20 || true
   ls -lh "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/node" 2>&1 | head -1 || echo "node 缺失"
   exit 0
 fi
@@ -82,7 +82,7 @@ rm -f "$ZIP" "$DMG"
 echo "== 产物 zip: $ZIP ($(du -h "$ZIP" | cut -f1))"
 # 签名占位：未做 codesign（需 Apple 证书），此处仅校验
 echo "== zip 校验 =="
-unzip -l "$ZIP" | head -20
+unzip -l "$ZIP" 2>&1 | head -20 || true
 
 # 额外产出 dmg（仅 macOS 可用 hdiutil，CI 的 macos-latest 具备；Linux 上跳过）
 if command -v hdiutil >/dev/null 2>&1; then
