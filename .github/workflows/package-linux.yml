@@ -121,12 +121,13 @@ jobs:
           path: release-assets
           merge-multiple: true
 
-      - name: 生成 SHA256SUMS（参照 pilot-harness publish-release）
+      - name: 生成 SHA256SUMS（参照 pilot-harness publish-release，rpm 在子目录需递归）
         shell: bash
         run: |
           set -euo pipefail
-          (cd release-assets && find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum | sed 's#  \./#  #') > release-assets/SHA256SUMS.txt
+          (cd release-assets && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum | sed 's#  \./#  #') > release-assets/SHA256SUMS.txt
           cat release-assets/SHA256SUMS.txt
+          echo "== release-assets 清单 =="; find release-assets -type f | sort
 
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
@@ -138,6 +139,6 @@ jobs:
           make_latest: true
           fail_on_unmatched_files: true
           files: |
-            release-assets/*.deb
-            release-assets/*.rpm
+            release-assets/**/*.deb
+            release-assets/**/*.rpm
             release-assets/SHA256SUMS.txt
