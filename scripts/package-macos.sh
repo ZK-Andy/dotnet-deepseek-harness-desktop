@@ -72,6 +72,21 @@ if [[ $STAGE_ONLY -eq 1 ]]; then
   exit 0
 fi
 
+# 自签（可选，仅内部/开发验证用；ad-hoc 或 MACOS_SIGN_IDENTITY 指定身份）。
+# 显式 SELF_SIGN=1 才启用——不默认打扰现有发布（tag 触发的公开包仍保持未签名）。
+# 注意：自签/ad-hoc 不消除终端用户 Gatekeeper「来自身份不明的开发者」告警，仅治本机/内部。
+sign_macos() {
+  local identity="${MACOS_SIGN_IDENTITY:--}"
+  if ! command -v codesign >/dev/null 2>&1; then
+    echo "error: SELF_SIGN=1 但缺 codesign（仅 macOS 可用）" >&2; exit 1
+  fi
+  echo "== codesign 自签（identity=${identity}）: $APP_BUNDLE"
+  codesign --force --deep --sign "$identity" "$STAGE/$APP_BUNDLE" || { echo "error: codesign 自签失败" >&2; exit 1; }
+  codesign --verify --deep --strict "$STAGE/$APP_BUNDLE" || { echo "error: codesign 校验失败" >&2; exit 1; }
+  echo "  ad-hoc/自签通过（对终端用户 Gatekeeper 无效，属内部/开发验证）"
+}
+if [[ "${SELF_SIGN:-0}" == "1" ]]; then sign_macos; fi
+
 command -v zip >/dev/null || { echo "error: 缺 zip" >&2; exit 1; }
 mkdir -p "$OUT"
 # 产物命名加入 macos 标识，避免与 Windows 同名冲突（原 _arm64.zip 无平台前缀）

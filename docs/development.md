@@ -74,8 +74,22 @@ ARCH=arm64 VERSION=0.1.12 bash scripts/package-linux.sh artifacts/publish-linux-
 bash scripts/package-macos.sh artifacts/publish-osx-arm64  # + osx-x64
 bash scripts/package-windows.sh artifacts/publish-win-x64
 # 产物：artifacts/linux-{x64,arm64}/*.deb + rpmbuild/RPMS/**/*.rpm, artifacts/osx-*/*.zip, artifacts/win-x64/*.zip + SHA256SUMS（tag 触发）
-# 裁剪：TRIM=1 bash scripts/bundle-runtime-ci.sh linux-x64
 ```
+
+### 自签（仅内部/开发）
+
+[ADR: implemented/process/2026-08-20-free-self-sign-dev.md](../.agents/notes/implemented/process/2026-08-20-free-self-sign-dev.md)
+
+```sh
+# macOS：ad-hoc 或指定身份
+SELF_SIGN=1 bash scripts/package-macos.sh artifacts/publish-osx-arm64
+SELF_SIGN=1 MACOS_SIGN_IDENTITY="Developer ID Application: Name (ID)" bash scripts/package-macos.sh artifacts/publish-osx-arm64
+# Windows：signtool + CurrentUser\My 自签证书（缺则自动创建）
+SELF_SIGN=1 bash scripts/package-windows.sh artifacts/publish-win-x64
+# CI：workflow_dispatch 勾选 self_sign=true
+```
+
+* **边界**：自签/ad-hoc 仅消除**本机/内部**的"来源不明/未知发布者"告警，**不消除终端用户**的 Gatekeeper/SmartScreen——免费受信签名不存在，现状不签名、发布路径（tag 触发）不受影响。macOS 走 `codesign --force --deep --sign`（默认 `-` ad-hoc），Windows 走 `signtool sign /fd SHA256 /s My /n "DeepSeek Harness Desktop Dev"`。
 
 * `CI`：`ci.yml`（门禁+build+test+coverage）与 `package-linux/macos/windows.yml`（`concurrency` + `7 天 Artifacts` + `Release`）。
 

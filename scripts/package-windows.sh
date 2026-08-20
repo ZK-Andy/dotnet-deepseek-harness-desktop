@@ -59,6 +59,34 @@ if [[ $STAGE_ONLY -eq 1 ]]; then
 fi
 
 mkdir -p "$OUT"
+# 自签（可选，仅内部/开发验证用）——显式 SELF_SIGN=1 才启用，不默认打扰发布。
+# 用 CurrentUser\\My 里的自签代码签名证书（缺则自动建）+ signtool 签 Authenticode。
+# 注意：自签证书不被终端用户信任，不消除 SmartScreen「未知发布者」告警，仅治本机/内部。
+find_signtool() {
+  local p
+  for p in /c/Program\ Files\ \(x86\)/Windows\ Kits/10/bin/*/x64/signtool.exe \
+           /c/Program\ Files/Windows\ Kits/10/bin/*/x64/signtool.exe; do
+    if [[ -f "$p" ]]; then echo "$p"; return 0; fi
+  done
+  if command -v signtool >/dev/null 2>&1; then command -v signtool; return 0; fi
+  return 1
+}
+ensure_self_sign_cert() {
+  local ps="powershell"; command -v pwsh >/dev/null 2>&1 && ps="pwsh"
+  "$ps" -NoProfile -Command "\$c = Get-ChildItem Cert:\CurrentUser\My | Where-Object { \$_.Subject -like '*DeepSeek Harness Desktop Dev*' } | Select-Object -First 1; if (-not \$c) { New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=DeepSeek Harness Desktop Dev' -CertStoreLocation Cert:\CurrentUser\My -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(3) | Out-Null; Write-Output 'created' } else { Write-Output 'exists' }" 2>&1 | head -5 || true
+}
+sign_windows() {
+  local target="$1" st
+  st="$(find_signtool)" || { echo "error: SELF_SIGN=1 但缺 signtool（Windows SDK）" >&2; exit 1; }
+  ensure_self_sign_cert
+  echo "   signtool: $st"
+  "$st" sign /fd SHA256 /s My /n "DeepSeek Harness Desktop Dev" "$target" 2>&1 | head -20 || { echo "error: signtool 签名失败: $target" >&2; exit 1; }
+  echo "   已签（自签，仅内部/开发）: $target"
+}
+if [[ "${SELF_SIGN:-0}" == "1" ]] && [[ -f "$STAGE/DeepSeek.Harness.Desktop.exe" ]]; then
+  sign_windows "$STAGE/DeepSeek.Harness.Desktop.exe"
+fi
+
 # 产物命名加入 windows 标识，避免与 macOS 同名冲突（原 _x64.zip 无平台前缀）
 ZIP="$OUT/DeepSeek.Harness.Desktop_${VERSION}_windows-${ARCH}.zip"
 INSTALLER="$OUT/DeepSeek.Harness.Desktop_${VERSION}_windows-${ARCH}-setup.exe"
@@ -310,6 +338,8 @@ if create_installer_exe "$STAGE" "$INSTALLER"; then
   if command -v iscc >/dev/null 2>&1 || [[ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]]; then
     echo "   （Inno Setup 已用）"
   fi
+  # 自签安装器 exe（仅内部/开发；同 SELF_SIGN=1 门控）
+  if [[ "${SELF_SIGN:-0}" == "1" ]]; then sign_windows "$INSTALLER"; fi
 else
   echo "warn: 未能生成安装器 exe（无 Inno Setup/NSIS/7z SFX），仅保留 zip" >&2
   echo "   Windows 仍可通过 zip 便携运行（解压后运行 DeepSeek.Harness.Desktop.exe）" >&2

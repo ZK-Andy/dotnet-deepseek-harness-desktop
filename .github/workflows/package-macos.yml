@@ -9,6 +9,11 @@ on:
         description: '包版本'
         required: false
         default: '0.1.0'
+      self_sign:
+        description: '自签 codesign（仅内部/开发验证；对终端用户 Gatekeeper 无效）'
+        required: false
+        default: 'false'
+        type: boolean
 
 permissions:
   contents: read
@@ -34,6 +39,7 @@ jobs:
       DOTNET_NOLOGO: '1'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       ARCH: ${{ matrix.arch }}
+      SELF_SIGN: ${{ github.event.inputs.self_sign }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
