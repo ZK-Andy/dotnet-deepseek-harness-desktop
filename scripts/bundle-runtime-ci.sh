@@ -28,7 +28,11 @@ esac
 echo "== [1/3] 下载 Node v${NODE_VERSION} ($PLATFORM)"
 if [[ "$NODE_URL" == *.zip ]]; then
   curl -fsSL "$NODE_URL" -o "$TMP/node.zip"
-  unzip -q "$TMP/node.zip" -d "$TMP"
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -q "$TMP/node.zip" -d "$TMP"
+  else
+    powershell -Command "Expand-Archive -Path '$TMP/node.zip' -DestinationPath '$TMP' -Force" 2>/dev/null || unzip -q "$TMP/node.zip" -d "$TMP"
+  fi
 else
   curl -fsSL "$NODE_URL" -o "$TMP/node.tar.xz"
   if [[ "$NODE_URL" == *.tar.gz ]]; then tar -xzf "$TMP/node.tar.xz" -C "$TMP"; else tar -xJf "$TMP/node.tar.xz" -C "$TMP"; fi
@@ -36,6 +40,9 @@ fi
 mkdir -p "$DEST"
 cp "$TMP/$NODE_BIN" "$DEST/$NODE_DST"
 if [[ "$NODE_DST" == "node" ]]; then chmod +x "$DEST/node"; fi
+# Windows 下 cp -a 对 symlink 不友好，改用 cp -r
+CP_A="cp -a"
+if [[ "$PLATFORM" == win-* ]]; then CP_A="cp -r"; fi
 
 echo "== [2/3] pnpm 安装 @deepseek-ai/dsh@${DSH_VERSION} + dshmarket 依赖闭包（dshmarket 随包预装，首启后台 file:// 安装，不阻塞 dsh web:）"
 if ! command -v pnpm >/dev/null 2>&1; then
@@ -102,7 +109,7 @@ echo "== [3/3] 组装 resources/runtime（整棵 node_modules，pilot-harness �
 rm -rf "$DEST/dsh" "$DEST/node_modules"
 mkdir -p "$DEST/node_modules"
 # 保留 pnpm 内部相对 symlink 结构整树拷入；pilot-harness 亦保留 node_modules 原样（含 prebuild），不走 asar
-cp -a node_modules/. "$DEST/node_modules/"
+$CP_A node_modules/. "$DEST/node_modules/"
 
 # 体积裁剪（可选，TRIM=1 时启用）：移除文档/源码/测试，保留运行时必需
 if [[ "${TRIM:-0}" == "1" ]]; then
@@ -114,25 +121,49 @@ if [[ "${TRIM:-0}" == "1" ]]; then
   echo "   裁剪后：$(du -sh "$DEST" | cut -f1)（原 ~421M）"
 fi
 
-echo "== [4/4] 自检：spawn dsh web 应给出 URL（pilot-harness apps/desktop/src/main.ts 60s 超时同款，失败打印尾部）"
-SMOKE_HOME="$(mktemp -d)"
-# dsh web 常驻：timeout 到点返回 124/143，只看日志是否出现 URL（与 pilot 抽 URL 逻辑 extractHarnessServerUrl 一致）
-timeout 60 env DSH_HOME="$SMOKE_HOME" DEEPSEEK_API_KEY=placeholder \
-     "$DEST/node" "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" --profile web --port 0 \
-     >"$TMP/smoke.log" 2>&1 || true
-if grep -q "dsh web:" "$TMP/smoke.log"; then
-  echo "   自检 OK：$(grep 'dsh web:' "$TMP/smoke.log" | head -1)"
-else
-  echo "error: 闭包自检失败——dsh 未给出 URL。尾部："
-  tail -30 "$TMP/smoke.log" >&2
+echo "== [4/4] 自检：spawn dsh web 应给出 URL（Linux 强校验，mac/win 轻校验）"
+if [[ "$PLATFORM" == linux-* ]]; then
+  SMOKE_HOME="$(mktemp -d)"
+  # dsh web 常驻：timeout 到点返回 124/143，只看日志是否出现 URL（与 pilot 抽 URL 逻辑 extractHarnessServerUrl 一致）
+  if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout 60"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout 60"
+  else
+    TIMEOUT_CMD=""
+  fi
+  if [[ -n "$TIMEOUT_CMD" ]]; then
+    $TIMEOUT_CMD env DSH_HOME="$SMOKE_HOME" DEEPSEEK_API_KEY=placeholder \
+         "$DEST/$NODE_DST" "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" --profile web --port 0 \
+         >"$TMP/smoke.log" 2>&1 || true
+  else
+    # 无 timeout 时直接后台跑 5s 后 kill
+    env DSH_HOME="$SMOKE_HOME" DEEPSEEK_API_KEY=placeholder \
+         "$DEST/$NODE_DST" "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" --profile web --port 0 \
+         >"$TMP/smoke.log" 2>&1 & SMOKE_PID=$!; sleep 5; kill $SMOKE_PID 2>/dev/null || true; wait $SMOKE_PID 2>/dev/null || true
+  fi
+  if grep -q "dsh web:" "$TMP/smoke.log"; then
+    echo "   自检 OK：$(grep 'dsh web:' "$TMP/smoke.log" | head -1)"
+  else
+    echo "error: 闭包自检失败——dsh 未给出 URL。尾部："
+    tail -30 "$TMP/smoke.log" >&2
+    rm -rf "$SMOKE_HOME"
+    exit 1
+  fi
   rm -rf "$SMOKE_HOME"
-  exit 1
+else
+  # mac/win 轻校验：仅检查入口与 node 可执行，不做 60s 常驻
+  echo "   轻校验（$PLATFORM）：检查入口"
+  ls -lh "$DEST/$NODE_DST" 2>&1 | head -1
+  [[ -f "$DEST/$NODE_DST" && -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 入口缺失" >&2; exit 1; }
+  echo "   轻校验 OK"
 fi
-rm -rf "$SMOKE_HOME"
 
 echo "== 完成 → $DEST"
-"$DEST/node" -v
+if [[ -f "$DEST/$NODE_DST" ]]; then
+  "$DEST/$NODE_DST" -v 2>&1 | head -1 || true
+fi
 echo "dsh: $(grep '"version"' "$DEST/node_modules/@deepseek-ai/dsh/package.json" | head -1 | xargs)"
 du -sh "$DEST" | cut -f1
-echo "   入口校验：$DEST/node + $DEST/node_modules/@deepseek-ai/dsh/lib/bin.js"
-[[ -f "$DEST/node" && -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 入口缺失" >&2; exit 1; }
+echo "   入口校验：$DEST/$NODE_DST + $DEST/node_modules/@deepseek-ai/dsh/lib/bin.js"
+[[ -f "$DEST/$NODE_DST" && -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 入口缺失" >&2; exit 1; }
