@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # package-linux.sh — 从 .NET publish 输出打 Linux 安装包（deb + rpm）。
-#   usr/lib/<app>/   = 整个 publish 目录（含 resources/runtime、wwwroot 等）
-#   usr/bin/<app>    = 可执行符号链接
-#   usr/share/applications/<app>.desktop
+# 参照 pilot-harness apps/desktop/electron-builder.yml 的 Linux 产物理念：
+#   asar: false（DSH 闭包含 symlink/跨平台 prebuild，原样保留，不打包为单文件）
+#   linux.desktop（Name/Comment/Categories/StartupWMClass）
+#   产物为 AppImage→deb/rpm（此处为 .NET 自包含 publish + resources/runtime 手工组装的等价物）
+# 布局：
+#   usr/lib/<app>/   = dotnet publish 全量 + resources/runtime（RuntimeLocator 按此探测）
+#   usr/bin/<app>    = 符号链接
+#   usr/share/applications/<app>.desktop（对齐 pilot-harness linux.desktop）
 # 用法：
-#   scripts/package-linux.sh [publish_dir]          # 全量（需 dpkg-deb + rpmbuild）
-#   scripts/package-linux.sh --stage-only [dir]     # 只生成 staging，供无工具机校验布局
-# 环境：VERSION（默认 0.1.0）、MAINTAINER、ARCH
+#   scripts/package-linux.sh [publish_dir]          # 全量（需 dpkg-deb + rpmbuild；Ubuntu runner 自带 dpkg-deb，rpm 需 apt 安装）
+#   scripts/package-linux.sh --stage-only [dir]     # 仅组装 staging，供无工具机校验布局与 RuntimeLocator
+# 环境：VERSION（默认 0.1.0，CI 由 tag/inputs.version 注入）、MAINTAINER、ARCH
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,18 +33,28 @@ echo "== 组装 staging: $STAGE"
 DEST="usr/lib/$APP"
 rm -rf "$STAGE" && mkdir -p "$STAGE/$DEST"
 
-# 1) publish 全量
+# 1) publish 全量（dotnet 自包含，含 saucer/lib* 等原生依赖）
 cp -r "$PUBLISH_DIR/." "$STAGE/$DEST/"
 
-# 2) resources/runtime（脚本/CI 生成的捆绑运行时）并入包 —— 必须保持 resources/runtime/ 结构（RuntimeLocator 按此找）
+# 2) resources/runtime 并入包 —— 必须保持 resources/runtime/ 嵌套（RuntimeLocator.ResolveRuntimeDirectory）
+# 参照 pilot-harness：闭包含数万文件 + 跨平台 prebuild/相对 symlink，原样收入，不走 asar/压缩重打包。
 if [[ -d "$ROOT/resources/runtime" ]]; then
-  echo "   并入 resources/runtime"
+  echo "   并入 resources/runtime（pilot-harness 整树方案）"
   mkdir -p "$STAGE/$DEST/resources"
-  cp -r "$ROOT/resources/runtime" "$STAGE/$DEST/resources/"
+  cp -a "$ROOT/resources/runtime" "$STAGE/$DEST/resources/"
+  # 校验 Locator 能命中（fail loud，免装后才发现捆绑运行时失效）
+  if [[ ! -f "$STAGE/$DEST/resources/runtime/node" || ! -f "$STAGE/$DEST/resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
+    echo "error: staging 的 resources/runtime 不符合 RuntimeLocator 预期" >&2
+    echo "  期望：resources/runtime/node + resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" >&2
+    ls -R "$STAGE/$DEST/resources/runtime" 2>&1 | head -60
+    exit 1
+  fi
+else
+  echo "warn: 未找到 $ROOT/resources/runtime，包将回退 PATH dsh（安装环境通常无 dsh，导致启动失败）" >&2
 fi
 chmod +x "$STAGE/$DEST/DeepSeek.Harness.Desktop"
 
-# 3) bin 符号链接 + desktop 入口
+# 3) bin 符号链接 + desktop 入口（对齐 pilot-harness linux.desktop）
 mkdir -p "$STAGE/usr/bin" "$STAGE/usr/share/applications"
 ln -s "/$DEST/DeepSeek.Harness.Desktop" "$STAGE/usr/bin/$APP"
 cat > "$STAGE/usr/share/applications/$APP.desktop" <<EOF
@@ -51,16 +66,20 @@ Comment[zh_CN]=DeepSeek Harness 桌面客户端
 Exec=$APP
 Terminal=false
 Categories=Development;IDE;Utility;
+StartupWMClass=deepseek-harness-desktop
 EOF
 
 echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
 if [[ $STAGE_ONLY -eq 1 ]]; then
-  echo "(--stage-only 校验布局：)"
-  find "$STAGE" -maxdepth 3 -type d | sort | head -20
+  echo "(--stage-only 校验布局)："
+  find "$STAGE" -maxdepth 3 -type d | sort | head -30
+  echo "--- 入口 ---"
+  ls -lh "$STAGE/$DEST/resources/runtime/node" 2>&1 | head -1 || echo "node 缺失"
+  ls -lh "$STAGE/$DEST/resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" 2>&1 | head -1 || echo "bin.js 缺失"
   exit 0
 fi
 
-command -v dpkg-deb >/dev/null || { echo "error: 缺 dpkg-deb（Ubuntu runner 自带）" >&2; exit 1; }
+command -v dpkg-deb >/dev/null || { echo "error: 缺 dpkg-deb（Ubuntu runner 自带；本地可用 --stage-only 校验）" >&2; exit 1; }
 command -v rpmbuild >/dev/null || { echo "error: 缺 rpmbuild（Ubuntu: sudo apt-get install -y rpm）" >&2; exit 1; }
 
 echo "== [deb]"
@@ -89,16 +108,16 @@ License: MIT
 URL: https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop
 Packager: $MAINTAINER
 BuildArch: ${ARCH/amd64/x86_64}
-# webkit 由 saucer 链接 libwebkitgtk-6.0.so.4 → rpm 从 ELF 自动生成精确依赖（跨发行版），无需手写
-# 自动依赖已禁用：整库 node_modules 的跨平台 prebuild 会生成 aarch64/musl/ld-linux/perl 等一堆无意义依赖
+# 参照 pilot-harness asar:false 与数万文件闭包：rpm 自动依赖扫描会把 node_modules 跨平台 prebuild
+#（aarch64/musl/ld-linux/perl 等）误判为运行依赖，导致 dnf 安装失败 → 整体禁用自动依赖，显式声明真实依赖。
 AutoReqProv: no
-# 真实运行库：WebKitGTK6（GTK4）——其包会连带拉 GTK/JavaScriptCore/soup/cairo 等
+# saucer 动态链接 libwebkitgtk-6.0.so.4（WebKitGTK 6 / GTK4），由该包连带拉 GTK/JavaScriptCore/soup/cairo 等
 Requires: libwebkitgtk-6.0.so.4
-# node_modules 内含跨平台 prebuild，rpm 的 brp-strip/debuginfo 会误伤 → 整体禁用
+# 跨平台 .node 预编译体会被 rpm 的 brp-strip 与 debuginfo 抽取误伤（如 linux-arm64/pty.node）→ 整体禁用
 %global _enable_debug_packages 0
 %define __os_install_post %{nil}
 %description
-Desktop client for DeepSeek Harness (Ryn native webview shell + bundled runtime).
+Desktop client for DeepSeek Harness (Ryn native webview shell + bundled runtime, pilot-harness packaging model).
 
 %install
 cp -r "$STAGE/usr" %{buildroot}/
@@ -111,4 +130,8 @@ EOF
 rpmbuild --define "_topdir $OUT/rpmbuild" --define "_specdir $OUT" -bb "$SPEC"
 
 echo "== 产物:"
-ls -lh "$OUT" | grep -E "\.(deb|rpm)$" || true
+ls -lh "$OUT"/*.deb "$OUT"/rpmbuild/RPMS/**/*.rpm 2>&1 | grep -E "^-|deepseek" || true
+echo "== deb 校验（如可用）:"
+dpkg-deb -I "$OUT/${APP}_${VERSION}_${ARCH}.deb" 2>&1 | head -20 || true
+echo "== rpm 校验（如可用）:"
+rpm -qp --requires "$OUT/rpmbuild/RPMS"/*/*.rpm 2>&1 | head -30 || true
