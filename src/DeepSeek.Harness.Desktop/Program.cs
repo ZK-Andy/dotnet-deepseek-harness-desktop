@@ -169,17 +169,36 @@ public static class Program
                             Console.WriteLine("[host] 已补写 bundles dshmarket");
                         }
 
-                        Console.WriteLine("[host] dsh-market 已后台安装，刷新 WebView");
+                        Console.WriteLine("[host] dsh-market 已后台安装，重启运行时以加载市场");
                         try
                         {
-                            await windowAccessor.Current.NavigateAsync(webUrl);
+                            await windowAccessor.Current.EvaluateJavaScriptAsync(RecoveryScript);
+                        }
+                        catch
+                        {
+                        }
+
+                        // 仅刷新 WebView 不会让服务端重载 package.json，交由 RuntimeSupervisor 重启 dsh 进程并导航新 URL
+                        // 此处直接 Stop，Supervisor 的 RunAsync 会检测退出→RestartAsync→Navigate
+                        try
+                        {
+                            host.Stop();
+                            Console.WriteLine("[host] 已触发 dsh 重启（由监督器接管）");
                         }
                         catch (Exception ex2)
                         {
-                            Console.WriteLine($"[host] 刷新失败：{ex2.Message}");
+                            Console.WriteLine($"[host] 触发重启失败：{ex2.Message}");
                             try
                             {
-                                await windowAccessor.Current.EvaluateJavaScriptAsync("location.reload()");
+                                var newUrl = await host.RestartAsync(TimeSpan.FromSeconds(60));
+                                if (newUrl is not null)
+                                {
+                                    await windowAccessor.Current.NavigateAsync(newUrl);
+                                }
+                                else
+                                {
+                                    await windowAccessor.Current.NavigateAsync(webUrl);
+                                }
                             }
                             catch
                             {

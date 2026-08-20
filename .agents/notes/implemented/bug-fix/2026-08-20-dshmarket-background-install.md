@@ -8,11 +8,11 @@ Status: implemented
 
 ## Decision
 
-分三段修复市场链路，`v0.1.11` 生效：
+分三段修复市场链路，`v0.1.11` 闭环安装、`v0.1.12` 补重启以即时生效：
 
 - **闭包 tgz**：`scripts/bundle-runtime-ci.sh` 不再 `pnpm pack dshmarket`（该命令在 `$TMP/app` 下打包 `app`），改为直接 `curl https://registry.npmjs.org/dshmarket/-/dshmarket-1.15.0.tgz -o resources/runtime/dshmarket.tgz`（`497K` 官方已构建包，跳过 `tsc/prepack`），失败回退为本地 `lib/client` 的 `tar --transform package/`。增加 `>10K` 与 `package/package.json name==dshmarket` 双校验；`--store-dir "$TMP/store"` 规避 `~/.local/share/pnpm/store` 的 `sqlite` 锁。`resources/runtime` 保持 `pilot-harness` 整树 `node_modules` 模型。
 
-- **后台安装**：`src/DeepSeek.Harness.Desktop/Program.cs` 重写为 JSON 精确检测（`dependencies.dshmarket && bundles.contains(dshmarket)` 才跳过）、迁移清理 `0.1.10` 误写入的 `dependencies.app=file:...dshmarket.tgz`、确保 `pnpm-workspace.yaml` 的 `allowBuilds`（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild` 均为 `true`）、`ResolveMarketSpec` 优先校验过的 `tgz`（`>10K`）否则回退 `resources/runtime/node_modules/dshmarket` 目录或 `dshmarket@1.15.0`，`EnsureBundlesContainsMarketAsync` 兜底写回。进程仍为 `bundled node + dsh/lib/bin.js plugin --profile web add <spec>`，`DSH_HOME/.pnpm-store` 注入不变，不阻塞首启（`3s` 延时后台）。
+- **后台安装**：`src/DeepSeek.Harness.Desktop/Program.cs` 重写为 JSON 精确检测（`dependencies.dshmarket && bundles.contains(dshmarket)` 才跳过）、迁移清理 `0.1.10` 误写入的 `dependencies.app=file:...dshmarket.tgz`、确保 `pnpm-workspace.yaml` 的 `allowBuilds`（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild` 均为 `true`）、`ResolveMarketSpec` 优先校验过的 `tgz`（`>10K`）否则回退 `resources/runtime/node_modules/dshmarket` 目录或 `dshmarket@1.15.0`，`EnsureBundlesContainsMarketAsync` 兜底写回。进程仍为 `bundled node + dsh/lib/bin.js plugin --profile web add <spec>`，`DSH_HOME/.pnpm-store` 注入不变，不阻塞首启（`3s` 延时后台）。`v0.1.12` 起安装成功后不再仅 `NavigateAsync(webUrl)`，而是 `EvaluateJavaScriptAsync(RecoveryScript)` + `host.Stop()` 交由 `RuntimeSupervisor` 重启 `dsh` 并导航新 `URL`（仅刷新不重启无法让服务端重载 `package.json`）。
 
 - **打包校验**：`scripts/package-linux.sh` 在 `staging` 即 `fail loud` 校验 `dshmarket.tgz`（`>10K` 且 `name==dshmarket`）与 `node_modules/dshmarket` 存在，杜绝 `394B` 假包流入 `deb/rpm`。
 
@@ -28,6 +28,6 @@ Status: implemented
 
 ## Consequences
 
-- 收益：`0.1.11` 起 `dshmarket.tgz` 为真包（`497K`，`package/package.json name==dshmarket`），`staging --stage-only` 在假包/缺包时 `fail loud`；`allowBuilds` 自愈与 `app` 迁移使 `0.1.10` 存量 `profile` 在下次启动后台自动修复，无需用户手动 `dsh plugin add`；`bundles` 双保险确保市场可见。
-- 代价：`bundle-runtime-ci.sh` 依赖外网 `curl` 拉官方 `tgz`（离线回退为本地 `tar`，但官方包仍为首选）；`Program.cs` 新增 `System.Text.Json` 解析与工作区改写逻辑，体积与复杂度微增。
-- 验证：`dotnet build/test 12/12`；`verify-adr-format/doc-budgets/md-links` 全绿；`bash scripts/bundle-runtime-ci.sh linux-x64` 产 `421M` 与 `dsh web: http://...` 自检 `OK`；`bash scripts/package-linux.sh --stage-only` 在正确 `tgz` 下通过、假包下 `fail loud`；`journalctl` 后台 `dsh plugin add exit=0` 且 `profiles/web/package.json bundles` 含 `dshmarket`。
+- 收益：`0.1.11` 起 `dshmarket.tgz` 为真包（`497K`，`package/package.json name==dshmarket`），`staging --stage-only` 在假包/缺包时 `fail loud`；`allowBuilds` 自愈与 `app` 迁移使 `0.1.10` 存量 `profile` 在下次启动后台自动修复，无需用户手动 `dsh plugin add`；`bundles` 双保险确保市场可见。`0.1.12` 起安装后 `host.Stop()` 由 `RuntimeSupervisor` 重启并导航新 `URL`，首启后台安装即可即时出现市场，无需二次手动重启（`0.1.11` 仅 `Navigate` 需二次重启）。
+- 代价：`bundle-runtime-ci.sh` 依赖外网 `curl` 拉官方 `tgz`（离线回退为本地 `tar`，但官方包仍为首选）；`Program.cs` 新增 `System.Text.Json` 解析与工作区改写及重启逻辑，体积与复杂度微增。
+- 验证：`dotnet build/test 12/12`；`verify-adr-format/doc-budgets/md-links` 全绿；`bash scripts/bundle-runtime-ci.sh linux-x64` 产 `421M` 与 `dsh web: http://...` 自检 `OK`；`bash scripts/package-linux.sh --stage-only` 在正确 `tgz` 下通过、假包下 `fail loud`；`journalctl` 后台 `dsh plugin add exit=0` 且 `profiles/web/package.json bundles` 含 `dshmarket`，`v0.1.12` 额外验证 `host.Stop()→supervisor 重启→新 URL` 后市场可见。
