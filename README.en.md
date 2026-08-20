@@ -9,16 +9,16 @@
 
 A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell bundles the complete DeepSeek Harness runtime, so end users need **no separate Node.js or DeepSeek Harness installation**.
 
-> Status: early-stage framework — native shell + bundled runtime + crash recovery + plugin capability verified; formal packaging/CI in progress.
+> Status: `v0.1.12` (`12/12` tests + gates green, `CI` dual-green) — native shell + bundled runtime + crash recovery + market closed; `Wayland`/icon fixed, `0.1.11` ships `497K` real `tgz` + background `JSON` detection/migration/`allowBuilds` self-heal, `0.1.12` auto-restarts to show market.
 
 ## Highlights
 
 - **Native, lightweight shell** — C# backend, HTML/CSS/JS frontend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
-- **Full runtime bundled** — `resources/runtime/` ships a Node binary + the `@deepseek-ai/dsh` dependency closure; `dsh web` is spawned by the shell with a private `DSH_HOME`, and the UI loads at `dsh web:` URL. No PATH `dsh`/`node` required (falls back to PATH `dsh` if the bundle is absent).
+- **Full runtime bundled** — `resources/runtime/` ships a Node binary + the `@deepseek-ai/dsh` dependency closure (`pilot-harness` whole-tree `node_modules`, `--store-dir` avoids `sqlite` lock); `dsh web` is spawned by the shell with a private `DSH_HOME`, and the UI loads at `dsh web:` URL. No PATH `dsh`/`node` required (falls back to PATH `dsh` if the bundle is absent).
 - **Crash recovery** — the shell supervises the runtime child: on exit it shows a recovery screen, restarts the child, and navigates the same window to the new URL. The port is kept stable so the Web UI's origin (and its in-page session memory) survives a restart — you return to your previous conversation.
-- **Plugin market pre-installed** — `dsh-market` (`https://github.com/dsh-market/dsh-market`) ships bundled in `resources/runtime` (`dshmarket.tgz`): the visual store appears after first launch via background `file://` install for `1200+` plugins, no CLI required (`0.1.8` blocking fixed to background).
+- **Plugin market pre-installed** — `dsh-market` (`https://github.com/dsh-market/dsh-market`) ships as `497K` real `tgz` in `resources/runtime/dshmarket.tgz` — first launch background `file://` installs to `DSH_HOME` (`System.Text.Json` exact check, `app` bogus migration, `pnpm-workspace.yaml` 6 `allowBuilds` self-heal) and `RuntimeSupervisor` restarts to show, `1200+` plugins searchable one-click (`0.1.8` blocking→`0.1.11` real `tgz`→`0.1.12` immediate restart).
 - **Native icon** — `assets/icon.png` (`hairyf/deepseek-harness-desktop` `512`) ships with the package, installed to `hicolor` and referenced as `Icon=deepseek-harness-desktop` in the `.desktop` entry; `ryn.json:identifier` and `StartupWMClass` are both `io.github.ZK-Andy.dotnet-deepseek-harness-desktop` for correct `Wayland`/`X11` taskbar association.
-- **Testable host layer** — `HarnessRuntimeHost` / `RuntimeSupervisor` / URL parser are unit- and e2e-tested (xunit); gates scripted in `scripts/`.
+- **Testable host layer** — `HarnessRuntimeHost` / `RuntimeSupervisor` / `RuntimeLocator` / URL parser are xunit `12/12` and gate-checked; `package-linux.sh` `fail loud` verifies real `tgz` in `staging`.
 
 ## Quick start (development)
 
@@ -43,10 +43,11 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ## Layout
 
 ```
-├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program, HarnessRuntimeHost, RuntimeSupervisor, IPC commands
-├── tests/…Tests/                   # xunit tests
-├── resources/runtime/              # bundled Node + dsh closure (generated, gitignored)
-├── scripts/                        # gate scripts + bundle-runtime.sh
+├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program (background market+restart), Services/HarnessRuntimeHost, RuntimeSupervisor, RuntimeLocator, HarnessUrlParser, Commands
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 12/12
+├── resources/runtime/              # bundled Node + dsh closure + dshmarket.tgz 497K (generated, gitignored, staging verifies real tgz)
+├── scripts/                        # gates + bundle-runtime{-ci,}.sh + package-linux.sh
+├── .agents/notes/implemented/bug-fix/2026-08-20-dshmarket-background-install.md  # market chain ADR
 └── docs/                           # project docs (to come)
 ```
 
