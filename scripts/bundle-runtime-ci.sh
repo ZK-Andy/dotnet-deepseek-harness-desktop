@@ -153,7 +153,7 @@ if [[ "$PLATFORM" == linux-* ]]; then
   rm -rf "$SMOKE_HOME"
 else
   # mac/win 轻校验：仅检查入口与 node 可执行，不做 60s 常驻
-  echo "   轻校验（$PLATFORM）：检查入口"
+  echo "   轻校验($PLATFORM)：检查入口"
   ls -lh "$DEST/$NODE_DST" 2>&1 | head -1
   [[ -f "$DEST/$NODE_DST" && -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 入口缺失" >&2; exit 1; }
   echo "   轻校验 OK"
