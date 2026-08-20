@@ -6,10 +6,9 @@ cd "$ROOT"
 
 echo "== pre-commit: 空白与门禁快检 =="
 
-# 1) 空白错误（git 内置 check）
-if ! git diff --cached --check --quiet; then
+# 1) 空白错误（git 内置 check；--quiet 会因存在 diff 就返 1，需单独 --check）
+if ! git diff --cached --check; then
   echo "error: 发现空白错误（行尾空格/缺换行），请修复后重试" >&2
-  git diff --cached --check
   exit 1
 fi
 

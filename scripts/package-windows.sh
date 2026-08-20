@@ -61,16 +61,79 @@ fi
 mkdir -p "$OUT"
 ZIP="$OUT/DeepSeek.Harness.Desktop_${VERSION}_${ARCH}.zip"
 rm -f "$ZIP"
-if command -v zip >/dev/null 2>&1; then
-  (cd "$(dirname "$STAGE")" && zip -r -q "$ZIP" "$(basename "$STAGE")")
-elif command -v powershell >/dev/null 2>&1; then
-  powershell -Command "Compress-Archive -Path '$STAGE' -DestinationPath '$ZIP' -Force" 2>/dev/null || powershell -Command "Compress-Archive -Path '$(dirname "$STAGE")\\$(basename "$STAGE")\\*' -DestinationPath '$ZIP' -Force"
-else
-  echo "error: 缺 zip 且无 powershell" >&2; exit 1
+
+# 兜底压缩：zip → 7z → tar (bsdtar -a) → powershell (cygpath 转换)
+create_zip() {
+  local src="$1" dst="$2"
+  local src_dir src_base
+  src_dir="$(dirname "$src")"
+  src_base="$(basename "$src")"
+  if command -v zip >/dev/null 2>&1; then
+    echo "   尝试 zip"
+    (cd "$src_dir" && zip -r -q "$dst" "$src_base") && return 0
+    echo "   zip 失败，回退"
+  fi
+  if command -v 7z >/dev/null 2>&1; then
+    echo "   尝试 7z"
+    (cd "$src_dir" && 7z a -tzip "$dst" "$src_base" -mx=0 >/dev/null 2>&1) && return 0
+    7z a -tzip "$dst" "$src" -mx=0 >/dev/null 2>&1 && return 0
+    echo "   7z 失败，回退"
+  fi
+  if command -v tar >/dev/null 2>&1; then
+    echo "   尝试 tar -a (bsdtar)"
+    (cd "$src_dir" && tar -a -c -f "$dst" "$src_base" 2>/dev/null) && return 0
+    (cd "$src_dir" && tar -c -f "$dst" "$src_base" 2>/dev/null) && return 0
+    echo "   tar 失败，回退"
+  fi
+  local ps=""
+  if command -v pwsh >/dev/null 2>&1; then ps="pwsh"
+  elif command -v powershell >/dev/null 2>&1; then ps="powershell"
+  fi
+  if [[ -n "$ps" ]]; then
+    echo "   尝试 $ps Compress-Archive"
+    local src_win dst_win
+    if command -v cygpath >/dev/null 2>&1; then
+      src_win="$(cygpath -w "$src" 2>/dev/null || echo "$src")"
+      dst_win="$(cygpath -w "$dst" 2>/dev/null || echo "$dst")"
+    else
+      # 回退：/d/a -> D:\a (仅处理常见盘符)
+      src_win="$(echo "$src" | sed -E 's#^/([cCdD])/#\1:/#' | tr '/' '\\')"
+      # 上行在 BSD sed 可能失败，二次回退
+      if [[ "$src_win" == "$src" ]]; then
+        src_win="$(echo "$src" | sed 's#^/d/#D:\\#; s#^/c/#C:\\#; s#/#\\#g')"
+        dst_win="$(echo "$dst" | sed 's#^/d/#D:\\#; s#^/c/#C:\\#; s#/#\\#g')"
+      else
+        dst_win="$(echo "$dst" | sed -E 's#^/([cCdD])/#\1:/#' | tr '/' '\\')"
+      fi
+      # 修正首字符盘符大写
+      src_win="$(echo "$src_win" | sed 's#^c:#C:#; s#^d:#D:#')"
+      dst_win="$(echo "$dst_win" | sed 's#^c:#C:#; s#^d:#D:#')"
+    fi
+    echo "   ps src=$src_win dst=$dst_win"
+    "$ps" -NoProfile -Command "Compress-Archive -Path '$src_win' -DestinationPath '$dst_win' -Force" 2>&1 | head -20
+    if [[ -f "$dst" ]]; then return 0; fi
+    "$ps" -NoProfile -Command "Compress-Archive -Path '$src_win\\*' -DestinationPath '$dst_win' -Force" 2>&1 | head -20
+    if [[ -f "$dst" ]]; then return 0; fi
+  fi
+  return 1
+}
+
+if ! create_zip "$STAGE" "$ZIP"; then
+  echo "error: 无法创建 zip（zip/7z/tar/powershell 均失败）" >&2; exit 1
 fi
-echo "== 产物: $ZIP ($(du -h "$ZIP" | cut -f1))"
+echo "== 产物: $ZIP ($(du -h "$ZIP" 2>/dev/null | cut -f1 || ls -lh "$ZIP" | awk '{print $5}'))"
 if command -v unzip >/dev/null 2>&1; then
-  unzip -l "$ZIP" | head -20
-elif command -v powershell >/dev/null 2>&1; then
-  powershell -Command "Get-ChildItem '$ZIP' | Format-List" 2>/dev/null | head -20
+  unzip -l "$ZIP" 2>&1 | head -20
+elif command -v 7z >/dev/null 2>&1; then
+  7z l "$ZIP" 2>&1 | head -40
+elif command -v tar >/dev/null 2>&1; then
+  tar -tf "$ZIP" 2>&1 | head -20
+else
+  local ps2="powershell"; command -v pwsh >/dev/null 2>&1 && ps2="pwsh"
+  if command -v cygpath >/dev/null 2>&1; then
+    ZIP_WIN="$(cygpath -w "$ZIP" 2>/dev/null || echo "$ZIP")"
+  else
+    ZIP_WIN="$ZIP"
+  fi
+  "$ps2" -NoProfile -Command "Get-ChildItem '$ZIP_WIN' | Format-List; try { (Get-ChildItem '$ZIP_WIN').Length } catch {}" 2>/dev/null | head -20 || ls -lh "$ZIP" | head -5
 fi
