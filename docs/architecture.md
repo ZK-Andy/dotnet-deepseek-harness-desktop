@@ -46,7 +46,7 @@
 * `scripts/bundle-runtime-ci.sh`：下载 `Node 22.23.1`（`linux-x64/arm64`, `win-x64`, `osx-x64/arm64`）+ `pnpm add @deepseek-ai/dsh@${DSH_VERSION:-0.1.0-rc.8} --allow-build=*` + `dshmarket@1.15.0 --allow-build=esbuild`（`--store-dir $TMP/store`），`curl` 官方 `497K` `dshmarket.tgz`（`>10K/name` 双校验）→ `cp -a node_modules/. resources/runtime/node_modules/`，`60s` 抓 `dsh web:` 自检。
 * `scripts/package-linux.sh`：`dotnet publish -r linux-(x64|arm64)` → `staging` 校验 `node + dsh/lib/bin.js + dshmarket.tgz 497K` → `deb (Depends: libwebkitgtk-6.0-4, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4, BuildArch x86_64/aarch64)`。
 * `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → `zip`（`DeepSeek.Harness.Desktop.app` 或 `DeepSeek.Harness.Desktop/`，文件名含 `…_macos-*/…_windows-*` 标识）+ 额外 `dmg`（`hdiutil`，含 `.app`）/ `exe` 安装器（`Inno Setup`/`NSIS`，`…-setup.exe`），签名占位（`codesign`/`signtool` 待证书）。
-* `resources/runtime` 含整树 `node_modules` + `node(.exe)` + `dshmarket.tgz`，随 `usr/lib`/`Contents/Resources`/`stage` 进包；`CI`（`package-linux/macos/windows.yml`）`concurrency` + `7 天 Artifacts` + `SHA256SUMS` 发布。
+* `resources/runtime` 含整树 `node_modules` + `node(.exe)` + `dshmarket.tgz`，随 `usr/lib`/`Contents/Resources`/`stage` 进包；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。
 
 ## 配置与扩展
 

@@ -70,30 +70,3 @@ jobs:
             artifacts/win-x64/*.exe
           if-no-files-found: error
           retention-days: 7
-
-  publish-release:
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-    needs: [build-windows]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: windows-*-packages
-          path: release-assets
-          merge-multiple: true
-      - name: 生成 SHA256SUMS
-        run: |
-          (cd release-assets && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum | sed 's#  \./#  #') > release-assets/SHA256SUMS-windows.txt
-          cat release-assets/SHA256SUMS-windows.txt
-      - name: 发布 Release（Windows）
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
-          draft: false
-          files: |
-            release-assets/**/*.zip
-            release-assets/**/*.exe
-            release-assets/SHA256SUMS-windows.txt

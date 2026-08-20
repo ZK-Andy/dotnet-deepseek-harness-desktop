@@ -91,7 +91,7 @@ SELF_SIGN=1 bash scripts/package-windows.sh artifacts/publish-win-x64
 
 * **边界**：自签/ad-hoc 仅消除**本机/内部**的"来源不明/未知发布者"告警，**不消除终端用户**的 Gatekeeper/SmartScreen——免费受信签名不存在，现状不签名、发布路径（tag 触发）不受影响。macOS 走 `codesign --force --deep --sign`（默认 `-` ad-hoc），Windows 走 `signtool sign /fd SHA256 /s My /n "DeepSeek Harness Desktop Dev"`。
 
-* `CI`：`ci.yml`（门禁+build+test+coverage）与 `package-linux/macos/windows.yml`（`concurrency` + `7 天 Artifacts` + `Release`）。
+* `CI`：`ci.yml`（门禁+build+test+coverage）+ `package-linux/macos/windows.yml`（出包 + `7 天 Artifacts`）+ 统一 `release.yml`（tag 触发，聚合产物并发布结构化的单个 Release，正文由 `scripts/release-notes.sh` 生成：`bash scripts/release-notes.sh [from] [to]`）。
 
 ## 常见问题
 

@@ -1,0 +1,71 @@
+name: release
+
+# 统一发布：tag v* 触发，聚合三平台产物 + 生成结构化双语正文 + 合并 SHA256SUMS + 创建单个 Release。
+# 单一 owner —— 修复旧方案（linux/macos/windows 各自 publish-release 都开 generate_release_notes
+# 并行写正文，导致 body 重复 N 次）的重复与竞争。
+# tag 命名保持 v0.1.x；含 rc/beta/alpha 的 tag 标 prerelease。
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 全量历史 + tags，供 release-notes.sh 生成 compare 与分类
+
+      - name: 下载三平台产物
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-packages'
+          path: release-assets
+          merge-multiple: true
+
+      - name: 生成合并 SHA256SUMS
+        run: |
+          set -euo pipefail
+          (cd release-assets && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum | sed 's#  \./#  #') > release-assets/SHA256SUMS.txt
+          echo "== 产物清单 =="; find release-assets -type f | sort
+          echo "== SHA256SUMS =="; cat release-assets/SHA256SUMS.txt
+
+      - name: 生成结构化 Release 正文
+        id: notes
+        run: |
+          set -euo pipefail
+          PREV_TAG="$(git describe --tags --abbrev=0 "HEAD^" 2>/dev/null || true)"
+          if [[ -n "$PREV_TAG" ]]; then
+            bash scripts/release-notes.sh "$PREV_TAG" "$GITHUB_REF_NAME" > release-body.md
+          else
+            printf '# Release %s\n\n（首个可生成正文的 tag；此前无历史。）\n' "$GITHUB_REF_NAME" > release-body.md
+          fi
+          # 多行 body 写入 file 供 action 读取（换行安全）
+          { echo "body<<BODY"; cat release-body.md; echo "BODY"; } >> "$GITHUB_OUTPUT"
+          echo "== 生成正文 =="; cat release-body.md
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          generate_release_notes: false
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc.') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          make_latest: true
+          files: |
+            release-assets/**/*.deb
+            release-assets/**/*.rpm
+            release-assets/**/*.zip
+            release-assets/**/*.dmg
+            release-assets/**/*.exe
+            release-assets/SHA256SUMS.txt
