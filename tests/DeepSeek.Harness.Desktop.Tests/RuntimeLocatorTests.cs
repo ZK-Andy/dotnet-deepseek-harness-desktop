@@ -25,15 +25,15 @@ public class RuntimeLocatorTests
     public void TryLocateBundled_WhenFilesPresent_ReturnsPaths()
     {
         var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(dir, "dsh", "lib"));
+        Directory.CreateDirectory(Path.Combine(dir, "node_modules", "@deepseek-ai", "dsh", "lib"));
         File.WriteAllText(Path.Combine(dir, "node"), "#!/bin/sh\n");
-        File.WriteAllText(Path.Combine(dir, "dsh", "lib", "bin.js"), "// dsh\n");
+        File.WriteAllText(Path.Combine(dir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"), "// dsh\n");
         try
         {
             var located = RuntimeLocator.TryLocateBundled(dir);
             Assert.NotNull(located);
             Assert.Equal(Path.Combine(dir, "node"), located!.Value.NodeExe);
-            Assert.Equal(Path.Combine(dir, "dsh", "lib", "bin.js"), located.Value.DshEntry);
+            Assert.Equal(Path.Combine(dir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"), located.Value.DshEntry);
         }
         finally
         {

@@ -17,10 +17,12 @@ public static class RuntimeLocator
 
     /// <summary>探测捆绑运行时是否就位。命中返回 (node 可执行, dsh 入口 bin.js)，否则 null（回退 PATH dsh）。</summary>
     /// <param name="runtimeDir">运行时目录。</param>
+    /// <returns>node 与 dsh 入口（位于 node_modules/@deepseek-ai/dsh/lib/bin.js）。</returns>
+    /// <remarks>与 pilot-harness 一致：整棵 node_modules 随包收入，入口从 node_modules 解析。</remarks>
     public static (string NodeExe, string DshEntry)? TryLocateBundled(string runtimeDir)
     {
         var node = Path.Combine(runtimeDir, "node");
-        var bin = Path.Combine(runtimeDir, "dsh", "lib", "bin.js");
+        var bin = Path.Combine(runtimeDir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
         return File.Exists(node) && File.Exists(bin) ? (node, bin) : null;
     }
 }

@@ -40,12 +40,26 @@ pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod \
   --allow-build=node-pty --allow-build=koffi --allow-build=protobufjs \
   --allow-build=@google/genai --allow-build=@deepseek-ai/dsh-subprocess-local
 
-echo "== [3/3] 组装 resources/runtime/dsh（pnpm symlink 布局 → 解引用为真实闭包）"
-rm -rf "$DEST/dsh"
-mkdir -p "$DEST/dsh"
-cp -rL node_modules/@deepseek-ai/dsh/. "$DEST/dsh/"
+echo "== [3/3] 组装 resources/runtime（整棵 node_modules，pilot-harness 同款方案）"
+rm -rf "$DEST/dsh" "$DEST/node_modules"
+mkdir -p "$DEST/node_modules"
+# 保留 pnpm 内部相对 symlink 结构整树拷入：入口 node_modules/@deepseek-ai/dsh/lib/bin.js
+cp -a node_modules/. "$DEST/node_modules/"
+
+echo "== [4/4] 自检：spawn dsh web 应给出 URL"
+SMOKE_HOME="$(mktemp -d)"
+if timeout 20 env DSH_HOME="$SMOKE_HOME" DEEPSEEK_API_KEY=placeholder \
+     "$DEST/node" "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" --profile web --port 0 \
+     | grep -q "dsh web:"; then
+  echo "   自检 OK（dsh web 可启动）"
+else
+  echo "error: 闭包自检失败——dsh 无法启动，请检查依赖完整性" >&2
+  rm -rf "$SMOKE_HOME"
+  exit 1
+fi
+rm -rf "$SMOKE_HOME"
 
 echo "== 完成 → $DEST"
 "$DEST/node" -v
-echo "dsh 版本: $(grep '"version"' "$DEST/dsh/package.json" | head -1)"
+echo "dsh 版本: $(grep '"version"' "$DEST/node_modules/@deepseek-ai/dsh/package.json" | head -1)"
 du -sh "$DEST" | cut -f1
