@@ -37,7 +37,9 @@
 
 `Linux` 为 `rpm` 锚可本地 `ARCH=arm64 bash scripts/package-linux.sh --stage-only` 验证；`mac/win` 已切 `tag+workflow_dispatch` 手动触发，`CI` 全量时同出 `SHA256SUMS`。
 
-> 🟢 已针对性测试（`rpm` 可本地 `rpm -qp --requires` 验证），🟡 已实现但未针对性测试（仅 `CI` 自动）。
+> 🟢 已针对性测试（`rpm` 可本地 `rpm -qp --requires` 验证），🟡 已实现且 `CI` 自动出包，但**真机针对性测试等待社区支持**（本项目本地无 mac Intel x64 / Windows 真机，无法自行手测）。
+
+**签名**：这是**开源项目，不做付费签名**（免费受信代码签名不存在；Apple Developer / Windows OV-EV / Azure Trusted Signing 均需付费，不采用）。发布包**未签名**——macOS 用户遇 Gatekeeper「来自身份不明的开发者」、Windows 遇 SmartScreen「未知发布者」属开源免费现状（可右键→打开 / 更多信息→仍要运行）。开发/内部可用 `SELF_SIGN=1`（mac `codesign` ad-hoc / win `signtool` 自签证书）消除本机告警；用法见 [docs/development.md](docs/development.md)。
 
 ## 快速开始（开发）
 

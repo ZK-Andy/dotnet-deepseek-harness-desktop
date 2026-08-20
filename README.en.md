@@ -37,7 +37,9 @@ Referencing [Ryn](https://github.com/Yupmoh/Ryn)'s `ryn bundle` (`macOS .app` / 
 
 `Linux` is the `rpm` anchor verifiable via `ARCH=arm64 bash scripts/package-linux.sh --stage-only` locally; `mac/win` are `tag+workflow_dispatch` manual, `CI` publishes `SHA256SUMS` together.
 
-> 🟢 Tested specifically (`rpm` verifiable via `rpm -qp --requires`), 🟡 Implemented but not specifically tested (`CI` auto only).
+> 🟢 Tested specifically (`rpm` verifiable via `rpm -qp --requires`), 🟡 Implemented and built by `CI`, but **real-machine targeted testing awaits community support** (no local Intel macOS / Windows hardware here).
+
+**Signing**: this is an **open-source project and we do not do paid signing** (no free publicly-trusted code signing exists; Apple Developer / Windows OV-EV / Azure Trusted Signing all cost money and are not used). Releases ship **unsigned** — macOS users see Gatekeeper "unidentified developer" and Windows users see SmartScreen "unknown publisher", consistent with the free open-source status (right-click → Open / More info → Run anyway). For dev/internal you can use `SELF_SIGN=1` (mac `codesign` ad-hoc / win `signtool` self-signed cert) to clear local warnings; see [docs/development.md](docs/development.md).
 
 ## Quick start (development)
 
