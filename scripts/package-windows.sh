@@ -33,7 +33,12 @@ cp -r "$PUBLISH_DIR/." "$STAGE/"
 if [[ -d "$ROOT/resources/runtime" ]]; then
   echo "   并入 resources/runtime"
   mkdir -p "$STAGE/resources"
-  cp -a "$ROOT/resources/runtime" "$STAGE/resources/"
+  if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* || -n "${WINDIR:-}" ]]; then
+    # Windows: 解引用拷贝，避免 junction/symlink 失败
+    cp -Lr "$ROOT/resources/runtime" "$STAGE/resources/" 2>/dev/null || powershell -Command "Copy-Item -Path '$ROOT/resources/runtime' -Destination '$STAGE/resources' -Recurse -Force" 2>/dev/null || cp -r "$ROOT/resources/runtime" "$STAGE/resources/"
+  else
+    cp -a "$ROOT/resources/runtime" "$STAGE/resources/"
+  fi
   if [[ ! -f "$STAGE/resources/runtime/node.exe" && ! -f "$STAGE/resources/runtime/node" ]]; then
     echo "warn: staging 缺 node(.exe)，可能架构不匹配 ($RID)" >&2
   fi
@@ -53,10 +58,19 @@ if [[ $STAGE_ONLY -eq 1 ]]; then
   exit 0
 fi
 
-command -v zip >/dev/null || { echo "error: 缺 zip" >&2; exit 1; }
 mkdir -p "$OUT"
 ZIP="$OUT/DeepSeek.Harness.Desktop_${VERSION}_${ARCH}.zip"
 rm -f "$ZIP"
-(cd "$(dirname "$STAGE")" && zip -r -q "$ZIP" "$(basename "$STAGE")")
+if command -v zip >/dev/null 2>&1; then
+  (cd "$(dirname "$STAGE")" && zip -r -q "$ZIP" "$(basename "$STAGE")")
+elif command -v powershell >/dev/null 2>&1; then
+  powershell -Command "Compress-Archive -Path '$STAGE' -DestinationPath '$ZIP' -Force" 2>/dev/null || powershell -Command "Compress-Archive -Path '$(dirname "$STAGE")\\$(basename "$STAGE")\\*' -DestinationPath '$ZIP' -Force"
+else
+  echo "error: 缺 zip 且无 powershell" >&2; exit 1
+fi
 echo "== 产物: $ZIP ($(du -h "$ZIP" | cut -f1))"
-unzip -l "$ZIP" | head -20
+if command -v unzip >/dev/null 2>&1; then
+  unzip -l "$ZIP" | head -20
+elif command -v powershell >/dev/null 2>&1; then
+  powershell -Command "Get-ChildItem '$ZIP' | Format-List" 2>/dev/null | head -20
+fi
