@@ -1,4 +1,3 @@
-using System.Text.Json;
 using DeepSeek.Harness.Desktop.Commands;
 using DeepSeek.Harness.Desktop.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -106,14 +105,14 @@ public static class Program
                     var workspacePath = Path.Combine(profileDir, "pnpm-workspace.yaml");
 
                     // 1) 精确检测是否已装（JSON 解析，非字符串包含）
-                    if (IsMarketInstalled(profilePkg))
+                    if (MarketInstallHelper.IsMarketInstalled(profilePkg))
                     {
                         Console.WriteLine("[host] 市场已就位（bundles 含 dshmarket），跳过安装");
                         return;
                     }
 
                     // 1b) 迁移：清理 0.1.8-0.1.10 误写入的 app 依赖（file:.../dshmarket.tgz 假包）
-                    await CleanupBogusAppDependencyAsync(profilePkg);
+                    await MarketInstallHelper.CleanupBogusAppDependencyAsync(profilePkg);
 
                     var runtimeDir = RuntimeLocator.ResolveRuntimeDirectory();
                     var bundled = RuntimeLocator.TryLocateBundled(runtimeDir);
@@ -124,10 +123,10 @@ public static class Program
                     }
 
                     // 2) 确保 pnpm-workspace.yaml 的 allowBuilds 已放行原生构建（pnpm 11 默认拒绝）
-                    EnsureWorkspaceAllowBuilds(workspacePath);
+                    MarketInstallHelper.EnsureWorkspaceAllowBuilds(workspacePath);
 
                     // 3) 解析安装 spec：优先校验过的 tgz，否则回退到目录或 registry
-                    var spec = ResolveMarketSpec(runtimeDir);
+                    var spec = MarketInstallHelper.ResolveMarketSpec(runtimeDir);
                     Console.WriteLine($"[host] 市场安装 spec={spec}");
 
                     var psi = new System.Diagnostics.ProcessStartInfo
@@ -163,7 +162,7 @@ public static class Program
                     if (p.ExitCode == 0)
                     {
                         // 4) dsh 的 reconcilePlugins 理论上已写入 bundles，仍做兜底校验并补写（0.1.10 的 file:app 未进 bundles 需补）
-                        var patched = await EnsureBundlesContainsMarketAsync(profilePkg);
+                        var patched = await MarketInstallHelper.EnsureBundlesContainsMarketAsync(profilePkg);
                         if (patched)
                         {
                             Console.WriteLine("[host] 已补写 bundles dshmarket");
@@ -240,315 +239,5 @@ public static class Program
         }
 
         host.Stop();
-    }
-
-    private static bool IsMarketInstalled(string profilePkg)
-    {
-        try
-        {
-            if (!File.Exists(profilePkg))
-            {
-                return false;
-            }
-
-            var json = File.ReadAllText(profilePkg);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            if (!root.TryGetProperty("dependencies", out var deps))
-            {
-                return false;
-            }
-
-            if (!deps.TryGetProperty("dshmarket", out _))
-            {
-                return false;
-            }
-
-            if (!root.TryGetProperty("dsh", out var dsh) ||
-                !dsh.TryGetProperty("profile", out var profile) ||
-                !profile.TryGetProperty("bundles", out var bundles) ||
-                bundles.ValueKind != JsonValueKind.Array)
-            {
-                return false;
-            }
-
-            foreach (var b in bundles.EnumerateArray())
-            {
-                if (b.GetString() == "dshmarket")
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static async Task CleanupBogusAppDependencyAsync(string profilePkg)
-    {
-        try
-        {
-            if (!File.Exists(profilePkg))
-            {
-                return;
-            }
-
-            var json = await File.ReadAllTextAsync(profilePkg);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            if (!root.TryGetProperty("dependencies", out var deps) ||
-                !deps.TryGetProperty("app", out var appVal))
-            {
-                return;
-            }
-
-            var appSpec = appVal.GetString() ?? string.Empty;
-            if (!appSpec.Contains("dshmarket.tgz", StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            // 0.1.10 误将 app 包（394B）写入 dependencies，需移除
-            Console.WriteLine($"[host] 清理残留 app 依赖：{appSpec}");
-            // 更稳妥：用 JsonDocument 重建
-            using var ms = new MemoryStream();
-            using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
-            {
-                writer.WriteStartObject();
-                foreach (var prop in root.EnumerateObject())
-                {
-                    if (prop.Name == "dependencies")
-                    {
-                        writer.WritePropertyName("dependencies");
-                        writer.WriteStartObject();
-                        foreach (var dep in prop.Value.EnumerateObject())
-                        {
-                            if (dep.Name == "app" && dep.Value.GetString()?.Contains("dshmarket.tgz") == true)
-                            {
-                                continue;
-                            }
-
-                            dep.WriteTo(writer);
-                        }
-
-                        writer.WriteEndObject();
-                    }
-                    else
-                    {
-                        prop.WriteTo(writer);
-                    }
-                }
-
-                writer.WriteEndObject();
-            }
-
-            var newJson = System.Text.Encoding.UTF8.GetString(ms.ToArray()) + "\n";
-            await File.WriteAllTextAsync(profilePkg, newJson);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[host] 清理 app 依赖跳过：{ex.Message}");
-        }
-    }
-
-    private static void EnsureWorkspaceAllowBuilds(string workspacePath)
-    {
-        try
-        {
-            if (!File.Exists(workspacePath))
-            {
-                return;
-            }
-
-            var text = File.ReadAllText(workspacePath);
-            var original = text;
-            // pnpm 11 的占位 "set this to true or false" 需显式改为 true
-            if (text.Contains("set this to true or false"))
-            {
-                text = text.Replace(": set this to true or false", ": true");
-            }
-
-            // 确保 esbuild（dshmarket）在 allowBuilds 中
-            if (!text.Contains("esbuild"))
-            {
-                if (text.Contains("allowBuilds:"))
-                {
-                    text = text.Replace("allowBuilds:", "allowBuilds:\n  esbuild: true");
-                }
-                else
-                {
-                    text = text.TrimEnd() + "\nallowBuilds:\n  esbuild: true\n";
-                }
-            }
-            else if (text.Contains("esbuild: set this"))
-            {
-                text = text.Replace("esbuild: set this to true or false", "esbuild: true");
-            }
-
-            // 兜底：确保其余 5 项为 true（已由上一步替换覆盖，但防御缺失项）
-            var required = new[] { "@deepseek-ai/dsh-subprocess-local", "@google/genai", "koffi", "node-pty", "protobufjs" };
-            foreach (var pkg in required)
-            {
-                if (!text.Contains(pkg))
-                {
-                    // 插入到 allowBuilds 段
-                    if (text.Contains("allowBuilds:"))
-                    {
-                        text = text.Replace("allowBuilds:", $"allowBuilds:\n  '{pkg}': true");
-                    }
-                }
-            }
-
-            if (text != original)
-            {
-                File.WriteAllText(workspacePath, text);
-                Console.WriteLine("[host] 已修正 pnpm-workspace.yaml allowBuilds");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[host] 修正 workspace 跳过：{ex.Message}");
-        }
-    }
-
-    private static string ResolveMarketSpec(string runtimeDir)
-    {
-        var tgz = Path.Combine(runtimeDir, "dshmarket.tgz");
-        if (File.Exists(tgz))
-        {
-            try
-            {
-                var fi = new FileInfo(tgz);
-                // 0.1.10 假包 394B，正确包 >10K 且含 dshmarket 名称
-                if (fi.Length > 10 * 1024)
-                {
-                    // 轻量校验 tgz 内 package.json 的 name（用 tar 探针，避免在 C# 解压）
-                    // 失败则仍视为可用（由 pnpm 进一步校验）
-                    return tgz;
-                }
-
-                Console.WriteLine($"[host] tgz 过小（{fi.Length}B），疑似假包，回退目录/registry");
-            }
-            catch
-            {
-            }
-        }
-
-        var dir = Path.Combine(runtimeDir, "node_modules", "dshmarket");
-        if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, "package.json")))
-        {
-            // pnpm add file:<dir> 同样可正确落入 dependencies[dshmarket]
-            return dir;
-        }
-
-        return "dshmarket@1.15.0";
-    }
-
-    private static async Task<bool> EnsureBundlesContainsMarketAsync(string profilePkg)
-    {
-        try
-        {
-            if (!File.Exists(profilePkg))
-            {
-                return false;
-            }
-
-            var json = await File.ReadAllTextAsync(profilePkg);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            if (!root.TryGetProperty("dsh", out var dsh) ||
-                !dsh.TryGetProperty("profile", out var profile) ||
-                !profile.TryGetProperty("bundles", out var bundles) ||
-                bundles.ValueKind != JsonValueKind.Array)
-            {
-                return false;
-            }
-
-            foreach (var b in bundles.EnumerateArray())
-            {
-                if (b.GetString() == "dshmarket")
-                {
-                    return false;
-                }
-            }
-
-            // 缺则补写（保留原有 bundles 顺序，追加 dshmarket）
-            using var ms = new MemoryStream();
-            using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
-            {
-                writer.WriteStartObject();
-                foreach (var prop in root.EnumerateObject())
-                {
-                    if (prop.Name == "dsh")
-                    {
-                        writer.WritePropertyName("dsh");
-                        writer.WriteStartObject();
-                        foreach (var dshProp in prop.Value.EnumerateObject())
-                        {
-                            if (dshProp.Name == "profile")
-                            {
-                                writer.WritePropertyName("profile");
-                                writer.WriteStartObject();
-                                foreach (var profProp in dshProp.Value.EnumerateObject())
-                                {
-                                    if (profProp.Name == "bundles")
-                                    {
-                                        writer.WritePropertyName("bundles");
-                                        writer.WriteStartArray();
-                                        foreach (var b in profProp.Value.EnumerateArray())
-                                        {
-                                            b.WriteTo(writer);
-                                        }
-
-                                        writer.WriteStringValue("dshmarket");
-                                        writer.WriteEndArray();
-                                    }
-                                    else
-                                    {
-                                        profProp.WriteTo(writer);
-                                    }
-                                }
-
-                                // 若原无 bundles（理论不会），补一个
-                                if (!dshProp.Value.TryGetProperty("bundles", out _))
-                                {
-                                    writer.WritePropertyName("bundles");
-                                    writer.WriteStartArray();
-                                    writer.WriteStringValue("dshmarket");
-                                    writer.WriteEndArray();
-                                }
-
-                                writer.WriteEndObject();
-                            }
-                            else
-                            {
-                                dshProp.WriteTo(writer);
-                            }
-                        }
-
-                        writer.WriteEndObject();
-                    }
-                    else
-                    {
-                        prop.WriteTo(writer);
-                    }
-                }
-
-                writer.WriteEndObject();
-            }
-
-            var newJson = System.Text.Encoding.UTF8.GetString(ms.ToArray()) + "\n";
-            await File.WriteAllTextAsync(profilePkg, newJson);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[host] 补 bundles 失败：{ex.Message}");
-            return false;
-        }
     }
 }

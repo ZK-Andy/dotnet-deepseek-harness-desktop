@@ -1,6 +1,6 @@
 # Testing
 
-> `12/12` 通过，`v0.1.12` 基线。
+> `28/28` 通过（`24.3%` 行覆盖，`MarketInstallHelper 84%`），`v0.1.12` 基线。
 
 ## 单测
 
@@ -11,6 +11,7 @@
   * `RuntimeLocatorTests`：`DSH_DESKTOP_RUNTIME_DIR` 覆盖、`TryLocateBundled` 判 `node + dsh/lib/bin.js`。
   * `RuntimeSupervisorTests`：退出→恢复屏→重启→导航顺序，取消与重试。
   * `GreetingServiceTests`：`IPC` 命令样例。
+  * `MarketInstallHelperTests`：`IsMarketInstalled` 真/假/异常、`CleanupBogusApp` 删 `app` 的 `tgz`/`NoOp`、`EnsureWorkspaceAllowBuilds` 占位替换与 `esbuild` 追加、`ResolveMarketSpec` 的 `tgz>10K/目录/registry` 三分支、`EnsureBundles` 追加/幂等。
 * 运行：沙箱需 `DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget`（`/home` 只读）。
 
 ```sh
@@ -27,7 +28,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release
 | `verify-md-links.py` | 相对链接/锚点（排除 `skills/.dotnet-cache/bin/obj`） | `python3 scripts/verify-md-links.py` |
 | `change-scope.sh` | `push` 前最小证据（`merge-base` diff） | `scripts/change-scope.sh` |
 
-`CI` (`ci.yml`) 在 `ubuntu-latest` 跑三门禁 + `dotnet build/test`；`hooks` 只做快检查，`CI` 拥有穷尽矩阵。
+`CI` (`ci.yml`) 在 `ubuntu-latest` 跑三门禁 + `dotnet build` + `test with coverage --collect:"XPlat Code Coverage" coberture`（`upload-artifact 7d`）；`hooks` 只做快检查，`CI` 拥有穷尽矩阵。
 
 ## 冒烟与集成
 
