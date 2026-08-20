@@ -23,6 +23,7 @@ Windows 打包（12.7 分）第二大热点是「打 Windows 包」（~363s）�
 
 ## Consequences
 
-- 收益：Windows 打包少一次 1.5GB deflate 压缩、macOS 少一次 zip；Release 体积/上传更小；打包脚本删除 `create_zip`/`unzip` 回退链，显著简化。
-- 代价/风险：失去「解压即用」的便携 zip（用户需装安装器或用 dmg 拖拽）；Windows 若 runner 无 Inno Setup/NSIS/7z SFX 将直接失败（`fail loud`，Windows-latest 自带 Inno Setup 6，风险低）；历史发布里的 zip 不追溯删除。
-- 验证：本地 `bash -n` + 三平台步骤时间对比待下次 tag 实测（期望 Windows「打 Windows 包」由 ~363s 显著下降）。
+- 收益（v0.1.18 实测）：macOS 打包从 88–94s 降到 **49–59s**（zip+dmg 双压缩→只 dmg，省掉一次 zip）；Windows 上传 34–39s → **5s**、Release 体积更小；发布从 11 项资产降为 **8 项**（deb×2+rpm×2+dmg×2+setup.exe+SHA256SUMS），脚本删掉 `create_zip`/`unzip` 回退链。
+- **修正预期（Windows「打 Windows 包」墙体时间未降，~373s ≈ 原 363s）**：Windows 打包真正的瓶颈不是独立 zip，而是 Inno Setup `LZMA`+`SolidCompression` 对 ~1.5GB 闭包的那一次压缩（约 6 分钟）——去 zip 只省下相对快的 deflate，墙钟基本不变。zip 移除在 Windows 的收益主要体现在上传/体积，不体现在打包步骤耗时。
+- 代价/风险：失去「解压即用」便携 zip（需装安装器/拖拽 dmg）；Windows 若 runner 无 Inno Setup/NSIS/7z SFX 将直接失败（`fail loud`，Windows-latest 自带 Inno Setup 6，未触发）。
+- 验证：`v0.1.18` tag 三平台全绿（Linux 3.6–3.7 分 / macOS 2.6 分 / Windows 12.1 分 run、14.1 分 job）。

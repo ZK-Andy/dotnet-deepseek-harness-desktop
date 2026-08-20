@@ -22,6 +22,6 @@ Status: implemented
 
 ## Consequences
 
-- 收益：命中缓存时 Windows 捆绑从 ~286s 降到传/tar 解包 + `pnpm add` 增量（量级到秒级-几十秒）；三平台同效；跨架构不再串线。
-- 代价/风险：cache 首次 miss 才能打底（首次仍全量）；pnpm store 略大（数百 MB ~1GB，< actions/cache 10GB 上限）；`restore-keys` 前缀命中可能耦合老版本内容，但 pnpm store 按版本累积、只增量缺的，安全。
-- 验证：本地仅能跑 `bundle-runtime.sh`（沙箱可写 `$ROOT/.cache`）做语法/首跑；真实缓存命中与否依赖下次 CI tag 实测（Windows 打包步骤时间对比）。
+- 收益（v0.1.18 实测）：Linux/mac/Windows 三平台 pnpm store 均按架构缓存打底成功（`Post 缓存 pnpm store` 各平台 save：Linux 2–4s / macOS 7–15s / **Windows ~125s**）。**命中收益待下次 tag（如 v0.1.19）**：Windows 捆绑 ~277s 可压缩到秒级。
+- 代价/风险：首次 run 是 **cache miss**，仍全量捆绑（Windows 277s，与历史 286s 持平）；Windows store 较大，首次 save 额外付出 ~125s（缓存 tar ~1GB，Windows 慢）；`restore-keys` 前缀命中可能耦合老版本内容，但 pnpm store 按版本累积、只增量缺的，安全。
+- 验证：`v0.1.18` 三平台全绿；Windows job 因首 run（miss + 125s save）仍 14.1 分——**本次未能直接验证提速，需复跑/下一 tag 确认缓存命中后的时间**。
