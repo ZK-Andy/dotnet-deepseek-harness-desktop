@@ -64,10 +64,24 @@ Name=DeepSeek Harness Desktop
 Comment=Desktop client for DeepSeek Harness
 Comment[zh_CN]=DeepSeek Harness 桌面客户端
 Exec=$APP
+Icon=$APP
 Terminal=false
 Categories=Development;IDE;Utility;
 StartupWMClass=deepseek-harness-desktop
 EOF
+
+# 3b) 图标（对齐 pilot-harness assets/icon.png → hicolor 512 + brand-icon）
+if [[ -d "$ROOT/assets/icons" ]]; then
+  echo "   安装图标（hicolor）"
+  for sz in 16 32 48 64 128 256 512 1024; do
+    if [[ -f "$ROOT/assets/icons/${sz}x${sz}/apps.png" ]]; then
+      mkdir -p "$STAGE/usr/share/icons/hicolor/${sz}x${sz}/apps"
+      cp "$ROOT/assets/icons/${sz}x${sz}/apps.png" "$STAGE/usr/share/icons/hicolor/${sz}x${sz}/apps/$APP.png"
+    fi
+  done
+  mkdir -p "$STAGE/usr/share/pixmaps"
+  cp "$ROOT/assets/icon.png" "$STAGE/usr/share/pixmaps/$APP.png"
+fi
 
 echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
 if [[ $STAGE_ONLY -eq 1 ]]; then
@@ -126,6 +140,8 @@ cp -r "$STAGE/usr" %{buildroot}/
 /usr/lib/$APP
 /usr/bin/$APP
 /usr/share/applications/$APP.desktop
+/usr/share/icons
+/usr/share/pixmaps
 EOF
 rpmbuild --define "_topdir $OUT/rpmbuild" --define "_specdir $OUT" -bb "$SPEC"
 

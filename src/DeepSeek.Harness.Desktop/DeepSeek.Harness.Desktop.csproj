@@ -19,6 +19,8 @@
     <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="ryn.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\icon.png" Link="icon.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\desktop.patch.yml" Link="desktop.patch.yml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

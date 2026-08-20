@@ -16,7 +16,8 @@
 - **原生轻量壳**：C# 后端 + HTML/CSS/JS 前端，跑在系统 WebView（WebView2 / WKWebView / WebKitGTK），NativeAOT 就绪，能力沙箱 deny-by-default（`ryn.json`）。
 - **完整运行时内置**：`resources/runtime/` 内置 Node 二进制 + `@deepseek-ai/dsh` 依赖闭包；壳以私有 `DSH_HOME` 拉起 `dsh web`，UI 加载 `dsh web:` URL。无 PATH `dsh`/`node` 也能跑（缺内置时回退 PATH dsh）。
 - **崩溃恢复**：壳监督运行时子进程——退出即显示恢复屏、重启子进程、把同一窗口导航到新 URL；**端口保持稳定**，Web UI 的 origin（及页面级会话记忆）在重启后存活——**崩溃后回到之前对话**。
-- **插件生态**：插件装进用户 `DSH_HOME` 的 profile（`dsh plugin --profile web add …`）；`DSH_DESKTOP_PATCH` 提供桌面侧 `--patch` 覆盖层。
+- **插件市场预装**：`dsh-market`（`https://github.com/dsh-market/dsh-market`）随包预装——首启即在 `Web UI` 出现可视化商店，浏览/搜索 `1200+` 插件一键安装，无需命令行；后续插件仍走 `DSH_HOME`，`DSH_DESKTOP_PATCH` 可叠加其它 `--patch`。
+- **原生图标**：`assets/icon.png`（`pilot-harness` 同款 `512`）随包，`deb/rpm` 安装到 `hicolor` 并在 `.desktop` 设 `Icon=deepseek-harness-desktop`，任务栏/启动器与窗口图标一致。
 - **可测试宿主层**：`HarnessRuntimeHost` / `RuntimeSupervisor` / URL 解析器均带 xunit 单测与 e2e；门禁脚本化在 `scripts/`。
 
 ## 快速开始（开发）

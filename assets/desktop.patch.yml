@@ -1,0 +1,6 @@
+# DeepSeek Harness Desktop 默认 profile 补丁（pilot-harness 同款 insert 机制）
+# 预装插件市场 dsh-market，用户首装即有可视化商店，无需命令行。
+# 参照 dshmarket/cordis.patch.yml：id=dsh-market name=dshmarket
+- insert:
+    - id: dsh-market
+      name: 'dshmarket'

@@ -117,7 +117,15 @@ public sealed class HarnessRuntimeHost : IDisposable
         Directory.CreateDirectory(Path.Combine(home, ".pnpm-store"));
         Directory.CreateDirectory(Path.Combine(home, ".pnpm-cache"));
 
-        // 桌面插件覆盖层：DSH_DESKTOP_PATCH=<path> 时作为 --patch 叠加（插件装入 DSH_HOME profile 亦可）
+        // 桌面默认补丁：预装 dsh-market（pilot-harness 同款 insert 机制，使首装即有可视化商店）
+        var desktopPatch = Path.Combine(AppContext.BaseDirectory, "desktop.patch.yml");
+        if (File.Exists(desktopPatch))
+        {
+            psi.ArgumentList.Add("--patch");
+            psi.ArgumentList.Add(desktopPatch);
+        }
+
+        // 额外桌面覆盖层：DSH_DESKTOP_PATCH=<path> 时叠加（便于本机调试）
         var patchEnv = Environment.GetEnvironmentVariable("DSH_DESKTOP_PATCH");
         if (!string.IsNullOrWhiteSpace(patchEnv))
         {
