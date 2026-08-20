@@ -67,7 +67,7 @@ Exec=$APP
 Icon=$APP
 Terminal=false
 Categories=Development;IDE;Utility;
-StartupWMClass=DeepSeek.Harness.Desktop
+StartupWMClass=$APP
 EOF
 
 # 3b) 图标（对齐 pilot-harness assets/icon.png → hicolor 512 + brand-icon）
