@@ -12,7 +12,7 @@
 
 A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell bundles the complete DeepSeek Harness runtime, so end users need **no separate Node.js or DeepSeek Harness installation**.
 
-> Status: `v0.1.12` (`25/25` tests `26.4%` coverage + gates green, `CI` dual-green) — native shell + bundled runtime + crash recovery + market closed; `Wayland`/icon fixed, `0.1.11` ships `497K` real `tgz` + background `JSON` detection/migration/`allowBuilds` self-heal, `0.1.12` auto-restarts to show market.
+> Status: `v0.1.16` (`25/25` tests `26.4%` coverage + gates green, `CI` `linux 4m41s`/`macos 5m16s` green, `windows` with installer verifying) — native shell + bundled runtime + crash recovery + market closed; `Wayland`/icon fixed, `0.1.11` ships `497K` real `tgz` + background `JSON` detection/migration/`allowBuilds` self-heal, `0.1.12` auto-restarts to show market; `0.1.16` full `linux deb/rpm _linux-*` + `mac zip/dmg _macos-*` + `win zip/exe _windows-*` (`hdiutil dmg` + `Inno Setup` installer, platform prefix, `pipefail 141` fixed).
 
 ## Highlights
 

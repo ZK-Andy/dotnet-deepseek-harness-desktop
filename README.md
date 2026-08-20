@@ -12,7 +12,7 @@
 
 **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端**，基于 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 原生 WebView 框架）。桌面壳**内置完整 DeepSeek Harness 运行时**——终端用户**无需单独安装 Node / DeepSeek Harness**。
 
-> 现状：`v0.1.12`（`25/25` 单测 `26.4%` 覆盖 + 门禁全绿，`CI` 双绿）——原生壳 + 内置运行时 + 崩溃恢复 + 插件市场已闭环；`Wayland`/`图标` 已正，`0.1.11` 起市场随包 `497K` 真包 + 后台 `JSON` 检测/迁移/`allowBuilds` 自愈，`0.1.12` 后台装完自动重启即现。
+> 现状：`v0.1.16`（`25/25` 单测 `26.4%` 覆盖 + 门禁全绿，`CI` `linux 4m41s`/`macos 5m16s` 绿、`windows` 含安装器验证中）——原生壳 + 内置运行时 + 崩溃恢复 + 插件市场已闭环；`Wayland`/`图标` 已正，`0.1.11` 起市场随包 `497K` 真包 + 后台 `JSON` 检测/迁移/`allowBuilds` 自愈，`0.1.12` 后台装完自动重启即现；`0.1.16` 全量 `linux deb/rpm _linux-*` + `mac zip/dmg _macos-*` + `win zip/exe _windows-*`（`hdiutil dmg` + `Inno Setup` 安装器，平台前缀止冲突，`pipefail 141` 已修）。
 
 ## 亮点
 
