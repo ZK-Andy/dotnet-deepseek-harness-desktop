@@ -46,14 +46,16 @@ mkdir -p "$DEST/node_modules"
 # 保留 pnpm 内部相对 symlink 结构整树拷入：入口 node_modules/@deepseek-ai/dsh/lib/bin.js
 cp -a node_modules/. "$DEST/node_modules/"
 
-echo "== [4/4] 自检：spawn dsh web 应给出 URL"
+echo "== [4/4] 自检：spawn dsh web 应给出 URL（最长 60s，失败打印 dsh 输出）"
 SMOKE_HOME="$(mktemp -d)"
-if timeout 20 env DSH_HOME="$SMOKE_HOME" DEEPSEEK_API_KEY=placeholder \
+if timeout 60 env DSH_HOME="$SMOKE_HOME" DEEPSEEK_API_KEY=placeholder \
      "$DEST/node" "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" --profile web --port 0 \
-     | grep -q "dsh web:"; then
-  echo "   自检 OK（dsh web 可启动）"
+     >"$TMP/smoke.log" 2>&1 \
+     && grep -q "dsh web:" "$TMP/smoke.log"; then
+  echo "   自检 OK（dsh web 可启动）：$(grep 'dsh web:' "$TMP/smoke.log" | head -1)"
 else
-  echo "error: 闭包自检失败——dsh 无法启动，请检查依赖完整性" >&2
+  echo "error: 闭包自检失败——dsh 未在 60s 内给出 URL。dsh 输出尾部："
+  tail -20 "$TMP/smoke.log" >&2
   rm -rf "$SMOKE_HOME"
   exit 1
 fi
