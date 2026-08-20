@@ -10,7 +10,7 @@ set -euo pipefail
 
 PLATFORM="${1:-linux-x64}"
 NODE_VERSION="${NODE_VERSION:-22.23.1}"
-DSH_VERSION="${DSH_VERSION:-0.1.0-rc.7}"
+DSH_VERSION="${DSH_VERSION:-0.1.0-rc.8}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/resources/runtime"
 TMP="$(mktemp -d)"
