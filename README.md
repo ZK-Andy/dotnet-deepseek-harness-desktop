@@ -31,9 +31,9 @@
 |---|---|---|---|---|---|
 | `Linux` | `x64` (`amd64`) | `deb`/`rpm` | `ubuntu-latest` | ✅ `CI` 自动（`staging` 真包 + `rpm -qp --requires` + `deb Depends`） | 🟡 `deb` / 🟢 `rpm` |
 | `Linux` | `arm64` | `deb`/`rpm` | `ubuntu-24.04-arm` | ✅ `CI` 自动（矩阵 `arm64`） | 🟡 `deb` / 🟢 `rpm` |
-| `macOS` | `arm64` (`osx-arm64`) | `zip` (`.app`) | `macos-latest` | ✅ `CI` 自动（单 `runner` 矩阵） | 🟡 |
-| `macOS` | `x64` (`osx-x64`) | `zip` (`.app`) | `macos-latest` (交叉) | ✅ `CI` 自动（`Rosetta`） | 🟡 |
-| `Windows` | `x64` | `zip` | `windows-latest` | ✅ `CI` 自动（`zip`/`powershell` 回退） | 🟡 |
+| `macOS` | `arm64` (`osx-arm64`) | `zip` (`.app`) + `dmg` | `macos-latest` | ✅ `CI` 自动（单 `runner` 矩阵，文件名 `…_macos-arm64.zip/.dmg`） | 🟡 |
+| `macOS` | `x64` (`osx-x64`) | `zip` (`.app`) + `dmg` | `macos-latest` (交叉) | ✅ `CI` 自动（`Rosetta`，文件名 `…_macos-x64.zip/.dmg`） | 🟡 |
+| `Windows` | `x64` | `zip` + `exe` 安装器 | `windows-latest` | ✅ `CI` 自动（`zip→7z→tar→powershell` + `Inno Setup` 安装器 `…_windows-x64-setup.exe`） | 🟡 |
 
 `Linux` 为 `rpm` 锚可本地 `ARCH=arm64 bash scripts/package-linux.sh --stage-only` 验证；`mac/win` 已切 `tag+workflow_dispatch` 手动触发，`CI` 全量时同出 `SHA256SUMS`。
 

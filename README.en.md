@@ -31,9 +31,9 @@ Referencing [Ryn](https://github.com/Yupmoh/Ryn)'s `ryn bundle` (`macOS .app` / 
 |---|---|---|---|---|---|
 | `Linux` | `x64` | `deb`/`rpm` | `ubuntu-latest` | ✅ `CI` (`staging` + `rpm -qp`) | 🟡 `deb` / 🟢 `rpm` |
 | `Linux` | `arm64` | `deb`/`rpm` | `ubuntu-24.04-arm` | ✅ `CI` (matrix) | 🟡 `deb` / 🟢 `rpm` |
-| `macOS` | `arm64` | `zip` (`.app`) | `macos-latest` | ✅ `CI` (single runner) | 🟡 |
-| `macOS` | `x64` | `zip` (`.app`) | `macos-latest` | ✅ `CI` (cross) | 🟡 |
-| `Windows` | `x64` | `zip` | `windows-latest` | ✅ `CI` | 🟡 |
+| `macOS` | `arm64` | `zip` (`.app`) + `dmg` | `macos-latest` | ✅ `CI` (single runner, `…_macos-arm64.zip/.dmg`) | 🟡 |
+| `macOS` | `x64` | `zip` (`.app`) + `dmg` | `macos-latest` | ✅ `CI` (cross, `…_macos-x64.zip/.dmg`) | 🟡 |
+| `Windows` | `x64` | `zip` + `exe` installer | `windows-latest` | ✅ `CI` (`zip→7z→tar→powershell` + `Inno Setup` `…_windows-x64-setup.exe`) | 🟡 |
 
 `Linux` is the `rpm` anchor verifiable via `ARCH=arm64 bash scripts/package-linux.sh --stage-only` locally; `mac/win` are `tag+workflow_dispatch` manual, `CI` publishes `SHA256SUMS` together.
 

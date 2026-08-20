@@ -61,13 +61,15 @@ jobs:
           echo "VERSION=$V" >> "$GITHUB_ENV"
       - name: dotnet publish
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} -p:PublishAot=false --self-contained true -o artifacts/publish-${{ matrix.rid }}
-      - name: 打 macOS 包（zip）
+      - name: 打 macOS 包（zip+dmg，文件名含 macos 标识）
         run: bash scripts/package-macos.sh artifacts/publish-${{ matrix.rid }}
       - name: 上传
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}-packages
-          path: artifacts/${{ matrix.rid }}/*.zip
+          path: |
+            artifacts/${{ matrix.rid }}/*.zip
+            artifacts/${{ matrix.rid }}/*.dmg
           if-no-files-found: error
           retention-days: 7
 
@@ -95,4 +97,5 @@ jobs:
           draft: false
           files: |
             release-assets/**/*.zip
+            release-assets/**/*.dmg
             release-assets/SHA256SUMS-macos.txt

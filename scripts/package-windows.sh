@@ -59,8 +59,10 @@ if [[ $STAGE_ONLY -eq 1 ]]; then
 fi
 
 mkdir -p "$OUT"
-ZIP="$OUT/DeepSeek.Harness.Desktop_${VERSION}_${ARCH}.zip"
-rm -f "$ZIP"
+# 产物命名加入 windows 标识，避免与 macOS 同名冲突（原 _x64.zip 无平台前缀）
+ZIP="$OUT/DeepSeek.Harness.Desktop_${VERSION}_windows-${ARCH}.zip"
+INSTALLER="$OUT/DeepSeek.Harness.Desktop_${VERSION}_windows-${ARCH}-setup.exe"
+rm -f "$ZIP" "$INSTALLER"
 
 # 兜底压缩：zip → 7z → tar (bsdtar -a) → powershell (cygpath 转换)
 create_zip() {
@@ -121,7 +123,7 @@ create_zip() {
 if ! create_zip "$STAGE" "$ZIP"; then
   echo "error: 无法创建 zip（zip/7z/tar/powershell 均失败）" >&2; exit 1
 fi
-echo "== 产物: $ZIP ($(du -h "$ZIP" 2>/dev/null | cut -f1 || ls -lh "$ZIP" | awk '{print $5}'))"
+echo "== 产物 zip: $ZIP ($(du -h "$ZIP" 2>/dev/null | cut -f1 || ls -lh "$ZIP" | awk '{print $5}'))"
 if command -v unzip >/dev/null 2>&1; then
   unzip -l "$ZIP" 2>&1 | head -20
 elif command -v 7z >/dev/null 2>&1; then
@@ -137,3 +139,182 @@ else
   fi
   "$ps2" -NoProfile -Command "Get-ChildItem '$ZIP_WIN' | Format-List; try { (Get-ChildItem '$ZIP_WIN').Length } catch {}" 2>/dev/null | head -20 || ls -lh "$ZIP" | head -5
 fi
+
+# 额外产出安装器 exe（Windows 期待 exe 安装器；Linux 已有 deb/rpm，macOS 已有 zip+dmg）
+# 优先 Inno Setup (iscc)，回退 NSIS (makensis)，再回退 7z SFX
+create_installer_exe() {
+  local staging="$1" installer="$2"
+  local staging_win installer_win out_dir iss_file
+  # 转 Windows 风格供 Inno Setup（Git Bash 下用 cygpath）
+  if command -v cygpath >/dev/null 2>&1; then
+    staging_win="$(cygpath -w "$staging" 2>/dev/null || echo "$staging")"
+    installer_win="$(cygpath -w "$installer" 2>/dev/null || echo "$installer")"
+    out_dir="$(cygpath -w "$(dirname "$installer")" 2>/dev/null || echo "$(dirname "$installer")")"
+  else
+    staging_win="$staging"
+    installer_win="$installer"
+    out_dir="$(dirname "$installer")"
+  fi
+  local iss_out_dir="$out_dir"
+  local iss_base="$(basename "$installer" .exe)"
+  # 优先 Inno Setup 6
+  local iscc=""
+  for p in "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "/c/Program Files/Inno Setup 6/ISCC.exe" "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" "C:\\Program Files\\Inno Setup 6\\ISCC.exe"; do
+    if [[ -f "$p" ]]; then iscc="$p"; break; fi
+  done
+  if [[ -z "$iscc" ]] && command -v iscc >/dev/null 2>&1; then iscc="$(command -v iscc)"; fi
+  if [[ -z "$iscc" ]] && command -v ISCC.exe >/dev/null 2>&1; then iscc="$(command -v ISCC.exe)"; fi
+  if [[ -n "$iscc" ]]; then
+    echo "   尝试 Inno Setup: $iscc"
+    iss_file="$(mktemp --suffix=.iss 2>/dev/null || mktemp -t iss).iss"
+    # icon 若存在转 ico（若缺则跳过）
+    local icon_line=""
+    if [[ -f "$ROOT/assets/icon.png" ]]; then
+      # 尝试在 Windows 上用 magick 转 ico（若可用），否则忽略
+      if command -v magick >/dev/null 2>&1 && [[ ! -f "$ROOT/assets/icon.ico" ]]; then
+        magick "$ROOT/assets/icon.png" -define icon:auto-resize=16,32,48,64,128,256 "$ROOT/assets/icon.ico" 2>/dev/null || true
+      fi
+      if [[ -f "$ROOT/assets/icon.ico" ]]; then
+        local icon_win
+        if command -v cygpath >/dev/null 2>&1; then icon_win="$(cygpath -w "$ROOT/assets/icon.ico")"; else icon_win="$ROOT/assets/icon.ico"; fi
+        icon_line="SetupIconFile=$icon_win"
+      fi
+    fi
+    cat > "$iss_file" <<ISS_EOF
+[Setup]
+AppName=DeepSeek Harness Desktop
+AppVersion=$VERSION
+AppPublisher=ZK-Andy
+AppPublisherURL=https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop
+DefaultDirName={autopf}\\DeepSeek Harness Desktop
+DefaultGroupName=DeepSeek Harness Desktop
+OutputDir=$out_dir
+OutputBaseFilename=$iss_base
+Compression=lzma
+SolidCompression=yes
+ArchitecturesInstallIn64BitMode=x64
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+$icon_line
+UninstallDisplayIcon={app}\\DeepSeek.Harness.Desktop.exe
+DisableProgramGroupPage=yes
+WizardStyle=modern
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinese"; MessagesFile: "compiler:Languages\\ChineseSimplified.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[Files]
+Source: "$staging_win\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{group}\\DeepSeek Harness Desktop"; Filename: "{app}\\DeepSeek.Harness.Desktop.exe"
+Name: "{group}\\{cm:UninstallProgram,DeepSeek Harness Desktop}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\\DeepSeek Harness Desktop"; Filename: "{app}\\DeepSeek.Harness.Desktop.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\\DeepSeek.Harness.Desktop.exe"; Description: "{cm:LaunchProgram,DeepSeek Harness Desktop}"; Flags: nowait postinstall skipifsilent
+ISS_EOF
+    echo "   ISS: $iss_file"
+    cat "$iss_file" | head -40
+    if "$iscc" /Q "$iss_file" 2>&1 | tail -30; then
+      if [[ -f "$installer" ]]; then
+        echo "== 产物 installer exe (Inno Setup): $installer ($(du -h "$installer" 2>/dev/null | cut -f1 || ls -lh "$installer" | awk '{print $5}'))"
+        rm -f "$iss_file"
+        return 0
+      fi
+    fi
+    echo "   Inno Setup 失败，回退" >&2
+    rm -f "$iss_file"
+  fi
+  # 回退 NSIS
+  local makensis=""
+  for p in "/c/Program Files (x86)/NSIS/makensis.exe" "/c/Program Files/NSIS/makensis.exe" "C:\\Program Files (x86)\\NSIS\\makensis.exe" "C:\\Program Files\\NSIS\\makensis.exe"; do
+    if [[ -f "$p" ]]; then makensis="$p"; break; fi
+  done
+  if [[ -z "$makensis" ]] && command -v makensis >/dev/null 2>&1; then makensis="$(command -v makensis)"; fi
+  if [[ -n "$makensis" ]]; then
+    echo "   尝试 NSIS: $makensis"
+    local nsi_file
+    nsi_file="$(mktemp --suffix=.nsi 2>/dev/null || mktemp -t nsi).nsi"
+    cat > "$nsi_file" <<NSIS_EOF
+!include "MUI2.nsh"
+Name "DeepSeek Harness Desktop"
+OutFile "$installer_win"
+InstallDir "\$PROGRAMFILES64\\DeepSeek Harness Desktop"
+RequestExecutionLevel user
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+!insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "SimpChinese"
+Section "Install"
+  SetOutPath "\$INSTDIR"
+  File /r "$staging_win\\*.*"
+  CreateDirectory "\$SMPROGRAMS\\DeepSeek Harness Desktop"
+  CreateShortCut "\$SMPROGRAMS\\DeepSeek Harness Desktop\\DeepSeek Harness Desktop.lnk" "\$INSTDIR\\DeepSeek.Harness.Desktop.exe"
+  CreateShortCut "\$DESKTOP\\DeepSeek Harness Desktop.lnk" "\$INSTDIR\\DeepSeek.Harness.Desktop.exe"
+  WriteUninstaller "\$INSTDIR\\Uninstall.exe"
+SectionEnd
+Section "Uninstall"
+  Delete "\$INSTDIR\\*.*"
+  RMDir /r "\$INSTDIR"
+  Delete "\$SMPROGRAMS\\DeepSeek Harness Desktop\\DeepSeek Harness Desktop.lnk"
+  Delete "\$DESKTOP\\DeepSeek Harness Desktop.lnk"
+SectionEnd
+NSIS_EOF
+    cat "$nsi_file" | head -30
+    if "$makensis" "$nsi_file" 2>&1 | tail -30; then
+      if [[ -f "$installer" ]]; then
+        echo "== 产物 installer exe (NSIS): $installer ($(du -h "$installer" 2>/dev/null | cut -f1 || ls -lh "$installer" | awk '{print $5}'))"
+        rm -f "$nsi_file"
+        return 0
+      fi
+    fi
+    echo "   NSIS 失败，回退" >&2
+    rm -f "$nsi_file"
+  fi
+  # 回退 7z SFX（若可用，产出自解压 exe；需 7z.sfx）
+  if command -v 7z >/dev/null 2>&1; then
+    local sfx
+    for sfx in "/c/Program Files/7-Zip/7z.sfx" "C:\\Program Files\\7-Zip\\7z.sfx" "/usr/lib/7zip/7z.sfx" "/usr/lib/p7zip/7z.sfx"; do
+      if [[ -f "$sfx" ]]; then
+        echo "   尝试 7z SFX: $sfx"
+        # 7z SFX 需先压 7z 再拼 SFXstub + config + archive
+        local tmp7z
+        tmp7z="$(mktemp --suffix=.7z 2>/dev/null || mktemp -t sfx).7z"
+        (cd "$(dirname "$staging")" && 7z a -t7z "$tmp7z" "$(basename "$staging")" -mx=9 >/dev/null 2>&1)
+        if [[ -f "$tmp7z" ]]; then
+          # 简单拼接 SFX（部分 SFX 模块支持 -sfx 选项直接产出 exe）
+          if 7z a -sfx"$sfx" "$installer" "$staging" >/dev/null 2>&1; then
+            if [[ -f "$installer" ]]; then echo "== 产物 SFX exe: $installer"; rm -f "$tmp7z"; return 0; fi
+          fi
+          cat "$sfx" "$tmp7z" > "$installer" 2>/dev/null || true
+          if [[ -f "$installer" && -s "$installer" ]]; then echo "== 产物 SFX exe (拼接): $installer"; rm -f "$tmp7z"; return 0; fi
+        fi
+        rm -f "$tmp7z"
+        break
+      fi
+    done
+  fi
+  return 1
+}
+
+if create_installer_exe "$STAGE" "$INSTALLER"; then
+  echo "== Windows 安装器已生成 == "
+  ls -lh "$INSTALLER" 2>&1 | head -5 || true
+  if command -v iscc >/dev/null 2>&1 || [[ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]]; then
+    echo "   （Inno Setup 已用）"
+  fi
+else
+  echo "warn: 未能生成安装器 exe（无 Inno Setup/NSIS/7z SFX），仅保留 zip" >&2
+  echo "   Windows 仍可通过 zip 便携运行（解压后运行 DeepSeek.Harness.Desktop.exe）" >&2
+  rm -f "$INSTALLER"
+fi
+
+# 最终产物清单
+echo "== 最终产物清单："
+ls -lh "$OUT"/DeepSeek.Harness.Desktop* 2>&1 | head -20 || true

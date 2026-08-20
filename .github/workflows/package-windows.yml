@@ -50,17 +50,18 @@ jobs:
           V="${{ inputs.version }}"; V="${V#v}"
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then V="${GITHUB_REF_NAME#v}"; fi
           echo "VERSION=$V" >> "$GITHUB_ENV"
-          echo "VERSION=$V" >> $GITHUB_ENV
       - name: dotnet publish
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r win-x64 -p:PublishAot=false --self-contained true -o artifacts/publish-win-x64
-      - name: 打 Windows 包（zip）
+      - name: 打 Windows 包（zip + 安装器 exe，文件名含 windows 标识）
         shell: bash
         run: bash scripts/package-windows.sh artifacts/publish-win-x64
       - name: 上传
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64-packages
-          path: artifacts/win-x64/*.zip
+          path: |
+            artifacts/win-x64/*.zip
+            artifacts/win-x64/*.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -88,4 +89,5 @@ jobs:
           draft: false
           files: |
             release-assets/**/*.zip
+            release-assets/**/*.exe
             release-assets/SHA256SUMS-windows.txt
