@@ -27,15 +27,17 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 
 Referencing [Ryn](https://github.com/Yupmoh/Ryn)'s `ryn bundle` (`macOS .app` / `Windows` folder + `WiX` / `Linux AppDir`) and `release.yml` matrix (`osx-arm64`/`linux-x64`/`win-x64` each on native `OS`), this project with `PublishAot=false` can cross-compile, so both `macOS` archs use single `macos-latest` runner (matrix by `rid`, `ARM via Rosetta`).
 
-| Platform | Arch | Package | Runner | Test |
-|---|---|---|---|---|
-| `Linux` | `x64` | `deb`/`rpm` | `ubuntu-latest` | ✅ `CI` (`staging` + `rpm -qp`) |
-| `Linux` | `arm64` | `deb`/`rpm` | `ubuntu-24.04-arm` | ✅ `CI` (matrix) |
-| `macOS` | `arm64` | `zip` (`.app`) | `macos-latest` | ✅ `CI` (single runner) |
-| `macOS` | `x64` | `zip` (`.app`) | `macos-latest` | ✅ `CI` (cross) |
-| `Windows` | `x64` | `zip` | `windows-latest` | ✅ `CI` |
+| Platform | Arch | Package | Runner | Test | Client |
+|---|---|---|---|---|---|
+| `Linux` | `x64` | `deb`/`rpm` | `ubuntu-latest` | ✅ `CI` (`staging` + `rpm -qp`) | 🟡 `deb` / 🟢 `rpm` |
+| `Linux` | `arm64` | `deb`/`rpm` | `ubuntu-24.04-arm` | ✅ `CI` (matrix) | 🟡 `deb` / 🟢 `rpm` |
+| `macOS` | `arm64` | `zip` (`.app`) | `macos-latest` | ✅ `CI` (single runner) | 🟡 |
+| `macOS` | `x64` | `zip` (`.app`) | `macos-latest` | ✅ `CI` (cross) | 🟡 |
+| `Windows` | `x64` | `zip` | `windows-latest` | ✅ `CI` | 🟡 |
 
 `Linux` is the `rpm` anchor verifiable via `ARCH=arm64 bash scripts/package-linux.sh --stage-only` locally; `mac/win` are `tag+workflow_dispatch` manual, `CI` publishes `SHA256SUMS` together.
+
+> 🟢 Tested specifically (`rpm` verifiable via `rpm -qp --requires`), 🟡 Implemented but not specifically tested (`CI` auto only).
 
 ## Quick start (development)
 
