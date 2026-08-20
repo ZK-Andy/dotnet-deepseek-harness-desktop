@@ -1,58 +1,83 @@
+<p align="center">
+  <img src="assets/icon.png" width="96" alt="DeepSeek Harness Desktop for .NET">
+</p>
+
 # DeepSeek Harness Desktop for .NET
 
-[中文](README.md) | English
+<p align="center">[中文](README.md) | English</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![build & test](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-25%2F25-brightgreen)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml)
-[![coverage](https://img.shields.io/badge/coverage-26.4%25-orange)](docs/testing.md)
-[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases)
-[![.NET](https://img.shields.io/badge/.NET-net10.0-512bd4)](https://dotnet.microsoft.com/download/dotnet/10.0)
-[![docs](https://img.shields.io/badge/docs-architecture%2Ftesting%2Fdevelopment-blue)](docs/architecture.md)
+<p align="center"><strong>A .NET desktop client for DeepSeek Harness — bundled full runtime, download and run.</strong></p>
 
-A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell bundles the complete DeepSeek Harness runtime, so end users need **no separate Node.js or DeepSeek Harness installation**.
+<p align="center">
+  [Features](#features) · [Download](#download-and-install) · [How it works](#how-it-works) · [Development](#development) · [Architecture](docs/architecture.md) · [MIT License](LICENSE)
+</p>
 
-> Status: `v0.1.16` (`25/25` tests `26.4%` coverage + gates green, `CI` `linux 4m41s`/`macos 5m16s` green, `windows` with installer verifying) — native shell + bundled runtime + crash recovery + market closed; `Wayland`/icon fixed, `0.1.11` ships `497K` real `tgz` + background `JSON` detection/migration/`allowBuilds` self-heal, `0.1.12` auto-restarts to show market; `0.1.16` full `linux deb/rpm _linux-*` + `mac zip/dmg _macos-*` + `win zip/exe _windows-*` (`hdiutil dmg` + `Inno Setup` installer, platform prefix, `pipefail 141` fixed).
+<p align="center">
+  [![release](https://img.shields.io/github/v/release/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=release&color=4D6BFE)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases)
+  [![downloads](https://img.shields.io/github/downloads/ZK-Andy/dotnet-deepseek-harness-desktop/total?style=flat&label=downloads&color=4D6BFE)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases)
+  [![stars](https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+  [![build & test](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml)
+  [![tests](https://img.shields.io/badge/tests-25%2F25-brightgreen)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml)
+  [![coverage](https://img.shields.io/badge/coverage-26.4%25-orange)](docs/testing.md)
+  [![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7)](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases)
+  [![.NET](https://img.shields.io/badge/.NET-net10.0-512bd4)](https://dotnet.microsoft.com/download/dotnet/10.0)
+</p>
 
-## Highlights
+A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell bundles the complete DeepSeek Harness runtime, so end users need **no separate Node.js or DeepSeek Harness installation** — download and run.
 
-- **Native, lightweight shell** — C# backend, HTML/CSS/JS frontend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
-- **Full runtime bundled** — `resources/runtime/` ships a Node binary + the `@deepseek-ai/dsh` dependency closure (`pilot-harness` whole-tree `node_modules`, `--store-dir` avoids `sqlite` lock); `dsh web` is spawned by the shell with a private `DSH_HOME`, and the UI loads at `dsh web:` URL. No PATH `dsh`/`node` required (falls back to PATH `dsh` if the bundle is absent).
-- **Crash recovery** — the shell supervises the runtime child: on exit it shows a recovery screen, restarts the child, and navigates the same window to the new URL. The port is kept stable so the Web UI's origin (and its in-page session memory) survives a restart — you return to your previous conversation.
-- **Plugin market pre-installed** — `dsh-market` (`https://github.com/dsh-market/dsh-market`) ships as `497K` real `tgz` in `resources/runtime/dshmarket.tgz` — first launch background `file://` installs to `DSH_HOME` (`System.Text.Json` exact check, `app` bogus migration, `pnpm-workspace.yaml` 6 `allowBuilds` self-heal) and `RuntimeSupervisor` restarts to show, `1200+` plugins searchable one-click (`0.1.8` blocking→`0.1.11` real `tgz`→`0.1.12` immediate restart).
-- **Native icon** — `assets/icon.png` (`hairyf/deepseek-harness-desktop` `512`) ships with the package, installed to `hicolor` and referenced as `Icon=deepseek-harness-desktop` in the `.desktop` entry; `ryn.json:identifier` and `StartupWMClass` are both `io.github.ZK-Andy.dotnet-deepseek-harness-desktop` for correct `Wayland`/`X11` taskbar association.
-- **Testable host layer** — `HarnessRuntimeHost` / `RuntimeSupervisor` / `RuntimeLocator` / `MarketInstallHelper` / URL parser are xunit `25/25` (`MarketInstallHelper 84%`) and gate-checked; `package-linux.sh` `fail loud` verifies real `tgz` in `staging`.
+## Features
 
-## Platform Packages
+- ⚡️ **Zero-setup, download and run** — bundles a Node binary + the `@deepseek-ai/dsh` dependency closure (`resources/runtime/`); the shell spawns `dsh web` with a private `DSH_HOME`. No PATH `dsh`/`node` required (falls back to PATH `dsh` if the bundle is absent).
+- 🔒 **Native, lightweight shell** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
+- 🔄 **Crash self-heal** — the shell supervises the runtime process: crash → recovery screen → auto-restart → same window back to a new URL; **the port stays stable** so the Web UI origin (and page-level session memory) survives — **return to your previous conversation after a crash**.
+- 🧩 **Plugin market bundled** — `dsh-market` ships with the package (`dshmarket.tgz`), quietly installed to `DSH_HOME` on first launch; it auto-restarts to appear. `1200+` plugins are searchable and one-click installable.
+- 🖼️ **Native icons / Wayland-ready** — icons ship into `hicolor`; `ryn.json:identifier` and `StartupWMClass` are both `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`, so the taskbar associates correctly.
 
-Referencing [Ryn](https://github.com/Yupmoh/Ryn)'s `ryn bundle` (`macOS .app` / `Windows` folder + `WiX` / `Linux AppDir`) and `release.yml` matrix (`osx-arm64`/`linux-x64`/`win-x64` each on native `OS`), this project with `PublishAot=false` can cross-compile, so both `macOS` archs use single `macos-latest` runner (matrix by `rid`, `ARM via Rosetta`).
+## Download and install
 
-| Platform | Arch | Package | Runner | Test | Client |
-|---|---|---|---|---|---|
-| `Linux` | `x64` | `deb`/`rpm` (`…_linux-amd64.deb` / `…_linux-x86_64.rpm`) | `ubuntu-latest` | ✅ `CI` (`staging` + `rpm -qp`) | 🟡 `deb` / 🟢 `rpm` |
-| `Linux` | `arm64` | `deb`/`rpm` (`…_linux-arm64.deb` / `…_linux-aarch64.rpm`) | `ubuntu-24.04-arm` | ✅ `CI` (matrix) | 🟡 `deb` / 🟢 `rpm` |
-| `macOS` | `arm64` | `zip` (`.app`) + `dmg` | `macos-latest` | ✅ `CI` (single runner, `…_macos-arm64.zip/.dmg`) | 🟡 |
-| `macOS` | `x64` | `zip` (`.app`) + `dmg` | `macos-latest` | ✅ `CI` (cross, `…_macos-x64.zip/.dmg`) | 🟡 |
-| `Windows` | `x64` | `zip` + `exe` installer | `windows-latest` | ✅ `CI` (`zip→7z→tar→powershell` + `Inno Setup` `…_windows-x64-setup.exe`) | 🟡 |
+Download the package for your platform from [Releases](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases) (with `SHA256SUMS`):
 
-`Linux` is the `rpm` anchor verifiable via `ARCH=arm64 bash scripts/package-linux.sh --stage-only` locally; `mac/win` are `tag+workflow_dispatch` manual, `CI` publishes `SHA256SUMS` together.
+| Platform | Arch | Formats |
+|---|---|---|
+| `Linux` | `x64` / `arm64` | `deb` (`…_linux-amd64.deb` / `…_linux-arm64.deb`) / `rpm` (`…_linux-x86_64.rpm` / `…_linux-aarch64.rpm`) |
+| `macOS` | `arm64` / `x64` | `zip` (`.app`) / `dmg` |
+| `Windows` | `x64` | `zip` (portable, unzip and run) / `exe` installer |
 
-> 🟢 Tested specifically (`rpm` verifiable via `rpm -qp --requires`), 🟡 Implemented and built by `CI`, but **real-machine targeted testing awaits community support** (no local Intel macOS / Windows hardware here).
+> **Unsigned note**: this is an **open-source project and we do not do paid signing**, so releases are **unsigned**. On macOS, if Gatekeeper shows "unidentified developer", right-click → Open, or System Settings → Privacy & Security → Open Anyway. On Windows, if SmartScreen shows "unknown publisher", choose More info → Run anyway. For dev/internal use, `SELF_SIGN=1` signs locally to clear warnings; see [docs/development.md](docs/development.md).
+>
+> **Test status**: `Linux` is verified by `CI`; `macOS x64` / `Windows` real-machine targeted testing **awaits community support** (no local Intel-mac / Windows hardware here).
 
-**Signing**: this is an **open-source project and we do not do paid signing** (no free publicly-trusted code signing exists; Apple Developer / Windows OV-EV / Azure Trusted Signing all cost money and are not used). Releases ship **unsigned** — macOS users see Gatekeeper "unidentified developer" and Windows users see SmartScreen "unknown publisher", consistent with the free open-source status (right-click → Open / More info → Run anyway). For dev/internal you can use `SELF_SIGN=1` (mac `codesign` ad-hoc / win `signtool` self-signed cert) to clear local warnings; see [docs/development.md](docs/development.md).
+## How it works
 
-## Quick start (development)
+```text
+┌──────────────────────────────────────────────────────┐
+│ Ryn shell (C#, OS webview)                           │
+│   spawn dsh → parse dsh web: URL → load the Web UI    │
+│   crash supervision → stable-port restart → back      │
+└─────────────────────────┬────────────────────────────┘
+                          │ spawn + private DSH_HOME
+┌─────────────────────────▼────────────────────────────┐
+│ Bundled runtime resources/runtime/                    │
+│   Node binary + @deepseek-ai/dsh closure + dshmarket  │
+│   dsh web (localhost)                                │
+└──────────────────────────────────────────────────────┘
+```
+
+(Full architecture: [docs/architecture.md](docs/architecture.md).)
+
+## Development
 
 ```sh
 # prerequisites: .NET 10 SDK; on Linux: WebKitGTK
-# optional: pre-bundle the runtime from a local dsh install (needs node + @deepseek-ai/dsh)
+# optional: bundle the runtime from a local dsh install
 scripts/bundle-runtime.sh
 
-# run — uses PATH dsh by default; use bundled runtime with:
+# run — uses PATH dsh by default; use the bundled runtime with:
 # DSH_DESKTOP_RUNTIME_DIR=$PWD/resources/runtime
 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# tests
+# tests (25/25)
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # webview devtools (default off)
@@ -64,17 +89,16 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ## Layout
 
 ```
-├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program (background market+restart), Services/HarnessRuntimeHost, RuntimeSupervisor, RuntimeLocator, MarketInstallHelper, HarnessUrlParser
+├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program, Services/HarnessRuntimeHost, RuntimeSupervisor, RuntimeLocator, MarketInstallHelper, HarnessUrlParser
 ├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 25/25
-├── resources/runtime/              # bundled Node + dsh closure + dshmarket.tgz 497K (generated, gitignored, staging verifies real tgz)
-├── scripts/                        # gates + bundle-runtime-ci.sh (bundle-runtime.sh is wrapper) + package-linux.sh
-├── .agents/notes/implemented/bug-fix/2026-08-20-dshmarket-background-install.md  # market chain ADR
-└── docs/architecture.md, testing.md, development.md  # project docs
+├── resources/runtime/              # bundled Node + dsh closure + dshmarket.tgz (generated, gitignored)
+├── scripts/                        # gates + bundle-runtime-ci.sh + package-linux.sh + release-notes.sh
+└── docs/architecture.md、testing.md、development.md
 ```
 
 ## License & acknowledgements
 
 - This project: MIT.
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) — the runtime this shell hosts.
-- [Ryn](https://github.com/Yupmoh/Ryn) (MIT) — the desktop shell framework.
-- Packaging approach inspired by [pilot-harness](https://github.com/op7418/pilot-harness).
+- [Ryn](https://github.com/Yupmoh/Ryn) (MIT) — the desktop-shell framework.
+- Packaging approach references [pilot-harness](https://github.com/op7418/pilot-harness).
