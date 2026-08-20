@@ -40,9 +40,11 @@ fi
 mkdir -p "$DEST"
 cp "$TMP/$NODE_BIN" "$DEST/$NODE_DST"
 if [[ "$NODE_DST" == "node" ]]; then chmod +x "$DEST/node"; fi
-# Windows 下 cp -a 对 symlink 不友好，改用 cp -r
+# Windows 下 pnpm 的 symlink/junction 在 Git Bash 的 cp -a 下失败，需解引用
 CP_A="cp -a"
-if [[ "$PLATFORM" == win-* ]]; then CP_A="cp -r"; fi
+if [[ "$PLATFORM" == win-* ]]; then
+  CP_A="cp -Lr"
+fi
 
 echo "== [2/3] pnpm 安装 @deepseek-ai/dsh@${DSH_VERSION} + dshmarket 依赖闭包（dshmarket 随包预装，首启后台 file:// 安装，不阻塞 dsh web:）"
 if ! command -v pnpm >/dev/null 2>&1; then
@@ -109,7 +111,15 @@ echo "== [3/3] 组装 resources/runtime（整棵 node_modules，pilot-harness �
 rm -rf "$DEST/dsh" "$DEST/node_modules"
 mkdir -p "$DEST/node_modules"
 # 保留 pnpm 内部相对 symlink 结构整树拷入；pilot-harness 亦保留 node_modules 原样（含 prebuild），不走 asar
-$CP_A node_modules/. "$DEST/node_modules/"
+if ! $CP_A node_modules/. "$DEST/node_modules/" 2>/dev/null; then
+  echo "   cp $CP_A 失败，尝试解引用/robocopy 回退"
+  if command -v powershell >/dev/null 2>&1; then
+    powershell -Command "Copy-Item -Path 'node_modules/*' -Destination '$DEST/node_modules' -Recurse -Force" 2>/dev/null || true
+  fi
+  # 最后尝试普通 cp（解引用）
+  cp -Lr node_modules/. "$DEST/node_modules/" 2>/dev/null || cp -r node_modules/. "$DEST/node_modules/" 2>/dev/null || true
+  [[ -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 拷贝后仍缺入口" >&2; exit 1; }
+fi
 
 # 体积裁剪（可选，TRIM=1 时启用）：移除文档/源码/测试，保留运行时必需
 if [[ "${TRIM:-0}" == "1" ]]; then
