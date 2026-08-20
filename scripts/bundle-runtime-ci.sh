@@ -29,7 +29,7 @@ mkdir -p "$DEST"
 cp "$TMP/$NODE_BIN" "$DEST/node"
 chmod +x "$DEST/node"
 
-echo "== [2/3] pnpm 安装 @deepseek-ai/dsh@${DSH_VERSION} + dshmarket 依赖闭包（dshmarket 随包预装，首启无下载）"
+echo "== [2/3] pnpm 安装 @deepseek-ai/dsh@${DSH_VERSION} + dshmarket 依赖闭包（dshmarket 随包预装，首启后台 file:// 安装，不阻塞 dsh web:）"
 if ! command -v pnpm >/dev/null 2>&1; then
   echo "    未发现 pnpm，npm install -g pnpm@11"
   npm install -g pnpm@11
@@ -42,8 +42,13 @@ npm init -y >/dev/null 2>&1
 pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod \
   --allow-build=node-pty --allow-build=koffi --allow-build=protobufjs \
   --allow-build=@google/genai --allow-build=@deepseek-ai/dsh-subprocess-local
-# 预装市场：与 dsh 同闭包，随包收入，首启 patch 无需联网
+# 预装市场：与 dsh 同闭包，随包收入；另 pack 出 tgz 供首启后后台 file:// 安装到 DSH_HOME（不阻塞 dsh web:）
 pnpm add "dshmarket@1.15.0" --prod --allow-build=esbuild
+pnpm pack dshmarket --pack-destination "$TMP" >/dev/null 2>&1 || true
+if ls "$TMP"/*.tgz >/dev/null 2>&1; then
+  cp "$TMP"/*.tgz "$DEST/dshmarket.tgz" 2>/dev/null || true
+  echo "   dshmarket tgz 已随包：$DEST/dshmarket.tgz"
+fi
 
 echo "== [3/3] 组装 resources/runtime（整棵 node_modules，pilot-harness 同款）"
 rm -rf "$DEST/dsh" "$DEST/node_modules"

@@ -117,15 +117,7 @@ public sealed class HarnessRuntimeHost : IDisposable
         Directory.CreateDirectory(Path.Combine(home, ".pnpm-store"));
         Directory.CreateDirectory(Path.Combine(home, ".pnpm-cache"));
 
-        // 桌面默认补丁：预装 dsh-market（已随包预装到 node_modules，首启 patch 无需联网，不阻塞 dsh web）
-        var desktopPatch = Path.Combine(AppContext.BaseDirectory, "desktop.patch.yml");
-        if (File.Exists(desktopPatch))
-        {
-            psi.ArgumentList.Add("--patch");
-            psi.ArgumentList.Add(desktopPatch);
-        }
-
-        // 额外桌面覆盖层：DSH_DESKTOP_PATCH=<path> 时叠加（便于本机调试）
+        // 桌面覆盖层：DSH_DESKTOP_PATCH=<path> 时作为 --patch 叠加（0.1.8 的自动预装 dsh-market 因首启 pnpm 阻塞致重启循环，已回退为手动安装）
         var patchEnv = Environment.GetEnvironmentVariable("DSH_DESKTOP_PATCH");
         if (!string.IsNullOrWhiteSpace(patchEnv))
         {

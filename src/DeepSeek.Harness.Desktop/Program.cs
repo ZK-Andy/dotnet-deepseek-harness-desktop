@@ -82,6 +82,75 @@ public static class Program
             log: Console.WriteLine);
         var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
 
+        // 市场后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装 dshmarket，装完自动刷新（不阻塞首启）
+        // 对齐 Tauri 的“推荐预设”后台装 + pilot-harness 的随包 theme 已在 node_modules
+        if (webUrl is not null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(3));
+                    var dshHome = HarnessRuntimeHost.ResolveDshHome();
+                    var profilePkg = Path.Combine(dshHome, "profiles", "web", "package.json");
+                    if (File.Exists(profilePkg) && File.ReadAllText(profilePkg).Contains("dshmarket"))
+                    {
+                        return;
+                    }
+
+                    var runtimeDir = RuntimeLocator.ResolveRuntimeDirectory();
+                    var bundled = RuntimeLocator.TryLocateBundled(runtimeDir);
+                    if (bundled is null)
+                    {
+                        return;
+                    }
+
+                    var tgz = Path.Combine(runtimeDir, "dshmarket.tgz");
+                    var spec = File.Exists(tgz) ? tgz : "dshmarket";
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = bundled.Value.NodeExe,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                    };
+                    psi.ArgumentList.Add(bundled.Value.DshEntry);
+                    psi.ArgumentList.Add("plugin");
+                    psi.ArgumentList.Add("--profile");
+                    psi.ArgumentList.Add("web");
+                    psi.ArgumentList.Add("add");
+                    psi.ArgumentList.Add(spec);
+                    psi.Environment["DSH_HOME"] = dshHome;
+                    psi.Environment["pnpm_config_store_dir"] = Path.Combine(dshHome, ".pnpm-store");
+                    psi.Environment["pnpm_config_cache_dir"] = Path.Combine(dshHome, ".pnpm-cache");
+                    Directory.CreateDirectory(Path.Combine(dshHome, ".pnpm-store"));
+                    Directory.CreateDirectory(Path.Combine(dshHome, ".pnpm-cache"));
+                    using var p = System.Diagnostics.Process.Start(psi);
+                    if (p is null)
+                    {
+                        return;
+                    }
+
+                    await p.WaitForExitAsync();
+                    if (p.ExitCode == 0)
+                    {
+                        Console.WriteLine("[host] dsh-market 已后台安装，刷新 WebView");
+                        try
+                        {
+                            await windowAccessor.Current.NavigateAsync(webUrl);
+                        }
+                        catch
+                        {
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[host] 市场后台安装跳过：{ex.Message}");
+                }
+            });
+        }
+
         app.Run();
 
         supervisorCts.Cancel();
