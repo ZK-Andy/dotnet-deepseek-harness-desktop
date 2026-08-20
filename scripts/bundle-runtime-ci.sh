@@ -32,6 +32,23 @@ case "$PLATFORM" in
   *) echo "error: 暂不支持平台 $PLATFORM" >&2; exit 1 ;;
 esac
 
+# 组装好的闭包缓存命中：resources/runtime 由 CI 的 actions/cache 整步恢复（含 .bundle-meta.json），
+# 且签名与本次请求一致 → 整步跳过（免下载 Node/免 pnpm/免 cp/免自检）。本地/冷启动无缓存则正常全量。
+META_FILE="$DEST/.bundle-meta.json"
+if [[ -f "$META_FILE" ]] \
+   && grep -q "\"dshVersion\":\"$DSH_VERSION\"" "$META_FILE" \
+   && grep -q "\"nodeVersion\":\"$NODE_VERSION\"" "$META_FILE" \
+   && grep -q "\"platform\":\"$PLATFORM\"" "$META_FILE" \
+   && [[ -f "$DEST/$NODE_DST" ]] \
+   && [[ -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
+  echo "== resources/runtime 闭包缓存命中（$PLATFORM，dsh $DSH_VERSION）→ 跳过重建 =="
+  du -sh "$DEST" | cut -f1
+  exit 0
+fi
+if [[ -f "$META_FILE" ]]; then
+  echo "  闭包存在但签名不匹配（$PLATFORM / dsh $DSH_VERSION / node $NODE_VERSION），全量重建"
+fi
+
 echo "== [1/3] 下载 Node v${NODE_VERSION} ($PLATFORM)"
 if [[ "$NODE_URL" == *.zip ]]; then
   curl -fsSL "$NODE_URL" -o "$TMP/node.zip"
@@ -128,6 +145,33 @@ if ! $CP_A node_modules/. "$DEST/node_modules/" 2>/dev/null; then
   [[ -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 拷贝后仍缺入口" >&2; exit 1; }
 fi
 
+# 裁剪闭包（per-arch + 无风险冗余）：
+#  - node-pty 删「非当前平台」prebuild 目录（node-pty 运行时按 process.platform+arch 选目录，删别的平台安全）
+#  - 删 *.map 源码映射（仅调试用）与 README/CHANGELOG/CONTRIBUTING/HISTORY markdown
+#  - 不删 .ts/.d.ts 源码（避免历次盲删 TRIM 的运行时故障风险）
+# 作用于 $DEST/node_modules；须在自检前执行，让自检验证裁剪后闭包仍能启动。
+trim_runtime_closure() {
+  local keep=""
+  case "$PLATFORM" in
+    linux-x64) keep="linux-x64" ;;
+    linux-arm64) keep="linux-arm64" ;;
+    win-x64) keep="win32-x64" ;;
+    osx-x64) keep="darwin-x64" ;;
+    osx-arm64) keep="darwin-arm64" ;;
+  esac
+  echo "== 裁剪闭包：node-pty 保留 $keep；删 *.map / README·CHANGELOG markdown =="
+  find "$DEST/node_modules/.pnpm" -path '*/node-pty*/node_modules/node-pty/prebuilds/*' -type d 2>/dev/null | while read -r d; do
+    case "$(basename "$d")" in
+      "$keep") : ;;
+      *) rm -rf "$d" ;;
+    esac
+  done
+  find "$DEST/node_modules" -name '*.map' -type f -delete 2>/dev/null || true
+  find "$DEST/node_modules" -type f \( -iname 'README*.md' -o -iname 'CHANGELOG*.md' -o -iname 'CONTRIBUTING*.md' -o -iname 'HISTORY*.md' \) -delete 2>/dev/null || true
+}
+
+trim_runtime_closure
+
 echo "== [4/4] 自检：spawn dsh web 应给出 URL（Linux 强校验，mac/win 轻校验）"
 if [[ "$PLATFORM" == linux-* ]]; then
   SMOKE_HOME="$(mktemp -d)"
@@ -174,3 +218,6 @@ echo "dsh: $(grep '"version"' "$DEST/node_modules/@deepseek-ai/dsh/package.json"
 du -sh "$DEST" | cut -f1
 echo "   入口校验：$DEST/$NODE_DST + $DEST/node_modules/@deepseek-ai/dsh/lib/bin.js"
 [[ -f "$DEST/$NODE_DST" && -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 入口缺失" >&2; exit 1; }
+# 成功构建后写闭包签名，供下次（CI 缓存恢复后）整步跳过
+printf '{"dshVersion":"%s","nodeVersion":"%s","platform":"%s"}\n' "$DSH_VERSION" "$NODE_VERSION" "$PLATFORM" > "$DEST/.bundle-meta.json"
+echo "   已写闭包元数据：$DEST/.bundle-meta.json"

@@ -22,6 +22,7 @@ Status: implemented
 
 ## Consequences
 
-- 收益（v0.1.18 实测）：Linux/mac/Windows 三平台 pnpm store 均按架构缓存打底成功（`Post 缓存 pnpm store` 各平台 save：Linux 2–4s / macOS 7–15s / **Windows ~125s**）。**命中收益待下次 tag（如 v0.1.19）**：Windows 捆绑 ~277s 可压缩到秒级。
-- 代价/风险：首次 run 是 **cache miss**，仍全量捆绑（Windows 277s，与历史 286s 持平）；Windows store 较大，首次 save 额外付出 ~125s（缓存 tar ~1GB，Windows 慢）；`restore-keys` 前缀命中可能耦合老版本内容，但 pnpm store 按版本累积、只增量缺的，安全。
-- 验证：`v0.1.18` 三平台全绿；Windows job 因首 run（miss + 125s save）仍 14.1 分——**本次未能直接验证提速，需复跑/下一 tag 确认缓存命中后的时间**。
+- **实测（v0.1.18 + 手动复跑）**：store 缓存机制本身有效（二次同分支 run 命中 `pnpm-store-win-x64-v2`、不再 re-save），但**对 Windows 捆绑提速基本无效**——缓存命中时「生成捆绑运行时」仍 ~283s，与 miss 时 277–310s 相当。真正瓶颈是 `cp -Lr` 把 ~1.5GB `node_modules` 闭包拷进 `resources/runtime`（数万文件/解引用，Windows 慢），**与 pnpm store 无关，store 缓存无法加速**。job 只从 miss 的 ~14.1 分降到 hit 的 ~12.4 分（靠省掉 ~110s 的 store re-save）。
+- **GitHub Actions 缓存按分支/ref 作用域隔离**：v0.1.18 在 `refs/tags/v0.1.18` 存的缓存，`main` 上手动 run 看不到（`Cache not found`）；同分支二次 run 才命中。tag 触发的发布流每个 tag 是独立 ref，store 缓存跨 tag 亦难命中。
+- **结论/转向**：要真正提速 Windows 捆绑，应缓存**组装好的 `resources/runtime` 闭包**（键 = DSH_VERSION+NODE_VERSION+arch），命中时整步跳过（免下载/免 pnpm/免 `cp -Lr`）；store 缓存改为仅作该方案的次要层。另注意 Windows「打 Windows 包」~345s 的墙体大头是 Inno Setup `LZMA` 压缩 ~1.5GB 闭包（见 `drop-standalone-zip-artifacts`），需靠闭包瘦身（per-arch 裁剪专案）或压低压缩级别才能再降。
+- 验证：三平台 `Post 缓存 pnpm store` save（Linux 2–4s / macOS 7–15s / Windows ~110–125s）；同分支二次 run 命中。

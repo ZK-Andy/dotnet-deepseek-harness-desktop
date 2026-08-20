@@ -38,6 +38,8 @@ jobs:
       DOTNET_NOLOGO: '1'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       ARCH: ${{ matrix.arch }}
+      DSH_VERSION: '0.1.0-rc.8'
+      NODE_VERSION: '22.23.1'
     steps:
       - uses: actions/checkout@v4
 
@@ -75,6 +77,13 @@ jobs:
             echo "::warning::inputs.version($input) 与 tag v$tag 不一致，将以 tag 为准"
           fi
           echo "Release tag 版本: $tag"
+
+      - name: 缓存 resources/runtime 闭包
+        uses: actions/cache@v4
+        with:
+          path: resources/runtime
+          key: dsh-closure-${{ matrix.rid }}-${{ env.DSH_VERSION }}-${{ env.NODE_VERSION }}-v1
+          restore-keys: dsh-closure-${{ matrix.rid }}-
 
       - name: 生成捆绑运行时（下载 Node + pnpm 安装 dsh 闭包，pilot-harness 整树方案）
         run: bash scripts/bundle-runtime-ci.sh ${{ matrix.rid }}

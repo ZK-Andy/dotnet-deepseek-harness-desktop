@@ -40,6 +40,8 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       ARCH: ${{ matrix.arch }}
       SELF_SIGN: ${{ github.event.inputs.self_sign }}
+      DSH_VERSION: '0.1.0-rc.8'
+      NODE_VERSION: '22.23.1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -57,6 +59,12 @@ jobs:
           path: ~/.dsh-pnpm/store
           key: pnpm-store-${{ matrix.rid }}-v2
           restore-keys: pnpm-store-${{ matrix.rid }}-
+      - name: 缓存 resources/runtime 闭包
+        uses: actions/cache@v4
+        with:
+          path: resources/runtime
+          key: dsh-closure-${{ matrix.rid }}-${{ env.DSH_VERSION }}-${{ env.NODE_VERSION }}-v1
+          restore-keys: dsh-closure-${{ matrix.rid }}-
       - name: 生成捆绑运行时
         run: bash scripts/bundle-runtime-ci.sh ${{ matrix.rid }}
       - name: 确定版本
