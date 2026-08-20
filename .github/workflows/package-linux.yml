@@ -1,13 +1,12 @@
 name: package-linux
 
 # 参照 pilot-harness .github/workflows/desktop.yml：
-#  - 预览（push main / 手动无 tag）产 7 天 Artifacts；正式（v* tag / 手动 release_tag）产 Release + SHA256SUMS
+#  - 预览（手动 workflow_dispatch 无 tag）产 7 天 Artifacts；正式（v* tag）产 Release + SHA256SUMS
 #  - 本地不产包，所有产物来自 GitHub-hosted ubuntu runner（含 dpkg-deb/rpmbuild）
 #  - 节省并发：同一 sha 的重复触发共用组并取消前一次
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
   workflow_dispatch:
     inputs:
