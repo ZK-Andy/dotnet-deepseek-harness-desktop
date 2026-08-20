@@ -43,7 +43,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: pnpm
 
       - name: 安装 rpmbuild
         run: sudo apt-get update && sudo apt-get install -y rpm
