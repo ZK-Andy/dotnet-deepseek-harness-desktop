@@ -19,16 +19,17 @@ concurrency:
 
 jobs:
   build-macos:
+    # 参照 Ryn 的 release.yml：每个 RID 在原生 OS 上构建 NativeAOT；
+    # 本项目 PublishAot=false 可交叉编，故两档均用 macos-latest 单 runner 矩阵内切 rid，
+    # 避免占 2 台 mac（原 x64 用 macos-13 已排队 9m+，现 ARM via Rosetta 交叉编）
     strategy:
       matrix:
         include:
           - arch: arm64
             rid: osx-arm64
-            runs-on: macos-latest
           - arch: x64
             rid: osx-x64
-            runs-on: macos-13
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: macos-latest
     env:
       DOTNET_NOLOGO: '1'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'

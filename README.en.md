@@ -23,6 +23,20 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 - **Native icon** — `assets/icon.png` (`hairyf/deepseek-harness-desktop` `512`) ships with the package, installed to `hicolor` and referenced as `Icon=deepseek-harness-desktop` in the `.desktop` entry; `ryn.json:identifier` and `StartupWMClass` are both `io.github.ZK-Andy.dotnet-deepseek-harness-desktop` for correct `Wayland`/`X11` taskbar association.
 - **Testable host layer** — `HarnessRuntimeHost` / `RuntimeSupervisor` / `RuntimeLocator` / `MarketInstallHelper` / URL parser are xunit `25/25` (`MarketInstallHelper 84%`) and gate-checked; `package-linux.sh` `fail loud` verifies real `tgz` in `staging`.
 
+## Platform Packages
+
+Referencing [Ryn](https://github.com/Yupmoh/Ryn)'s `ryn bundle` (`macOS .app` / `Windows` folder + `WiX` / `Linux AppDir`) and `release.yml` matrix (`osx-arm64`/`linux-x64`/`win-x64` each on native `OS`), this project with `PublishAot=false` can cross-compile, so both `macOS` archs use single `macos-latest` runner (matrix by `rid`, `ARM via Rosetta`).
+
+| Platform | Arch | Package | Runner | Test |
+|---|---|---|---|---|
+| `Linux` | `x64` | `deb`/`rpm` | `ubuntu-latest` | ✅ `CI` (`staging` + `rpm -qp`) |
+| `Linux` | `arm64` | `deb`/`rpm` | `ubuntu-24.04-arm` | ✅ `CI` (matrix) |
+| `macOS` | `arm64` | `zip` (`.app`) | `macos-latest` | ✅ `CI` (single runner) |
+| `macOS` | `x64` | `zip` (`.app`) | `macos-latest` | ✅ `CI` (cross) |
+| `Windows` | `x64` | `zip` | `windows-latest` | ✅ `CI` |
+
+`Linux` is the `rpm` anchor verifiable via `ARCH=arm64 bash scripts/package-linux.sh --stage-only` locally; `mac/win` are `tag+workflow_dispatch` manual, `CI` publishes `SHA256SUMS` together.
+
 ## Quick start (development)
 
 ```sh

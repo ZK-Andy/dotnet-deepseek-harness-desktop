@@ -23,6 +23,20 @@
 - **原生图标**：`assets/icon.png`（`hairyf/deepseek-harness-desktop` 同款 `512`）随包，`deb/rpm` 安装到 `hicolor` 并在 `.desktop` 设 `Icon=deepseek-harness-desktop`，`ryn.json:identifier` 与 `StartupWMClass` 均为 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`，`Wayland`/`X11` 任务栏均正确关联。
 - **可测试宿主层**：`HarnessRuntimeHost` / `RuntimeSupervisor` / `RuntimeLocator` / `MarketInstallHelper` / URL 解析器均带 xunit 单测（`25/25`，`MarketInstallHelper 84%`）与门禁；`package-linux.sh` 在 `staging` 即 `fail loud` 校验真包。
 
+## 平台包
+
+参照 [Ryn](https://github.com/Yupmoh/Ryn) 的 `ryn bundle`（`macOS .app` / `Windows` 文件夹 + `WiX` / `Linux AppDir`）与 `Ryn` 的 `release.yml` 矩阵（`osx-arm64`/`linux-x64`/`win-x64` 各在原生 `OS` 上 `dotnet publish`），本项目 `PublishAot=false` 可交叉编，故 `macOS` 两档均用 `macos-latest` 单 `runner` 矩阵内切 `rid`（`ARM via Rosetta`），避免占 `2` 台 `mac`。
+
+| 平台 | 架构 | 包格式 | `Runner` | 测试情况 |
+|---|---|---|---|---|
+| `Linux` | `x64` (`amd64`) | `deb`/`rpm` | `ubuntu-latest` | ✅ `CI` 自动（`staging` 真包 + `rpm -qp --requires` + `deb Depends`） |
+| `Linux` | `arm64` | `deb`/`rpm` | `ubuntu-24.04-arm` | ✅ `CI` 自动（矩阵 `arm64`） |
+| `macOS` | `arm64` (`osx-arm64`) | `zip` (`.app`) | `macos-latest` | ✅ `CI` 自动（单 `runner` 矩阵） |
+| `macOS` | `x64` (`osx-x64`) | `zip` (`.app`) | `macos-latest` (交叉) | ✅ `CI` 自动（`Rosetta`） |
+| `Windows` | `x64` | `zip` | `windows-latest` | ✅ `CI` 自动（`zip`/`powershell` 回退） |
+
+`Linux` 为 `rpm` 锚可本地 `ARCH=arm64 bash scripts/package-linux.sh --stage-only` 验证；`mac/win` 已切 `tag+workflow_dispatch` 手动触发，`CI` 全量时同出 `SHA256SUMS`。
+
 ## 快速开始（开发）
 
 ```sh
