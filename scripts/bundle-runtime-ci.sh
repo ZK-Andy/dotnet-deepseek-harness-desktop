@@ -16,6 +16,13 @@ DEST="$ROOT/resources/runtime"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# pnpm store：跨 run 持久化缓存的关键路径。CI 的 actions/cache 按此缓存，
+# 命中后不必每次重下包/重编原生模块（node-pty/koffi/protobufjs…）。默认统一放
+# $HOME/.dsh-pnpm/store（各平台一致，Git Bash 下 Windows 亦正确解析），可用
+# PNPM_STORE_DIR 覆盖（本地 /home 只读等场景由 bundle-runtime.sh 指向工作区可写处）。
+PNPM_STORE_DIR="${PNPM_STORE_DIR:-$HOME/.dsh-pnpm/store}"
+mkdir -p "$PNPM_STORE_DIR"
+
 case "$PLATFORM" in
   linux-x64) NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"; NODE_BIN="node-v${NODE_VERSION}-linux-x64/bin/node"; NODE_DST="node" ;;
   linux-arm64) NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz"; NODE_BIN="node-v${NODE_VERSION}-linux-arm64/bin/node"; NODE_DST="node" ;;
@@ -52,17 +59,17 @@ if ! command -v pnpm >/dev/null 2>&1; then
   npm install -g pnpm@11
 fi
 pnpm --version
-mkdir -p "$TMP/app" "$TMP/store"
+mkdir -p "$TMP/app"
 cd "$TMP/app"
 npm init -y >/dev/null 2>&1
 # 允许原生绑定构建脚本，否则 pnpm 11 将拒绝执行且闭包缺 .node 二进制
-# 使用临时 store 避免默认 ~/.local/share/pnpm/store 的 sqlite 锁/RO 残留
-pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod --store-dir "$TMP/store" \
+# store 指向 PNPM_STORE_DIR（CI 持久化缓存命中后免重复下包/编译原生模块）
+pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod --store-dir "$PNPM_STORE_DIR" \
   --allow-build=node-pty --allow-build=koffi --allow-build=protobufjs \
   --allow-build=@google/genai --allow-build=@deepseek-ai/dsh-subprocess-local
 # 预装市场：与 dsh 同闭包，随包收入；另取官方已构建 tgz 供首启后后台 file:// 安装到 DSH_HOME（不阻塞 dsh web:）
 # 旧版 pnpm pack dshmarket 会误打 app 包（394B），已改为直接拉 registry 官方 tgz（已含 lib/client，无需 tsc 构建）
-pnpm add "dshmarket@1.15.0" --prod --store-dir "$TMP/store" --allow-build=esbuild
+pnpm add "dshmarket@1.15.0" --prod --store-dir "$PNPM_STORE_DIR" --allow-build=esbuild
 echo "   拉取 dshmarket 官方 tgz（跳过本地 pack 的 tsc/prepare 坑）"
 if curl -fsSL "https://registry.npmjs.org/dshmarket/-/dshmarket-1.15.0.tgz" -o "$DEST/dshmarket.tgz" 2>/dev/null; then
   echo "   dshmarket tgz 已随包：$DEST/dshmarket.tgz ($(du -h "$DEST/dshmarket.tgz" | cut -f1))"

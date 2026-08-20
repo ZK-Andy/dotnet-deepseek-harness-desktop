@@ -54,9 +54,9 @@ jobs:
       - name: 缓存 pnpm store
         uses: actions/cache@v4
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-store-v1
-          restore-keys: pnpm-store-v1
+          path: ~/.dsh-pnpm/store
+          key: pnpm-store-${{ matrix.rid }}-v2
+          restore-keys: pnpm-store-${{ matrix.rid }}-
       - name: 生成捆绑运行时
         run: bash scripts/bundle-runtime-ci.sh ${{ matrix.rid }}
       - name: 确定版本
@@ -67,14 +67,13 @@ jobs:
           echo "VERSION=$V" >> "$GITHUB_ENV"
       - name: dotnet publish
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} -p:PublishAot=false --self-contained true -o artifacts/publish-${{ matrix.rid }}
-      - name: 打 macOS 包（zip+dmg，文件名含 macos 标识）
+      - name: 打 macOS 包（dmg，文件名含 macos 标识；不再产独立 zip）
         run: bash scripts/package-macos.sh artifacts/publish-${{ matrix.rid }}
       - name: 上传
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}-packages
           path: |
-            artifacts/${{ matrix.rid }}/*.zip
             artifacts/${{ matrix.rid }}/*.dmg
           if-no-files-found: error
           retention-days: 7

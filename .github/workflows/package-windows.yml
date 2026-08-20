@@ -44,9 +44,9 @@ jobs:
       - name: 缓存 pnpm store
         uses: actions/cache@v4
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-store-v1
-          restore-keys: pnpm-store-v1
+          path: ~/.dsh-pnpm/store
+          key: pnpm-store-win-x64-v2
+          restore-keys: pnpm-store-win-x64-
       - name: 生成捆绑运行时
         shell: bash
         run: bash scripts/bundle-runtime-ci.sh win-x64
@@ -58,7 +58,7 @@ jobs:
           echo "VERSION=$V" >> "$GITHUB_ENV"
       - name: dotnet publish
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r win-x64 -p:PublishAot=false --self-contained true -o artifacts/publish-win-x64
-      - name: 打 Windows 包（zip + 安装器 exe，文件名含 windows 标识）
+      - name: 打 Windows 包（安装器 exe，文件名含 windows 标识；不再产独立 zip）
         shell: bash
         run: bash scripts/package-windows.sh artifacts/publish-win-x64
       - name: 上传
@@ -66,7 +66,6 @@ jobs:
         with:
           name: windows-x64-packages
           path: |
-            artifacts/win-x64/*.zip
             artifacts/win-x64/*.exe
           if-no-files-found: error
           retention-days: 7

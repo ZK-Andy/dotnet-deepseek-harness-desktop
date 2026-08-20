@@ -110,7 +110,6 @@ jobs:
           files: |
             release-assets/**/*.deb
             release-assets/**/*.rpm
-            release-assets/**/*.zip
             release-assets/**/*.dmg
             release-assets/**/*.exe
             release-assets/SHA256SUMS.txt

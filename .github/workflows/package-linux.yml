@@ -59,9 +59,9 @@ jobs:
       - name: 缓存 pnpm store
         uses: actions/cache@v4
         with:
-          path: ~/.local/share/pnpm/store
-          key: pnpm-store-v1
-          restore-keys: pnpm-store-v1
+          path: ~/.dsh-pnpm/store
+          key: pnpm-store-${{ matrix.rid }}-v2
+          restore-keys: pnpm-store-${{ matrix.rid }}-
 
       - name: 校验 tag 与输入版本一致（如为 Release）
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}

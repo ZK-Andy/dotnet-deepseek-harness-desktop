@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# package-macos.sh — 从 .NET publish 输出打 macOS 包（zip，含 app bundle 雏形）。
+# package-macos.sh — 从 .NET publish 输出打 macOS 包（dmg，含 app bundle）。
 # 参照 pilot-harness 的 mac 打包：此处为 .NET 自包含 publish + resources/runtime 手工组装。
 # 布局：
 #   DeepSeek.Harness.Desktop.app/Contents/MacOS/  = dotnet publish 全量
 #   DeepSeek.Harness.Desktop.app/Contents/Resources/runtime/ = resources/runtime（含对应架构的 node）
 # 用法：
-#   scripts/package-macos.sh [publish_dir]          # 全量（需 zip）
+#   scripts/package-macos.sh [publish_dir]          # 全量（需 hdiutil，产 dmg）
 #   scripts/package-macos.sh --stage-only [dir]     # 仅组装 staging
 # 环境：VERSION、ARCH（x64/arm64）、APP
 set -euo pipefail
@@ -87,19 +87,11 @@ sign_macos() {
 }
 if [[ "${SELF_SIGN:-0}" == "1" ]]; then sign_macos; fi
 
-command -v zip >/dev/null || { echo "error: 缺 zip" >&2; exit 1; }
 mkdir -p "$OUT"
-# 产物命名加入 macos 标识，避免与 Windows 同名冲突（原 _arm64.zip 无平台前缀）
-ZIP="$OUT/DeepSeek.Harness.Desktop_${VERSION}_macos-${ARCH}.zip"
+# 单一 dmg 产物（不再单独产出便携 zip——省去对闭包的重复压缩）。命名含 macos 标识。
 DMG="$OUT/DeepSeek.Harness.Desktop_${VERSION}_macos-${ARCH}.dmg"
-rm -f "$ZIP" "$DMG"
-(cd "$STAGE" && zip -r -q "$ZIP" "$APP_BUNDLE")
-echo "== 产物 zip: $ZIP ($(du -h "$ZIP" | cut -f1))"
-# 签名占位：未做 codesign（需 Apple 证书），此处仅校验
-echo "== zip 校验 =="
-unzip -l "$ZIP" 2>&1 | head -20 || true
+rm -f "$DMG"
 
-# 额外产出 dmg（仅 macOS 可用 hdiutil，CI 的 macos-latest 具备；Linux 上跳过）
 if command -v hdiutil >/dev/null 2>&1; then
   echo "== 生成 dmg（hdiutil）: $DMG"
   # 临时 dmg 卷名与窗口布局极简，签名占位
@@ -111,21 +103,18 @@ if command -v hdiutil >/dev/null 2>&1; then
     if hdiutil create -volname "DeepSeek Harness Desktop" -srcfolder "$STAGE" -ov -format UDZO "$DMG" 2>&1 | tail -20; then
       echo "== 产物 dmg(回退): $DMG ($(du -h "$DMG" | cut -f1))"
     else
-      echo "warn: dmg 生成失败，仅保留 zip" >&2
+      echo "error: dmg 生成失败（dmg 为唯一产物，无 zip 兜底）" >&2
       rm -f "$DMG"
+      exit 1
     fi
   fi
 elif command -v create-dmg >/dev/null 2>&1; then
   echo "== 生成 dmg（create-dmg）: $DMG"
-  create-dmg --volname "DeepSeek Harness Desktop" --window-pos 200 120 --window-size 600 400 --icon-size 100 --app-drop-link 450 185 "$DMG" "$STAGE/$APP_BUNDLE" 2>&1 | tail -20 || echo "warn: create-dmg 失败" >&2
-  if [[ -f "$DMG" ]]; then echo "== 产物 dmg: $DMG ($(du -h "$DMG" | cut -f1))"; else rm -f "$DMG"; fi
+  create-dmg --volname "DeepSeek Harness Desktop" --window-pos 200 120 --window-size 600 400 --icon-size 100 --app-drop-link 450 185 "$DMG" "$STAGE/$APP_BUNDLE" 2>&1 | tail -20 || { echo "error: create-dmg 失败（dmg 为唯一产物）" >&2; exit 1; }
+  echo "== 产物 dmg: $DMG ($(du -h "$DMG" | cut -f1))"
 else
-  echo "warn: 无 hdiutil/create-dmg，跳过 dmg（仅 zip）" >&2
+  echo "error: 缺 hdiutil/create-dmg，无法产出 dmg（唯一产物）" >&2
+  exit 1
 fi
 
-# 体积提示
-if [[ -f "$DMG" ]]; then
-  echo "== 体积: $(du -sh "$STAGE" | cut -f1) → zip $(du -h "$ZIP" | cut -f1) + dmg $(du -h "$DMG" | cut -f1)"
-else
-  echo "== 体积: $(du -sh "$STAGE" | cut -f1) → $(du -h "$ZIP" | cut -f1) (zip)"
-fi
+echo "== 体积: $(du -sh "$STAGE" | cut -f1) → $(du -h "$DMG" | cut -f1) (dmg)"

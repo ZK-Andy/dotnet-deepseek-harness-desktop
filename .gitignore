@@ -14,6 +14,9 @@ TestResults/
 # dotnet 首用/包的本地缓存（沙箱 /home 只读重定向）
 /.dotnet-cache/
 
+# 本地 pnpm store（scripts/bundle-runtime.sh 默认写到工作区；CI 由 actions/cache 缓存）
+/.cache/
+
 # Ryn 运行时生成的 saucer 会话缓存（SQLite 文件）
 /.saucer
 

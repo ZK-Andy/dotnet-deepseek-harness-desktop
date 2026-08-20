@@ -46,8 +46,8 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 | Platform | Arch | Formats |
 |---|---|---|
 | `Linux` | `x64` / `arm64` | `deb` (`…_linux-amd64.deb` / `…_linux-arm64.deb`) / `rpm` (`…_linux-x86_64.rpm` / `…_linux-aarch64.rpm`) |
-| `macOS` | `arm64` / `x64` | `zip` (`.app`) / `dmg` |
-| `Windows` | `x64` | `zip` (portable, unzip and run) / `exe` installer |
+| `macOS` | `arm64` / `x64` | `dmg` |
+| `Windows` | `x64` | `exe` installer (`…-setup.exe`) |
 
 > **Unsigned note**: this is an **open-source project and we do not do paid signing**, so releases are **unsigned**. On macOS, if Gatekeeper shows "unidentified developer", right-click → Open, or System Settings → Privacy & Security → Open Anyway. On Windows, if SmartScreen shows "unknown publisher", choose More info → Run anyway. For dev/internal use, `SELF_SIGN=1` signs locally to clear warnings; see [docs/development.md](docs/development.md).
 >

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# package-windows.sh — 从 .NET publish 输出打 Windows 包（zip）。
+# package-windows.sh — 从 .NET publish 输出打 Windows 安装器（exe，Inno Setup/NSIS/7z SFX）。
 # 布局：publish 全量 + resources/runtime
 # 用法：
 #   scripts/package-windows.sh [publish_dir]
@@ -87,89 +87,12 @@ if [[ "${SELF_SIGN:-0}" == "1" ]] && [[ -f "$STAGE/DeepSeek.Harness.Desktop.exe"
   sign_windows "$STAGE/DeepSeek.Harness.Desktop.exe"
 fi
 
-# 产物命名加入 windows 标识，避免与 macOS 同名冲突（原 _x64.zip 无平台前缀）
-ZIP="$OUT/DeepSeek.Harness.Desktop_${VERSION}_windows-${ARCH}.zip"
+# 单一安装器产物（不再单独产出便携 zip——见 .agent notes：省去对 1.5GB 闭包的重复压缩）。
+# 命名含 windows 标识，避免与 macOS/dmg 同名冲突。
 INSTALLER="$OUT/DeepSeek.Harness.Desktop_${VERSION}_windows-${ARCH}-setup.exe"
-rm -f "$ZIP" "$INSTALLER"
+rm -f "$INSTALLER"
 
-# 兜底压缩：zip → 7z → tar (bsdtar -a) → powershell (cygpath 转换)
-create_zip() {
-  local src="$1" dst="$2"
-  local src_dir src_base
-  src_dir="$(dirname "$src")"
-  src_base="$(basename "$src")"
-  if command -v zip >/dev/null 2>&1; then
-    echo "   尝试 zip"
-    (cd "$src_dir" && zip -r -q "$dst" "$src_base") && return 0
-    echo "   zip 失败，回退"
-  fi
-  if command -v 7z >/dev/null 2>&1; then
-    echo "   尝试 7z"
-    (cd "$src_dir" && 7z a -tzip "$dst" "$src_base" -mx=0 >/dev/null 2>&1) && return 0
-    7z a -tzip "$dst" "$src" -mx=0 >/dev/null 2>&1 && return 0
-    echo "   7z 失败，回退"
-  fi
-  if command -v tar >/dev/null 2>&1; then
-    echo "   尝试 tar -a (bsdtar)"
-    (cd "$src_dir" && tar -a -c -f "$dst" "$src_base" 2>/dev/null) && return 0
-    (cd "$src_dir" && tar -c -f "$dst" "$src_base" 2>/dev/null) && return 0
-    echo "   tar 失败，回退"
-  fi
-  local ps=""
-  if command -v pwsh >/dev/null 2>&1; then ps="pwsh"
-  elif command -v powershell >/dev/null 2>&1; then ps="powershell"
-  fi
-  if [[ -n "$ps" ]]; then
-    echo "   尝试 $ps Compress-Archive"
-    local src_win dst_win
-    if command -v cygpath >/dev/null 2>&1; then
-      src_win="$(cygpath -w "$src" 2>/dev/null || echo "$src")"
-      dst_win="$(cygpath -w "$dst" 2>/dev/null || echo "$dst")"
-    else
-      # 回退：/d/a -> D:\a (仅处理常见盘符)
-      src_win="$(echo "$src" | sed -E 's#^/([cCdD])/#\1:/#' | tr '/' '\\')"
-      # 上行在 BSD sed 可能失败，二次回退
-      if [[ "$src_win" == "$src" ]]; then
-        src_win="$(echo "$src" | sed 's#^/d/#D:\\#; s#^/c/#C:\\#; s#/#\\#g')"
-        dst_win="$(echo "$dst" | sed 's#^/d/#D:\\#; s#^/c/#C:\\#; s#/#\\#g')"
-      else
-        dst_win="$(echo "$dst" | sed -E 's#^/([cCdD])/#\1:/#' | tr '/' '\\')"
-      fi
-      # 修正首字符盘符大写
-      src_win="$(echo "$src_win" | sed 's#^c:#C:#; s#^d:#D:#')"
-      dst_win="$(echo "$dst_win" | sed 's#^c:#C:#; s#^d:#D:#')"
-    fi
-    echo "   ps src=$src_win dst=$dst_win"
-    "$ps" -NoProfile -Command "Compress-Archive -Path '$src_win' -DestinationPath '$dst_win' -Force" 2>&1 | head -20 || true
-    if [[ -f "$dst" ]]; then return 0; fi
-    "$ps" -NoProfile -Command "Compress-Archive -Path '$src_win\\*' -DestinationPath '$dst_win' -Force" 2>&1 | head -20 || true
-    if [[ -f "$dst" ]]; then return 0; fi
-  fi
-  return 1
-}
-
-if ! create_zip "$STAGE" "$ZIP"; then
-  echo "error: 无法创建 zip（zip/7z/tar/powershell 均失败）" >&2; exit 1
-fi
-echo "== 产物 zip: $ZIP ($(du -h "$ZIP" 2>/dev/null | cut -f1 || ls -lh "$ZIP" | awk '{print $5}'))"
-if command -v unzip >/dev/null 2>&1; then
-  unzip -l "$ZIP" 2>&1 | head -20 || true
-elif command -v 7z >/dev/null 2>&1; then
-  7z l "$ZIP" 2>&1 | head -40 || true
-elif command -v tar >/dev/null 2>&1; then
-  tar -tf "$ZIP" 2>&1 | head -20 || true
-else
-  local ps2="powershell"; command -v pwsh >/dev/null 2>&1 && ps2="pwsh"
-  if command -v cygpath >/dev/null 2>&1; then
-    ZIP_WIN="$(cygpath -w "$ZIP" 2>/dev/null || echo "$ZIP")"
-  else
-    ZIP_WIN="$ZIP"
-  fi
-  "$ps2" -NoProfile -Command "Get-ChildItem '$ZIP_WIN' | Format-List; try { (Get-ChildItem '$ZIP_WIN').Length } catch {}" 2>/dev/null | head -20 || true
-  ls -lh "$ZIP" 2>&1 | head -5 || true
-fi
-
-# 额外产出安装器 exe（Windows 期待 exe 安装器；Linux 已有 deb/rpm，macOS 已有 zip+dmg）
+# 安装器 exe（Windows 期待 exe 安装器；Linux 已有 deb/rpm，macOS 已有 dmg）
 # 优先 Inno Setup (iscc)，回退 NSIS (makensis)，再回退 7z SFX
 create_installer_exe() {
   local staging="$1" installer="$2"
@@ -341,9 +264,8 @@ if create_installer_exe "$STAGE" "$INSTALLER"; then
   # 自签安装器 exe（仅内部/开发；同 SELF_SIGN=1 门控）
   if [[ "${SELF_SIGN:-0}" == "1" ]]; then sign_windows "$INSTALLER"; fi
 else
-  echo "warn: 未能生成安装器 exe（无 Inno Setup/NSIS/7z SFX），仅保留 zip" >&2
-  echo "   Windows 仍可通过 zip 便携运行（解压后运行 DeepSeek.Harness.Desktop.exe）" >&2
-  rm -f "$INSTALLER"
+  echo "error: 未能生成安装器 exe（无 Inno Setup/NSIS/7z SFX；独立 zip 已不再产出）" >&2
+  exit 1
 fi
 
 # 最终产物清单

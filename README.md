@@ -46,8 +46,8 @@
 | 平台 | 架构 | 包格式 |
 |---|---|---|
 | `Linux` | `x64` / `arm64` | `deb`（`…_linux-amd64.deb` / `…_linux-arm64.deb`）/ `rpm`（`…_linux-x86_64.rpm` / `…_linux-aarch64.rpm`） |
-| `macOS` | `arm64` / `x64` | `zip`（`.app`）/ `dmg` |
-| `Windows` | `x64` | `zip` 便携（解压即用）/ `exe` 安装器 |
+| `macOS` | `arm64` / `x64` | `dmg` |
+| `Windows` | `x64` | `exe` 安装器（`…-setup.exe`） |
 
 > **未签名说明**：本项目**开源、不做付费签名**，发布包**未签名**。macOS 首次打开若见 Gatekeeper「来自身份不明的开发者」→ 右键「打开」或 系统设置 → 隐私与安全性 →「仍要打开」；Windows 若见 SmartScreen「未知发布者」→「更多信息」→「仍要运行」。开发/内部可用 `SELF_SIGN=1` 自签消除本机告警，用法见 [docs/development.md](docs/development.md)。
 >
