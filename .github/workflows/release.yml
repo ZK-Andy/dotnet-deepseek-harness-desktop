@@ -1,13 +1,18 @@
 name: release
 
-# 统一发布：tag v* 触发，聚合三平台产物 + 生成结构化双语正文 + 合并 SHA256SUMS + 创建单个 Release。
+# 统一发布：tag v*（自动）触发，聚合三平台产物 + 生成结构化双语正文 + 合并 SHA256SUMS + 创建单个 Release。
 # 单一 owner —— 修复旧方案（linux/macos/windows 各自 publish-release 都开 generate_release_notes
 # 并行写正文，导致 body 重复 N 次）的重复与竞争。
 # tag 命名保持 v0.1.x；含 rc/beta/alpha 的 tag 标 prerelease。
+#
+# 竞态防护：本 workflow 与三个 package workflow 因同一 tag 并行触发，先「等待三平台产物就绪」
+# （按 workflow_run.head_sha 关联到本次 tag 构建轮询），避免产物未上传就下载空包。
+# 亦支持 workflow_dispatch 手动触发（三平台产物已备时）。
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -23,6 +28,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # 全量历史 + tags，供 release-notes.sh 生成 compare 与分类
+
+      - name: 等待三平台产物就绪（本 tag 构建）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          repo="$GITHUB_REPOSITORY"
+          sha="$GITHUB_SHA"
+          jq_filter="[.artifacts[]|select(.expired==false and (.workflow_run.head_sha==\"$sha\"))|.name]|join(\" \")"
+          for i in $(seq 1 150); do
+            resp="$(gh api "repos/$repo/actions/artifacts?per_page=100" --jq "$jq_filter" 2>/dev/null || true)"
+            ok=1
+            for want in linux- macos- windows-; do
+              [[ "$resp" == *"${want}"*-packages* ]] || ok=0
+            done
+            if [[ "$ok" == 1 ]]; then echo "三平台产物就绪: $resp"; exit 0; fi
+            echo "等待三平台产物（$((i*10))s / ~25m）：$resp"
+            sleep 10
+          done
+          echo "error: 等待三平台产物超时" >&2; exit 1
 
       - name: 下载三平台产物
         uses: actions/download-artifact@v4
