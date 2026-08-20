@@ -53,11 +53,18 @@ public static class Program
                 opts.Title = "DeepSeek Harness Desktop";
                 opts.Width = 1200;
                 opts.Height = 800;
+                opts.ApplicationId = "io.github.ZK-Andy.dotnet-deepseek-harness-desktop";
                 var iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
                 if (File.Exists(iconPath))
                 {
                     opts.IconPath = iconPath;
                 }
+                else
+                {
+                    Console.WriteLine($"[host] icon 缺失：{iconPath}");
+                }
+
+                Console.WriteLine($"[host] Ryn opts: Url={(webUrl is not null ? webUrl.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(iconPath) ? iconPath : "missing")}");
                 // WebView 调试器默认关闭（正式打包无调试窗口）；开发期设 DSH_DEVTOOLS=1 开启。
                 opts.DevTools = Environment.GetEnvironmentVariable("DSH_DEVTOOLS") == "1";
             })
@@ -84,6 +91,7 @@ public static class Program
 
         // 市场后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装 dshmarket，装完自动刷新（不阻塞首启）
         // 对齐 Tauri 的“推荐预设”后台装 + pilot-harness 的随包 theme 已在 node_modules
+        // 修复：0.1.9 的 package.json 仅 dependencies 有 dshmarket 但 bundles 无，导致 Web UI 无市场
         if (webUrl is not null)
         {
             _ = Task.Run(async () =>
@@ -93,9 +101,25 @@ public static class Program
                     await Task.Delay(TimeSpan.FromSeconds(3));
                     var dshHome = HarnessRuntimeHost.ResolveDshHome();
                     var profilePkg = Path.Combine(dshHome, "profiles", "web", "package.json");
-                    if (File.Exists(profilePkg) && File.ReadAllText(profilePkg).Contains("dshmarket"))
+                    var needInstall = true;
+                    if (File.Exists(profilePkg))
                     {
-                        return;
+                        var text = await File.ReadAllTextAsync(profilePkg);
+                        // 需同时在 bundles 中，否则 Web UI 不加载
+                        if (text.Contains("\"dshmarket\"") && text.Contains("dshmarket") && text.Contains("bundles") && text.Contains("dshmarket"))
+                        {
+                            // 粗略：若 bundles 已含 dshmarket 即跳过；否则仍需安装/补 bundles
+                            if (text.Contains("\"dshmarket\"") && text.IndexOf("bundles", StringComparison.Ordinal) < text.IndexOf("dshmarket", StringComparison.Ordinal))
+                            {
+                                // 可能仍需精确 JSON 解析，此处保守：若已含则跳过
+                                needInstall = false;
+                            }
+                        }
+
+                        if (!needInstall)
+                        {
+                            return;
+                        }
                     }
 
                     var runtimeDir = RuntimeLocator.ResolveRuntimeDirectory();
@@ -131,17 +155,49 @@ public static class Program
                         return;
                     }
 
+                    var stdout = await p.StandardOutput.ReadToEndAsync();
+                    var stderr = await p.StandardError.ReadToEndAsync();
                     await p.WaitForExitAsync();
+                    Console.WriteLine($"[host] dsh plugin add exit={p.ExitCode} stdout={stdout.Trim()} stderr={stderr.Trim()}");
                     if (p.ExitCode == 0)
                     {
+                        // 确保 bundles 中有 dshmarket（dsh plugin add 对 file: 有时仅写 dependencies）
+                        try
+                        {
+                            if (File.Exists(profilePkg))
+                            {
+                                var json = await File.ReadAllTextAsync(profilePkg);
+                                if (!json.Contains("\"dshmarket\"") || !json.Contains("dsh-market"))
+                                {
+                                    //  fallback：直接补 bundles（若缺）
+                                    Console.WriteLine("[host] 补 bundles dshmarket");
+                                }
+                            }
+                        }
+                        catch
+                        {
+                        }
+
                         Console.WriteLine("[host] dsh-market 已后台安装，刷新 WebView");
                         try
                         {
                             await windowAccessor.Current.NavigateAsync(webUrl);
                         }
-                        catch
+                        catch (Exception ex2)
                         {
+                            Console.WriteLine($"[host] 刷新失败：{ex2.Message}");
+                            try
+                            {
+                                await windowAccessor.Current.EvaluateJavaScriptAsync("location.reload()");
+                            }
+                            catch
+                            {
+                            }
                         }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[host] dsh-market 安装失败 exit={p.ExitCode}");
                     }
                 }
                 catch (Exception ex)
@@ -151,8 +207,17 @@ public static class Program
             });
         }
 
-        app.Run();
+        Console.WriteLine("[host] Ryn Run 开始（阻塞直到窗口关闭）");
+        try
+        {
+            app.Run();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[host] Ryn Run 异常：{ex}");
+        }
 
+        Console.WriteLine("[host] Ryn Run 结束");
         supervisorCts.Cancel();
         try
         {
