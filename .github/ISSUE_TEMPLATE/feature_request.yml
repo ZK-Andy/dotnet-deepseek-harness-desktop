@@ -1,0 +1,45 @@
+name: Feature Request
+description: 新功能或改进
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: input
+    id: owner
+    attributes:
+      label: Owner
+      placeholder: "@ZK-Andy"
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: [p0, p1, p2, p3]
+      default: 1
+    validations:
+      required: true
+  - type: dropdown
+    id: class
+    attributes:
+      label: Class
+      options: [feature, bug-fix, architecture, testing, process]
+      default: 0
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: 动机与场景
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: 建议方案与备选
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: 已考虑的备选及落败原因（ADR 要求）
