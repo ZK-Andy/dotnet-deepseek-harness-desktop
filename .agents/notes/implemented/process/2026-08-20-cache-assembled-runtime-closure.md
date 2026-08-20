@@ -23,6 +23,7 @@ Windows 打包最重的两步之一是「生成捆绑运行时」（~277–310s�
 
 ## Consequences
 
-- 收益（本地实测）：重建后二次运行跳过，`bundle-runtime.sh` 仅 **0.13s**；对 Windows「生成捆绑运行时」~280s 是根治级削减（命中即近零）。
-- 代价/风险：**GitHub Actions 缓存按分支/ref 作用域隔离**——tag 触发发布流每个 tag 是独立 ref，缓存跨 tag 可能不命中（需同 ref 复跑或默认分支共享才命中）；闭包 ~0.3–1.3GB 的 cache 恢复/保存有成本；缓存命中时跳过自检（信任缓存来自已验证构建）。
-- 验证：本地全链路（trim→自检→写 meta→二次跳过 0.13s）通过；CI 需下次 tag/复跑实测 Windows 捆绑与总时长。
+- 收益（workflow_dispatch 同分支二连 run 实测）：**闭包缓存命中生效**——Windows「生成捆绑运行时」从 miss 的 **270s 降到命中后的 13s**（缓存恢复 ~60s 计入缓存步骤），Windows job 从 **12.6 分 → 8.0 分**（相对 v0.1.18 基线 14.1 分更是腰斩）。pnpm store 与闭包缓存双 hit。
+- 代价/风险：**GitHub Actions 缓存按分支/ref 作用域隔离**——命中仅限同 ref 复跑（同分支 workflow_dispatch / 同 tag 重跑）；tag 触发发布流每个 tag 是独立 ref，跨 tag 可能 miss（需默认分支共享或同 tag 重跑才命中）。其余：闭包 ~1GB 恢复 60s / 保存 39s（裁剪后变小）；命中跳过自检（信任缓存来自已验证构建，`.bundle-meta.json` 签名兜底版本/平台正确性）。
+- 与 `pnpm-store-ci-cache` 关系：store 缓存证实不是捆绑瓶颈（命中仍 283s，见其 Consequences），整体闭包缓存才是；二者并存（store 在闭包 miss 时加速 pnpm，闭包缓存直接消灭整步）。
+- 验证：本地二次 `bundle-runtime.sh` 0.13s；CI `32422970519` 命中、Windows job 8.0 分。

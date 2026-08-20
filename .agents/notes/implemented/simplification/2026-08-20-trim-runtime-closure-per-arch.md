@@ -24,6 +24,6 @@ Status: implemented
 
 ## Consequences
 
-- 收益（本地实测）：linux 396M → **339M**（−14%）；`dsh web:` 自检通过；Windows CI 闭包预期同比缩小（sourcemap/md/多平台 node-pty 都在）。
-- 代价/风险：失去闭包内 sourcemap（调试桌面内嵌 JS 需另备 debug 包）；node-pty 若未来改 prebuild 目录命名需同步映射。其它平台（win/mac）无 Linux 强自检兜底，但裁剪仅删"非当前平台"与纯文档/sourcemap，风险趋近于零。
-- 验证：本地 `bundle-runtime.sh linux-x64` 全链路（trim→自检→meta）通过；下次 tag 三平台 CI 实测体积与 Windows「打包」时间。
+- 收益（本地 + CI 实测）：linux 396M → **339M**（`dsh web:` 自检通过）；CI Windows job 中「打 Windows 包」（Inno LZMA 压闭包）从 v0.1.18 的 ~345–373s 降到 **313–318s**（闭包变小）；同时令闭包缓存恢复/保存更便宜（Windows Post 保存 39s）。
+- 代价/风险：失去闭包内 sourcemap（调试桌面内嵌 JS 需另备 debug 包）；node-pty 若未来改 prebuild 目录命名需同步映射；其它平台（win/mac）无 Linux 强自检兜底，但裁剪仅删"非当前平台"与纯文档/sourcemap，风险趋近于零。
+- 验证：本地 `bundle-runtime.sh linux-x64`（trim→自检→meta）通过、CI `32421892883`（win 裁剪日志 `node-pty 保留 win32-x64`）+ `32422970519`（打包 313s）成功。
