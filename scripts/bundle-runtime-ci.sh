@@ -11,6 +11,9 @@ set -euo pipefail
 PLATFORM="${1:-linux-x64}"
 NODE_VERSION="${NODE_VERSION:-22.23.1}"
 DSH_VERSION="${DSH_VERSION:-0.1.1-rc.1}"
+# pnpm 钉 11.7.0：>=11.22 按严格 node-semver 预发布规则解析 dshmarket 的 optional peer
+# (dsh-settings ^0.1.0-rc.7) 时，已发布的 0.1.1-rc.1 不满足 >=0.1.1 而 ERR_PNPM_NO_MATCHING_VERSION；
+# 11.7.0 已验证可完整构建（本地闭包 dsh web: 自检 OK）。
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/resources/runtime"
 TMP="$(mktemp -d)"
@@ -71,9 +74,13 @@ if [[ "$PLATFORM" == win-* ]]; then
 fi
 
 echo "== [2/3] pnpm 安装 @deepseek-ai/dsh@${DSH_VERSION} + dshmarket 依赖闭包（dshmarket 随包预装，首启后台 file:// 安装，不阻塞 dsh web:）"
-if ! command -v pnpm >/dev/null 2>&1; then
-  echo "    未发现 pnpm，npm install -g pnpm@11"
-  npm install -g pnpm@11
+# pnpm 版本对齐：runner 预装 pnpm 会随镜像更新漂移（v0.1.20 实证预装 11.22.0 构建失败——
+# 严格 node-semver 预发布规则下 dshmarket 的 optional peer dsh-settings@^0.1.0-rc.7 解析不到
+# 已发布的 0.1.1-rc.1 而 ERR_PNPM_NO_MATCHING_VERSION）。钉 11.7.0（本地验证可完整构建）；
+# 非 11.7.0 一律安装对齐，失败 fail loud。
+if ! pnpm --version 2>/dev/null | grep -q '^11\.7\.0$'; then
+  echo "    对齐 pnpm 11.7.0（当前 $(pnpm --version 2>/dev/null || echo 无)）"
+  npm install -g pnpm@11.7.0
 fi
 pnpm --version
 mkdir -p "$TMP/app"
