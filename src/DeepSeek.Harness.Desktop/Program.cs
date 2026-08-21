@@ -70,6 +70,8 @@ public static class Program
             .ConfigureServices(services =>
             {
                 services.AddRynCommands();
+                // 外部链接 → 系统默认浏览器（宿主命令路由，见 proposed bug-fix ADR）
+                services.AddSingleton<ICommandRouter, Services.ExternalLinkCommandRouter>();
             })
             .Build();
 
@@ -86,6 +88,45 @@ public static class Program
             navigate: url => windowAccessor.Current.NavigateAsync(url),
             log: Console.WriteLine);
         var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
+
+        // 外部链接注入：窗口可访问后，注入点击拦截脚本（READY 对当前及后续每页生效，崩溃重启后仍有效），
+        // 并对当前已加载页面补跑一次（当前 document 不会因 InjectScriptAsync 自动重跑）。
+        // 见 proposed bug-fix ADR open-external-links-in-system-browser。
+        _ = Task.Run(async () =>
+        {
+            var catcher = Services.ExternalLinkClickCatcher.Script;
+            var injected = false;
+            for (var attempt = 0; attempt < 60; attempt++)
+            {
+                try
+                {
+                    var webView = app.WebView;
+                    if (!injected)
+                    {
+                        // 注册：READY 注入对当前及后续每页生效（含崩溃重启后的新页面）
+                        await webView.InjectScriptAsync(catcher);
+                        injected = true;
+                    }
+
+                    try
+                    {
+                        // 当前已加载页面补跑一次（当前 document 不会因 InjectScriptAsync 自动重跑）
+                        await webView.EvaluateJavaScriptAsync(catcher);
+                        break; // 当前页已就绪且注入成功
+                    }
+                    catch
+                    {
+                        // 页面尚未 DOM ready——下一轮重试
+                    }
+                }
+                catch
+                {
+                    // app 尚未运行 / 窗口未创建——下一轮重试
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(500));
+            }
+        });
 
         // 市场后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装 dshmarket，装完自动刷新（不阻塞首启）
         // 对齐 Tauri 的“推荐预设”后台装 + pilot-harness 的随包 theme 已在 node_modules
