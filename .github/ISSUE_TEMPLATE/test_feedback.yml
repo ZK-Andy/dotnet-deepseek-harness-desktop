@@ -1,0 +1,59 @@
+name: Test Feedback / 测试反馈
+description: 社区真机测试反馈（macOS / Windows / Linux）——告诉我们测试环境与现象，30 秒可填完
+title: "[Test] "
+labels: ["test-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing DeepSeek Harness Desktop! 感谢参与真机测试！
+
+        Real-device feedback on **macOS (Intel) / Windows** is especially valuable — those packages are CI-built but not yet tested on real hardware. Even a "it works" report helps. 尤其欢迎 macOS Intel / Windows 真机反馈，哪怕只是"能正常跑"。
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS / Platform
+      description: 操作系统与架构
+      options:
+        - macOS (Intel / x64)
+        - macOS (Apple Silicon / arm64)
+        - Windows (x64)
+        - Linux (x64)
+        - Linux (arm64)
+        - other
+    validations:
+      required: true
+  - type: dropdown
+    id: package
+    attributes:
+      label: Install Package
+      description: 安装的包格式
+      options:
+        - dmg (macOS)
+        - exe (Windows)
+        - deb (Linux)
+        - rpm (Linux)
+        - other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App Version
+      description: 版本号（Releases 页可见，如 v0.1.20）
+      placeholder: "v0.1.20"
+    validations:
+      required: true
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened / 现象
+      description: 复现步骤、期望 vs 实际
+      placeholder: "1. 安装后启动… 2. 点击… 3. 期望… 实际…"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Screenshots / 日志或截图
+      description: 相关日志或截图（可拖入本框；注意脱敏 API Key）
