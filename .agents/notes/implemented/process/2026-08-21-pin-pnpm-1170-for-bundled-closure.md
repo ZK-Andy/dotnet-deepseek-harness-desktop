@@ -8,17 +8,17 @@ Status: implemented
 
 ## Decision
 
-把 pnpm **钉到本地已验证的 11.7.0**，且不依赖 runner 预装状态：非 `11.7.0` 一律 `npm install -g pnpm@11.7.0` 对齐，再 `pnpm --version` 复核；安装失败由 `set -euo pipefail` fail loud。CI 与本地构建环境由此一致（同一 pnpm 版本 → 同一依赖图 → 同一闭包）。
+把 pnpm **钉到本地已验证的 11.7.0**，且不依赖 runner 预装/全局 PATH：安装到工作区 `.cache/pnpm-11.7.0`（`npm install --prefix` + `npm_config_cache` 重定向，免 `npm -g` 权限/路径遮蔽），所有 `pnpm` 调用走 `node_modules/.bin/pnpm` 直调，安装失败由 `set -euo pipefail` fail loud。`npm -g` 安装曾在 Windows 实证被旧 PATH 遮蔽（装到 %APPDATA% 但解析仍是预装 11.22.0），故弃用。CI 与本地构建环境由此一致（同一 pnpm 版本 → 同一依赖图 → 同一闭包）。
 
 ## Alternatives considered
 
 - 改用 pnpm >= 11.22 并对 dsh-settings 显式 `pnpm add @deepseek-ai/dsh-settings@0.1.1-rc.1` 钉入：落败——会把上游打包缺陷（peer 区间声明与已发布版本不匹配）固化进我们的闭包图，且 peer 区间校验仍可能硬失败；钉版本更稳。
 - 升级到 pnpm 12 及以上：落败——尚未验证；11.7.0 已是全链路（装包/原生构建/自检）验证过的环境，升级引入新变量。
-- 只改 fallback 分支为 `pnpm@11.7.0`：落败——runner 预装 pnpm 时分支不执行（v0.1.20 实证），必须显式版本核对 + 对齐。
+- `npm install -g pnpm@11.7.0` 全局对齐：落败——Windows 实证装好后 PATH 里旧预装 pnpm 仍在前，解析仍 11.22.0（Linux/mac 碰巧生效），需 PATH 无关的本地 `.bin` 直调。
 - 放弃 0.1.1-rc.1 回退 rc.8：落败——用户要求升级，且失败属构建环境而非运行时；本地闭包已是 0.1.1-rc.1 且自检 OK。
 
 ## Consequences
 
 - 收益：CI 构建环境确定化，0.1.1-rc.1 闭包可按本地已验证的同一 pnpm 版本重建；此钉版对未来 DSH_VERSION 升级同样生效。
 - 代价/风险：pnpm 11.7.0 是旧版（2026-08 时 11.22.0 已有更新），可能缺后续修复；上游若修复 dsh-settings peer 区间后可放宽钉版（届时按新证据重评）。runner 无权限全局安装时 fail loud（可加 sudo 或换安装方式兜底）。
-- 验证：本地 `bash -n` 语法 OK + 11.7.0 重建闭包自检 OK；CI 待 tag 重跑/手动触发复核（三平台）。
+- 验证：本地 `bash -n` 语法 OK；`.cache/pnpm-11.7.0/node_modules/.bin/pnpm` 两阶段 add（dsh 0.1.1-rc.1 + dshmarket）通过；闭包自上轮 11.7.0 已验证自检 OK。CI 待 tag 重跑/手动触发复核（三平台）。

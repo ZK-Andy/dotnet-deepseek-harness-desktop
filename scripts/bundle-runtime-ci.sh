@@ -11,9 +11,6 @@ set -euo pipefail
 PLATFORM="${1:-linux-x64}"
 NODE_VERSION="${NODE_VERSION:-22.23.1}"
 DSH_VERSION="${DSH_VERSION:-0.1.1-rc.1}"
-# pnpm 钉 11.7.0：>=11.22 按严格 node-semver 预发布规则解析 dshmarket 的 optional peer
-# (dsh-settings ^0.1.0-rc.7) 时，已发布的 0.1.1-rc.1 不满足 >=0.1.1 而 ERR_PNPM_NO_MATCHING_VERSION；
-# 11.7.0 已验证可完整构建（本地闭包 dsh web: 自检 OK）。
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/resources/runtime"
 TMP="$(mktemp -d)"
@@ -74,26 +71,30 @@ if [[ "$PLATFORM" == win-* ]]; then
 fi
 
 echo "== [2/3] pnpm 安装 @deepseek-ai/dsh@${DSH_VERSION} + dshmarket 依赖闭包（dshmarket 随包预装，首启后台 file:// 安装，不阻塞 dsh web:）"
-# pnpm 版本对齐：runner 预装 pnpm 会随镜像更新漂移（v0.1.20 实证预装 11.22.0 构建失败——
-# 严格 node-semver 预发布规则下 dshmarket 的 optional peer dsh-settings@^0.1.0-rc.7 解析不到
-# 已发布的 0.1.1-rc.1 而 ERR_PNPM_NO_MATCHING_VERSION）。钉 11.7.0（本地验证可完整构建）；
-# 非 11.7.0 一律安装对齐，失败 fail loud。
-if ! pnpm --version 2>/dev/null | grep -q '^11\.7\.0$'; then
-  echo "    对齐 pnpm 11.7.0（当前 $(pnpm --version 2>/dev/null || echo 无)）"
-  npm install -g pnpm@11.7.0
+# pnpm 钉 11.7.0：本地安装 + .bin 直调（PATH 无关、跨三平台一致，不依赖 runner 预装/全局 npm；
+# npm -g 安装会被旧 PATH 遮蔽——v0.1.20 Windows 实证）。理由：runner 预装 pnpm 随镜像漂移
+# （11.22.0 三平台构建失败——按严格 node-semver 预发布规则，dshmarket 的 optional peer
+# dsh-settings@^0.1.0-rc.7 匹配不到已发布的 0.1.1-rc.1 而 ERR_PNPM_NO_MATCHING_VERSION；11.7.0
+# 本地闭包自检 OK）。安装失败由 set -euo pipefail fail loud。
+PNPM_DIST="$ROOT/.cache/pnpm-11.7.0"
+PNPM_BIN="$PNPM_DIST/node_modules/.bin/pnpm"
+if [[ ! -x "$PNPM_BIN" ]]; then
+  echo "    安装本地 pnpm 11.7.0 → $PNPM_DIST/node_modules"
+  mkdir -p "$PNPM_DIST"
+  npm_config_cache="$ROOT/.cache/npm" npm install --prefix "$PNPM_DIST" pnpm@11.7.0 --no-save
 fi
-pnpm --version
+echo "    pnpm: $("$PNPM_BIN" --version)"
 mkdir -p "$TMP/app"
 cd "$TMP/app"
 npm init -y >/dev/null 2>&1
 # 允许原生绑定构建脚本，否则 pnpm 11 将拒绝执行且闭包缺 .node 二进制
 # store 指向 PNPM_STORE_DIR（CI 持久化缓存命中后免重复下包/编译原生模块）
-pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --prod --store-dir "$PNPM_STORE_DIR" \
+"$PNPM_BIN" add "@deepseek-ai/dsh@${DSH_VERSION}" --prod --store-dir "$PNPM_STORE_DIR" \
   --allow-build=node-pty --allow-build=koffi --allow-build=protobufjs \
   --allow-build=@google/genai --allow-build=@deepseek-ai/dsh-subprocess-local
 # 预装市场：与 dsh 同闭包，随包收入；另取官方已构建 tgz 供首启后后台 file:// 安装到 DSH_HOME（不阻塞 dsh web:）
 # 旧版 pnpm pack dshmarket 会误打 app 包（394B），已改为直接拉 registry 官方 tgz（已含 lib/client，无需 tsc 构建）
-pnpm add "dshmarket@1.15.0" --prod --store-dir "$PNPM_STORE_DIR" --allow-build=esbuild
+"$PNPM_BIN" add "dshmarket@1.15.0" --prod --store-dir "$PNPM_STORE_DIR" --allow-build=esbuild
 echo "   拉取 dshmarket 官方 tgz（跳过本地 pack 的 tsc/prepare 坑）"
 if curl -fsSL "https://registry.npmjs.org/dshmarket/-/dshmarket-1.15.0.tgz" -o "$DEST/dshmarket.tgz" 2>/dev/null; then
   echo "   dshmarket tgz 已随包：$DEST/dshmarket.tgz ($(du -h "$DEST/dshmarket.tgz" | cut -f1))"
