@@ -107,4 +107,108 @@ public class HarnessRuntimeHostTests
             }
         }
     }
+
+    [Fact]
+    public void PersistPort_ThenLoad_RoundTripsUnderDshHome()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
+        try
+        {
+            // 初始无状态文件 → null
+            Assert.Null(HarnessRuntimeHost.TryLoadPersistedPort());
+
+            HarnessRuntimeHost.PersistPort(4242);
+            Assert.Equal(4242, HarnessRuntimeHost.TryLoadPersistedPort());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void TryLoadPersistedPort_CorruptFile_ReturnsNull()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
+        try
+        {
+            Directory.CreateDirectory(home);
+            File.WriteAllText(HarnessRuntimeHost.ResolvePortFilePath(), "not-a-number");
+            Assert.Null(HarnessRuntimeHost.TryLoadPersistedPort());
+
+            HarnessRuntimeHost.PersistPort(4343);
+            Assert.Equal(4343, HarnessRuntimeHost.TryLoadPersistedPort()); // 覆盖修复
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task StartAsync_PersistsPort_AcrossFreshInstances_WhenEnabled()
+    {
+        if (Environment.GetEnvironmentVariable("DSH_TEST_E2E") != "1")
+        {
+            // 未启用——保持绿色
+            return;
+        }
+
+        var home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
+        Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
+
+        try
+        {
+            Uri? first;
+            using (var firstHost = new HarnessRuntimeHost())
+            {
+                try
+                {
+                    first = await firstHost.StartAsync(TimeSpan.FromSeconds(30));
+                }
+                catch (Win32Exception)
+                {
+                    return; // PATH 没有 dsh——跳过
+                }
+
+                firstHost.Stop();
+            }
+
+            Assert.NotNull(first);
+
+            // 新实例即"整 App 冷启动"（_port 为空）：应从磁盘加载上次端口 → 同 URL（origin 不变）
+            using var secondHost = new HarnessRuntimeHost();
+            try
+            {
+                var second = await secondHost.StartAsync(TimeSpan.FromSeconds(30));
+                secondHost.Stop();
+                Assert.NotNull(second);
+                Assert.Equal(first, second);
+            }
+            catch (Win32Exception)
+            {
+                return; // PATH 没有 dsh——跳过（防御性）
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
+            Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", null);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+    }
 }

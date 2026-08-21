@@ -27,6 +27,48 @@ public sealed class HarnessRuntimeHost : IDisposable
     private readonly List<string> _stderrTail = new(StderrTailCapacity);
     private readonly object _stderrLock = new();
 
+    private const string PortFileName = ".dsh-web-port";
+
+    /// <summary>端口状态文件路径（落于 DSH_HOME 下，随 LocalApplicationData 承载、可写；与测试的环境覆盖一致）。</summary>
+    internal static string ResolvePortFilePath() => Path.Combine(ResolveDshHome(), PortFileName);
+
+    /// <summary>读取上次成功端口：跨 App 冷启动复用同端口 → WebView origin 不变 → dsh Web 端"当前会话"localStorage
+    /// （<c>dsh.sessions.current</c>，按 origin 隔离）仍命中 → 恢复上次会话。文件缺失/损坏/不可读 → null（回退 OS 分配）。</summary>
+    internal static int? TryLoadPersistedPort()
+    {
+        try
+        {
+            var path = ResolvePortFilePath();
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var text = File.ReadAllText(path).Trim();
+            return int.TryParse(text, out var port) && port is > 0 and <= 65535 ? port : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // DSH_HOME 暂不可读：回退 OS 分配端口（fail loud 由下方端口占位回退兜底）
+            Console.WriteLine($"[host] 读取上次端口失败（将回退 OS 分配）：{ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>持久化最近一次成功端口（尽力而为；写失败仅导致下次冷启动换端口→新会话，不阻断本次运行，故不 fail loud）。</summary>
+    internal static void PersistPort(int port)
+    {
+        try
+        {
+            Directory.CreateDirectory(ResolveDshHome());
+            File.WriteAllText(ResolvePortFilePath(), port.ToString());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.WriteLine($"[host] 写端口状态失败（下次冷启动将换端口）：{ex.Message}");
+        }
+    }
+
     /// <summary>失败时可读的诊断尾巴（stderr 末 N 行）。</summary>
     public IReadOnlyList<string> StderrTail
     {
@@ -58,20 +100,24 @@ public sealed class HarnessRuntimeHost : IDisposable
     /// <param name="timeout">等待 URL 的时限。</param>
     /// <param name="ct">取消令牌。</param>
     /// <returns>dsh web UI 的 URL；未在时限内给出则为 null。</returns>
-    /// <remarks>首次用 OS 分配端口并记住；重启复用同端口，保证 WebView origin 不变（Web UI 的页面级会话记忆依赖同 origin）。</remarks>
+    /// <remarks>端口需跨 App 冷启动保持稳定：origin 不变 → dsh Web 端"当前会话"localStorage（dsh.sessions.current，按 origin 隔离）
+    /// 仍命中 → 恢复上一会话。进程内崩溃重启复用 <paramref name="ct"/> 前记忆的 <c>_port</c>；冷启动从磁盘加载上次端口并回写。</remarks>
     public async Task<Uri?> StartAsync(TimeSpan timeout, CancellationToken ct = default)
     {
         Stop();
-        Uri? url = await StartCoreAsync(_port, timeout, ct);
-        if (url is null && _port is not null)
+        var preferred = _port ?? TryLoadPersistedPort();
+        Uri? url = await StartCoreAsync(preferred, timeout, ct);
+        if (url is null && preferred is not null)
         {
-            // 固定端口被占（kill 后未及时释放等）：回退 OS 分配
+            // 固定端口被占（kill 后未及时释放 / 其他进程占用）：回退 OS 分配
             url = await StartCoreAsync(null, timeout, ct);
         }
 
         if (url is not null)
         {
             _port = url.Port;
+            // 跨进程持久化：冷启动复用同端口（origin 不变）才能恢复 dsh Web 端的上一会话
+            PersistPort(url.Port);
         }
 
         return url;
