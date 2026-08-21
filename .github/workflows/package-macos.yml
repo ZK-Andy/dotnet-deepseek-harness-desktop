@@ -40,7 +40,7 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       ARCH: ${{ matrix.arch }}
       SELF_SIGN: ${{ github.event.inputs.self_sign }}
-      DSH_VERSION: '0.1.0-rc.8'
+      DSH_VERSION: '0.1.1-rc.1'
       NODE_VERSION: '22.23.1'
     steps:
       - uses: actions/checkout@v4
