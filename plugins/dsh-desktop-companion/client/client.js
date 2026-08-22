@@ -18,6 +18,9 @@
  * - Self-update button in the sidebar footer (beside Settings): renders ONLY
  *   while the host reports status=ready; hover expands「更新 vX.Y.Z」;
  *   click installs+restarts via desktop.update.install.
+ * - Self-update section in Settings (settings.section): current version,
+ *   manual check entry, full status line incl. host-reported error reason;
+ *   shows an "unavailable" hint when the runtime has no update stack (dev).
  */
 ;(function () {
   if (typeof window === 'undefined' || !window.__ModuleLoader__) return
@@ -109,7 +112,19 @@
             '.ddc-spin{width:14px;height:14px;border-radius:50%;border:2px solid #22c55e;' +
             'border:2px solid var(--dsw-alias-state-success-primary,#22c55e);' +
             'animation:ddc-rot 1s linear infinite}' +
-            '@keyframes ddc-rot{to{transform:rotate(360deg)}}'
+            '@keyframes ddc-rot{to{transform:rotate(360deg)}}' +
+            '.ddc-set{max-width:520px;display:flex;flex-direction:column;gap:12px;padding:4px 0}' +
+            '.ddc-set .ddc-cur,.ddc-set .ddc-status,.ddc-set .ddc-hint{font-size:13px;line-height:1.5}' +
+            '.ddc-set .ddc-cur{opacity:.72}' +
+            '.ddc-set .ddc-err{color:#ef4444;color:var(--dsw-alias-state-danger-primary,#ef4444)}' +
+            '.ddc-btn{height:30px;padding:0 14px;border-radius:8px;border:1px solid rgba(127,127,127,.35);' +
+            'background:transparent;color:inherit;cursor:pointer;font-size:13px;' +
+            'transition:background .15s ease,border-color .15s ease}' +
+            '.ddc-btn:hover:not(:disabled){background:rgba(127,127,127,.12);border-color:rgba(127,127,127,.55)}' +
+            '.ddc-btn:disabled{opacity:.55;cursor:default}' +
+            '.ddc-btn-primary{background:#22c55e;background:var(--dsw-alias-state-success-primary,#22c55e);' +
+            'border-color:transparent;color:#e6fff2;color:var(--dsw-alias-state-success-tertiary,#e6fff2)}' +
+            '.ddc-btn-primary:hover:not(:disabled){filter:brightness(1.05)}'
           if (!document.getElementById(style.id)) document.head.append(style)
 
           function UpdateButton(props) {
@@ -148,6 +163,77 @@
                 installing ? '\u5b89\u88c5\u4e2d\u2026' : ('\u66f4\u65b0 ' + (state.version || ''))))
           }
 
+          var STR = {
+            label: '\u684c\u9762\u66f4\u65b0',
+            cur: '\u5f53\u524d\u7248\u672c',
+            idle: '\u5c1a\u672a\u68c0\u67e5\u66f4\u65b0',
+            checking: '\u6b63\u5728\u68c0\u67e5\u66f4\u65b0\u2026',
+            dl: '\u6b63\u5728\u4e0b\u8f7d',
+            readySuffix: '\u5c31\u7eea\uff0c\u53ef\u5b89\u88c5',
+            installBtn: '\u7acb\u5373\u5b89\u88c5\u5e76\u91cd\u542f',
+            installing: '\u6b63\u5728\u5b89\u88c5\uff0c\u5e94\u7528\u5373\u5c06\u91cd\u542f\u2026',
+            uptodate: '\u5df2\u662f\u6700\u65b0\u7248\u672c',
+            errPrefix: '\u68c0\u67e5\u5931\u8d25\uff1a',
+            unknown: '\u672a\u77e5\u539f\u56e0',
+            checkBtn: '\u68c0\u67e5\u66f4\u65b0',
+            unavail: '\u684c\u9762\u81ea\u66f4\u65b0\u5728\u5f53\u524d\u8fd0\u884c\u65f6\u4e0d\u53ef\u7528\uff08\u5f00\u53d1\u8fd0\u884c\u65f6\u672a\u88c5\u8f7d\u81ea\u66f4\u65b0\u6808\uff09',
+          }
+
+          var statusText = function (s) {
+            switch (s && s.status) {
+              case 'checking': return STR.checking
+              case 'downloading': return STR.dl + (s.version ? ' ' + s.version : '') + '\u2026'
+              case 'ready': return (s.version ? s.version + ' ' : '') + STR.readySuffix
+              case 'installing': return STR.installing
+              case 'uptodate': return STR.uptodate
+              default: return STR.idle
+            }
+          }
+
+          // 设置页区块：undefined=查询中不渲染，null=宿主无自更新栈（页内提示），对象=正常状态帧
+          function UpdateSection() {
+            var pair = reactMod.useState(undefined)
+            var state = pair[0]
+            var setState = pair[1]
+            reactMod.useEffect(function () {
+              var onEvt = function (e) { if (e.detail) setState(e.detail) }
+              document.addEventListener('dsh-desktop-update', onEvt)
+              window.__ryn.invoke('desktop.update.getState', {}).then(function (s) {
+                setState(parseState(s) || null)
+              }).catch(function () { setState(null) })
+              return function () { document.removeEventListener('dsh-desktop-update', onEvt) }
+            }, [])
+            if (state === undefined) return null
+            if (state === null) {
+              return h('div', { className: 'ddc-set' }, h('div', { className: 'ddc-hint' }, STR.unavail))
+            }
+            var busy = state.status === 'checking' || state.status === 'downloading' || state.status === 'installing'
+            return h('div', { className: 'ddc-set' },
+              h('div', { className: 'ddc-cur' }, STR.cur + (state.current ? ' ' + state.current : '')),
+              h('div', { className: 'ddc-status' },
+                state.status === 'error'
+                  ? h('span', { className: 'ddc-err' }, STR.errPrefix + (state.message || STR.unknown))
+                  : statusText(state)),
+              h('div', { className: 'ddc-row' },
+                h('button', {
+                  className: 'ddc-btn',
+                  type: 'button',
+                  disabled: busy,
+                  onClick: function () {
+                    window.__ryn.invoke('desktop.update.check', {}).catch(function () {})
+                  },
+                }, STR.checkBtn),
+                state.status === 'ready'
+                  ? h('button', {
+                      className: 'ddc-btn ddc-btn-primary',
+                      type: 'button',
+                      onClick: function () {
+                        window.__ryn.invoke('desktop.update.install', {}).catch(function () {})
+                      },
+                    }, STR.installBtn)
+                  : null))
+          }
+
           ctx.slots.inject('sidebar.footer.action', function () {
             return ctx.slots.register({
               name: 'sidebar.footer.action',
@@ -155,6 +241,18 @@
               label: function () { return '\u684c\u9762\u66f4\u65b0' },
             }, function (props) {
               return h(UpdateButton, props)
+            })
+          })
+          // 设置页「桌面更新」：手动检查入口（遗留项①后半，见 ADR companion-update-settings-section）；
+          // order 50 排在市场（40）之后；无自更新栈时由 UpdateSection 自行降级为不可用提示
+          ctx.slots.inject('settings.section', function () {
+            return ctx.slots.register({
+              name: 'settings.section',
+              id: 'dsh-desktop-companion-update',
+              order: 50,
+              label: function () { return STR.label },
+            }, function (props) {
+              return h(UpdateSection, props)
             })
           })
           return true
