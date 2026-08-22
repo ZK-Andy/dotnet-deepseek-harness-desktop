@@ -12,7 +12,7 @@ public sealed class InstallerDownloader
 
     /// <summary>
     /// 下载资产到目标目录：先写 <c>&lt;name&gt;.part</c>，完成后改名为最终文件名并校验 SHA-256。
-    /// 校验失败删除半成品并抛出（状态机转 Error）。
+    /// 任何失败（HTTP 非 2xx / 校验文件缺失 / 哈希不匹配 / 超时）都清掉半成品并抛出（状态机转 Error）。
     /// 跨实例互斥：独占 <c>.download.lock</c>——另一实例正在下载时抛出，防双写损坏半成品
     /// （锁随进程死亡自动释放，无陈锁问题）。
     /// </summary>
@@ -27,22 +27,42 @@ public sealed class InstallerDownloader
             ?? throw new InvalidOperationException("另一实例正在下载更新，请稍候后再试");
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(timeout);
-        await using (var target = File.Create(partPath))
+        try
         {
-            await using var source = await _http.GetStreamAsync(meta.AssetUrl, cts.Token).ConfigureAwait(false);
-            await source.CopyToAsync(target, cts.Token).ConfigureAwait(false);
-        }
+            await using (var target = File.Create(partPath))
+            {
+                // GetStreamAsync 对非 2xx 不抛（404/500 会把错误页当安装包写满 .part，只报误导的校验失败），
+                // 必须显式 EnsureSuccessStatusCode
+                using var response = await _http
+                    .GetAsync(meta.AssetUrl, HttpCompletionOption.ResponseHeadersRead, cts.Token)
+                    .ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
+                await using var source = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+                await source.CopyToAsync(target, cts.Token).ConfigureAwait(false);
+            }
 
-        if (meta.Sha256Url is not null)
+            if (meta.Sha256Url is not null)
+            {
+                await VerifySha256Async(partPath, meta.AssetName, meta.Sha256Url, cts.Token).ConfigureAwait(false);
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"release 未附 SHA256SUMS.txt，拒绝无校验安装：{meta.AssetName}（宁可误报不装坏包）");
+            }
+        }
+        catch
         {
-            await VerifySha256Async(partPath, meta.AssetName, meta.Sha256Url, cts.Token).ConfigureAwait(false);
+            // 校验/超时/HTTP 错误的半成品一律清除，避免残留 .part 误导后续重试（重复删除无害）
+            File.Delete(partPath);
+            throw;
         }
 
         File.Move(partPath, destPath, overwrite: true);
         return destPath;
     }
 
-    /// <summary>下载 SHA256SUMS.txt，找目标文件名的行比对哈希；找不到对应行视为无法校验——放行（记日志由调用方处理）。</summary>
+    /// <summary>下载 SHA256SUMS.txt，找目标文件名的行比对哈希；找不到对应行视为无法校验——fail loud 拒装。</summary>
     public async Task VerifySha256Async(string filePath, string assetName, string sha256Url, CancellationToken cancellationToken)
     {
         var sums = await _http.GetStringAsync(sha256Url, cancellationToken).ConfigureAwait(false);

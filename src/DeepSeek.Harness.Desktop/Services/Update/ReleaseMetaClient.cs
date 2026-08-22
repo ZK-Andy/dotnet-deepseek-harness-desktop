@@ -6,7 +6,7 @@ namespace DeepSeek.Harness.Desktop.Services.Update;
 /// <param name="Version">release tag 版本（如 <c>v0.1.21</c>）。</param>
 /// <param name="AssetName">资产文件名（如 <c>..._linux-amd64.deb</c>）。</param>
 /// <param name="AssetUrl">资产下载绝对 URL。</param>
-/// <param name="Sha256Url">SHA256SUMS.txt 绝对 URL；缺失时下载后跳过强校验（记日志）。</param>
+/// <param name="Sha256Url">SHA256SUMS.txt 绝对 URL；缺失时下载后拒绝安装（fail loud，宁可误报不装坏包）。</param>
 public sealed record ReleaseMeta(string Version, string AssetName, string AssetUrl, string? Sha256Url)
 {
     /// <summary>各 RID+包类型的资产文件名后缀（发布命名契约，见 release.yml/package 脚本；rpm 架构名与 deb 不同）。</summary>
