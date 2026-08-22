@@ -13,7 +13,8 @@ C# 胖后端 + 伴生插件瘦 UI：
 - `Services/Update/` 状态机移植 opencode `updater-controller`（`idle→checking→downloading→ready→installing` + up-to-date/error）：检查/下载/安装全部委托注入 + ready 持久化接口，纯逻辑 xunit 覆盖；启动对账（ready 版本==当前版本→清除记录）后自动检查一次；并发检查去重；失败转 error 不阻塞后续重查。
 - Feed 绕限流（hairyf 同款）：`releases.atom` 取最新稳定 tag（含 `-` 的预发布跳过）+ `expanded_assets/<tag>` 页抓资产 href；`ReleaseMeta.Pick` 按 RID 后缀挑资产（`_linux-amd64.deb`/`_linux-arm64.deb`/`_windows-x64-setup.exe`/`_macos-*.dmg`），相对 href 归一化。
 - 下载 `.part` 临时名 + 完成原子改名 + SHA256SUMS.txt 强校验（双空格/`*` 二进制格式都解析），落地 `DSH_HOME/updates/`。
-- 安装执行器派生分离进程即返回：Linux 写等待脚本（轮询本进程退出→`pkexec dpkg -i|rpm -U`→nohup 拉起新版同路径二进制）；Windows Inno Setup `/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`；macOS v1 抛 PlatformNotSupportedException 转 Error。
+- Linux 包类型按系统包管理器检测（dpkg→deb / rpm→rpm，两者皆无回退 deb），资产后缀随类型切换（rpm 架构名 x86_64/aarch64 与 deb 的 amd64/arm64 不同）——首版写死 deb 导致 rpm 系统下载了装不上的包（实机教训）。
+- 安装执行器：Linux pkexec 授权窗口观察 10s——快速非零退出（用户取消）抛错令状态机**回退 ready**（首版派生即返回成功，取消后卡死 installing）；授权通过则脚本接管（等本进程退出→dpkg/rpm→nohup 拉起新版同路径二进制）。Windows Inno `/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`；macOS v1 抛 PlatformNotSupportedException 转 Error。
 - UI 挂伴生插件：`sidebar.footer.action` slot（侧边栏底部设置入口上方动作行，用户选定位置；右下角 overlay 因小屏与输入框重叠被否）。组件仅 status=ready 渲染圆形下载钮（opencode 同款 hover 宽度展开显示「更新 vX.Y.Z」，rail 态纯图标 title 提示），点击 `ryn.invoke('desktop.update.install')`，installing 转圈禁点。
 - 状态通道：宿主订阅状态机 transition → `EvaluateJavaScriptAsync` 派发 `dsh-desktop-update` CustomEvent；插件挂载时先 `ryn.invoke('desktop.update.getState')` 对齐初值。
 - 参数归位：仓库/超时/目录进 appsettings.json `Update` 节（AOT 安全的手工 JSON 解析）；当前版本单一来源 csproj `<Version>`（发布 CI 以 `-p:Version=<tag 去前缀>` 覆盖）。

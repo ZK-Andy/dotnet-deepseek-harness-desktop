@@ -3,7 +3,7 @@ using Xunit;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 
-/// <summary>资产挑选（expanded_assets hrefs → RID 匹配）与 SHA256SUMS 解析。</summary>
+/// <summary>资产挑选（expanded_assets hrefs → RID+包类型匹配）、包类型检测、SHA256SUMS 解析。</summary>
 public class ReleaseAssetTests
 {
     private const string Repo = "ZK-Andy/dotnet-deepseek-harness-desktop";
@@ -16,24 +16,40 @@ public class ReleaseAssetTests
             $"/{Repo}/releases/download/v0.1.21/app_0.1.21_linux-amd64.deb",
             $"/{Repo}/releases/download/v0.1.21/app_0.1.21_linux-arm64.deb",
             $"/{Repo}/releases/download/v0.1.21/SHA256SUMS.txt",
-        ], "linux-x64", Repo);
+        ], "linux-x64", Repo, UpdatePlatform.Deb);
 
         Assert.NotNull(meta);
         Assert.Equal("app_0.1.21_linux-amd64.deb", meta.AssetName);
         Assert.EndsWith("/SHA256SUMS.txt", meta.Sha256Url, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Pick_LinuxX64_Rpm_UsesRpmArchName()
+    {
+        // rpm 系统必须拿 x86_64.rpm（架构命名与 deb 的 amd64 不同）——2026-08-22 实机串包教训
+        var meta = ReleaseMeta.Pick("v0.1.21",
+        [
+            $"/{Repo}/releases/download/v0.1.21/app_0.1.21_linux-amd64.deb",
+            $"/{Repo}/releases/download/v0.1.21/app_0.1.21_linux-x86_64.rpm",
+            $"/{Repo}/releases/download/v0.1.21/SHA256SUMS.txt",
+        ], "linux-x64", Repo, UpdatePlatform.Rpm);
+
+        Assert.NotNull(meta);
+        Assert.Equal("app_0.1.21_linux-x86_64.rpm", meta.AssetName);
+    }
+
     [Theory]
-    [InlineData("win-x64", "app_0.1.21_windows-x64-setup.exe")]
-    [InlineData("linux-arm64", "app_0.1.21_linux-arm64.deb")]
-    [InlineData("osx-arm64", "app_0.1.21_macos-arm64.dmg")]
-    public void Pick_PerRid(string rid, string expectedName)
+    [InlineData("win-x64", null, "app_0.1.21_windows-x64-setup.exe")]
+    [InlineData("linux-arm64", "deb", "app_0.1.21_linux-arm64.deb")]
+    [InlineData("linux-arm64", "rpm", "app_0.1.21_linux-aarch64.rpm")]
+    [InlineData("osx-arm64", null, "app_0.1.21_macos-arm64.dmg")]
+    public void Pick_PerRid(string rid, string? kind, string expectedName)
     {
         var meta = ReleaseMeta.Pick("v0.1.21",
         [
             $"/{Repo}/releases/download/v0.1.21/{expectedName}",
             $"/{Repo}/releases/download/v0.1.21/SHA256SUMS.txt",
-        ], rid, Repo);
+        ], rid, Repo, kind);
 
         Assert.NotNull(meta);
         Assert.Equal(expectedName, meta.AssetName);
@@ -48,6 +64,16 @@ public class ReleaseAssetTests
         ], "win-x64", Repo);
 
         Assert.Null(meta);
+    }
+
+    [Fact]
+    public void DetectPackageKind_PrefersDpkg_FallsBackRpm()
+    {
+        Assert.Equal(UpdatePlatform.Deb, UpdatePlatform.DetectPackageKind(hasDpkg: true, hasRpm: false));
+        Assert.Equal(UpdatePlatform.Deb, UpdatePlatform.DetectPackageKind(hasDpkg: true, hasRpm: true));
+        Assert.Equal(UpdatePlatform.Rpm, UpdatePlatform.DetectPackageKind(hasDpkg: false, hasRpm: true));
+        // 两者皆无回退 deb：装不上时错误信息仍可诊断
+        Assert.Equal(UpdatePlatform.Deb, UpdatePlatform.DetectPackageKind(hasDpkg: false, hasRpm: false));
     }
 
     [Fact]

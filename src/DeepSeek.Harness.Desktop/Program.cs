@@ -61,20 +61,17 @@ public static class Program
         var updateOptions = Services.Update.UpdateOptions.Load(AppContext.BaseDirectory);
         var updateHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         var updatesDir = Path.Combine(HarnessRuntimeHost.ResolveDshHome(), updateOptions.UpdatesDirName);
+        var updatePkgKind = Services.Update.UpdatePlatform.DetectCurrentPackageKind();
         CurrentWindowAccessor? updateWindow = null;
         var updateMachine = new Services.Update.UpdateStateMachine(
             currentVersion: Services.Update.AppVersion.Current(),
-            check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions).FetchLatestAsync(UpdateRid(), ct),
+            check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions).FetchLatestAsync(UpdateRid(), updatePkgKind, ct),
             download: (meta, ct) => new Services.Update.InstallerDownloader(updateHttp).DownloadAsync(
                 meta, updatesDir, TimeSpan.FromMinutes(updateOptions.DownloadTimeoutMinutes), ct),
-            install: (assetPath, _, _) =>
-            {
-                Services.Update.UpdateInstaller.Launch(assetPath, updatesDir);
-                return Task.CompletedTask;
-            },
+            install: (assetPath, _, ct) => Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, ct),
             persistence: new Services.Update.FileReadyPersistence(updatesDir),
             onTransition: state => PushUpdateState(updateWindow, state));
-        Console.WriteLine($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，目录 {updatesDir}");
+        Console.WriteLine($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}");
 
         var app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
