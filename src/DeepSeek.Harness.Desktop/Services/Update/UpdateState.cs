@@ -34,21 +34,26 @@ public enum UpdateStatus
 /// <param name="Current">当前壳版本（Transition 统一补齐；供更新页显示「当前版本/已是最新」）。</param>
 public sealed record UpdateState(UpdateStatus Status, string? Version = null, string? Message = null, string? Current = null)
 {
-    /// <summary>序列化为页面推送用的紧凑 JSON（手写避免 AOT 反射序列化）。</summary>
+    /// <summary>序列化为页面推送用的紧凑 JSON（手写避免 AOT 反射序列化）。三个动态字段统一转义，
+    /// 不依赖「上游已把版本号校验为数字段」的隐式约定。</summary>
     public string ToJson()
     {
-        var version = Version is null ? "null" : $"\"{Version}\"";
-        var json = $"{{\"status\":\"{Status.ToString().ToLowerInvariant()}\",\"version\":{version}";
+        var json = $"{{\"status\":\"{Status.ToString().ToLowerInvariant()}\",\"version\":{Quote(Version)}";
         if (Message is not null)
         {
-            json += $",\"message\":\"{JsonEncodedText.Encode(Message)}\"";
+            json += $",\"message\":{Quote(Message)}";
         }
 
         if (Current is not null)
         {
-            json += $",\"current\":\"{Current}\"";
+            json += $",\"current\":{Quote(Current)}";
         }
 
         return json + "}";
+    }
+
+    private static string Quote(string? value)
+    {
+        return value is null ? "null" : $"\"{JsonEncodedText.Encode(value)}\"";
     }
 }

@@ -41,4 +41,15 @@ public class UpdateStateJsonTests
         Assert.False(parsed.TryGetProperty("message", out _));
         Assert.False(parsed.TryGetProperty("current", out _));
     }
+
+    [Fact]
+    public void ToJson_HostileVersionAndCurrent_RoundTripAfterEscaping()
+    {
+        // 防御性转义：不依赖「上游已把版本号校验为数字段」的隐式约定
+        const string hostile = "0.1.\"x\"";
+        var json = new UpdateState(UpdateStatus.Ready, hostile, Current: hostile).ToJson();
+        var parsed = JsonDocument.Parse(json).RootElement;
+        Assert.Equal(hostile, parsed.GetProperty("version").GetString());
+        Assert.Equal(hostile, parsed.GetProperty("current").GetString());
+    }
 }
