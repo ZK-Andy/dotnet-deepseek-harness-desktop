@@ -67,11 +67,19 @@ public static class UpdateInstaller
         };
 
         // 等本进程退出再装（文件占用），装完拉起新版同路径二进制。
+        // 全程写 install.log：rpm/dpkg 报错、桌面环境缺失这类静默失败必须可诊断。
+        var logPath = Path.Combine(workDir, "install.log");
         var script = $"""
             #!/bin/sh
+            exec >> '{EscapeSingle(logPath)}' 2>&1
+            echo "== install start $(date) pid={Environment.ProcessId}"
+            echo "DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
             while kill -0 {Environment.ProcessId} 2>/dev/null; do sleep 0.3; done
-            {installCmd} || exit 1
+            echo "app exited; running: {installCmd}"
+            {installCmd}
+            echo "install exit=$?"
             nohup '{EscapeSingle(exePath)}' >/dev/null 2>&1 &
+            echo "relaunched: {EscapeSingle(exePath)}"
             """;
         Directory.CreateDirectory(workDir);
         var scriptPath = Path.Combine(workDir, "install.sh");
@@ -81,13 +89,25 @@ public static class UpdateInstaller
             File.SetUnixFileMode(scriptPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        var p = Process.Start(new ProcessStartInfo
+        // pkexec 会重置环境：显式透传 GUI 会话变量，否则脚本里拉起的新版窗口起不来
+        var psi = new ProcessStartInfo
         {
             FileName = "pkexec",
-            ArgumentList = { "/bin/sh", scriptPath },
             UseShellExecute = false,
-        }) ?? throw new InvalidOperationException("pkexec 启动失败");
-        return p;
+        };
+        psi.ArgumentList.Add("env");
+        foreach (var key in new[] { "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS" })
+        {
+            var value = Environment.GetEnvironmentVariable(key);
+            if (!string.IsNullOrEmpty(value))
+            {
+                psi.ArgumentList.Add($"{key}={value}");
+            }
+        }
+
+        psi.ArgumentList.Add("/bin/sh");
+        psi.ArgumentList.Add(scriptPath);
+        return Process.Start(psi) ?? throw new InvalidOperationException("pkexec 启动失败");
     }
 
     private static void LaunchWindows(string assetPath)

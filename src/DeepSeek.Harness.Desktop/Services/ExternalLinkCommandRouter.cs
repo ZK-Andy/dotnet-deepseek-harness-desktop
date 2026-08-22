@@ -81,15 +81,42 @@ public sealed class ExternalLinkCommandRouter : ICommandRouter
         return ValueTask.FromResult(opened ? "{}" : "null");
     }
 
-    /// <summary>默认打开器：<c>Process.Start</c> 且 <c>UseShellExecute=true</c>，交给系统默认浏览器。</summary>
+    /// <summary>
+    /// 默认打开器：Linux 走 <c>xdg-open</c> 并重定向子进程输出（浏览器自身的后台报错
+    /// 不回灌应用终端）；其余平台 <c>Process.Start(UseShellExecute=true)</c> 交系统默认处理。
+    /// </summary>
     private static bool OpenWithDefaultBrowser(string url)
     {
-        var psi = new ProcessStartInfo
+        var psi = new ProcessStartInfo();
+        if (OperatingSystem.IsLinux())
         {
-            FileName = url,
-            UseShellExecute = true,
-        };
+            psi.FileName = "xdg-open";
+            psi.ArgumentList.Add(url);
+            psi.UseShellExecute = false;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+        }
+        else
+        {
+            psi.FileName = url;
+            psi.UseShellExecute = true;
+        }
+
         using var p = Process.Start(psi);
-        return p is not null && !p.HasExited;
+        if (p is null)
+        {
+            return false;
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            // 必须持续排空重定向缓冲区，否则子进程写满管道会阻塞；内容刻意丢弃
+            p.OutputDataReceived += (_, _) => { };
+            p.ErrorDataReceived += (_, _) => { };
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
+        }
+
+        return !p.HasExited;
     }
 }
