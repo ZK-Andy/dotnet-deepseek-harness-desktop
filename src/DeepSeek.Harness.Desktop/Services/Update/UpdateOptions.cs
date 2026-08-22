@@ -17,6 +17,12 @@ public sealed record UpdateOptions
     /// <summary>下载与 ready 持久化目录；相对路径基于 DSH_HOME。</summary>
     public string UpdatesDirName { get; init; } = "updates";
 
+    /// <summary>dev 运行时下显式开启自更新的环境变量（默认 dev 不装载更新栈，防误装系统包；仅供升级链路验证）。</summary>
+    public const string ForceDevEnv = "DSH_DESKTOP_UPDATE_FORCE";
+
+    /// <summary>是否装载自更新栈：非 dev 恒真；dev 需显式 <c>DSH_DESKTOP_UPDATE_FORCE=1</c>（纯判定可单测）。</summary>
+    public static bool IsEnabledFor(bool isDev, string? forceDevEnv) => !isDev || forceDevEnv == "1";
+
     /// <summary>从应用旁的 appsettings.json 读取 <c>Update</c> 节；文件缺失或节缺失时全默认。</summary>
     public static UpdateOptions Load(string baseDirectory)
     {

@@ -58,37 +58,51 @@ public static class Program
 
         // 自更新栈（仅 ready 对外可见；机制见 ADR desktop-shell-self-update）：
         // 状态机纯逻辑可单测，检查/下载/安装全部委托注入；状态经 CustomEvent 推给插件 UI。
-        var updateOptions = Services.Update.UpdateOptions.Load(AppContext.BaseDirectory);
-        var updateHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-        var updatesDir = Path.Combine(HarnessRuntimeHost.ResolveDshHome(), updateOptions.UpdatesDirName);
-        var updatePkgKind = Services.Update.UpdatePlatform.DetectCurrentPackageKind();
+        // dev 运行时不装载（除非 DSH_DESKTOP_UPDATE_FORCE=1 显式开启验证）：dev 构建版本同 csproj，
+        // 一旦比对出新 release，点击会把官方包装进系统后按 Environment.ProcessPath 拉起**旧 dev 二进制**，
+        // 版本不变、ready 记录不清，形成循环（审核加固，见 ADR self-update-review-hardening）。
+        var updateEnabled = Services.Update.UpdateOptions.IsEnabledFor(
+            isDev,
+            Environment.GetEnvironmentVariable(Services.Update.UpdateOptions.ForceDevEnv));
+        Services.Update.UpdateStateMachine? updateMachine = null;
         CurrentWindowAccessor? updateWindow = null;
-        var updateMachine = new Services.Update.UpdateStateMachine(
-            currentVersion: Services.Update.AppVersion.Current(),
-            check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions).FetchLatestAsync(UpdateRid(), updatePkgKind, ct),
-            download: (meta, ct) => new Services.Update.InstallerDownloader(updateHttp).DownloadAsync(
-                meta, updatesDir, TimeSpan.FromMinutes(updateOptions.DownloadTimeoutMinutes), ct),
-            install: async (assetPath, _, ct) =>
-            {
-                // 授权通过（LaunchAsync 观察窗口内未取消）后：主动关闭窗口让进程退出，
-                // 安装脚本的等待环随即放行 rpm/dpkg 并拉起新版。缺这步脚本会死等本进程。
-                await Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, ct);
-                Console.WriteLine("[update] 授权通过，关闭应用以继续安装…");
-                try
+        if (updateEnabled)
+        {
+            var updateOptions = Services.Update.UpdateOptions.Load(AppContext.BaseDirectory);
+            var updateHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            var updatesDir = Path.Combine(HarnessRuntimeHost.ResolveDshHome(), updateOptions.UpdatesDirName);
+            var updatePkgKind = Services.Update.UpdatePlatform.DetectCurrentPackageKind();
+            updateMachine = new Services.Update.UpdateStateMachine(
+                currentVersion: Services.Update.AppVersion.Current(),
+                check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions).FetchLatestAsync(UpdateRid(), updatePkgKind, ct),
+                download: (meta, ct) => new Services.Update.InstallerDownloader(updateHttp).DownloadAsync(
+                    meta, updatesDir, TimeSpan.FromMinutes(updateOptions.DownloadTimeoutMinutes), ct),
+                install: async (assetPath, _, ct) =>
                 {
-                    updateWindow?.Current?.Close();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[update] 窗口关闭失败：{ex.Message}");
-                }
+                    // 授权通过（LaunchAsync 观察窗口内未取消）后：主动关闭窗口让进程退出，
+                    // 安装脚本的等待环随即放行 rpm/dpkg 并拉起新版。缺这步脚本会死等本进程。
+                    await Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, ct);
+                    Console.WriteLine("[update] 授权通过，关闭应用以继续安装…");
+                    try
+                    {
+                        updateWindow?.Current?.Close();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[update] 窗口关闭失败：{ex.Message}");
+                    }
 
-                // 兜底：8 秒内仍未退出（Close 事件丢失等）则强制退出，保证安装流程放行
-                StartExitFallback(ct);
-            },
-            persistence: new Services.Update.FileReadyPersistence(updatesDir),
-            onTransition: state => PushUpdateState(updateWindow, state));
-        Console.WriteLine($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}");
+                    // 兜底：8 秒内仍未退出（Close 事件丢失等）则强制退出，保证安装流程放行
+                    StartExitFallback(ct);
+                },
+                persistence: new Services.Update.FileReadyPersistence(updatesDir),
+                onTransition: state => PushUpdateState(updateWindow, state));
+            Console.WriteLine($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}");
+        }
+        else
+        {
+            Console.WriteLine($"[host] 自更新：dev 运行时不装载（DSH_DESKTOP_UPDATE_FORCE=1 可显式开启）");
+        }
 
         var app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
@@ -128,8 +142,11 @@ public static class Program
                 services.AddRynCommands();
                 // 外部链接 → 系统默认浏览器（宿主命令路由，见 proposed bug-fix ADR）
                 services.AddSingleton<ICommandRouter, Services.ExternalLinkCommandRouter>();
-                // 自更新命令：desktop.update.getState / check / install
-                services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine));
+                // 自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）
+                if (updateMachine is not null)
+                {
+                    services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine));
+                }
             })
             .Build();
 
@@ -149,20 +166,23 @@ public static class Program
         var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
 
         // 自更新启动对账 + 后台检查一次（失败静默转 error 态，不影响首屏）
-        _ = Task.Run(async () =>
+        if (updateMachine is not null)
         {
-            try
+            _ = Task.Run(async () =>
             {
-                await updateMachine.StartAsync(supervisorCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[update] start 失败：{ex.Message}");
-            }
-        });
+                try
+                {
+                    await updateMachine.StartAsync(supervisorCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[update] start 失败：{ex.Message}");
+                }
+            });
+        }
 
         // 市场后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装随包插件，装完自动刷新（不阻塞首启）
         // 对齐 Tauri 的“推荐预设”后台装 + pilot-harness 的随包 theme 已在 node_modules
