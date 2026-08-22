@@ -68,7 +68,35 @@ public static class Program
             check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions).FetchLatestAsync(UpdateRid(), updatePkgKind, ct),
             download: (meta, ct) => new Services.Update.InstallerDownloader(updateHttp).DownloadAsync(
                 meta, updatesDir, TimeSpan.FromMinutes(updateOptions.DownloadTimeoutMinutes), ct),
-            install: (assetPath, _, ct) => Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, ct),
+            install: async (assetPath, _, ct) =>
+            {
+                // 授权通过（LaunchAsync 观察窗口内未取消）后：主动关闭窗口让进程退出，
+                // 安装脚本的等待环随即放行 rpm/dpkg 并拉起新版。缺这步脚本会死等本进程。
+                await Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, ct);
+                Console.WriteLine("[update] 授权通过，关闭应用以继续安装…");
+                try
+                {
+                    updateWindow?.Current?.Close();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[update] 窗口关闭失败：{ex.Message}");
+                }
+
+                // 兜底：8 秒内仍未退出（Close 事件丢失等）则强制退出，保证安装流程放行
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(8), ct);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+
+                    Environment.Exit(0);
+                });
+            },
             persistence: new Services.Update.FileReadyPersistence(updatesDir),
             onTransition: state => PushUpdateState(updateWindow, state));
         Console.WriteLine($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}");
