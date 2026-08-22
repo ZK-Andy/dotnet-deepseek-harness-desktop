@@ -18,6 +18,7 @@ C# 胖后端 + 伴生插件瘦 UI：
 - 状态通道：宿主订阅状态机 transition → `EvaluateJavaScriptAsync` 派发 `dsh-desktop-update` CustomEvent；插件挂载时先 `ryn.invoke('desktop.update.getState')` 对齐初值。
 - 参数归位：仓库/超时/目录进 appsettings.json `Update` 节（AOT 安全的手工 JSON 解析）；当前版本单一来源 csproj `<Version>`（发布 CI 以 `-p:Version=<tag 去前缀>` 覆盖）。
 - 命令面：`desktop.update.getState/check/install`（`DesktopUpdateCommandRouter`）；check 立即返回当前态（下载分钟级不走 IPC 长等待），后续靠事件推送。
+- **能力白名单**：`ryn.json` 的 `capabilities` 是命令命名空间开关（Ryn.Ipc `RynCapabilities`/`RynCommandDeniedException`，未声明即拒）——新增 ``desktop": true` 后 `desktop.update.*` 才可从页面调用；实测漏配表现为 invoke 500 + Command failed，页面侧无任何插件报错。
 
 ## Alternatives considered
 
