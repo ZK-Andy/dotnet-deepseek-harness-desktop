@@ -199,4 +199,75 @@ public class UpdateStateMachineTests
         await machine.StartAsync(CancellationToken.None);
         Assert.Equal(afterCount, seen.Count);
     }
+
+    [Fact]
+    public async Task Start_ClearsReady_WhenOlderThanCurrent()
+    {
+        // 降级残留/旧 home 的记录：版本低于当前且资产在——必须清除重查，而不是给降级安装建议
+        var persist = new FakePersistence();
+        var path = Path.Combine(Path.GetTempPath(), $"upd-{Guid.NewGuid():N}.deb");
+        File.WriteAllBytes(path, [1]);
+        try
+        {
+            await persist.SetAsync(new UpdateStateMachine.ReadyRecord("0.1.19", path), CancellationToken.None);
+            var machine = Create(Current, _ => null, persistence: persist);
+
+            await machine.StartAsync(CancellationToken.None);
+
+            Assert.Null(persist.Record);
+            Assert.Equal(UpdateStatus.UpToDate, machine.State.Status);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task Start_ClearsReady_WhenVersionUnparseable()
+    {
+        // ready.json 里的版本串损坏：不卡死启动，清除后正常检查
+        var persist = new FakePersistence();
+        var path = Path.Combine(Path.GetTempPath(), $"upd-{Guid.NewGuid():N}.deb");
+        File.WriteAllBytes(path, [1]);
+        try
+        {
+            await persist.SetAsync(new UpdateStateMachine.ReadyRecord("garbage-version", path), CancellationToken.None);
+            var machine = Create(Current, _ => null, persistence: persist);
+
+            await machine.StartAsync(CancellationToken.None);
+
+            Assert.Null(persist.Record);
+            Assert.Equal(UpdateStatus.UpToDate, machine.State.Status);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task Check_ConcurrentCalls_RunSingleCheck()
+    {
+        // 并发去重：判空与占位在同一临界区内，两个并发调用只执行一次检查
+        var count = 0;
+        var tcs = new TaskCompletionSource<ReleaseMeta?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var machine = new UpdateStateMachine(
+            currentVersion: Current,
+            check: _ =>
+            {
+                Interlocked.Increment(ref count);
+                return tcs.Task;
+            },
+            download: (meta, ct) =>
+            {
+                var path = Path.Combine(Path.GetTempPath(), $"conc-{Guid.NewGuid():N}.deb");
+                File.WriteAllBytes(path, [1]);
+                return Task.FromResult(path);
+            },
+            install: (assetPath, version, ct) => Task.CompletedTask,
+            persistence: new FakePersistence());
+
+        var first = machine.CheckAsync(CancellationToken.None);
+        var second = machine.CheckAsync(CancellationToken.None);
+        tcs.SetResult(Meta("0.1.21"));
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(1, count);
+        Assert.Equal(UpdateStatus.Ready, machine.State.Status);
+    }
 }

@@ -44,6 +44,7 @@ public sealed class UpdateStateMachine
 
     private UpdateState _state = new(UpdateStatus.Idle);
     private Task? _pending;
+    private readonly object _checkGate = new();
     private readonly List<Action<UpdateState>> _listeners = [];
 
     /// <summary>创建状态机。</summary>
@@ -52,7 +53,7 @@ public sealed class UpdateStateMachine
     /// <param name="download">下载委托。</param>
     /// <param name="install">安装委托。</param>
     /// <param name="persistence">ready 持久化。</param>
-    /// <param name="onTransition">每次状态变化的回调（UI 推送），异常由调用方自行兜住。</param>
+    /// <param name="onTransition">每次状态变化的回调（UI 推送）；回调异常由状态机兜住并记日志。</param>
     public UpdateStateMachine(
         string currentVersion,
         CheckDelegate check,
@@ -81,13 +82,13 @@ public sealed class UpdateStateMachine
     }
 
     /// <summary>
-    /// 启动：读持久化对账——ready 版本等于当前版本说明刚装完，清除记录；
-    /// 随后台检查一次（失败静默转 error，不影响首屏）。
+    /// 启动：读持久化对账——记录版本**不高于**当前版本（刚装完/降级残留/损坏记录）则清除；
+    /// 高于当前且安装包仍在时直接回 ready（不重复下载）；随后台检查一次（失败静默转 error，不影响首屏）。
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var ready = await _persistence.GetAsync(cancellationToken).ConfigureAwait(false);
-        if (ready is not null && UpdateVersion.Compare(ready.Version, _currentVersion) == 0)
+        if (ready is not null && ShouldClearReady(ready.Version))
         {
             await _persistence.ClearAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -101,8 +102,23 @@ public sealed class UpdateStateMachine
         await CheckAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>对账判定：记录版本不高于当前，或记录损坏（无法解析）——都按残留清除并重查。</summary>
+    private bool ShouldClearReady(string recordedVersion)
+    {
+        try
+        {
+            return UpdateVersion.Compare(recordedVersion, _currentVersion) <= 0;
+        }
+        catch (ArgumentException)
+        {
+            // 记录里的版本串无法解析：视同残留清除，不让它卡死启动
+            return true;
+        }
+    }
+
     /// <summary>
-    /// 检查一次更新；已在 ready 或有进行中的检查时直接返回当前状态（并发去重）。
+    /// 检查一次更新；已在 ready 或有进行中的检查时直接返回当前状态（并发去重——
+    /// 判空与占位在同一临界区内，多个并发调用只跑一次检查）。
     /// </summary>
     public async Task<UpdateState> CheckAsync(CancellationToken cancellationToken)
     {
@@ -111,20 +127,39 @@ public sealed class UpdateStateMachine
             return _state;
         }
 
-        if (_pending is not null)
+        Task pending;
+        bool joined;
+        lock (_checkGate)
         {
-            await _pending.ConfigureAwait(false);
-            return _state;
+            if (_pending is not null)
+            {
+                pending = _pending;
+                joined = true;
+            }
+            else
+            {
+                pending = RunCheckAsync(cancellationToken);
+                _pending = pending;
+                joined = false;
+            }
         }
 
-        _pending = RunCheckAsync(cancellationToken);
         try
         {
-            await _pending.ConfigureAwait(false);
+            await pending.ConfigureAwait(false);
         }
         finally
         {
-            _pending = null;
+            if (!joined)
+            {
+                lock (_checkGate)
+                {
+                    if (ReferenceEquals(_pending, pending))
+                    {
+                        _pending = null;
+                    }
+                }
+            }
         }
 
         return _state;
@@ -186,7 +221,7 @@ public sealed class UpdateStateMachine
             await _install(record.AssetPath, version, cancellationToken).ConfigureAwait(false);
             // 成功路径：进程随安装流程退出，不再迁移状态
         }
-        catch
+        catch (Exception)
         {
             Transition(new UpdateState(UpdateStatus.Ready, version));
             throw;
@@ -196,7 +231,16 @@ public sealed class UpdateStateMachine
     private void Transition(UpdateState next)
     {
         _state = next;
-        _onTransition?.Invoke(next);
+        try
+        {
+            _onTransition?.Invoke(next);
+        }
+        catch (Exception ex)
+        {
+            // 宿主推送回调（窗口未就绪/已销毁等）失败不拖垮状态机；与订阅者同等待遇
+            Console.WriteLine($"[update] 状态推送回调失败：{ex.Message}");
+        }
+
         foreach (var listener in _listeners)
         {
             try
