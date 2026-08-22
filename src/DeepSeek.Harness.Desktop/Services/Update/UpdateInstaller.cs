@@ -81,8 +81,9 @@ public static class UpdateInstaller
             {installCmd}
             echo "install exit=$?"
             if [ -n "$PKEXEC_UID" ]; then
-              echo "relaunch as uid=$PKEXEC_UID"
-              runuser -u "#$PKEXEC_UID" -- env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+              REL_USER="$(getent passwd "$PKEXEC_UID" 2>/dev/null | cut -d: -f1)"
+              echo "relaunch as uid=$PKEXEC_UID user=$REL_USER"
+              runuser -u "$REL_USER" -- env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
                 XAUTHORITY="$XAUTHORITY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
                 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
                 DSH_DESKTOP_DSH_HOME="{EscapeSingle(Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) ?? string.Empty)}" \
