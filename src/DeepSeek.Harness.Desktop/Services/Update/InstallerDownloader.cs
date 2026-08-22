@@ -13,6 +13,8 @@ public sealed class InstallerDownloader
     /// <summary>
     /// 下载资产到目标目录：先写 <c>&lt;name&gt;.part</c>，完成后改名为最终文件名并校验 SHA-256。
     /// 校验失败删除半成品并抛出（状态机转 Error）。
+    /// 跨实例互斥：独占 <c>.download.lock</c>——另一实例正在下载时抛出，防双写损坏半成品
+    /// （锁随进程死亡自动释放，无陈锁问题）。
     /// </summary>
     /// <returns>落地的本地文件全路径。</returns>
     public async Task<string> DownloadAsync(ReleaseMeta meta, string destDir, TimeSpan timeout, CancellationToken cancellationToken)
@@ -21,6 +23,8 @@ public sealed class InstallerDownloader
         var destPath = Path.Combine(destDir, meta.AssetName);
         var partPath = destPath + ".part";
 
+        using var lockFs = TryAcquireDownloadLock(destDir)
+            ?? throw new InvalidOperationException("另一实例正在下载更新，请稍候后再试");
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(timeout);
         await using (var target = File.Create(partPath))
@@ -78,6 +82,24 @@ public sealed class InstallerDownloader
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// 尝试独占下载锁（<c>.download.lock</c>，FileShare.None）；被其他进程持有时返回 null。
+    /// 锁句柄随进程死亡自动释放，不存在陈锁。
+    /// </summary>
+    public static FileStream? TryAcquireDownloadLock(string destDir)
+    {
+        Directory.CreateDirectory(destDir);
+        try
+        {
+            return File.Open(Path.Combine(destDir, ".download.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException)
+        {
+            // 被占用 = 他实例下载中
+            return null;
+        }
     }
 
     /// <summary>流式计算文件 SHA-256（安装包百 MB 级，不整读内存）。</summary>
