@@ -63,9 +63,21 @@
 
         // Self-update button in the sidebar footer (beside Settings).
         // Renders ONLY while the host reports status=ready; click installs+restarts.
+        // Staged console logs below are deliberate: they localize any silent-skip
+        // (guard / react / slots) to exactly one step when debugging remotely.
         try {
-          if (window.__ryn && ctx.slots && typeof require === 'function') {
-            var h = require('react').createElement
+          var TAG = '[dsh-desktop-companion]'
+          if (!(window.__ryn && ctx.slots && typeof require === 'function')) {
+            console.warn(TAG, 'update UI skipped: guards', {
+              ryn: !!window.__ryn, slots: !!ctx.slots, require: typeof require,
+            })
+          } else {
+            var reactMod = null
+            try { reactMod = require('react') } catch (e1) { console.warn(TAG, 'react require threw', e1) }
+            if (!reactMod || !reactMod.createElement || !reactMod.useState || !reactMod.useEffect) {
+              console.warn(TAG, 'update UI skipped: react unusable')
+            } else {
+            var h = reactMod.createElement
             var style = document.createElement('style')
             style.id = 'dsh-desktop-companion-update-css'
             style.textContent =
@@ -128,13 +140,18 @@
             }
 
             ctx.slots.inject('sidebar.footer.action', function () {
+              console.info(TAG, 'sidebar.footer.action inject factory running')
               return ctx.slots.register({
                 name: 'sidebar.footer.action',
                 id: 'dsh-desktop-companion-update',
                 label: function () { return '\u684c\u9762\u66f4\u65b0' },
-              }, function (props) { return h(UpdateButton, props) })
+              }, function (props) {
+                console.info(TAG, 'update button render, wide =', !!(props && props.wide !== false))
+                return h(UpdateButton, props)
+              })
             })
-            console.info('[dsh-desktop-companion] update button registered')
+            console.info(TAG, 'update button registered')
+            }
           }
         } catch (e) { /* slots/react unavailable on this host: degrade to no update UI */ }
       }
