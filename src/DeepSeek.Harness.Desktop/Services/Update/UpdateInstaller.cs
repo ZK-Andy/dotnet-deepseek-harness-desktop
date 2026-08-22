@@ -56,29 +56,33 @@ public static class UpdateInstaller
         throw new PlatformNotSupportedException("macOS 静默更新暂未支持；请手动下载 dmg 安装");
     }
 
-    private static Process LaunchLinux(string assetPath, string workDir, string exePath)
+    /// <summary>按安装包扩展名生成包管理器命令（纯函数，可单测）。</summary>
+    public static string InstallCommandFor(string assetPath)
     {
         var ext = Path.GetExtension(assetPath).ToLowerInvariant();
-        var installCmd = ext switch
+        return ext switch
         {
             ".deb" => $"dpkg -i '{EscapeSingle(assetPath)}'",
             ".rpm" => $"rpm -U --replacepkgs --quiet '{EscapeSingle(assetPath)}'",
             _ => throw new PlatformNotSupportedException($"Linux 不支持的安装包类型：{ext}"),
         };
+    }
 
-        // 等本进程退出再装（文件占用），装完把新版**降权回原用户**拉起——
-        // 整个脚本是 root 在跑：直接 nohup GUI 会因 PATH 缺失/环境不符秒退；
-        // pkexec 注入 PKEXEC_UID（调用者 uid），用 runuser 回到原用户身份启动，
-        // 且新版输出追加进 install.log（启动即崩时可诊断）。
-        var logPath = Path.Combine(workDir, "install.log");
-        var script = $"""
+    /// <summary>
+    /// 生成 Linux 安装脚本内容（纯字符串，可单测）：等本进程退出 → 装包 → 把新版**降权回原用户**
+    /// 拉起（runuser + PKEXEC_UID），输出追 install.log。GUI 会话与隔离变量在脚本内以 <c>$VAR</c> 引用，
+    /// 由 pkexec env 注入；此处只固定 DSH_HOME 覆盖与二进制路径。
+    /// </summary>
+    public static string BuildLinuxScript(string installCommand, string logPath, int processId, string exePath, string? dshHomeOverride)
+    {
+        return $"""
             #!/bin/sh
             exec >> '{EscapeSingle(logPath)}' 2>&1
-            echo "== install start $(date) pid={Environment.ProcessId}"
+            echo "== install start $(date) pid={processId}"
             echo "DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
-            while kill -0 {Environment.ProcessId} 2>/dev/null; do sleep 0.3; done
-            echo "app exited; running: {installCmd}"
-            {installCmd}
+            while kill -0 {processId} 2>/dev/null; do sleep 0.3; done
+            echo "app exited; running: {installCommand}"
+            {installCommand}
             echo "install exit=$?"
             if [ -n "$PKEXEC_UID" ]; then
               REL_USER="$(getent passwd "$PKEXEC_UID" 2>/dev/null | cut -d: -f1)"
@@ -87,13 +91,25 @@ public static class UpdateInstaller
                 XAUTHORITY="$XAUTHORITY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
                 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
                 PATH="$PATH" HOME="$HOME" DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_X64="$DOTNET_ROOT_X64" \
-                DSH_DESKTOP_DSH_HOME="{EscapeSingle(Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) ?? string.Empty)}" \
+                DSH_DESKTOP_DSH_HOME="{EscapeSingle(dshHomeOverride ?? string.Empty)}" \
                 nohup '{EscapeSingle(exePath)}' >> '{EscapeSingle(logPath)}' 2>&1 &
             else
               echo "relaunch as current user"
               nohup '{EscapeSingle(exePath)}' >> '{EscapeSingle(logPath)}' 2>&1 &
             fi
             """;
+    }
+
+    private static Process LaunchLinux(string assetPath, string workDir, string exePath)
+    {
+        var installCmd = InstallCommandFor(assetPath);
+        var logPath = Path.Combine(workDir, "install.log");
+        var script = BuildLinuxScript(
+            installCmd,
+            logPath,
+            Environment.ProcessId,
+            exePath,
+            Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv));
         Directory.CreateDirectory(workDir);
         var scriptPath = Path.Combine(workDir, "install.sh");
         File.WriteAllText(scriptPath, script + Environment.NewLine);
