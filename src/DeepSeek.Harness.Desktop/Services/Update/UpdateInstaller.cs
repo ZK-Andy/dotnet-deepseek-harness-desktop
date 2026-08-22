@@ -70,11 +70,15 @@ public static class UpdateInstaller
 
     /// <summary>
     /// 生成 Linux 安装脚本内容（纯字符串，可单测）：等本进程退出 → 装包 → 把新版**降权回原用户**
-    /// 拉起（runuser + PKEXEC_UID），输出追 install.log。GUI 会话与隔离变量在脚本内以 <c>$VAR</c> 引用，
-    /// 由 pkexec env 注入；此处只固定 DSH_HOME 覆盖与二进制路径。
+    /// 拉起。环境透传由 <paramref name="relayEnv"/> 决定——只透传生成时非空的变量（空值写入会以
+    /// 「空串覆盖」污染二代实例的 glib/libsoup 路径解析）；二代实例先切到主目录再拉起（不继承
+    /// pkexec 脚本的工作目录），并优先经 <c>systemd-run --user --scope</c> 并入用户会话，使后续
+    /// 自更新的 pkexec 能按活动会话弹授权（无用户总线/无 systemd-run 时原样降权）。
     /// </summary>
-    public static string BuildLinuxScript(string installCommand, string logPath, int processId, string exePath, string? dshHomeOverride)
+    public static string BuildLinuxScript(string installCommand, string logPath, int processId, string exePath, IReadOnlyDictionary<string, string> relayEnv)
     {
+        var pairs = string.Join(" ", relayEnv.Select(kv => $"{kv.Key}='{EscapeSingle(kv.Value)}'"));
+        var home = relayEnv.TryGetValue("HOME", out var h) && h.Length > 0 ? h : "/";
         return $"""
             #!/bin/sh
             exec >> '{EscapeSingle(logPath)}' 2>&1
@@ -84,15 +88,17 @@ public static class UpdateInstaller
             echo "app exited; running: {installCommand}"
             {installCommand}
             echo "install exit=$?"
+            cd '{EscapeSingle(home)}'
             if [ -n "$PKEXEC_UID" ]; then
               REL_USER="$(getent passwd "$PKEXEC_UID" 2>/dev/null | cut -d: -f1)"
               echo "relaunch as uid=$PKEXEC_UID user=$REL_USER"
-              runuser -u "$REL_USER" -- env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-                XAUTHORITY="$XAUTHORITY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-                DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-                PATH="$PATH" HOME="$HOME" DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_X64="$DOTNET_ROOT_X64" \
-                DSH_DESKTOP_DSH_HOME="{EscapeSingle(dshHomeOverride ?? string.Empty)}" \
-                nohup '{EscapeSingle(exePath)}' >> '{EscapeSingle(logPath)}' 2>&1 &
+              # 二代实例并入用户会话作用域：pkexec→runuser 链拉起的进程不在 logind 会话内，
+              # 其后再触发自更新时 polkit 会因「无活动会话」拒绝认证；包一层 user scope 归位。
+              RUN_PREFIX=""
+              if [ -n "$DBUS_SESSION_BUS_ADDRESS" ] && command -v systemd-run >/dev/null 2>&1; then
+                RUN_PREFIX="systemd-run --user --scope"
+              fi
+              runuser -u "$REL_USER" -- env {pairs} $RUN_PREFIX nohup '{EscapeSingle(exePath)}' >> '{EscapeSingle(logPath)}' 2>&1 &
             else
               echo "relaunch as current user"
               nohup '{EscapeSingle(exePath)}' >> '{EscapeSingle(logPath)}' 2>&1 &
@@ -104,12 +110,30 @@ public static class UpdateInstaller
     {
         var installCmd = InstallCommandFor(assetPath);
         var logPath = Path.Combine(workDir, "install.log");
-        var script = BuildLinuxScript(
-            installCmd,
-            logPath,
-            Environment.ProcessId,
-            exePath,
-            Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv));
+        // pkexec 会重置环境：显式透传 GUI 会话变量（否则拉起的新版窗口起不来）、开发隔离
+        // 变量（否则重启后的实例丢掉 DSH_HOME 隔离）、.NET 运行时定位（DOTNET_ROOT 缺失时
+        // apphost 报 ".NET location: Not found"——实机教训）与 XDG 基目录族（用户自定义过
+        // XDG_* 时，二代实例缺了会把状态写去默认 HOME 甚至 root 侧）。空值不透传：以「空串」
+        // 到达与「未设置」对 glib/libsoup 不是一回事——空串会把正确的默认解析顶掉。
+        var passthrough = new[]
+        {
+            "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+            "PATH", "HOME", "USER", "LOGNAME", "SHELL",
+            "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME",
+            "DOTNET_ROOT", "DOTNET_ROOT_X64",
+            DevEnvironment.HomeOverrideEnv,
+        };
+        var relayEnv = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var key in passthrough)
+        {
+            var value = Environment.GetEnvironmentVariable(key);
+            if (!string.IsNullOrEmpty(value))
+            {
+                relayEnv[key] = value;
+            }
+        }
+
+        var script = BuildLinuxScript(installCmd, logPath, Environment.ProcessId, exePath, relayEnv);
         Directory.CreateDirectory(workDir);
         var scriptPath = Path.Combine(workDir, "install.sh");
         File.WriteAllText(scriptPath, script + Environment.NewLine);
@@ -118,28 +142,15 @@ public static class UpdateInstaller
             File.SetUnixFileMode(scriptPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        // pkexec 会重置环境：显式透传 GUI 会话变量（否则拉起的新版窗口起不来）、
-        // 开发隔离变量（否则重启后的实例丢掉 DSH_HOME 隔离）与 .NET 运行时定位
-        // （DOTNET_ROOT 缺失时 apphost 报 ".NET location: Not found"——实机教训）
         var psi = new ProcessStartInfo
         {
             FileName = "pkexec",
             UseShellExecute = false,
         };
         psi.ArgumentList.Add("env");
-        var passthrough = new[]
+        foreach (var kv in relayEnv)
         {
-            "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
-            DevEnvironment.HomeOverrideEnv,
-            "PATH", "HOME", "DOTNET_ROOT", "DOTNET_ROOT_X64",
-        };
-        foreach (var key in passthrough)
-        {
-            var value = Environment.GetEnvironmentVariable(key);
-            if (!string.IsNullOrEmpty(value))
-            {
-                psi.ArgumentList.Add($"{key}={value}");
-            }
+            psi.ArgumentList.Add($"{kv.Key}={kv.Value}");
         }
 
         psi.ArgumentList.Add("/bin/sh");
