@@ -192,6 +192,22 @@ public static class Program
         {
             _ = Task.Run(async () =>
             {
+                // 本任务的诊断日志同步落盘（stdout 在桌面启动形态下不可见——v0.2.1 实证教训）
+                var hostLogPath = Path.Combine(HarnessRuntimeHost.ResolveDshHome(), "logs", "host.log");
+                void Tee(string msg)
+                {
+                    Console.WriteLine(msg);
+                    try
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(hostLogPath)!);
+                        File.AppendAllText(hostLogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {msg}\n");
+                    }
+                    catch (Exception logEx)
+                    {
+                        Console.WriteLine($"[host] 日志落盘失败：{logEx.Message}");
+                    }
+                }
+
                 try
                 {
                     await Task.Delay(TimeSpan.FromSeconds(3));
@@ -201,7 +217,7 @@ public static class Program
                     // 用户显式把 DSH_DESKTOP_DSH_HOME 指回真实 home 时仍跳过（防串扰，2026-08-22 实证）。
                     if (isDev && !devAutoIsolated)
                     {
-                        Console.WriteLine("[host] 开发运行时且 DSH_HOME 为显式覆盖，跳过随包插件安装以防污染共享 profile");
+                        Tee("[host] 开发运行时且 DSH_HOME 为显式覆盖，跳过随包插件安装以防污染共享 profile");
                         return;
                     }
 
@@ -214,7 +230,7 @@ public static class Program
                     var bundled = RuntimeLocator.TryLocateBundled(runtimeDir);
                     if (bundled is null)
                     {
-                        Console.WriteLine("[host] 未找到捆绑运行时，跳过随包插件安装");
+                        Tee("[host] 未找到捆绑运行时，跳过随包插件安装");
                         return;
                     }
 
@@ -243,20 +259,20 @@ public static class Program
                                 var installedV = PluginVersionCheck.ReadInstalledVersion(profileDir, CompanionPkg);
                                 if (PluginVersionCheck.NeedsUpgrade(installedV, bundledV))
                                 {
-                                    Console.WriteLine($"[host] 随包插件升级：{CompanionPkg} {installedV ?? "(不可读)"} → {bundledV}");
+                                    Tee($"[host] 随包插件升级：{CompanionPkg} {installedV ?? "(不可读)"} → {bundledV}");
                                     pending.Add((CompanionPkg, companionSpec));
                                 }
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"[host] {CompanionPkg} 版本比对失败，跳过升级检查：{ex.Message}");
+                                Tee($"[host] {CompanionPkg} 版本比对失败，跳过升级检查：{ex.Message}");
                             }
                         }
                     }
 
                     if (pending.Count == 0)
                     {
-                        Console.WriteLine("[host] 随包插件已就位（bundles 含全部待装项），跳过安装");
+                        Tee("[host] 随包插件已就位（bundles 含全部待装项），跳过安装");
                         return;
                     }
 
@@ -268,55 +284,75 @@ public static class Program
 
                     foreach (var (_, spec) in pending)
                     {
-                        Console.WriteLine($"[host] 随包插件安装 spec={spec}");
+                        Tee($"[host] 随包插件安装 spec={spec}");
                     }
 
-                    var psi = new System.Diagnostics.ProcessStartInfo
+                    // 首次严格（尊重 pnpm minimumReleaseAge 等供应链政策）；当整份 lockfile 被政策
+                    // 拒绝（如市场新装插件发布不足 24h，v0.2.0 实证会连带阻断随包补装）时，降级
+                    // 放宽该单一政策重试一次并显式留痕——本操作只装第一方 file: 包，不新增注册源。
+                    async Task<(int Exit, string Out, string Err)> RunPluginAddAsync(bool relaxPolicy)
                     {
-                        FileName = bundled.Value.NodeExe,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                    };
-                    psi.ArgumentList.Add(bundled.Value.DshEntry);
-                    psi.ArgumentList.Add("plugin");
-                    psi.ArgumentList.Add("--profile");
-                    psi.ArgumentList.Add("web");
-                    psi.ArgumentList.Add("add");
-                    foreach (var (_, spec) in pending)
-                    {
-                        psi.ArgumentList.Add(spec);
+                        var psi = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = bundled.Value.NodeExe,
+                            UseShellExecute = false,
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                        };
+                        psi.ArgumentList.Add(bundled.Value.DshEntry);
+                        psi.ArgumentList.Add("plugin");
+                        psi.ArgumentList.Add("--profile");
+                        psi.ArgumentList.Add("web");
+                        psi.ArgumentList.Add("add");
+                        foreach (var (_, spec) in pending)
+                        {
+                            psi.ArgumentList.Add(spec);
+                        }
+
+                        psi.Environment["DSH_HOME"] = dshHome;
+                        psi.Environment["pnpm_config_store_dir"] = Path.Combine(dshHome, ".pnpm-store");
+                        psi.Environment["pnpm_config_cache_dir"] = Path.Combine(dshHome, ".pnpm-cache");
+                        if (relaxPolicy)
+                        {
+                            psi.Environment["pnpm_config_minimum_release_age"] = "0";
+                        }
+
+                        // 兼容旧 pnpm 的 store 仍被读取时不因 EROFS 失败（现 DSH_HOME 已可写，但保留注入）
+                        Directory.CreateDirectory(Path.Combine(dshHome, ".pnpm-store"));
+                        Directory.CreateDirectory(Path.Combine(dshHome, ".pnpm-cache"));
+                        using var p = System.Diagnostics.Process.Start(psi);
+                        if (p is null)
+                        {
+                            throw new InvalidOperationException("无法启动 dsh plugin 进程");
+                        }
+
+                        var stdout = await p.StandardOutput.ReadToEndAsync();
+                        var stderr = await p.StandardError.ReadToEndAsync();
+                        await p.WaitForExitAsync();
+                        return (p.ExitCode, stdout, stderr);
                     }
 
-                    psi.Environment["DSH_HOME"] = dshHome;
-                    psi.Environment["pnpm_config_store_dir"] = Path.Combine(dshHome, ".pnpm-store");
-                    psi.Environment["pnpm_config_cache_dir"] = Path.Combine(dshHome, ".pnpm-cache");
-                    // 兼容旧 pnpm 的 store 仍被读取时不因 EROFS 失败（现 DSH_HOME 已可写，但保留注入）
-                    Directory.CreateDirectory(Path.Combine(dshHome, ".pnpm-store"));
-                    Directory.CreateDirectory(Path.Combine(dshHome, ".pnpm-cache"));
-                    using var p = System.Diagnostics.Process.Start(psi);
-                    if (p is null)
+                    var (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: false);
+                    Tee($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
+                    if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
                     {
-                        Console.WriteLine("[host] 无法启动 dsh plugin 进程");
-                        return;
+                        Tee("[host] lockfile 被 minimumReleaseAge 政策拒绝；放宽该政策重试一次（仅本次安装生效）");
+                        (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: true);
+                        Tee($"[host] dsh plugin add(重试) exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
                     }
 
-                    var stdout = await p.StandardOutput.ReadToEndAsync();
-                    var stderr = await p.StandardError.ReadToEndAsync();
-                    await p.WaitForExitAsync();
-                    Console.WriteLine($"[host] dsh plugin add exit={p.ExitCode} stdout={stdout.Trim()} stderr={stderr.Trim()}");
-                    if (p.ExitCode == 0)
+                    if (exitCode == 0)
                     {
                         // 4) dsh 的 reconcilePlugins 理论上已写入 bundles，仍做兜底校验并补写（0.1.10 的 file:app 未进 bundles 需补）
                         foreach (var (pkg, _) in pending)
                         {
                             if (await MarketInstallHelper.EnsureBundlesContainsAsync(profilePkg, pkg))
                             {
-                                Console.WriteLine($"[host] 已补写 bundles {pkg}");
+                                Tee($"[host] 已补写 bundles {pkg}");
                             }
                         }
 
-                        Console.WriteLine("[host] 随包插件已后台安装，重启运行时以加载");
+                        Tee("[host] 随包插件已后台安装，重启运行时以加载");
                         try
                         {
                             await windowAccessor.Current.EvaluateJavaScriptAsync(RecoveryScript);
@@ -330,11 +366,11 @@ public static class Program
                         try
                         {
                             host.Stop();
-                            Console.WriteLine("[host] 已触发 dsh 重启（由监督器接管）");
+                            Tee("[host] 已触发 dsh 重启（由监督器接管）");
                         }
                         catch (Exception ex2)
                         {
-                            Console.WriteLine($"[host] 触发重启失败：{ex2.Message}");
+                            Tee($"[host] 触发重启失败：{ex2.Message}");
                             try
                             {
                                 var newUrl = await host.RestartAsync(TimeSpan.FromSeconds(60));
@@ -354,13 +390,12 @@ public static class Program
                     }
                     else
                     {
-                        Console.WriteLine($"[host] 随包插件安装失败 exit={p.ExitCode}，请查看 stderr 的 allowBuilds 提示");
-                        // 常见失败：ERR_PNPM_IGNORED_BUILDS 时，workspace 已在 EnsureWorkspaceAllowBuilds 中修过，下次启动会自愈
+                        Tee($"[host] 随包插件安装失败 exit={exitCode}（常见：ERR_PNPM_IGNORED_BUILDS——workspace 已自动修复，下次启动自愈；详情见上方 stderr）");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[host] 随包插件后台安装跳过：{ex.Message}");
+                    Tee($"[host] 随包插件后台安装跳过：{ex.Message}");
                 }
             });
         }

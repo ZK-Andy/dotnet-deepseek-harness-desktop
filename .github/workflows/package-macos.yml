@@ -63,7 +63,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: resources/runtime
-          key: dsh-closure-${{ matrix.rid }}-${{ env.DSH_VERSION }}-${{ env.NODE_VERSION }}-v1
+          key: dsh-closure-${{ matrix.rid }}-${{ env.DSH_VERSION }}-${{ env.NODE_VERSION }}-v1-plug-${{ hashFiles('plugins/**', 'scripts/bundle-runtime-ci.sh') }}
           restore-keys: dsh-closure-${{ matrix.rid }}-
       - name: 生成捆绑运行时
         run: bash scripts/bundle-runtime-ci.sh ${{ matrix.rid }}

@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: resources/runtime
-          key: dsh-closure-win-x64-${{ env.DSH_VERSION }}-${{ env.NODE_VERSION }}-v1
+          key: dsh-closure-win-x64-${{ env.DSH_VERSION }}-${{ env.NODE_VERSION }}-v1-plug-${{ hashFiles('plugins/**', 'scripts/bundle-runtime-ci.sh') }}
           restore-keys: dsh-closure-win-x64-
       - name: 生成捆绑运行时
         shell: bash

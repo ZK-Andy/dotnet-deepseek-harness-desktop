@@ -34,19 +34,26 @@ esac
 
 # 组装好的闭包缓存命中：resources/runtime 由 CI 的 actions/cache 整步恢复（含 .bundle-meta.json），
 # 且签名与本次请求一致 → 整步跳过（免下载 Node/免 pnpm/免 cp/免自检）。本地/冷启动无缓存则正常全量。
+# 签名含随包插件源码哈希：插件内容变更而 dsh/node 未变时，旧缓存必须失效（v0.2.0 曾因此带出 0.0.1 旧 tgz）。
+companion_sha() {
+  find "$ROOT/plugins/dsh-desktop-companion" -type f -print0 2>/dev/null | sort -z \
+    | xargs -0 sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1
+}
+COMPANION_SHA="$(companion_sha)"
 META_FILE="$DEST/.bundle-meta.json"
 if [[ -f "$META_FILE" ]] \
    && grep -q "\"dshVersion\":\"$DSH_VERSION\"" "$META_FILE" \
    && grep -q "\"nodeVersion\":\"$NODE_VERSION\"" "$META_FILE" \
    && grep -q "\"platform\":\"$PLATFORM\"" "$META_FILE" \
+   && grep -q "\"companionSha256\":\"$COMPANION_SHA\"" "$META_FILE" \
    && [[ -f "$DEST/$NODE_DST" ]] \
    && [[ -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
-  echo "== resources/runtime 闭包缓存命中（$PLATFORM，dsh $DSH_VERSION）→ 跳过重建 =="
+  echo "== resources/runtime 闭包缓存命中（$PLATFORM，dsh $DSH_VERSION，companion $COMPANION_SHA）→ 跳过重建 =="
   du -sh "$DEST" | cut -f1
   exit 0
 fi
 if [[ -f "$META_FILE" ]]; then
-  echo "  闭包存在但签名不匹配（$PLATFORM / dsh $DSH_VERSION / node $NODE_VERSION），全量重建"
+  echo "  闭包存在但签名不匹配（$PLATFORM / dsh $DSH_VERSION / node $NODE_VERSION / companion $COMPANION_SHA），全量重建"
 fi
 
 echo "== [1/3] 下载 Node v${NODE_VERSION} ($PLATFORM)"
@@ -245,5 +252,6 @@ du -sh "$DEST" | cut -f1
 echo "   入口校验：$DEST/$NODE_DST + $DEST/node_modules/@deepseek-ai/dsh/lib/bin.js"
 [[ -f "$DEST/$NODE_DST" && -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 入口缺失" >&2; exit 1; }
 # 成功构建后写闭包签名，供下次（CI 缓存恢复后）整步跳过
-printf '{"dshVersion":"%s","nodeVersion":"%s","platform":"%s"}\n' "$DSH_VERSION" "$NODE_VERSION" "$PLATFORM" > "$DEST/.bundle-meta.json"
+printf '{"dshVersion":"%s","nodeVersion":"%s","platform":"%s","companionSha256":"%s"}\n' \
+  "$DSH_VERSION" "$NODE_VERSION" "$PLATFORM" "$(companion_sha)" > "$DEST/.bundle-meta.json"
 echo "   已写闭包元数据：$DEST/.bundle-meta.json"
