@@ -89,48 +89,10 @@ public static class Program
             log: Console.WriteLine);
         var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
 
-        // 外部链接注入：窗口可访问后，注入点击拦截脚本（READY 对当前及后续每页生效，崩溃重启后仍有效），
-        // 并对当前已加载页面补跑一次（当前 document 不会因 InjectScriptAsync 自动重跑）。
-        // 见 proposed bug-fix ADR open-external-links-in-system-browser。
-        _ = Task.Run(async () =>
-        {
-            var catcher = Services.ExternalLinkClickCatcher.Script;
-            var injected = false;
-            for (var attempt = 0; attempt < 60; attempt++)
-            {
-                try
-                {
-                    var webView = app.WebView;
-                    if (!injected)
-                    {
-                        // 注册：READY 注入对当前及后续每页生效（含崩溃重启后的新页面）
-                        await webView.InjectScriptAsync(catcher);
-                        injected = true;
-                    }
-
-                    try
-                    {
-                        // 当前已加载页面补跑一次（当前 document 不会因 InjectScriptAsync 自动重跑）
-                        await webView.EvaluateJavaScriptAsync(catcher);
-                        break; // 当前页已就绪且注入成功
-                    }
-                    catch
-                    {
-                        // 页面尚未 DOM ready——下一轮重试
-                    }
-                }
-                catch
-                {
-                    // app 尚未运行 / 窗口未创建——下一轮重试
-                }
-
-                await Task.Delay(TimeSpan.FromMilliseconds(500));
-            }
-        });
-
-        // 市场后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装 dshmarket，装完自动刷新（不阻塞首启）
+        // 市场后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装随包插件，装完自动刷新（不阻塞首启）
         // 对齐 Tauri 的“推荐预设”后台装 + pilot-harness 的随包 theme 已在 node_modules
         // 0.1.10 失败复盘：tgz 为 394B 假包（app）+ pnpm allowBuilds 未开致 ERR_PNPM_IGNORED_BUILDS + 检测/补 bundles 未落地
+        // 随包插件：dshmarket（市场）+ dsh-desktop-companion（桌面伴生：外部链接接管等，见 ADR desktop-shell-companion-plugin）
         if (webUrl is not null)
         {
             _ = Task.Run(async () =>
@@ -143,30 +105,44 @@ public static class Program
                     var profilePkg = Path.Combine(profileDir, "package.json");
                     var workspacePath = Path.Combine(profileDir, "pnpm-workspace.yaml");
 
-                    // 1) 精确检测是否已装（JSON 解析，非字符串包含）
-                    if (MarketInstallHelper.IsMarketInstalled(profilePkg))
+                    var runtimeDir = RuntimeLocator.ResolveRuntimeDirectory();
+                    var bundled = RuntimeLocator.TryLocateBundled(runtimeDir);
+                    if (bundled is null)
                     {
-                        Console.WriteLine("[host] 市场已就位（bundles 含 dshmarket），跳过安装");
+                        Console.WriteLine("[host] 未找到捆绑运行时，跳过随包插件安装");
+                        return;
+                    }
+
+                    // 1) 精确检测未就位的随包插件（JSON 解析，非字符串包含）
+                    var pending = new List<(string Package, string Spec)>();
+                    if (!MarketInstallHelper.IsBundleInstalled(profilePkg, "dshmarket"))
+                    {
+                        pending.Add(("dshmarket", MarketInstallHelper.ResolveMarketSpec(runtimeDir)));
+                    }
+
+                    var companionSpec = MarketInstallHelper.ResolveCompanionSpec(runtimeDir);
+                    if (companionSpec is not null &&
+                        !MarketInstallHelper.IsBundleInstalled(profilePkg, "dsh-desktop-companion"))
+                    {
+                        pending.Add(("dsh-desktop-companion", companionSpec));
+                    }
+
+                    if (pending.Count == 0)
+                    {
+                        Console.WriteLine("[host] 随包插件已就位（bundles 含全部待装项），跳过安装");
                         return;
                     }
 
                     // 1b) 迁移：清理 0.1.8-0.1.10 误写入的 app 依赖（file:.../dshmarket.tgz 假包）
                     await MarketInstallHelper.CleanupBogusAppDependencyAsync(profilePkg);
 
-                    var runtimeDir = RuntimeLocator.ResolveRuntimeDirectory();
-                    var bundled = RuntimeLocator.TryLocateBundled(runtimeDir);
-                    if (bundled is null)
-                    {
-                        Console.WriteLine("[host] 未找到捆绑运行时，跳过市场安装");
-                        return;
-                    }
-
                     // 2) 确保 pnpm-workspace.yaml 的 allowBuilds 已放行原生构建（pnpm 11 默认拒绝）
                     MarketInstallHelper.EnsureWorkspaceAllowBuilds(workspacePath);
 
-                    // 3) 解析安装 spec：优先校验过的 tgz，否则回退到目录或 registry
-                    var spec = MarketInstallHelper.ResolveMarketSpec(runtimeDir);
-                    Console.WriteLine($"[host] 市场安装 spec={spec}");
+                    foreach (var (_, spec) in pending)
+                    {
+                        Console.WriteLine($"[host] 随包插件安装 spec={spec}");
+                    }
 
                     var psi = new System.Diagnostics.ProcessStartInfo
                     {
@@ -180,7 +156,11 @@ public static class Program
                     psi.ArgumentList.Add("--profile");
                     psi.ArgumentList.Add("web");
                     psi.ArgumentList.Add("add");
-                    psi.ArgumentList.Add(spec);
+                    foreach (var (_, spec) in pending)
+                    {
+                        psi.ArgumentList.Add(spec);
+                    }
+
                     psi.Environment["DSH_HOME"] = dshHome;
                     psi.Environment["pnpm_config_store_dir"] = Path.Combine(dshHome, ".pnpm-store");
                     psi.Environment["pnpm_config_cache_dir"] = Path.Combine(dshHome, ".pnpm-cache");
@@ -201,13 +181,15 @@ public static class Program
                     if (p.ExitCode == 0)
                     {
                         // 4) dsh 的 reconcilePlugins 理论上已写入 bundles，仍做兜底校验并补写（0.1.10 的 file:app 未进 bundles 需补）
-                        var patched = await MarketInstallHelper.EnsureBundlesContainsMarketAsync(profilePkg);
-                        if (patched)
+                        foreach (var (pkg, _) in pending)
                         {
-                            Console.WriteLine("[host] 已补写 bundles dshmarket");
+                            if (await MarketInstallHelper.EnsureBundlesContainsAsync(profilePkg, pkg))
+                            {
+                                Console.WriteLine($"[host] 已补写 bundles {pkg}");
+                            }
                         }
 
-                        Console.WriteLine("[host] dsh-market 已后台安装，重启运行时以加载市场");
+                        Console.WriteLine("[host] 随包插件已后台安装，重启运行时以加载");
                         try
                         {
                             await windowAccessor.Current.EvaluateJavaScriptAsync(RecoveryScript);
@@ -245,13 +227,13 @@ public static class Program
                     }
                     else
                     {
-                        Console.WriteLine($"[host] dsh-market 安装失败 exit={p.ExitCode}，请查看 stderr 的 allowBuilds 提示");
+                        Console.WriteLine($"[host] 随包插件安装失败 exit={p.ExitCode}，请查看 stderr 的 allowBuilds 提示");
                         // 常见失败：ERR_PNPM_IGNORED_BUILDS 时，workspace 已在 EnsureWorkspaceAllowBuilds 中修过，下次启动会自愈
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[host] 市场后台安装跳过：{ex.Message}");
+                    Console.WriteLine($"[host] 随包插件后台安装跳过：{ex.Message}");
                 }
             });
         }

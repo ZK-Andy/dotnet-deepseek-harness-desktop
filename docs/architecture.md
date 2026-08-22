@@ -1,6 +1,6 @@
 # Architecture
 
-> `v0.1.12` 现状。`Ryn` 壳 + 捆绑 `dsh` 运行时 + 崩溃监督 + 市场后台安装 + `pilot-harness` 打包。
+> 现状。`Ryn` 壳 + 捆绑 `dsh` 运行时 + 崩溃监督 + 随包插件后台安装 + `pilot-harness` 打包。
 
 ## 概览
 
@@ -19,7 +19,7 @@
 ## 壳与窗口
 
 * `src/DeepSeek.Harness.Desktop/Program.cs`：`HarnessRuntimeHost.StartAsync(60s)` → `dsh web:` → `RynApplication.CreateBuilder().ConfigureOptions(opts.Url = webUrl)`。`ryn.json:identifier=io.github.ZK-Andy.dotnet-deepseek-harness-desktop` 与 `StartupWMClass` 同值，`Wayland/X11` 任务栏正确关联；`icon.png` 进 `AppContext.BaseDirectory` 并上 `hicolor/pixmaps`。
-* `Services/CurrentWindowAccessor` 供 `RuntimeSupervisor` 与后台市场任务做 `EvaluateJavaScriptAsync`/`NavigateAsync`。
+* `Services/CurrentWindowAccessor` 供 `RuntimeSupervisor` 与后台随包插件任务做 `EvaluateJavaScriptAsync`/`NavigateAsync`。
 
 ## 运行时定位与启动
 
@@ -31,22 +31,28 @@
 
 * `Services/RuntimeSupervisor`：`WaitForExitAsync` + `CancellationToken` 循环；退出→`showRecovery`（`RecoveryScript` 覆写文档为“重连中”）→`host.RestartAsync(60s)`→`navigate(newUrl)`。仅重启子进程，不重启桌面进程；`supervisorCts` 随 `app.Run()` 结束取消。
 
-## 市场后台安装
+## 随包插件后台安装
 
+* 随包插件两项：`dshmarket`（市场，registry 有上游）与 `dsh-desktop-companion`（桌面伴生：外部链接接管等壳集成，仅随包分发）。
 * `Program.cs` 后台任务（`Task.Delay 3s`，不阻塞首启窗口）：
-  1. `System.Text.Json` 判 `dependencies.dshmarket && bundles.contains(dshmarket)` 已装则跳过；清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`。
+  1. `MarketInstallHelper.IsBundleInstalled(pkg)` 精确判每项是否已就位（`dependencies.<pkg>` + `bundles` 含 `<pkg>`），收集未就位清单；清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`。
   2. `EnsureWorkspaceAllowBuilds` 把 `pnpm-workspace.yaml` 的 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）置 `true`。
-  3. `ResolveMarketSpec` 优先 `resources/runtime/dshmarket.tgz`（`>10K`）否则 `node_modules/dshmarket` 目录或 `dshmarket@1.15.0`。
-  4.  spawn `bundled node dsh/lib/bin.js plugin --profile web add <spec>`（注入 `DSH_HOME/.pnpm-store`），`exit 0` 后 `EnsureBundlesContainsMarketAsync` 兜底。
-  5. `EvaluateRecovery + host.Stop()` 交 `RuntimeSupervisor` 重启并导航新 `URL`，市场即现。
-* `dsh` 的 `reconcilePlugins` 在 `plugin add` 后自动把 `dshmarket` 追加到 `dsh.profile.bundles`（`pilot-harness` 同款）。
+  3. spec 解析：市场走 `ResolveMarketSpec`（`resources/runtime/dshmarket.tgz >10K` → 目录 → `dshmarket@1.15.0`）；伴生走 `ResolveCompanionSpec`（tgz `>1K` → 闭包目录 → 无即跳过，无 registry 回退）。
+  4. 单次 spawn `bundled node dsh/lib/bin.js plugin --profile web add <spec…>` 多包安装（注入 `DSH_HOME/.pnpm-store`），`exit 0` 后对每项 `EnsureBundlesContainsAsync(pkg)` 兜底。
+  5. `EvaluateRecovery + host.Stop()` 交 `RuntimeSupervisor` 重启并导航新 `URL`。
+* `dsh` 的 `reconcilePlugins` 在 `plugin add` 后自动把包名追加到 `dsh.profile.bundles`（`pilot-harness` 同款）。
+
+## 外部链接接管
+
+* `plugins/dsh-desktop-companion` 客户端半在 dsh web boot 时注册 capture 阶段点击监听：顶层帧的 http(s) 且 `target="_blank"` 或跨源链接 → `preventDefault` → `window.__ryn.invoke('app.openExternal', {url})`；同源与非 http(s) 放行。监听随每次页面加载重建，SPA 重渲染天然存活。
+* 宿主侧 `Services/ExternalLinkCommandRouter`（`ICommandRouter`）收命令，经 `ExternalLinkPolicy.IsExternalHttpLink` 复核后 `Process.Start(UseShellExecute)` 开系统浏览器。
 
 ## 打包
 
-* `scripts/bundle-runtime-ci.sh`：下载 `Node 22.23.1`（`linux-x64/arm64`, `win-x64`, `osx-x64/arm64`）+ `pnpm add @deepseek-ai/dsh@${DSH_VERSION:-0.1.1-rc.1} --allow-build=*` + `dshmarket@1.15.0 --allow-build=esbuild`（`--store-dir $PNPM_STORE_DIR`，默认 `$HOME/.dsh-pnpm/store`，CI 由 `actions/cache` 跨 run 持久化缓存，命中免重下包/重编原生模块），`curl` 官方 `497K` `dshmarket.tgz`（`>10K/name` 双校验）→ `cp -a node_modules/. resources/runtime/node_modules/`，`60s` 抓 `dsh web:` 自检。
+* `scripts/bundle-runtime-ci.sh`：下载 `Node 22.23.1`（`linux-x64/arm64`, `win-x64`, `osx-x64/arm64`）+ `pnpm add @deepseek-ai/dsh@${DSH_VERSION:-0.1.1-rc.1} --allow-build=*` + `dshmarket@1.15.0 --allow-build=esbuild`（`--store-dir $PNPM_STORE_DIR`，默认 `$HOME/.dsh-pnpm/store`，CI 由 `actions/cache` 跨 run 持久化缓存，命中免重下包/重编原生模块），`curl` 官方 `497K` `dshmarket.tgz`（`>10K/name` 双校验）+ 仓库源码 staging tar 出 `dsh-desktop-companion.tgz`（package/ 前缀，源码缺失 fail loud）→ `cp -a node_modules/. resources/runtime/node_modules/`，`60s` 抓 `dsh web:` 自检。
 * `scripts/package-linux.sh`：`dotnet publish -r linux-(x64|arm64)` → `staging` 校验 `node + dsh/lib/bin.js + dshmarket.tgz 497K` → `deb (Depends: libwebkitgtk-6.0-4, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4, BuildArch x86_64/aarch64)`。
 * `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → 单一安装产物：mac `dmg`（`hdiutil`，含 `.app`）/ win `exe` 安装器（`Inno Setup`/`NSIS`/`7z SFX`，`…-setup.exe`），文件名含 `…_macos-*/…_windows-*` 标识，签名占位（`codesign`/`signtool` 待证书）。**不单独产出便携 zip**（避免对 ~1.5GB 闭包重复压缩，对齐 pilot-harness 每平台单产物的思路）。
-* `resources/runtime` 含整树 `node_modules` + `node(.exe)` + `dshmarket.tgz`，随 `usr/lib`/`Contents/Resources`/`stage` 进包；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。
+* `resources/runtime` 含整树 `node_modules` + `node(.exe)` + `dshmarket.tgz` + `dsh-desktop-companion.tgz`，随 `usr/lib`/`Contents/Resources`/`stage` 进包；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。
 
 ## 配置与扩展
 

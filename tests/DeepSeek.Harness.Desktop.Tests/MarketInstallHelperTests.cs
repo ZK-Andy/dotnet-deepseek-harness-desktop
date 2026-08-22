@@ -14,46 +14,62 @@ public class MarketInstallHelperTests
     }
 
     [Fact]
-    public void IsMarketInstalled_ReturnsFalse_WhenFileMissing()
+    public void IsBundleInstalled_ReturnsFalse_WhenFileMissing()
     {
-        Assert.False(MarketInstallHelper.IsMarketInstalled(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))));
+        Assert.False(MarketInstallHelper.IsBundleInstalled(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
     }
 
     [Fact]
-    public void IsMarketInstalled_ReturnsTrue_WhenBothPresent()
+    public void IsBundleInstalled_ReturnsTrue_WhenBothPresent()
     {
         var json = """
             {"dependencies":{"dshmarket":"1.15.0"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","dshmarket"]}}}
             """;
         var p = WriteTempFile(json);
-        try { Assert.True(MarketInstallHelper.IsMarketInstalled(p)); } finally { File.Delete(p); }
+        try { Assert.True(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
     [Fact]
-    public void IsMarketInstalled_ReturnsFalse_WhenBundlesMissing()
+    public void IsBundleInstalled_ReturnsFalse_WhenBundlesMissing()
     {
         var json = """
             {"dependencies":{"dshmarket":"1.15.0"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}
             """;
         var p = WriteTempFile(json);
-        try { Assert.False(MarketInstallHelper.IsMarketInstalled(p)); } finally { File.Delete(p); }
+        try { Assert.False(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
     [Fact]
-    public void IsMarketInstalled_ReturnsFalse_WhenDepsMissing()
+    public void IsBundleInstalled_ReturnsFalse_WhenDepsMissing()
     {
         var json = """
             {"dependencies":{},"dsh":{"profile":{"bundles":["dshmarket"]}}}
             """;
         var p = WriteTempFile(json);
-        try { Assert.False(MarketInstallHelper.IsMarketInstalled(p)); } finally { File.Delete(p); }
+        try { Assert.False(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
     [Fact]
-    public void IsMarketInstalled_ReturnsFalse_WhenInvalidJson()
+    public void IsBundleInstalled_ReturnsFalse_WhenInvalidJson()
     {
         var p = WriteTempFile("not json");
-        try { Assert.False(MarketInstallHelper.IsMarketInstalled(p)); } finally { File.Delete(p); }
+        try { Assert.False(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
+    }
+
+    [Fact]
+    public void IsBundleInstalled_PerPackage_Independent()
+    {
+        // 市场已就位、伴生未装：市场判定 true、伴生判定 false（互不误判）
+        var json = """
+            {"dependencies":{"dshmarket":"1.15.0"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","dshmarket"]}}}
+            """;
+        var p = WriteTempFile(json);
+        try
+        {
+            Assert.True(MarketInstallHelper.IsBundleInstalled(p, "dshmarket"));
+            Assert.False(MarketInstallHelper.IsBundleInstalled(p, "dsh-desktop-companion"));
+        }
+        finally { File.Delete(p); }
     }
 
     [Fact]
@@ -168,15 +184,77 @@ public class MarketInstallHelperTests
     }
 
     [Fact]
+    public void ResolveCompanionSpec_PrefersTgz_WhenLarge()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var tgz = Path.Combine(dir, "dsh-desktop-companion.tgz");
+        File.WriteAllBytes(tgz, new byte[2 * 1024]);
+        try
+        {
+            Assert.Equal(tgz, MarketInstallHelper.ResolveCompanionSpec(dir));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void ResolveCompanionSpec_FallsBackToDir_WhenTgzTiny()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var tgz = Path.Combine(dir, "dsh-desktop-companion.tgz");
+        File.WriteAllBytes(tgz, new byte[100]);
+        var d = Path.Combine(dir, "node_modules", "dsh-desktop-companion");
+        Directory.CreateDirectory(d);
+        File.WriteAllText(Path.Combine(d, "package.json"), "{}");
+        try
+        {
+            Assert.Equal(d, MarketInstallHelper.ResolveCompanionSpec(dir));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void ResolveCompanionSpec_ReturnsNull_WhenNothing()
+    {
+        // 伴生插件无 registry 回退：闭包未携带时返回 null（调用方跳过），而非字符串 spec
+        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            Assert.Null(MarketInstallHelper.ResolveCompanionSpec(dir));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public async Task EnsureBundles_AddsWhenMissing()
     {
         var json = """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""";
         var p = WriteTempFile(json);
         try
         {
-            var added = await MarketInstallHelper.EnsureBundlesContainsMarketAsync(p);
+            var added = await MarketInstallHelper.EnsureBundlesContainsAsync(p, "dshmarket");
             Assert.True(added);
             Assert.Contains("dshmarket", File.ReadAllText(p));
+        }
+        finally { File.Delete(p); }
+    }
+
+    [Fact]
+    public async Task EnsureBundles_AppendsSecondPackage_KeepsFirst()
+    {
+        var json = """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","dshmarket"]}}}""";
+        var p = WriteTempFile(json);
+        try
+        {
+            var added = await MarketInstallHelper.EnsureBundlesContainsAsync(p, "dsh-desktop-companion");
+            Assert.True(added);
+            var after = File.ReadAllText(p);
+            Assert.Contains("dshmarket", after);
+            Assert.Contains("dsh-desktop-companion", after);
+            // 再补写一次应幂等
+            Assert.False(await MarketInstallHelper.EnsureBundlesContainsAsync(p, "dsh-desktop-companion"));
         }
         finally { File.Delete(p); }
     }
@@ -188,7 +266,7 @@ public class MarketInstallHelperTests
         var p = WriteTempFile(json);
         try
         {
-            var added = await MarketInstallHelper.EnsureBundlesContainsMarketAsync(p);
+            var added = await MarketInstallHelper.EnsureBundlesContainsAsync(p, "dshmarket");
             Assert.False(added);
         }
         finally { File.Delete(p); }
@@ -197,6 +275,6 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task EnsureBundles_ReturnsFalse_WhenFileMissing()
     {
-        Assert.False(await MarketInstallHelper.EnsureBundlesContainsMarketAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))));
+        Assert.False(await MarketInstallHelper.EnsureBundlesContainsAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
     }
 }

@@ -2,11 +2,13 @@ using System.Text.Json;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
-/// <summary>市场后台安装的纯逻辑（可单测）：检测、迁移、workspace 修正、spec 解析、bundles 补写。</summary>
+/// <summary>随包插件后台安装的纯逻辑（可单测）：检测、迁移、workspace 修正、spec 解析、bundles 补写。</summary>
+/// <remarks>随包插件当前有两项：<c>dshmarket</c>（市场，registry 有上游）与 <c>dsh-desktop-companion</c>
+/// （桌面伴生，仅随包分发、无 registry 回退）。</remarks>
 public static class MarketInstallHelper
 {
-    /// <summary>精确检测市场是否已就位：<c>dependencies.dshmarket</c> 且 <c>dsh.profile.bundles</c> 含 <c>dshmarket</c>。</summary>
-    public static bool IsMarketInstalled(string profilePkg)
+    /// <summary>精确检测插件是否已就位：<c>dependencies.&lt;pkg&gt;</c> 存在且 <c>dsh.profile.bundles</c> 含 <c>&lt;pkg&gt;</c>。</summary>
+    public static bool IsBundleInstalled(string profilePkg, string packageName)
     {
         try
         {
@@ -23,28 +25,12 @@ public static class MarketInstallHelper
                 return false;
             }
 
-            if (!deps.TryGetProperty("dshmarket", out _))
+            if (!deps.TryGetProperty(packageName, out _))
             {
                 return false;
             }
 
-            if (!root.TryGetProperty("dsh", out var dsh) ||
-                !dsh.TryGetProperty("profile", out var profile) ||
-                !profile.TryGetProperty("bundles", out var bundles) ||
-                bundles.ValueKind != JsonValueKind.Array)
-            {
-                return false;
-            }
-
-            foreach (var b in bundles.EnumerateArray())
-            {
-                if (b.GetString() == "dshmarket")
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return BundlesContain(root, packageName);
         }
         catch
         {
@@ -199,9 +185,38 @@ public static class MarketInstallHelper
         return "dshmarket@1.15.0";
     }
 
-    /// <summary>确保 <c>dsh.profile.bundles</c> 含 <c>dshmarket</c>，缺则追加并写回。</summary>
+    /// <summary>解析桌面伴生插件的安装 <c>spec</c>：随包 <c>tgz</c>（&gt;1K 防假包）→ 闭包内目录；无 registry 回退。</summary>
+    /// <returns>可安装的 spec；<see langword="null"/> 表示本闭包未携带（如开发用 PATH dsh），调用方跳过。</returns>
+    public static string? ResolveCompanionSpec(string runtimeDir)
+    {
+        var tgz = Path.Combine(runtimeDir, "dsh-desktop-companion.tgz");
+        if (File.Exists(tgz))
+        {
+            try
+            {
+                var fi = new FileInfo(tgz);
+                if (fi.Length > 1024)
+                {
+                    return tgz;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        var dir = Path.Combine(runtimeDir, "node_modules", "dsh-desktop-companion");
+        if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, "package.json")))
+        {
+            return dir;
+        }
+
+        return null;
+    }
+
+    /// <summary>确保 <c>dsh.profile.bundles</c> 含 <paramref name="packageName"/>，缺则追加并写回。</summary>
     /// <returns>是否发生写回。</returns>
-    public static async Task<bool> EnsureBundlesContainsMarketAsync(string profilePkg)
+    public static async Task<bool> EnsureBundlesContainsAsync(string profilePkg, string packageName)
     {
         try
         {
@@ -213,20 +228,9 @@ public static class MarketInstallHelper
             var json = await File.ReadAllTextAsync(profilePkg);
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
-            if (!root.TryGetProperty("dsh", out var dsh) ||
-                !dsh.TryGetProperty("profile", out var profile) ||
-                !profile.TryGetProperty("bundles", out var bundles) ||
-                bundles.ValueKind != JsonValueKind.Array)
+            if (BundlesContain(root, packageName))
             {
                 return false;
-            }
-
-            foreach (var b in bundles.EnumerateArray())
-            {
-                if (b.GetString() == "dshmarket")
-                {
-                    return false;
-                }
             }
 
             using var ms = new MemoryStream();
@@ -256,7 +260,7 @@ public static class MarketInstallHelper
                                             b.WriteTo(writer);
                                         }
 
-                                        writer.WriteStringValue("dshmarket");
+                                        writer.WriteStringValue(packageName);
                                         writer.WriteEndArray();
                                     }
                                     else
@@ -269,7 +273,7 @@ public static class MarketInstallHelper
                                 {
                                     writer.WritePropertyName("bundles");
                                     writer.WriteStartArray();
-                                    writer.WriteStringValue("dshmarket");
+                                    writer.WriteStringValue(packageName);
                                     writer.WriteEndArray();
                                 }
 
@@ -300,5 +304,27 @@ public static class MarketInstallHelper
         {
             return false;
         }
+    }
+
+    /// <summary><c>dsh.profile.bundles</c> 是否已含 <paramref name="packageName"/>；结构缺失视为不含。</summary>
+    private static bool BundlesContain(JsonElement root, string packageName)
+    {
+        if (!root.TryGetProperty("dsh", out var dsh) ||
+            !dsh.TryGetProperty("profile", out var profile) ||
+            !profile.TryGetProperty("bundles", out var bundles) ||
+            bundles.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        foreach (var b in bundles.EnumerateArray())
+        {
+            if (b.GetString() == packageName)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

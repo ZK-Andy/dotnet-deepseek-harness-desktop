@@ -139,6 +139,24 @@ if [[ -f "$DEST/dshmarket.tgz" ]]; then
   fi
 fi
 
+# 桌面伴生插件（dsh-desktop-companion：外部链接接管等壳集成）：仓库源码直接 tar 随包。
+# staging 目录法打出 package/ 前缀——macOS bsdtar 无 GNU tar 的 --transform，staging 三平台一致。
+COMPANION_SRC="$ROOT/plugins/dsh-desktop-companion"
+if [[ ! -f "$COMPANION_SRC/package.json" ]]; then
+  echo "error: 未找到 $COMPANION_SRC/package.json（桌面伴生插件源码缺失）" >&2
+  exit 1
+fi
+rm -rf "$TMP/companion-pkg"
+mkdir -p "$TMP/companion-pkg/package"
+cp "$COMPANION_SRC/package.json" "$COMPANION_SRC/cordis.patch.yml" "$TMP/companion-pkg/package/"
+cp -r "$COMPANION_SRC/lib" "$COMPANION_SRC/client" "$TMP/companion-pkg/package/"
+(cd "$TMP/companion-pkg" && tar -czf "$DEST/dsh-desktop-companion.tgz" package)
+if ! tar -xOzf "$DEST/dsh-desktop-companion.tgz" package/package.json 2>/dev/null | grep -q '"name": "dsh-desktop-companion"'; then
+  echo "error: dsh-desktop-companion.tgz 打包校验失败" >&2
+  exit 1
+fi
+echo "   dsh-desktop-companion tgz 已随包：$DEST/dsh-desktop-companion.tgz ($(du -h "$DEST/dsh-desktop-companion.tgz" | cut -f1))"
+
 echo "== [3/3] 组装 resources/runtime（整棵 node_modules，pilot-harness 同款）"
 rm -rf "$DEST/dsh" "$DEST/node_modules"
 mkdir -p "$DEST/node_modules"
