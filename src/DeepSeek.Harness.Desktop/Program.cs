@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using DeepSeek.Harness.Desktop.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Core;
@@ -34,6 +35,26 @@ public static class Program
         {
             Console.WriteLine($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', host.StderrTail.TakeLast(8))}");
         }
+
+        // 自更新栈（仅 ready 对外可见；机制见 ADR desktop-shell-self-update）：
+        // 状态机纯逻辑可单测，检查/下载/安装全部委托注入；状态经 CustomEvent 推给插件 UI。
+        var updateOptions = Services.Update.UpdateOptions.Load(AppContext.BaseDirectory);
+        var updateHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        var updatesDir = Path.Combine(HarnessRuntimeHost.ResolveDshHome(), updateOptions.UpdatesDirName);
+        CurrentWindowAccessor? updateWindow = null;
+        var updateMachine = new Services.Update.UpdateStateMachine(
+            currentVersion: Services.Update.AppVersion.Current(),
+            check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions).FetchLatestAsync(UpdateRid(), ct),
+            download: (meta, ct) => new Services.Update.InstallerDownloader(updateHttp).DownloadAsync(
+                meta, updatesDir, TimeSpan.FromMinutes(updateOptions.DownloadTimeoutMinutes), ct),
+            install: (assetPath, _, _) =>
+            {
+                Services.Update.UpdateInstaller.Launch(assetPath, updatesDir);
+                return Task.CompletedTask;
+            },
+            persistence: new Services.Update.FileReadyPersistence(updatesDir),
+            onTransition: state => PushUpdateState(updateWindow, state));
+        Console.WriteLine($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，目录 {updatesDir}");
 
         var app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
@@ -72,10 +93,13 @@ public static class Program
                 services.AddRynCommands();
                 // 外部链接 → 系统默认浏览器（宿主命令路由，见 proposed bug-fix ADR）
                 services.AddSingleton<ICommandRouter, Services.ExternalLinkCommandRouter>();
+                // 自更新命令：desktop.update.getState / check / install
+                services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine));
             })
             .Build();
 
         var windowAccessor = app.Services.GetRequiredService<CurrentWindowAccessor>();
+        updateWindow = windowAccessor;
         using var supervisorCts = new CancellationTokenSource();
         var supervisor = new RuntimeSupervisor(
             host,
@@ -88,6 +112,22 @@ public static class Program
             navigate: url => windowAccessor.Current.NavigateAsync(url),
             log: Console.WriteLine);
         var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
+
+        // 自更新启动对账 + 后台检查一次（失败静默转 error 态，不影响首屏）
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await updateMachine.StartAsync(supervisorCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[update] start 失败：{ex.Message}");
+            }
+        });
 
         // 市场后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装随包插件，装完自动刷新（不阻塞首启）
         // 对齐 Tauri 的“推荐预设”后台装 + pilot-harness 的随包 theme 已在 node_modules
@@ -270,5 +310,40 @@ public static class Program
         }
 
         host.Stop();
+
+        /// <summary>当前平台的更新资产 RID（与 release 资产命名后缀对应）。</summary>
+        static string UpdateRid()
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                return RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "linux-arm64" : "linux-x64";
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                return "win-x64";
+            }
+
+            if (OperatingSystem.IsMacOS())
+            {
+                return RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "osx-arm64" : "osx-x64";
+            }
+
+            return "unknown";
+        }
+
+        /// <summary>把状态变化推给页面：插件监听 <c>dsh-desktop-update</c> CustomEvent 渲染更新按钮。</summary>
+        static void PushUpdateState(CurrentWindowAccessor? accessor, Services.Update.UpdateState state)
+        {
+            if (accessor?.Current is null)
+            {
+                return;
+            }
+
+            _ = accessor.Current.EvaluateJavaScriptAsync(
+                "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-update',{detail:"
+                + state.ToJson()
+                + "}));}catch(e){}})();");
+        }
     }
 }

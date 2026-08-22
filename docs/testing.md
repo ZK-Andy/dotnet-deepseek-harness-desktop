@@ -12,6 +12,9 @@
   * `MarketInstallHelperTests`：`IsBundleInstalled(pkg)` 真/假/异常/按包独立、`CleanupBogusApp` 删 `app` 的 `tgz`/`NoOp`、`EnsureWorkspaceAllowBuilds` 占位替换与 `esbuild` 追加、`ResolveMarketSpec` 的 `tgz>10K/目录/registry` 三分支、`ResolveCompanionSpec` 的 `tgz>1K/目录/null` 三分支（无 registry 回退）、`EnsureBundlesContainsAsync` 追加/幂等/双包共存。
   * `ExternalLinkPolicyTests`：站外/同源/非 http(s)/空 href/origin 边界的纯判定。
   * `ExternalLinkCommandRouterTests`：命令路由与打开器委托。
+  * `UpdateVersionTests`：版本逐段比较（v 前缀/缺段补 0/预发布截断/非法 fail loud）。
+  * `UpdateStateMachineTests`：启动对账清 stale ready、持久化恢复 ready、无更新/旧版→up-to-date、新版下载→ready、下载失败→error 后可恢复、install 仅 ready/成功转 installing/失败回 ready、订阅与退订。
+  * `ReleaseAssetTests`：按 RID 挑资产（deb/exe/dmg）、SHA256SUMS 双空格与 `*` 二进制格式解析。
 * 运行：沙箱需 `DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget`（`/home` 只读）。
 
 ```sh

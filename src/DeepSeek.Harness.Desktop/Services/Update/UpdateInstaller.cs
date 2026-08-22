@@ -1,0 +1,81 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+namespace DeepSeek.Harness.Desktop.Services.Update;
+
+/// <summary>
+/// 平台安装执行器：派生「等待本进程退出 → 静默安装 → 拉起新版」的分离进程后立即返回。
+/// Linux 用 pkexec（弹一次系统授权框）；Windows 走 Inno Setup 静默参数；macOS v1 不支持静默，转 Error。
+/// </summary>
+public static class UpdateInstaller
+{
+    /// <summary>派生安装流程。返回即表示安装进程已启动（后续与本进程生命周期解耦）。</summary>
+    /// <param name="assetPath">已校验的安装包本地路径。</param>
+    /// <param name="workDir">脚本等辅助文件的落盘目录（updates 目录）。</param>
+    public static void Launch(string assetPath, string workDir)
+    {
+        var exePath = Environment.ProcessPath
+            ?? throw new InvalidOperationException("无法定位当前可执行文件路径");
+        if (OperatingSystem.IsLinux())
+        {
+            LaunchLinux(assetPath, workDir, exePath);
+            return;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            LaunchWindows(assetPath);
+            return;
+        }
+
+        throw new PlatformNotSupportedException("macOS 静默更新暂未支持；请手动下载 dmg 安装");
+    }
+
+    private static void LaunchLinux(string assetPath, string workDir, string exePath)
+    {
+        var ext = Path.GetExtension(assetPath).ToLowerInvariant();
+        var installCmd = ext switch
+        {
+            ".deb" => $"dpkg -i '{EscapeSingle(assetPath)}'",
+            ".rpm" => $"rpm -U --replacepkgs --quiet '{EscapeSingle(assetPath)}'",
+            _ => throw new PlatformNotSupportedException($"Linux 不支持的安装包类型：{ext}"),
+        };
+
+        // 等本进程退出再装（文件占用），装完拉起新版同路径二进制。
+        var script = $"""
+            #!/bin/sh
+            while kill -0 {Environment.ProcessId} 2>/dev/null; do sleep 0.3; done
+            {installCmd} || exit 1
+            nohup '{EscapeSingle(exePath)}' >/dev/null 2>&1 &
+            """;
+        Directory.CreateDirectory(workDir);
+        var scriptPath = Path.Combine(workDir, "install.sh");
+        File.WriteAllText(scriptPath, script + Environment.NewLine);
+        if (OperatingSystem.IsLinux())
+        {
+            File.SetUnixFileMode(scriptPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        using var p = Process.Start(new ProcessStartInfo
+        {
+            FileName = "pkexec",
+            ArgumentList = { "/bin/sh", scriptPath },
+            UseShellExecute = false,
+        }) ?? throw new InvalidOperationException("pkexec 启动失败");
+        _ = p;
+    }
+
+    private static void LaunchWindows(string assetPath)
+    {
+        // Inno Setup：/SILENT 静默、/CLOSEAPPLICATIONS 等文件解锁、/RESTARTAPPLICATIONS 装完自动拉起
+        using var p = Process.Start(new ProcessStartInfo
+        {
+            FileName = assetPath,
+            Arguments = "/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS",
+            UseShellExecute = true,
+        }) ?? throw new InvalidOperationException("安装器启动失败");
+        _ = p;
+    }
+
+    private static string EscapeSingle(string s) => s.Replace("'", "'\\''", StringComparison.Ordinal);
+}
