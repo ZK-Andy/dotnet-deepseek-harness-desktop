@@ -171,7 +171,9 @@
         }
       }
 
-      return { apply: apply }
+      // inject 声明本插件要访问的宿主服务：不声明时访问 ctx.slots 会被
+      // cordis 以 "cannot get property without inject" 拒绝（dshmarket 同款）。
+      return { apply: apply, inject: ['slots'] }
     },
   })
 })()
