@@ -100,6 +100,16 @@ public static class Program
                 try
                 {
                     await Task.Delay(TimeSpan.FromSeconds(3));
+
+                    // 开发运行时覆盖 = 非打包产品环境：默认 DSH_HOME 与已装正式版共享，
+                    // 此处安装会把指向工作区的 file: 依赖写进共享 profile（2026-08-22 串扰实证）。
+                    // 打包产品永不设置 DSH_DESKTOP_RUNTIME_DIR，故以此为准跳过随包插件安装。
+                    if (Environment.GetEnvironmentVariable("DSH_DESKTOP_RUNTIME_DIR") is not null)
+                    {
+                        Console.WriteLine("[host] 检测到 DSH_DESKTOP_RUNTIME_DIR（开发运行时覆盖），跳过随包插件安装以防污染共享 profile");
+                        return;
+                    }
+
                     var dshHome = HarnessRuntimeHost.ResolveDshHome();
                     var profileDir = Path.Combine(dshHome, "profiles", "web");
                     var profilePkg = Path.Combine(profileDir, "package.json");

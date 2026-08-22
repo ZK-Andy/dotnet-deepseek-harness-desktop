@@ -35,6 +35,7 @@
 
 * 随包插件两项：`dshmarket`（市场，registry 有上游）与 `dsh-desktop-companion`（桌面伴生：外部链接接管等壳集成，仅随包分发）。
 * `Program.cs` 后台任务（`Task.Delay 3s`，不阻塞首启窗口）：
+  0. 检测到 `DSH_DESKTOP_RUNTIME_DIR`（开发运行时覆盖，打包产品永不设置）即整体跳过——开发运行的默认 `DSH_HOME` 与已装正式版共享，防止把工作区 `file:` 依赖写进共享 profile。
   1. `MarketInstallHelper.IsBundleInstalled(pkg)` 精确判每项是否已就位（`dependencies.<pkg>` + `bundles` 含 `<pkg>`），收集未就位清单；清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`。
   2. `EnsureWorkspaceAllowBuilds` 把 `pnpm-workspace.yaml` 的 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）置 `true`。
   3. spec 解析：市场走 `ResolveMarketSpec`（`resources/runtime/dshmarket.tgz >10K` → 目录 → `dshmarket@1.15.0`）；伴生走 `ResolveCompanionSpec`（tgz `>1K` → 闭包目录 → 无即跳过，无 registry 回退）。
@@ -44,7 +45,7 @@
 
 ## 外部链接接管
 
-* `plugins/dsh-desktop-companion` 客户端半在 dsh web boot 时注册 capture 阶段点击监听：顶层帧的 http(s) 且 `target="_blank"` 或跨源链接 → `preventDefault` → `window.__ryn.invoke('app.openExternal', {url})`；同源与非 http(s) 放行。监听随每次页面加载重建，SPA 重渲染天然存活。
+* `plugins/dsh-desktop-companion` 客户端半在 dsh web boot 时注册 capture 阶段点击监听：顶层帧的 http(s) 且 `target="_blank"` 或跨源链接 → `preventDefault` → `window.__ryn.invoke('app.openExternal', {url})`；同源与非 http(s) 放行。监听随每次页面加载重建，SPA 重渲染天然存活。与仍带旧注入脚本的已发布壳共存：双旗认领（`__ryn_externalLinkCatcher` / `__dshDesktopCompanionLinks`）保证每文档恰好一个处理器，待无在发版本携带注入脚本后移除。
 * 宿主侧 `Services/ExternalLinkCommandRouter`（`ICommandRouter`）收命令，经 `ExternalLinkPolicy.IsExternalHttpLink` 复核后 `Process.Start(UseShellExecute)` 开系统浏览器。
 
 ## 打包
