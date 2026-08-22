@@ -98,7 +98,8 @@
               react.useEffect(function () {
                 var onEvt = function (e) { setState(e.detail || null) }
                 document.addEventListener('dsh-desktop-update', onEvt)
-                window.__ryn.invoke('desktop.update.getState').then(function (s) {
+                // 第二个参数必须传（空对象即可）：空参数体的 invoke 在宿主分发层会 500
+                window.__ryn.invoke('desktop.update.getState', {}).then(function (s) {
                   var parsed = parseState(s)
                   if (parsed && parsed.status === 'ready') setState(parsed)
                 }).catch(function () {})
