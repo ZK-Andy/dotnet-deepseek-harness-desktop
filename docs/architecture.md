@@ -37,6 +37,7 @@
 * `Program.cs` 后台任务（`Task.Delay 3s`，不阻塞首启窗口）：
   0. 检测到 `DSH_DESKTOP_RUNTIME_DIR`（开发运行时覆盖，打包产品永不设置）即整体跳过——开发运行的默认 `DSH_HOME` 与已装正式版共享，防止把工作区 `file:` 依赖写进共享 profile。
   1. `MarketInstallHelper.IsBundleInstalled(pkg)` 精确判每项是否已就位（`dependencies.<pkg>` + `bundles` 含 `<pkg>`），收集未就位清单；清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`。
+  1b. `dsh-desktop-companion` 已就位时做版本感知升级：`PluginVersionCheck` 比对随包 tgz 内 `package/package.json` 的 version 与 profile `node_modules` 副本 version，随包更新即入待装清单走同一安装管线（改插件必须 bump version，否则不触发；见 ADR `implemented/feature/2026-08-22-companion-plugin-version-aware-upgrade`）。
   2. `EnsureWorkspaceAllowBuilds` 把 `pnpm-workspace.yaml` 的 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）置 `true`。
   3. spec 解析：市场走 `ResolveMarketSpec`（`resources/runtime/dshmarket.tgz >10K` → 目录 → `dshmarket@1.15.0`）；伴生走 `ResolveCompanionSpec`（tgz `>1K` → 闭包目录 → 无即跳过，无 registry 回退）。
   4. 单次 spawn `bundled node dsh/lib/bin.js plugin --profile web add <spec…>` 多包安装（注入 `DSH_HOME/.pnpm-store`），`exit 0` 后对每项 `EnsureBundlesContainsAsync(pkg)` 兜底。

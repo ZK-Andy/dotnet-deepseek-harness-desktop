@@ -225,11 +225,33 @@ public static class Program
                         pending.Add(("dshmarket", MarketInstallHelper.ResolveMarketSpec(runtimeDir)));
                     }
 
+                    // 版本感知升级（ADR companion-plugin-version-aware-upgrade）：已装但随包版本更新时
+                    // 重装——插件仅随壳分发，壳自更新后的首次启动在这里把 profile 里的旧副本带上新版本。
+                    const string CompanionPkg = "dsh-desktop-companion";
                     var companionSpec = MarketInstallHelper.ResolveCompanionSpec(runtimeDir);
-                    if (companionSpec is not null &&
-                        !MarketInstallHelper.IsBundleInstalled(profilePkg, "dsh-desktop-companion"))
+                    if (companionSpec is not null)
                     {
-                        pending.Add(("dsh-desktop-companion", companionSpec));
+                        if (!MarketInstallHelper.IsBundleInstalled(profilePkg, CompanionPkg))
+                        {
+                            pending.Add((CompanionPkg, companionSpec));
+                        }
+                        else
+                        {
+                            try
+                            {
+                                var bundledV = PluginVersionCheck.ReadBundledVersion(companionSpec);
+                                var installedV = PluginVersionCheck.ReadInstalledVersion(profileDir, CompanionPkg);
+                                if (PluginVersionCheck.NeedsUpgrade(installedV, bundledV))
+                                {
+                                    Console.WriteLine($"[host] 随包插件升级：{CompanionPkg} {installedV ?? "(不可读)"} → {bundledV}");
+                                    pending.Add((CompanionPkg, companionSpec));
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[host] {CompanionPkg} 版本比对失败，跳过升级检查：{ex.Message}");
+                            }
+                        }
                     }
 
                     if (pending.Count == 0)
