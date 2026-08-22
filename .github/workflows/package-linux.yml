@@ -102,7 +102,7 @@ jobs:
           echo "打包版本: $V (ref=${{ github.ref }} event=${{ github.event_name }}) arch=${{ matrix.arch }} rid=${{ matrix.rid }}"
 
       - name: dotnet publish（自包含，关 AOT，对齐 pilot-harness 打包前 build）
-        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} -p:PublishAot=false --self-contained true -o artifacts/publish-${{ matrix.rid }}
+        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} -p:PublishAot=false --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-${{ matrix.rid }}
 
       - name: 打 Linux 安装包（deb + rpm，参照 pilot-harness electron-builder 的 linux 产物）
         run: bash scripts/package-linux.sh artifacts/publish-${{ matrix.rid }}

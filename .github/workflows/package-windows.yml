@@ -65,7 +65,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then V="${GITHUB_REF_NAME#v}"; fi
           echo "VERSION=$V" >> "$GITHUB_ENV"
       - name: dotnet publish
-        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r win-x64 -p:PublishAot=false --self-contained true -o artifacts/publish-win-x64
+        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r win-x64 -p:PublishAot=false --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-win-x64
       - name: 打 Windows 包（安装器 exe，文件名含 windows 标识；不再产独立 zip）
         shell: bash
         run: bash scripts/package-windows.sh artifacts/publish-win-x64

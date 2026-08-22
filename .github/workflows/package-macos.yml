@@ -74,7 +74,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then V="${GITHUB_REF_NAME#v}"; fi
           echo "VERSION=$V" >> "$GITHUB_ENV"
       - name: dotnet publish
-        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} -p:PublishAot=false --self-contained true -o artifacts/publish-${{ matrix.rid }}
+        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} -p:PublishAot=false --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-${{ matrix.rid }}
       - name: 打 macOS 包（dmg，文件名含 macos 标识；不再产独立 zip）
         run: bash scripts/package-macos.sh artifacts/publish-${{ matrix.rid }}
       - name: 上传

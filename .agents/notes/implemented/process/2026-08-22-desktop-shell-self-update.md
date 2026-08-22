@@ -33,4 +33,4 @@ C# 胖后端 + 伴生插件瘦 UI：
 
 - 收益：ready 前完全静默零打扰；ready 持久化跨重启不丢「可安装」；状态机与 IO 全解耦可测（23 个新单测覆盖比较/挑选/校验/状态迁移/失败回退）；升级体验一键完成。
 - 代价/风险：Linux 每次升级弹一次 pkexec 授权框；SHA256SUMS 缺条目时 fail loud 拒装（宁可误报不装坏包）；`sidebar.footer.action` 为上游非契约表面，靠逐 release 钉死内置 dsh 兜底；插件升版的版本感知重装仍未做（见 companion-plugin ADR，随 settings 手动入口一起排期）；发布流水线尚未接 `-p:Version` 覆盖（tag 出包前必须补，否则比较基准停在 csproj 默认值）。
-- 验证：`dotnet test` 64→87/87 全绿；三部门禁全绿；0 警告；沙箱 dsh web 启动 + boot manifest 含 companion 行 + 新 client.js 伺服确认。真实桌面「有新版 release 时侧栏出现更新钮→点击静默装并重启」待实机验收。
+- 验证：`dotnet test` 64→102/102 全绿（含包类型检测/状态机/锁回归）；三部门禁全绿；0 警告。**实机验收 ✅（2026-08-22 用户 rpm 系统）**：低版本启动→自动下载 rpm→SHA256 校验→侧栏 ready 按钮→授权→rpm 重装 exit=0→应用自退→runuser 降权拉起新实例（带 DSH 隔离环境）→对账清除记录；取消授权路径 10s 内回退 ready。调试期沉淀的宿主三连坑（apply/require、capabilities 白名单、inject 声明）见 HANDOFF Gotchas 与 ADR desktop-shell-companion-plugin。
