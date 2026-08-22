@@ -11,9 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '包版本（默认 0.1.0；tag 触发时取 tag 的 v 后缀；填 v0.1.3 亦可）'
+        description: '包版本（留空自动取 csproj <Version>；tag 触发取 tag；填 v0.1.3 亦可）'
         required: false
-        default: '0.1.0'
+        default: ''
 
 permissions:
   contents: read
@@ -72,8 +72,8 @@ jobs:
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
           input="${{ inputs.version }}"
-          # tag 触发时输入 version 应为默认或与 tag 一致；不一致则以 tag 为准
-          if [[ "$input" != "0.1.0" && "$input" != "$tag" && "$input" != "v$tag" ]]; then
+          # tag 触发时输入留空或与 tag 一致均视为合法；不一致则以 tag 为准
+          if [[ -n "$input" && "$input" != "$tag" && "$input" != "v$tag" ]]; then
             echo "::warning::inputs.version($input) 与 tag v$tag 不一致，将以 tag 为准"
           fi
           echo "Release tag 版本: $tag"
@@ -97,6 +97,15 @@ jobs:
           V="${V#v}"
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then
             V="${GITHUB_REF_NAME#v}"
+          fi
+          # 输入留空时回退 csproj <Version>（版本单一来源：预览包与正式版同源，避免误内嵌旧版本号）
+          if [[ -z "$V" ]]; then
+            V="$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' src/DeepSeek.Harness.Desktop/DeepSeek.Harness.Desktop.csproj | head -1)"
+          fi
+          # 空版本会令 dotnet publish 的 -p:Version= 触发 MSB4044 硬失败；此处前置 fail loud 给出可读诊断
+          if [[ -z "$V" ]]; then
+            echo "::error::无法确定打包版本：tag 无版本、输入为空且 csproj 无 <Version>"
+            exit 1
           fi
           echo "VERSION=$V" >> "$GITHUB_ENV"
           echo "打包版本: $V (ref=${{ github.ref }} event=${{ github.event_name }}) arch=${{ matrix.arch }} rid=${{ matrix.rid }}"
