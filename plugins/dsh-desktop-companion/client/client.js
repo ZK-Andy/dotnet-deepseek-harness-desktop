@@ -21,7 +21,9 @@
   if (typeof window === 'undefined' || !window.__ModuleLoader__) return
   window.__ModuleLoader__.load({
     id: 'dsh-desktop-companion',
-    factory: function () {
+    // factory receives the module-table require (react & host modules resolve
+    // through it) — forgetting the parameter silently breaks every require below.
+    factory: function (require) {
       /**
        * Register the client half against the client cordis context.
        * @param {object} ctx - Client cordis context. No services acquired.
@@ -131,6 +133,7 @@
                 label: function () { return '\u684c\u9762\u66f4\u65b0' },
               }, function (props) { return h(UpdateButton, props) })
             })
+            console.info('[dsh-desktop-companion] update button registered')
           }
         } catch (e) { /* slots/react unavailable on this host: degrade to no update UI */ }
       }
