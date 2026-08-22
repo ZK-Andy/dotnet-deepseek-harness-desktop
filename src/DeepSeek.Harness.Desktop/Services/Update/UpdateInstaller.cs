@@ -86,6 +86,7 @@ public static class UpdateInstaller
               runuser -u "$REL_USER" -- env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
                 XAUTHORITY="$XAUTHORITY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
                 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+                PATH="$PATH" HOME="$HOME" DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_X64="$DOTNET_ROOT_X64" \
                 DSH_DESKTOP_DSH_HOME="{EscapeSingle(Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) ?? string.Empty)}" \
                 nohup '{EscapeSingle(exePath)}' >> '{EscapeSingle(logPath)}' 2>&1 &
             else
@@ -101,8 +102,9 @@ public static class UpdateInstaller
             File.SetUnixFileMode(scriptPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        // pkexec 会重置环境：显式透传 GUI 会话变量（否则拉起的新版窗口起不来）
-        // 与开发隔离变量（否则重启后的实例丢掉 DSH_HOME 隔离，退回真实 home）
+        // pkexec 会重置环境：显式透传 GUI 会话变量（否则拉起的新版窗口起不来）、
+        // 开发隔离变量（否则重启后的实例丢掉 DSH_HOME 隔离）与 .NET 运行时定位
+        // （DOTNET_ROOT 缺失时 apphost 报 ".NET location: Not found"——实机教训）
         var psi = new ProcessStartInfo
         {
             FileName = "pkexec",
@@ -113,6 +115,7 @@ public static class UpdateInstaller
         {
             "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
             DevEnvironment.HomeOverrideEnv,
+            "PATH", "HOME", "DOTNET_ROOT", "DOTNET_ROOT_X64",
         };
         foreach (var key in passthrough)
         {
