@@ -176,7 +176,7 @@
             errPrefix: '\u68c0\u67e5\u5931\u8d25\uff1a',
             unknown: '\u672a\u77e5\u539f\u56e0',
             checkBtn: '\u68c0\u67e5\u66f4\u65b0',
-            unavail: '\u684c\u9762\u81ea\u66f4\u65b0\u5728\u5f53\u524d\u8fd0\u884c\u65f6\u4e0d\u53ef\u7528\uff08\u5f00\u53d1\u8fd0\u884c\u65f6\u672a\u88c5\u8f7d\u81ea\u66f4\u65b0\u6808\uff09',
+            unavail: '\u684c\u9762\u81ea\u66f4\u65b0\u5728\u5f53\u524d\u8fd0\u884c\u65f6\u4e0d\u53ef\u7528\uff08\u5f00\u53d1\u8fd0\u884c\u65f6\u53ef\u8bbe DSH_DESKTOP_UPDATE_FORCE=1 \u5f00\u542f\uff09',
           }
 
           var statusText = function (s) {
@@ -190,6 +190,20 @@
             }
           }
 
+          // getState 兜底：宿主无自更新栈（dev 门禁）时命令路由不存在，invoke 应以失败
+          // 告终；再叠加 4s 超时——任何「既不成功也不失败」的异常路径都收敛到不可用提示，
+          // 设置页绝不留白。reason 仅进控制台，页面文案统一走 STR.unavail。
+          var queryState = function () {
+            return new Promise(function (resolve, reject) {
+              var settled = false
+              var once = function (fn) {
+                return function (v) { if (!settled) { settled = true; fn(v) } }
+              }
+              window.__ryn.invoke('desktop.update.getState', {}).then(once(resolve), once(reject))
+              setTimeout(once(reject), 4000)
+            })
+          }
+
           // 设置页区块：undefined=查询中不渲染，null=宿主无自更新栈（页内提示），对象=正常状态帧
           function UpdateSection() {
             var pair = reactMod.useState(undefined)
@@ -198,9 +212,12 @@
             reactMod.useEffect(function () {
               var onEvt = function (e) { if (e.detail) setState(e.detail) }
               document.addEventListener('dsh-desktop-update', onEvt)
-              window.__ryn.invoke('desktop.update.getState', {}).then(function (s) {
+              queryState().then(function (s) {
                 setState(parseState(s) || null)
-              }).catch(function () { setState(null) })
+              }).catch(function (e3) {
+                console.warn(TAG, 'update section unavailable:', e3 && e3.message)
+                setState(null)
+              })
               return function () { document.removeEventListener('dsh-desktop-update', onEvt) }
             }, [])
             if (state === undefined) return null
