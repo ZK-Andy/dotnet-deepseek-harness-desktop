@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace DeepSeek.Harness.Desktop.Services.Update;
 
 /// <summary>自更新状态机状态（对齐 opencode updater-controller：ready 之外全部静默）。</summary>
@@ -28,13 +30,25 @@ public enum UpdateStatus
 /// <summary>状态机当前快照。</summary>
 /// <param name="Status">当前状态。</param>
 /// <param name="Version">ready/installing/download 态携带的目标版本号。</param>
-/// <param name="Message">error 态的失败原因（仅日志）。</param>
-public sealed record UpdateState(UpdateStatus Status, string? Version = null, string? Message = null)
+/// <param name="Message">error 态的失败原因（日志与设置页错误行展示）。</param>
+/// <param name="Current">当前壳版本（Transition 统一补齐；供更新页显示「当前版本/已是最新」）。</param>
+public sealed record UpdateState(UpdateStatus Status, string? Version = null, string? Message = null, string? Current = null)
 {
     /// <summary>序列化为页面推送用的紧凑 JSON（手写避免 AOT 反射序列化）。</summary>
     public string ToJson()
     {
         var version = Version is null ? "null" : $"\"{Version}\"";
-        return $"{{\"status\":\"{Status.ToString().ToLowerInvariant()}\",\"version\":{version}}}";
+        var json = $"{{\"status\":\"{Status.ToString().ToLowerInvariant()}\",\"version\":{version}";
+        if (Message is not null)
+        {
+            json += $",\"message\":\"{JsonEncodedText.Encode(Message)}\"";
+        }
+
+        if (Current is not null)
+        {
+            json += $",\"current\":\"{Current}\"";
+        }
+
+        return json + "}";
     }
 }

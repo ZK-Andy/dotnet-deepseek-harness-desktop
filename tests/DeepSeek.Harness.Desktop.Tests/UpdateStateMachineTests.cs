@@ -270,4 +270,17 @@ public class UpdateStateMachineTests
         Assert.Equal(1, count);
         Assert.Equal(UpdateStatus.Ready, machine.State.Status);
     }
+
+    [Fact]
+    public async Task CheckAsync_TransitionsCarryCurrentVersion()
+    {
+        var states = new List<UpdateState>();
+        var machine = Create(Current, _ => null, transitions: states);
+
+        await machine.CheckAsync(CancellationToken.None);
+
+        Assert.NotEmpty(states);
+        Assert.All(states, s => Assert.Equal(Current, s.Current));
+        Assert.Equal(UpdateStatus.UpToDate, machine.State.Status);
+    }
 }
