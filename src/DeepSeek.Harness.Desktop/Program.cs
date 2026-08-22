@@ -24,6 +24,23 @@ public static class Program
     [STAThread]
     public static void Main()
     {
+        // 开发运行时完全隔离（ADR dev-runtime-isolation）：ApplicationId 加 .dev 后缀避开
+        // GTK 同 id 单实例互斥（与已装正式版可同时开窗）；DSH_HOME 未显式覆盖时自动指向
+        // 仓库 .cache/dev-home，杜绝与正式版共享 profile 的串扰。
+        var devRuntimeDir = Environment.GetEnvironmentVariable(DevEnvironment.RuntimeDirEnv);
+        var isDev = DevEnvironment.IsDevRuntime(devRuntimeDir);
+        var devAutoIsolated = false;
+        if (isDev && Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) is null)
+        {
+            var devHome = DevEnvironment.DeriveDefaultDevHome(devRuntimeDir);
+            if (devHome is not null)
+            {
+                Environment.SetEnvironmentVariable(DevEnvironment.HomeOverrideEnv, devHome);
+                devAutoIsolated = true;
+                Console.WriteLine($"[host] 开发运行时：DSH_HOME 隔离到 {devHome}；ApplicationId 带 .dev 后缀，可与正式版并存");
+            }
+        }
+
         using var host = new HarnessRuntimeHost(RuntimeLocator.TryLocateBundled(RuntimeLocator.ResolveRuntimeDirectory()));
         var webUrl = host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
         Console.WriteLine($"[host] runtime = {host.RuntimeDescription}");
@@ -73,7 +90,8 @@ public static class Program
                 opts.Title = "DeepSeek Harness Desktop";
                 opts.Width = 1200;
                 opts.Height = 800;
-                opts.ApplicationId = "io.github.ZK-Andy.dotnet-deepseek-harness-desktop";
+                opts.ApplicationId = DevEnvironment.ApplicationIdFor(
+                    "io.github.ZK-Andy.dotnet-deepseek-harness-desktop", isDev);
                 var iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
                 if (File.Exists(iconPath))
                 {
@@ -141,12 +159,12 @@ public static class Program
                 {
                     await Task.Delay(TimeSpan.FromSeconds(3));
 
-                    // 开发运行时覆盖 = 非打包产品环境：默认 DSH_HOME 与已装正式版共享，
-                    // 此处安装会把指向工作区的 file: 依赖写进共享 profile（2026-08-22 串扰实证）。
-                    // 打包产品永不设置 DSH_DESKTOP_RUNTIME_DIR，故以此为准跳过随包插件安装。
-                    if (Environment.GetEnvironmentVariable("DSH_DESKTOP_RUNTIME_DIR") is not null)
+                    // 开发运行时：仅当 home 已自动隔离（devAutoIsolated）才允许随包安装——
+                    // 隔离 home 与正式版无涉，装了市场/伴生 debug 才完整；
+                    // 用户显式把 DSH_DESKTOP_DSH_HOME 指回真实 home 时仍跳过（防串扰，2026-08-22 实证）。
+                    if (isDev && !devAutoIsolated)
                     {
-                        Console.WriteLine("[host] 检测到 DSH_DESKTOP_RUNTIME_DIR（开发运行时覆盖），跳过随包插件安装以防污染共享 profile");
+                        Console.WriteLine("[host] 开发运行时且 DSH_HOME 为显式覆盖，跳过随包插件安装以防污染共享 profile");
                         return;
                     }
 

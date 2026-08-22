@@ -65,6 +65,7 @@
 
 ## 配置与扩展
 
-* `appsettings.json`：`DevTools:false`（`DSH_DEVTOOLS=1` 开启）。
+* `appsettings.json`：`DevTools:false`（`DSH_DEVTOOLS=1` 开启）；`Update` 节（自更新仓库/超时/目录）。
 * `ryn.json`：`identifier/capabilities`。
 * 扩展点：`DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DSH_HOME` 覆盖。
+* **开发运行时隔离**：设置 `DSH_DESKTOP_RUNTIME_DIR` 即进入 dev 模式——ApplicationId 自动加 `.dev` 后缀（与已装正式版可同时开窗，避开 GTK 同 id 单实例互斥），DSH_HOME 未显式覆盖时自动指向 `<仓库>/.cache/dev-home`；显式指回真实 home 时随包插件安装自动跳过防串扰。
