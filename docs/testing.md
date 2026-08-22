@@ -1,6 +1,6 @@
 # Testing
 
-> `64/64` 通过，`dotnet test` 当前基线。
+> `126/126` 通过，`dotnet test` 当前基线。
 
 ## 单测
 
@@ -12,10 +12,13 @@
   * `MarketInstallHelperTests`：`IsBundleInstalled(pkg)` 真/假/异常/按包独立、`CleanupBogusApp` 删 `app` 的 `tgz`/`NoOp`、`EnsureWorkspaceAllowBuilds` 占位替换与 `esbuild` 追加、`ResolveMarketSpec` 的 `tgz>10K/目录/registry` 三分支、`ResolveCompanionSpec` 的 `tgz>1K/目录/null` 三分支（无 registry 回退）、`EnsureBundlesContainsAsync` 追加/幂等/双包共存。
   * `ExternalLinkPolicyTests`：站外/同源/非 http(s)/空 href/origin 边界的纯判定。
   * `ExternalLinkCommandRouterTests`：命令路由与打开器委托。
-  * `UpdateVersionTests`：版本逐段比较（v 前缀/缺段补 0/预发布截断/非法 fail loud）。
-  * `UpdateStateMachineTests`：启动对账清 stale ready、持久化恢复 ready、无更新/旧版→up-to-date、新版下载→ready、下载失败→error 后可恢复、install 仅 ready/成功转 installing/失败回 ready、订阅与退订。
-  * `ReleaseAssetTests`：按 RID 挑资产（deb/exe/dmg）、SHA256SUMS 双空格与 `*` 二进制格式解析。
+  * `UpdateVersionTests`：版本逐段比较（v 前缀/缺段补 0/预发布截断/**任一段非法 fail loud**）。
+  * `UpdateStateMachineTests`：启动对账清 stale ready（相等/**旧版本**/损坏版本串）、持久化恢复 ready、无更新/旧版→up-to-date、新版下载→ready、下载失败→error 后可恢复、install 仅 ready/成功转 installing/失败回 ready、订阅与退订、**并发检查只跑一次**。
+  * `ReleaseAssetTests`：按 RID 挑资产（deb/exe/dmg）、SHA256SUMS 双空格与 `*` 二进制格式解析、跨实例下载锁互斥、包类型检测回退。
   * `DevEnvironmentTests`：dev 识别、ApplicationId 后缀、隔离 home 两级上溯推导与空输入。
+  * `InstallerDownloaderTests`：HTTP 非 2xx fail loud、release 未附 SHA256SUMS 拒装、哈希不匹配清理 `.part`、条目缺失拒装、成功路径原子改名（`.download.lock` 常驻属设计）。
+  * `UpdateInstallerTests`：deb/rpm 包命令与不支持扩展名、Linux 安装脚本内容（等待环/runuser 降权/变量透传/路径转义）。
+  * `UpdateOptionsTests`：dev 门禁（非 dev 恒装载；dev 需 `DSH_DESKTOP_UPDATE_FORCE=1`）。
 * 运行：沙箱需 `DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget`（`/home` 只读）。
 
 ```sh
