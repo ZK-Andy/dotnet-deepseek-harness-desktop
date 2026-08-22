@@ -21,6 +21,8 @@ public class UpdateVersionTests
     [Theory]
     [InlineData("not-a-version")]
     [InlineData("")]
+    [InlineData("0.a.3")]
+    [InlineData("1..2")]
     public void Compare_Throws_OnUnparseable(string bad)
     {
         Assert.Throws<ArgumentException>(() => UpdateVersion.Compare(bad, "0.1.20"));

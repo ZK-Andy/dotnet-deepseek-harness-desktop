@@ -7,7 +7,7 @@ namespace DeepSeek.Harness.Desktop.Services.Update;
 public static class UpdateVersion
 {
     /// <summary>比较两个版本；返回负数/零/正数表示 a 小于/等于/大于 b。</summary>
-    /// <remarks>任一侧无法解析出任何数字段时抛 <see cref="ArgumentException"/>（fail loud，调用方转为 Error 态）。</remarks>
+    /// <remarks>任一段无法解析为数字时抛 <see cref="ArgumentException"/>（fail loud，调用方转为 Error 态或清除残留记录）。</remarks>
     public static int Compare(string a, string b)
     {
         var left = ParseSegments(a);
@@ -37,15 +37,14 @@ public static class UpdateVersion
         }
 
         var parts = core.Split('.');
-        if (parts.Length == 0 || parts.All(p => !int.TryParse(p, out _)))
-        {
-            throw new ArgumentException($"无法解析版本号：{version}");
-        }
-
         var numbers = new int[parts.Length];
         for (var i = 0; i < parts.Length; i++)
         {
-            _ = int.TryParse(parts[i], out numbers[i]);
+            // 混合形态（如 "0.a.3"）静默补 0 会掩盖脏数据，逐段校验、任一失败即抛
+            if (!int.TryParse(parts[i], out numbers[i]))
+            {
+                throw new ArgumentException($"无法解析版本号：{version}");
+            }
         }
 
         return numbers;
