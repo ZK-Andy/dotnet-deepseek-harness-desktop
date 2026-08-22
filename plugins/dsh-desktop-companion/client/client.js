@@ -18,10 +18,6 @@
  * - Self-update button in the sidebar footer (beside Settings): renders ONLY
  *   while the host reports status=ready; hover expands「更新 vX.Y.Z」;
  *   click installs+restarts via desktop.update.install.
- *
- * Debug handles exposed on window.__ddc:
- * - setupUpdateUI(): re-runs the update-UI assembly on demand (logs live).
- * - error: last setup failure, if any.
  */
 ;(function () {
   if (typeof window === 'undefined' || !window.__ModuleLoader__) return
@@ -35,7 +31,6 @@
        * @param {object} ctx - Client cordis context. No services acquired.
        */
       function apply(ctx) {
-        window.__ddc = window.__ddc || {}
         var TAG = '[dsh-desktop-companion]'
 
         // External-link takeover (the feature proper).
@@ -46,7 +41,9 @@
           // claims first wins and sets BOTH flags, so the latecomer's own guard
           // makes it bail — exactly one handler per document either way.
           // Remove this flag dance once no released shell injects the catcher.
-          if (window.top === window.self && !window.__ryn_externalLinkCatcher && !window.__dshDesktopCompanionLinks) {
+          // 无 __ryn 桥（纯浏览器标签页）时不注册 capture：拦截后 invoke 无处可去、
+          // 外链变死链，与「keep page fully functional」的目标相悖
+          if (window.top === window.self && window.__ryn && !window.__ryn_externalLinkCatcher && !window.__dshDesktopCompanionLinks) {
             window.__ryn_externalLinkCatcher = true
             window.__dshDesktopCompanionLinks = true
             var ryn = window.__ryn
@@ -76,9 +73,6 @@
         }
 
         var setupUpdateUI = function () {
-          console.info(TAG, 'setupUpdateUI begin', {
-            ryn: !!window.__ryn, slots: !!ctx.slots, requireType: typeof require,
-          })
           if (!(window.__ryn && ctx.slots && typeof require === 'function')) {
             console.warn(TAG, 'update UI skipped: guards')
             return false
@@ -128,7 +122,6 @@
               // 第二个参数必须传（空对象即可）：空参数体的 invoke 在宿主分发层会 500
               window.__ryn.invoke('desktop.update.getState', {}).then(function (s) {
                 var parsed = parseState(s)
-                console.info(TAG, 'getState →', parsed)
                 if (parsed && parsed.status === 'ready') setState(parsed)
               }).catch(function (e3) { console.warn(TAG, 'getState failed', e3 && e3.message) })
               return function () { document.removeEventListener('dsh-desktop-update', onEvt) }
@@ -156,26 +149,21 @@
           }
 
           ctx.slots.inject('sidebar.footer.action', function () {
-            console.info(TAG, 'sidebar.footer.action inject factory running')
             return ctx.slots.register({
               name: 'sidebar.footer.action',
               id: 'dsh-desktop-companion-update',
               label: function () { return '\u684c\u9762\u66f4\u65b0' },
             }, function (props) {
-              console.info(TAG, 'update button render, wide =', !!(props && props.wide !== false))
               return h(UpdateButton, props)
             })
           })
-          console.info(TAG, 'update button registered')
           return true
         }
 
-        window.__ddc.setupUpdateUI = setupUpdateUI
         try {
           setupUpdateUI()
         } catch (e) {
           console.warn(TAG, 'update UI setup error', e)
-          window.__ddc.error = String(e)
         }
       }
 
