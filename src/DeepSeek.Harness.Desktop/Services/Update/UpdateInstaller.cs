@@ -66,8 +66,10 @@ public static class UpdateInstaller
             _ => throw new PlatformNotSupportedException($"Linux 不支持的安装包类型：{ext}"),
         };
 
-        // 等本进程退出再装（文件占用），装完拉起新版同路径二进制。
-        // 全程写 install.log：rpm/dpkg 报错、桌面环境缺失这类静默失败必须可诊断。
+        // 等本进程退出再装（文件占用），装完把新版**降权回原用户**拉起——
+        // 整个脚本是 root 在跑：直接 nohup GUI 会因 PATH 缺失/环境不符秒退；
+        // pkexec 注入 PKEXEC_UID（调用者 uid），用 runuser 回到原用户身份启动，
+        // 且新版输出追加进 install.log（启动即崩时可诊断）。
         var logPath = Path.Combine(workDir, "install.log");
         var script = $"""
             #!/bin/sh
@@ -78,8 +80,17 @@ public static class UpdateInstaller
             echo "app exited; running: {installCmd}"
             {installCmd}
             echo "install exit=$?"
-            nohup '{EscapeSingle(exePath)}' >/dev/null 2>&1 &
-            echo "relaunched: {EscapeSingle(exePath)}"
+            if [ -n "$PKEXEC_UID" ]; then
+              echo "relaunch as uid=$PKEXEC_UID"
+              runuser -u "#$PKEXEC_UID" -- env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+                XAUTHORITY="$XAUTHORITY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+                DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+                DSH_DESKTOP_DSH_HOME="{EscapeSingle(Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) ?? string.Empty)}" \
+                nohup '{EscapeSingle(exePath)}' >> '{EscapeSingle(logPath)}' 2>&1 &
+            else
+              echo "relaunch as current user"
+              nohup '{EscapeSingle(exePath)}' >> '{EscapeSingle(logPath)}' 2>&1 &
+            fi
             """;
         Directory.CreateDirectory(workDir);
         var scriptPath = Path.Combine(workDir, "install.sh");
