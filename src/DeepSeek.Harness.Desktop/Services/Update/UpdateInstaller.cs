@@ -89,14 +89,20 @@ public static class UpdateInstaller
             File.SetUnixFileMode(scriptPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        // pkexec 会重置环境：显式透传 GUI 会话变量，否则脚本里拉起的新版窗口起不来
+        // pkexec 会重置环境：显式透传 GUI 会话变量（否则拉起的新版窗口起不来）
+        // 与开发隔离变量（否则重启后的实例丢掉 DSH_HOME 隔离，退回真实 home）
         var psi = new ProcessStartInfo
         {
             FileName = "pkexec",
             UseShellExecute = false,
         };
         psi.ArgumentList.Add("env");
-        foreach (var key in new[] { "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS" })
+        var passthrough = new[]
+        {
+            "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+            DevEnvironment.HomeOverrideEnv,
+        };
+        foreach (var key in passthrough)
         {
             var value = Environment.GetEnvironmentVariable(key);
             if (!string.IsNullOrEmpty(value))
