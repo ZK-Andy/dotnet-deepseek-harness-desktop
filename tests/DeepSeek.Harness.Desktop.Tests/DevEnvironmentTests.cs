@@ -7,13 +7,14 @@ namespace DeepSeek.Harness.Desktop.Tests;
 public class DevEnvironmentTests
 {
     [Theory]
-    [InlineData(null, false)]
-    [InlineData("", false)]
-    [InlineData("  ", false)]
-    [InlineData("/repo/resources/runtime", true)]
-    public void IsDevRuntime_OnlyEnvPresenceMatters(string? runtimeDir, bool expected)
+    [InlineData(null, true, false)]
+    [InlineData("", true, false)]
+    [InlineData("  ", false, true)]
+    [InlineData("/repo/resources/runtime", false, true)]
+    [InlineData(null, false, true)]
+    public void IsDevRuntime_EnvOrMissingClosure(string? runtimeDir, bool hasBundled, bool expected)
     {
-        Assert.Equal(expected, DevEnvironment.IsDevRuntime(runtimeDir));
+        Assert.Equal(expected, DevEnvironment.IsDevRuntime(runtimeDir, hasBundled));
     }
 
     [Theory]
@@ -27,18 +28,46 @@ public class DevEnvironmentTests
     }
 
     [Fact]
-    public void DeriveDefaultDevHome_WalksTwoLevelsUp()
+    public void DeriveDefaultDevHome_PrefersRuntimeDirTwoLevelsUp()
     {
         var runtimeDir = Path.Combine("/mnt/work/repo", "resources", "runtime");
+        // runtime 目录形态优先，即使 baseDirectory 也可用
         Assert.Equal(Path.Combine("/mnt/work/repo", ".cache", "dev-home"),
-            DevEnvironment.DeriveDefaultDevHome(runtimeDir));
+            DevEnvironment.DeriveDefaultDevHome(runtimeDir, "/elsewhere/bin"));
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    public void DeriveDefaultDevHome_ReturnsNull_WhenNoRuntimeDir(string? runtimeDir)
+    [Fact]
+    public void DeriveDefaultDevHome_WalksUpToGitRoot_FromBaseDirectory()
     {
-        Assert.Null(DevEnvironment.DeriveDefaultDevHome(runtimeDir));
+        var root = Path.Combine(Path.GetTempPath(), "devenv-" + Guid.NewGuid().ToString("N"));
+        var binDir = Path.Combine(root, "src", "App", "bin", "Debug", "net10.0");
+        Directory.CreateDirectory(binDir);
+        Directory.CreateDirectory(Path.Combine(root, ".git"));
+        try
+        {
+            Assert.Equal(Path.Combine(root, ".cache", "dev-home"),
+                DevEnvironment.DeriveDefaultDevHome(null, binDir));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void DeriveDefaultDevHome_ReturnsNull_WhenNoGitAncestor()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "devenv-" + Guid.NewGuid().ToString("N"));
+        var binDir = Path.Combine(root, "bin");
+        Directory.CreateDirectory(binDir);
+        try
+        {
+            Assert.Null(DevEnvironment.DeriveDefaultDevHome(null, binDir));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void DeriveDefaultDevHome_ReturnsNull_WhenNoInputs()
+    {
+        Assert.Null(DevEnvironment.DeriveDefaultDevHome(null, null));
+        Assert.Null(DevEnvironment.DeriveDefaultDevHome("", ""));
     }
 }

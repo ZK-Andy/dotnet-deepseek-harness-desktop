@@ -199,7 +199,15 @@ public sealed class UpdateStateMachine
         _onTransition?.Invoke(next);
         foreach (var listener in _listeners)
         {
-            listener(next);
+            try
+            {
+                listener(next);
+            }
+            catch (Exception ex)
+            {
+                // 单个订阅者（如 UI 推送在窗口未就绪时）失败不拖垮状态机
+                Console.WriteLine($"[update] 状态回调失败：{ex.Message}");
+            }
         }
     }
 

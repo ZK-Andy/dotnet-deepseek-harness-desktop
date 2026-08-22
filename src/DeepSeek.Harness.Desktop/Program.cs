@@ -27,12 +27,15 @@ public static class Program
         // 开发运行时完全隔离（ADR dev-runtime-isolation）：ApplicationId 加 .dev 后缀避开
         // GTK 同 id 单实例互斥（与已装正式版可同时开窗）；DSH_HOME 未显式覆盖时自动指向
         // 仓库 .cache/dev-home，杜绝与正式版共享 profile 的串扰。
+        // dev 判定：显式 runtime 覆盖，或定位不到捆绑闭包（dotnet run 的 PATH dsh 回退形态）。
+        var updateRuntimeDir = RuntimeLocator.ResolveRuntimeDirectory();
+        var bundledClosure = RuntimeLocator.TryLocateBundled(updateRuntimeDir);
         var devRuntimeDir = Environment.GetEnvironmentVariable(DevEnvironment.RuntimeDirEnv);
-        var isDev = DevEnvironment.IsDevRuntime(devRuntimeDir);
+        var isDev = DevEnvironment.IsDevRuntime(devRuntimeDir, bundledClosure is not null);
         var devAutoIsolated = false;
         if (isDev && Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) is null)
         {
-            var devHome = DevEnvironment.DeriveDefaultDevHome(devRuntimeDir);
+            var devHome = DevEnvironment.DeriveDefaultDevHome(devRuntimeDir, AppContext.BaseDirectory);
             if (devHome is not null)
             {
                 Environment.SetEnvironmentVariable(DevEnvironment.HomeOverrideEnv, devHome);
@@ -41,7 +44,7 @@ public static class Program
             }
         }
 
-        using var host = new HarnessRuntimeHost(RuntimeLocator.TryLocateBundled(RuntimeLocator.ResolveRuntimeDirectory()));
+        using var host = new HarnessRuntimeHost(bundledClosure);
         var webUrl = host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
         Console.WriteLine($"[host] runtime = {host.RuntimeDescription}");
         if (webUrl is not null)
@@ -353,15 +356,23 @@ public static class Program
         /// <summary>把状态变化推给页面：插件监听 <c>dsh-desktop-update</c> CustomEvent 渲染更新按钮。</summary>
         static void PushUpdateState(CurrentWindowAccessor? accessor, Services.Update.UpdateState state)
         {
-            if (accessor?.Current is null)
+            try
             {
-                return;
-            }
+                // Current 在窗口未创建/已关闭时抛异常（非返回 null）：启动早期与退出阶段都会走到
+                if (accessor?.Current is null)
+                {
+                    return;
+                }
 
-            _ = accessor.Current.EvaluateJavaScriptAsync(
-                "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-update',{detail:"
-                + state.ToJson()
-                + "}));}catch(e){}})();");
+                _ = accessor.Current.EvaluateJavaScriptAsync(
+                    "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-update',{detail:"
+                    + state.ToJson()
+                    + "}));}catch(e){}})();");
+            }
+            catch (InvalidOperationException)
+            {
+                // 窗口尚未就绪：本次推送丢弃，后续状态变化会再推
+            }
         }
     }
 }

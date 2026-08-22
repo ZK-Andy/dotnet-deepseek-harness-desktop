@@ -8,10 +8,10 @@ Status: implemented
 
 ## Decision
 
-以 `DSH_DESKTOP_RUNTIME_DIR`（打包产品永不设置）为唯一 dev 标记，触发两项隔离，纯判定抽到 `Services/DevEnvironment`（可单测）：
+dev 判定满足其一即触发（首版仅看环境变量，实测裸跑 `dotnet run` 不设变量时漏网——PATH dsh 回退形态同样需要隔离）：①`DSH_DESKTOP_RUNTIME_DIR` 已设置；②定位不到捆绑闭包（打包安装的产品自带闭包，两条件皆不命中）。纯判定抽到 `Services/DevEnvironment`（可单测）。隔离内容：
 
 - **ApplicationId 后缀**：dev 加 `.dev`（`io.github.ZK-Andy.dotnet-deepseek-harness-desktop.dev`），Wayland app_id / GTK unique id 随之独立，任务栏出现单独条目属预期。
-- **DSH_HOME 自动隔离**：dev 且未显式设置 `DSH_DESKTOP_DSH_HOME` 时，默认指向 `<仓库>/.cache/dev-home`（从 runtime dir 上溯两级推导）；显式设置仍可指回真实 home。
+- **DSH_HOME 自动隔离**：dev 且未显式设置 `DSH_DESKTOP_DSH_HOME` 时，默认指向 `<仓库>/.cache/dev-home`——runtime 目录形态从其两级上溯推导；PATH 回退形态从应用基目录向上找 `.git` 定位仓库根；显式设置仍可指回真实 home。
 - **随包插件安装守卫细化**：原「dev 一律跳过」改为「仅当未自动隔离（用户显式覆盖 home）时跳过」——自动隔离的 dev home 与正式版无涉，装上 dshmarket/伴生插件后 debug 功能完整；显式指回共享 home 的场景维持跳过防串扰。
 
 ## Alternatives considered
@@ -24,4 +24,5 @@ Status: implemented
 
 - 收益：debug 与正式版可同时运行；dev 环境完全自包含（端口记忆/updates/插件安装全部隔离），串扰类问题结构性消除；dev home 缺失时首次启动自动初始化全新 profile。
 - 代价/风险：dev 首启为空白环境，需重配模型或自行拷贝 `dsh/.credentials.yaml`；任务栏多一个 `.dev` 条目；`.cache/dev-home` 不入 git（已在 .gitignore 覆盖范围内）。
-- 验证：`dotnet test` 87→96/96（新增 DevEnvironmentTests 9 例）；三门禁全绿、0 警告。实机「正式版开着 + dev 同时启动两窗并存」待用户验收。
+- 附带修复：自更新状态推送在窗口未创建时抛异常拖垮启动检查——`CurrentWindowAccessor.Current` 是抛异常而非返回 null；推送代码补 try/catch，状态机 Transition 对单个订阅者失败隔离。
+- 验证：`dotnet test` 87→96→98/98（DevEnvironmentTests 覆盖双触发条件与两种 home 推导）；三门禁全绿、0 警告。实机「正式版开着 + 裸跑 dotnet run 两窗并存」待用户验收。
