@@ -84,18 +84,7 @@ public static class Program
                 }
 
                 // 兜底：8 秒内仍未退出（Close 事件丢失等）则强制退出，保证安装流程放行
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await Task.Delay(TimeSpan.FromSeconds(8), ct);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                    }
-
-                    Environment.Exit(0);
-                });
+                StartExitFallback(ct);
             },
             persistence: new Services.Update.FileReadyPersistence(updatesDir),
             onTransition: state => PushUpdateState(updateWindow, state));
@@ -376,6 +365,24 @@ public static class Program
             }
 
             return "unknown";
+        }
+
+        /// <summary>安装授权通过后的兜底退出：窗口 Close 未生效时强制结束进程，放行安装脚本。</summary>
+        static void StartExitFallback(CancellationToken ct)
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(8), ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                Environment.Exit(0);
+            });
         }
 
         /// <summary>把状态变化推给页面：插件监听 <c>dsh-desktop-update</c> CustomEvent 渲染更新按钮。</summary>
