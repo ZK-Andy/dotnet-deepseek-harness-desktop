@@ -32,6 +32,7 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 - 空 `catch` 必须命名它吞掉什么；`try` 只包一个语句。
 - 公共 API 带 XML doc 契约（`<summary>/<param>/<returns>`）。
 - 测试：`dotnet test`（xunit）；覆盖边界、错误路径、事件顺序、并发；**行为级变更必须配套回归/快照**；mock 只用于昂贵/非确定性边界。
+- **DSH 插件命名**：`dsh-<域>-<角色>` 短 token（先例 `dsh-desktop-companion`）；禁止 `-plugin-` 类中缀；注册前查 npm 与 dshmarket 占用。
 
 ## GitHub 调研纪律（强制）
 
