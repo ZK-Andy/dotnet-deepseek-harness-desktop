@@ -36,6 +36,16 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 5. 克隆仅当需跨文件 grep/跑代码，且必须 `git clone --depth 1 --filter=blob:none --sparse` 后 sparse-checkout 目标目录
 6. 任何输出超约 50 行先 head 截断再进上下文；独立查询合并到同一次 bash 并行执行
 
+## 检索通道路由（强制）
+
+web 检索一律 anysearch 插件优先（已配 API key）；内置 web_search 仅作 anysearch 失败/配额耗尽时的兜底：
+
+1. GitHub 项目/仓库/代码 → gh CLI（见上节），不再重复搜索
+2. 库/框架官方文档与用法 → anysearch tag `code.doc`，params.library 必填
+3. 真实代码实现示例 → anysearch tag `code.snippet`（params.repo/lang/path 过滤）或 `gh search code`
+4. 一般 web 检索（中英通用）→ anysearch tag `general.general`；zone：中文 `"cn"`、英文 `"intl"`
+5. 多个独立查询合并单次 batch 调用；输出超约 50 行先截断再进上下文
+
 ## Git 纪律
 
 - 改写历史必须 `--force-with-lease=<branch>:<observed-oid>`；**raw `--force` 永远禁止**；改写后重新审计评审状态。
