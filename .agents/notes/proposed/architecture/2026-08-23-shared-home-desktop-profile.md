@@ -27,6 +27,7 @@ Status: proposed
 - **维持私有 home**：落败——数据宇宙割裂违背上游 home/profile 模型，对 CLI 重度用户是硬伤；且与「插件管理即配置」的生态方向冲突。
 - **维持随包捆绑闭包（含「默认捆绑 + 探测到兼容 PATH dsh 则优先复用」的混合变体）**：落败——与私有 home 同病：给桌面再造一个平行运行时宇宙，自包含孤岛与生态一等公民定位直接矛盾；百 MB 级闭包 × 三平台 × 每次发版的分发与自更新下载成本巨大；混合变体额外引入双代码路径与「兼容窗」的定义维护面，用复杂度买不来哲学一致性。包体瘦身的针对性优化随闭包取消而消解，不再单独立项。
 - **存量迁移管控机制**（状态判定矩阵 + Journal 幂等执行协议 + copy→verify→rename-backup + 分阶段灰度 Stage 0–5）：评审否决——预览阶段承担不起这套复杂度与长期维护面；灰度期双模式并存本身制造新的状态空间；项目定位已明确「不保证跨版本数据兼容」，迁移机器的收益覆盖不了成本。切换直接到位，备份提示兜底。
+- **companion 插件公开发布**（npm / dshmarket 独立分发）：落败——其全部价值寄生宿主（slot 与 `desktop.update.*` 命名空间离开桌面壳即死代码），无独立用户即无独立发布与支持意义。通道定为**随壳本地 tgz**；工程归属为**同仓独立子项目**（自有构建管线产出带版本 tgz，壳打包显式钉版消费，禁止「拉最新」——防陈旧工件事故重演）；迁出独立仓库的触发条件为出现真实独立发布价值。
 - **Attach 已运行的 dsh web 实例**（ccgui 模式）：暂缓——版本漂移治理复杂、进程生命周期权威混乱，且破坏零环境默认；SDK `stdio` JSON-RPC（`packages/sdk/server`）作为更正规的通道后续单独评估。
 - **file:// dist + IPC bridge 深嵌入**（`host/webserver` 注释点名的 Electron 形态）：远期记录——去掉 loopback HTTP 需自建 fetch/WS 桥，大改造非当下。
 
@@ -40,4 +41,4 @@ Status: proposed
 ## Related
 
 - [dev 运行时隔离](../../implemented/process/2026-08-22-dev-runtime-isolation.md)：dev 隔离守卫保留，本决定仅改变产品态 home 与运行时归属。
-- [companion 版本感知升级](../../implemented/feature/2026-08-22-companion-plugin-version-aware-upgrade.md)：比对逻辑不变；作用对象改为 `profiles/desktop`，其 tgz 供给渠道随闭包取消另定。
+- [companion 版本感知升级](../../implemented/feature/2026-08-22-companion-plugin-version-aware-upgrade.md)：比对逻辑不变；作用对象改为 `profiles/desktop`，其 tgz 由同仓独立子项目供给（见 Alternatives）。
