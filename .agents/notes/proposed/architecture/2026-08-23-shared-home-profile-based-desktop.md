@@ -21,6 +21,34 @@ Status: proposed
 - **Attach 已运行的 dsh web 实例**（ccgui 模式）：暂缓——版本漂移治理复杂、进程生命周期权威混乱，且破坏零环境默认；SDK `stdio` JSON-RPC（`packages/sdk/server`）作为更正规的通道后续单独评估。
 - **file:// dist + IPC bridge 深嵌入**（`host/webserver` 注释点名的 Electron 形态）：远期记录——去掉 loopback HTTP 需自建 fetch/WS 桥，大改造非当下。
 
+## Migration design（破坏性变更管控）
+
+**实测 home 标准布局**（本项目私有 home，与上游语义一致）：`.credentials.yaml`、`settings.yaml`（无版本头字段）、`.dsh-web-port`、`profiles/`、`sessions/`、`storages/`、`.pnpm-store|.pnpm-cache`、`logs/`；**插件会在 home 根自建数据目录**（如 `dsh-pocket/`）——合并必须容忍未知目录，只搬已知项。
+
+### 状态判定矩阵
+
+| 前置状态 | 判定 | 动作 |
+|---|---|---|
+| A：无 `~/.dsh` | 目录不存在 | 整体迁入：sessions/storages/settings.yaml/credentials 搬入；创建 `profiles/desktop`；pnpm store 搬入（内容寻址安全）；旧 home **改名留备份不删除** |
+| B：有 `~/.dsh` | 目录存在 | **加法合并，绝不覆盖既有文件**：仅新建 `profiles/desktop`；sessions 逐目录合并（同名 slug 进 `sessions.import-conflict-<ts>/` 隔离区）；settings.yaml/.credentials.yaml **一律保留现有**（我方副本留在备份）；storages 仅合并非冲突命名空间；store 复用现有 |
+| C：版本偏斜 | home 由更新/更旧版本的 dsh 写过 | 默认**拒绝切换**并给出双逃生门：①提示升级桌面版 ②`DSH_HOME` 覆盖回私有模式。检测标记依赖 Stage 0 研究（settings.yaml 无版本头，需另找可靠信号，如 cordis.yml 结构指纹或上游版本文件） |
+
+### 执行协议（对三种状态统一）
+
+1. **Journal 幂等**：写 `<home>/migration-state.json` 记录步骤清单与完成位，中断后重跑自动跳过已完成步。
+2. **copy → verify → rename-backup**：先复制、逐字节校验（sessions 文件数+大小），通过后才把源目录改名为 `<name>.migrated-<ts>.bak`（同文件系统瞬间完成，可手工整体回滚）。
+3. **全程留痕**：每步写入 `logs/host.log` + 迁移专用日志；任何异常即停，保持半完成态由 journal 续跑。
+4. **幂等重入**：迁移完成后再次启动检测到备份与标记即跳过。
+
+### 分阶段灰度（默认值不一步翻转）
+
+- **Stage 0 研究**：home 版本标记信号盘点（上游 settings/cordis 结构指纹）；session 文件格式与 slug 冲突语义；credentials/storages 实际布局全量盘点。
+- **Stage 1**：本矩阵评审定稿（本 ADR 更新）。
+- **Stage 2 实现**：`Services/HomeMigration/` 纯函数 planner + executor，状态×冲突注入的单测矩阵全覆盖；host.log 全程留痕。
+- **Stage 3 opt-in**：默认仍私有 home，`DSH_DESKTOP_SHARED_HOME=1` 显式开启试运行。
+- **Stage 4 翻转默认**：灰度稳定后默认共享，`DSH_DESKTOP_PRIVATE_HOME=1` 反向逃生门保留一个发布周期。
+- **Stage 5 清理**：移除私有 home 创建路径（备份读取支持长期保留）。
+
 ## Risks
 
 - 共享 home 无锁层：并发写同 profile 的 pnpm 安装存在竞态——专属 `desktop` profile 规避主要冲突面；home 级并发语义与 CLI 用户现状一致，依赖上游容忍度。
