@@ -50,6 +50,8 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 | `macOS` | `arm64` / `x64` | `dmg` |
 | `Windows` | `x64` | `exe` installer (`…-setup.exe`) |
 
+> **Preview notice**: this project is in an early preview stage and may ship **breaking changes** (data directory layout, configuration format, bundled component versions). **Cross-version data compatibility is not guaranteed**; back up important sessions and configuration before upgrading.
+>
 > **Unsigned note**: this is an **open-source project and we do not do paid signing**, so releases are **unsigned**. On macOS, if Gatekeeper shows "unidentified developer", right-click → Open, or System Settings → Privacy & Security → Open Anyway. On Windows, if SmartScreen shows "unknown publisher", choose More info → Run anyway. For dev/internal use, `SELF_SIGN=1` signs locally to clear warnings; see [docs/development.md](docs/development.md).
 >
 > **Test status**: `Linux` is verified by `CI`; `macOS x64` / `Windows` real-machine targeted testing **awaits community support** (no local Intel-mac / Windows hardware here).
