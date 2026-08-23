@@ -25,6 +25,17 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 - 公共 API 带 XML doc 契约（`<summary>/<param>/<returns>`）。
 - 测试：`dotnet test`（xunit）；覆盖边界、错误路径、事件顺序、并发；**行为级变更必须配套回归/快照**；mock 只用于昂贵/非确定性边界。
 
+## GitHub 调研纪律（强制）
+
+调研 GitHub 项目一律 gh CLI，禁止以 web 检索开局、禁止全量克隆作首选：
+
+1. 发现：`gh search repos "<词>" --sort stars --json fullName,description,stargazersCount,pushedAt`
+2. 验真：`gh api repos/<r>`（创建日期 vs 星标、贡献者数、fork 比）
+3. 内容：README `gh api repos/<r>/readme --jq .content | base64 -d | head -c 2000`；结构 `gh api repos/<r>/git/trees/HEAD?recursive=1 --jq '.tree[].path'`
+4. 单文件：`gh api repos/<r>/contents/<path>`
+5. 克隆仅当需跨文件 grep/跑代码，且必须 `git clone --depth 1 --filter=blob:none --sparse` 后 sparse-checkout 目标目录
+6. 任何输出超约 50 行先 head 截断再进上下文；独立查询合并到同一次 bash 并行执行
+
 ## Git 纪律
 
 - 改写历史必须 `--force-with-lease=<branch>:<observed-oid>`；**raw `--force` 永远禁止**；改写后重新审计评审状态。
