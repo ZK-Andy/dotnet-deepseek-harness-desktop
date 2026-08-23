@@ -36,6 +36,7 @@
 - ⚡️ **零环境、下载即用** — 内置 Node 二进制 + `@deepseek-ai/dsh` 依赖闭包（`resources/runtime/`），壳在私有 `DSH_HOME` 拉起 `dsh web`；无 PATH `dsh`/`node` 也能跑（缺内置时回退 PATH dsh）。
 - 🔒 **原生轻量壳** — C# 后端跑在系统 WebView（WebView2 / WKWebView / WebKitGTK），NativeAOT 就绪，能力沙箱 deny-by-default（`ryn.json`）。
 - 🔄 **崩溃自愈** — 壳监督运行时子进程：崩溃 → 恢复屏 → 自动重启 → 同一窗口回到新 URL；**端口保持稳定**，Web UI origin（及页面级会话记忆）存活——**崩溃后回到之前对话**。
+- ⬆️ **自更新** — 启动后台检查一次 + 设置页手动检查；发现新版本一键安装并自动重启（安装包 `SHA256` 强校验；`macOS` 引导手动更新），详见下方[「自动更新」](#自动更新)。
 - 🧩 **插件市场预装** — `dsh-market` 随包（`dshmarket.tgz`），首启后台静默安装到 `DSH_HOME`，装完自动重启即现；`1200+` 插件可搜一键装。
 - 🖼️ **原生图标 / Wayland 就绪** — 图标随包入 `hicolor`，`ryn.json:identifier` 与 `StartupWMClass` 均为 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`，任务栏正确关联。
 
@@ -52,6 +53,13 @@
 > **未签名说明**：本项目**开源、不做付费签名**，发布包**未签名**。macOS 首次打开若见 Gatekeeper「来自身份不明的开发者」→ 右键「打开」或 系统设置 → 隐私与安全性 →「仍要打开」；Windows 若见 SmartScreen「未知发布者」→「更多信息」→「仍要运行」。开发/内部可用 `SELF_SIGN=1` 自签消除本机告警，用法见 [docs/development.md](docs/development.md)。
 >
 > **测试状态**：`Linux` 已 `CI` 自动验证；`macOS x64` / `Windows` 真机针对性测试**等待社区支持**（本地无 mac Intel x64 / Windows 真机）。
+
+## 自动更新
+
+- 启动时后台检查一次新版本（不轮询、不打扰）；也可在 **设置 → 桌面更新** 手动检查。
+- 发现新版本后，侧栏底部出现下载按钮——点击即下载校验、**一键安装并自动重启**（`Linux` 会弹一次系统授权）。
+- 安装包落地前经 `SHA256SUMS` 强校验，校验失败拒绝安装。
+- `macOS` 暂不支持应用内静默更新——检测到新版本时会提示手动下载 `dmg`。
 
 ## 工作原理
 

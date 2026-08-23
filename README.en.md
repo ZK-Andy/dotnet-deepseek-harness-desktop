@@ -36,6 +36,7 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 - ⚡️ **Zero-setup, download and run** — bundles a Node binary + the `@deepseek-ai/dsh` dependency closure (`resources/runtime/`); the shell spawns `dsh web` with a private `DSH_HOME`. No PATH `dsh`/`node` required (falls back to PATH `dsh` if the bundle is absent).
 - 🔒 **Native, lightweight shell** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
 - 🔄 **Crash self-heal** — the shell supervises the runtime process: crash → recovery screen → auto-restart → same window back to a new URL; **the port stays stable** so the Web UI origin (and page-level session memory) survives — **return to your previous conversation after a crash**.
+- ⬆️ **Self-update** — background check at launch plus a manual check under Settings → Desktop Update; one-click install & restart when a new version is found (`SHA256`-verified packages; `macOS` guides manual update). See [Auto-Update](#auto-update) below.
 - 🧩 **Plugin market bundled** — `dsh-market` ships with the package (`dshmarket.tgz`), quietly installed to `DSH_HOME` on first launch; it auto-restarts to appear. `1200+` plugins are searchable and one-click installable.
 - 🖼️ **Native icons / Wayland-ready** — icons ship into `hicolor`; `ryn.json:identifier` and `StartupWMClass` are both `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`, so the taskbar associates correctly.
 
@@ -52,6 +53,13 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 > **Unsigned note**: this is an **open-source project and we do not do paid signing**, so releases are **unsigned**. On macOS, if Gatekeeper shows "unidentified developer", right-click → Open, or System Settings → Privacy & Security → Open Anyway. On Windows, if SmartScreen shows "unknown publisher", choose More info → Run anyway. For dev/internal use, `SELF_SIGN=1` signs locally to clear warnings; see [docs/development.md](docs/development.md).
 >
 > **Test status**: `Linux` is verified by `CI`; `macOS x64` / `Windows` real-machine targeted testing **awaits community support** (no local Intel-mac / Windows hardware here).
+
+## Auto-Update
+
+- New versions are checked once in the background at launch (no polling, no interruptions); you can also check manually under **Settings → Desktop Update**.
+- When a new version is found, a download button appears at the bottom of the sidebar — click it to download, verify and **install & restart in one click** (one system authorization prompt on `Linux`).
+- Packages are strictly verified against `SHA256SUMS` before installation; a failed check refuses to install.
+- `macOS` does not support silent in-app updates yet — you will be guided to download the `dmg` manually.
 
 ## How it works
 
