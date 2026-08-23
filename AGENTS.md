@@ -27,24 +27,11 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 
 ## GitHub 调研纪律（强制）
 
-调研 GitHub 项目一律 gh CLI，禁止以 web 检索开局、禁止全量克隆作首选：
-
-1. 发现：`gh search repos "<词>" --sort stars --json fullName,description,stargazersCount,pushedAt`
-2. 验真：`gh api repos/<r>`（创建日期 vs 星标、贡献者数、fork 比）
-3. 内容：README `gh api repos/<r>/readme --jq .content | base64 -d | head -c 2000`；结构 `gh api repos/<r>/git/trees/HEAD?recursive=1 --jq '.tree[].path'`
-4. 单文件：`gh api repos/<r>/contents/<path>`
-5. 克隆仅当需跨文件 grep/跑代码，且必须 `git clone --depth 1 --filter=blob:none --sparse` 后 sparse-checkout 目标目录
-6. 任何输出超约 50 行先 head 截断再进上下文；独立查询合并到同一次 bash 并行执行
+调研 GitHub 项目一律 gh CLI；禁以 web 检索开局、禁全量克隆作首选。六步配方见 [.agents/workflows/github-research.md](.agents/workflows/github-research.md)。
 
 ## 检索通道路由（强制）
 
-AnySearch 是唯一搜索后端（插件已接管内置 `web_search`/`web_fetch` 的 Provider）；规则只区分工具面的选择：
-
-1. GitHub 项目/仓库/代码 → gh CLI（见上节），不再重复搜索
-2. 库/框架官方文档与用法 → `code.doc`（params.library 必填）
-3. 真实代码实现示例 → `code.snippet`（params.repo/lang/path 过滤）或 `gh search code`
-4. 一般 web 检索 → `general.general`（zone：中文 `"cn"`、英文 `"intl"`）；无区域/纵向诉求的快查可用裸 `web_search`（同后端简化面，仅 query/max_results）
-5. 多个独立查询合并单次 batch 调用；输出超约 50 行先截断再进上下文
+web 检索一律 anysearch 插件（唯一搜索后端，已 Provider 级接管）；GitHub 归 gh。路由表见 [.agents/workflows/search-routing.md](.agents/workflows/search-routing.md)。
 
 ## Git 纪律
 
