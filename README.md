@@ -11,6 +11,8 @@
 <p align="center">
   <a href="#功能">功能</a> ·
   <a href="#下载安装">下载安装</a> ·
+  <a href="docs/user-guide.md">用户指南</a> ·
+  <a href="docs/faq.md">常见问题</a> ·
   <a href="#工作原理">工作原理</a> ·
   <a href="#开发">开发</a> ·
   <a href="docs/architecture.md">架构</a> ·

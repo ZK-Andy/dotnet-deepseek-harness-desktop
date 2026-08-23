@@ -11,6 +11,8 @@
 <p align="center">
   <a href="#features">Features</a> ·
   <a href="#download-and-install">Download</a> ·
+  <a href="docs/user-guide.en.md">User Guide</a> ·
+  <a href="docs/faq.en.md">FAQ</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#development">Development</a> ·
   <a href="docs/architecture.md">Architecture</a> ·

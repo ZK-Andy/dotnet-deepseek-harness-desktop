@@ -1,0 +1,65 @@
+# 用户指南
+
+> 面向下载使用 DeepSeek Harness Desktop 的用户。开发与架构文档见 [architecture.md](architecture.md) / [development.md](development.md)；常见问题见 [faq.md](faq.md)。
+
+## 系统要求与下载
+
+从 [GitHub Releases](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases) 下载对应平台安装包（随包附 `SHA256SUMS.txt` 校验文件）：
+
+| 平台 | 安装包 |
+|---|---|
+| Windows 10/11 x64 | `..._windows-x64-setup.exe` |
+| macOS Apple Silicon / Intel | `..._macos-arm64.dmg` / `..._macos-x64.dmg` |
+| Debian/Ubuntu x64 / arm64 | `..._linux-amd64.deb` / `..._linux-arm64.deb` |
+| Fedora/RHEL x86_64 / aarch64 | `..._linux-x86_64.rpm` / `..._linux-aarch64.rpm` |
+
+**无需安装 Node.js 或命令行工具**——应用内置完整的 DeepSeek Harness 运行时，下载即用。
+
+## 安装
+
+- **Windows**：运行 setup.exe 按提示安装（开始菜单/桌面快捷方式）。
+- **macOS**：打开 DMG，将应用拖入「应用程序」。
+- **Linux**：`sudo apt install ./....deb` 或 `sudo dnf install ./....rpm`（WebKitGTK 等依赖由包管理器自动解决）。
+
+未签名说明：本项目开源且不做付费签名。macOS 首次打开若被 Gatekeeper 拦截 → 右键「打开」或在 系统设置 → 隐私与安全性 中放行；Windows 若见 SmartScreen → 「更多信息」→「仍要运行」。详见 [README](../README.md)。
+
+## 首次启动
+
+1. 启动后壳会自动拉起内置的 DeepSeek Harness 运行时并加载界面。
+2. 首次使用请在界面内的**模型设置**中配置你自己的模型 API 凭据。
+3. 首次启动会在后台静默安装随包插件（插件市场、桌面伴生插件），完成后界面短暂显示深色「重连中」画面并自动恢复——**这是正常行为**，全程两三秒。
+4. 插件市场就位后即可浏览并安装社区插件。
+
+## 日常使用
+
+- **会话自动恢复**：正常重启应用后会回到上次的会话；运行时崩溃会自动重启并回到当前对话。
+- **外部链接**：点击站外链接会调用系统默认浏览器打开，不会困在应用内。
+- **桌面更新入口**：设置页中的「桌面更新」区块显示当前版本，可手动检查更新。
+
+## 更新
+
+- 启动时后台检查一次新版本；也可以在 设置 →「桌面更新」手动检查。
+- 发现新版本后出现一键更新按钮：确认授权后应用自动退出→完成安装→自动以新版本重启。
+- 安装包经过 SHA256 强校验；macOS 会引导你手动完成替换。
+- 取消更新随时可以，应用保持当前版本不受影响。
+
+## 数据与日志位置
+
+应用数据（含会话、凭据、插件）存放在私有数据目录：
+
+| 平台 | 路径 |
+|---|---|
+| Linux | `~/.local/share/DeepSeek.Harness.Desktop/dsh` |
+| macOS | `~/Library/Application Support/DeepSeek.Harness.Desktop/dsh` |
+| Windows | `%LOCALAPPDATA%\DeepSeek.Harness.Desktop\dsh` |
+
+运行日志位于该目录下 `logs/host.log`。
+
+**彻底卸载**：卸载应用包后，手动删除上述数据目录即可清除全部本地数据。
+
+## 故障排查
+
+1. **启动白屏或一直「重连中」**：查看 `logs/host.log` 末尾的错误信息。
+2. **更新失败**：校验不通过时应用会拒绝安装（安全设计），直接重新下载最新安装包覆盖安装即可。
+3. **插件市场打不开**：首次补装可能因网络较慢，重启一次应用通常自愈。
+4. 以上无法解决时，欢迎到 [Issues](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues) 反馈，附上系统平台与 `host.log` 相关片段。
