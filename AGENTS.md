@@ -9,6 +9,14 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 - 每次动手前说清变更范围；**非平凡变更必须同变更携带 Agent Note（ADR）**（见 `.agents/notes/README.md`）。
 - 讨论与取舍落成 ADR，不散在会话里；ADR 强制 `## Alternatives considered`（不记录比赢过什么的决定，必然招致重新辩论）。
 
+## 流程卡（索引）
+
+会话与开发流程按卡执行：
+
+- [session-modes](.agents/workflows/session-modes.md)——模式契约：讨论/调研/实现/发布的许可边界；**会话开场必须声明模式**
+- [session-open](.agents/workflows/session-open.md) / [session-close](.agents/workflows/session-close.md)——会话开、收尾检查单
+- [feature-flow](.agents/workflows/feature-flow.md) / [release-flow](.agents/workflows/release-flow.md)——开发与发版主链路
+
 ## 文档纪律
 
 - **每个事实只有一个家**：rationale → Agent Notes；procedure → cookbook；contract → README；规则 → 本文件 + 链接。
