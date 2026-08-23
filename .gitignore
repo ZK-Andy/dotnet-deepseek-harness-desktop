@@ -22,3 +22,6 @@ TestResults/
 
 # 捆绑的 dsh 运行时（由 scripts/bundle-runtime.sh 生成，发布时组装）
 resources/runtime/
+
+# CodeGraph 本地代码索引（开发侧工具，codegraph init 生成）
+/.codegraph/
