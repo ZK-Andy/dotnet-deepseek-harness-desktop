@@ -13,8 +13,8 @@ public static class DevEnvironment
     /// <summary>开发运行时覆盖的环境变量名（RuntimeLocator 同款语义）。</summary>
     public const string RuntimeDirEnv = "DSH_DESKTOP_RUNTIME_DIR";
 
-    /// <summary>DSH_HOME 显式覆盖的环境变量名（HarnessRuntimeHost 同款语义）。</summary>
-    public const string HomeOverrideEnv = "DSH_DESKTOP_DSH_HOME";
+    /// <summary>DSH_HOME 显式覆盖的环境变量名（单点来源 <see cref="HarnessRuntimeHost.HomeOverrideEnv"/>）。</summary>
+    public const string HomeOverrideEnv = HarnessRuntimeHost.HomeOverrideEnv;
 
     /// <summary>dev 实例的 ApplicationId 后缀（Wayland app_id / GTK unique id 随之变化，任务栏独立条目属预期）。</summary>
     public const string AppIdSuffix = ".dev";

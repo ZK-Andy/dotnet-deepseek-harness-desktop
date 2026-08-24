@@ -5,6 +5,9 @@ using Xunit;
 namespace DeepSeek.Harness.Desktop.Tests;
 
 /// <summary>HarnessRuntimeHost 集成冒烟：真实 spawn dsh → 解析 URL。门控：设 DSH_TEST_E2E=1 且环境里有 dsh 才断言，否则自跳过。</summary>
+/// <remarks>环境变量型测试与 <see cref="DeepSeek.Harness.Desktop.Tests.SharedHomeContractTests"/> 同集合串行——
+/// 两者都改写进程级 DSH_HOME 覆盖变量，并行会互相污染（实测 flaky 教训）。</remarks>
+[Collection("dsh-home-env")]
 public class HarnessRuntimeHostTests
 {
     [Fact]
@@ -14,7 +17,7 @@ public class HarnessRuntimeHostTests
         // 桌面壳自渲染内嵌 WebView，必须传 --no-open 避免与桌面窗口重复弹出。
         var args = HarnessRuntimeHost.BuildDshWebArgs(0);
         Assert.Contains("--no-open", args);
-        Assert.Equal("web", args[1]);
+        Assert.Equal(HarnessRuntimeHost.DesktopProfileName, args[1]);
     }
 
     [Fact]

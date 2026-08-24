@@ -3,12 +3,25 @@ using System.Text;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
-/// <summary>托管 dsh 运行时子进程：spawn dsh web（`--profile web --port 0`），解析 `dsh web:` URL，管理生命周期。</summary>
-/// <remarks>对应 proposed architecture ADR：壳只负责运行时生命周期，组合的 Harness 插件树即应用运行时。
+/// <summary>托管 dsh 运行时子进程：spawn dsh（`--profile desktop --port 0`），解析 `dsh web:` URL，管理生命周期。</summary>
+/// <remarks>对应 implemented architecture ADR shared-home-desktop-profile：壳只负责运行时生命周期，组合的 Harness
+/// 插件树即应用运行时；产品态默认上游规范共享 home `~/.dsh`，专属 `profiles/desktop` 承载插件装配。
 /// 支持捆绑运行时（<paramref name="bundled"/> 指定 node + dsh bin.js）；为 null 时回退 PATH 里的 dsh。</remarks>
 public sealed class HarnessRuntimeHost : IDisposable
 {
     private const int StderrTailCapacity = 40;
+
+    /// <summary>桌面专属覆盖环境变量：dev 自动隔离写入，也供用户显式指回旧私有 home；优先级最高。</summary>
+    public const string HomeOverrideEnv = "DSH_DESKTOP_DSH_HOME";
+
+    /// <summary>生态标准覆盖环境变量：与上游 CLI/TUI/Web 同语义（空白视为未设，支持 <c>~</c> 前缀）。</summary>
+    public const string EcosystemHomeEnv = "DSH_HOME";
+
+    /// <summary>上游规范 home 目录名（对齐上游 util/home-paths 的 <c>DSH_HOME_DIR_NAME</c>）。</summary>
+    public const string DefaultHomeDirName = ".dsh";
+
+    /// <summary>桌面专属 profile 名：启动组装与随包插件装配共用此单点，防两处漂移。</summary>
+    internal const string DesktopProfileName = "desktop";
 
     private readonly (string NodeExe, string DshEntry)? _bundled;
     private int? _port;
@@ -29,7 +42,7 @@ public sealed class HarnessRuntimeHost : IDisposable
 
     private const string PortFileName = ".dsh-web-port";
 
-    /// <summary>端口状态文件路径（落于 DSH_HOME 下，随 LocalApplicationData 承载、可写；与测试的环境覆盖一致）。</summary>
+    /// <summary>端口状态文件路径（落于 DSH_HOME 根——home 层跨 profile 共享，不进 profiles/&lt;name&gt;）。</summary>
     internal static string ResolvePortFilePath() => Path.Combine(ResolveDshHome(), PortFileName);
 
     /// <summary>读取上次成功端口：跨 App 冷启动复用同端口 → WebView origin 不变 → dsh Web 端"当前会话"localStorage
@@ -81,19 +94,50 @@ public sealed class HarnessRuntimeHost : IDisposable
         }
     }
 
-    /// <summary>解析 DSH_HOME：优先环境变量 <c>DSH_DESKTOP_DSH_HOME</c>（开发/测试覆盖），否则本地应用数据目录。</summary>
+    /// <summary>
+    /// 解析共享 DSH_HOME（B 形态，ADR shared-home-desktop-profile）。优先级：桌面专属覆盖
+    /// <see cref="HomeOverrideEnv"/>（dev 隔离 / 用户显式回退）→ 生态标准 <see cref="EcosystemHomeEnv"/>
+    /// （与上游 CLI/TUI/Web 同语义：空白视为未设、支持 <c>~</c> 前缀）→ 上游规范 home
+    /// <c>~/.dsh</c>。home 层数据（sessions/credentials/workspaces）由此与生态其他前端天然互通。
+    /// </summary>
     public static string ResolveDshHome()
     {
-        var fromEnv = Environment.GetEnvironmentVariable("DSH_DESKTOP_DSH_HOME");
-        if (!string.IsNullOrWhiteSpace(fromEnv))
+        var desktop = Environment.GetEnvironmentVariable(HomeOverrideEnv);
+        if (!string.IsNullOrWhiteSpace(desktop))
         {
-            return Path.GetFullPath(fromEnv);
+            return Path.GetFullPath(ExpandHome(desktop));
         }
 
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "DeepSeek.Harness.Desktop",
-            "dsh");
+        var ecosystem = Environment.GetEnvironmentVariable(EcosystemHomeEnv);
+        if (!string.IsNullOrWhiteSpace(ecosystem))
+        {
+            return Path.GetFullPath(ExpandHome(ecosystem));
+        }
+
+        return DefaultDshHome();
+    }
+
+    /// <summary>上游规范默认 home <c>~/.dsh</c>（对齐上游 home-paths 的 <c>defaultDshHome</c>）。</summary>
+    private static string DefaultDshHome() =>
+        Path.Combine(UserHome, DefaultHomeDirName);
+
+    private static string UserHome =>
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    /// <summary>展开 <c>~</c> 前缀（<c>~</c>、<c>~/</c>、<c>~\</c>）到用户主目录；其余原样返回。对齐上游 expandHomePath。</summary>
+    private static string ExpandHome(string path)
+    {
+        if (path == "~")
+        {
+            return UserHome;
+        }
+
+        if (path.StartsWith("~/", StringComparison.Ordinal) || path.StartsWith("~\\", StringComparison.Ordinal))
+        {
+            return Path.Combine(UserHome, path[2..]);
+        }
+
+        return path;
     }
 
     /// <summary>启动 dsh web（OS 分配端口），等待 `dsh web:` URL 或超时。</summary>
@@ -130,7 +174,7 @@ public sealed class HarnessRuntimeHost : IDisposable
     internal static string[] BuildDshWebArgs(int? port) => new[]
     {
         "--profile",
-        "web",
+        DesktopProfileName,
         "--port",
         port?.ToString() ?? "0",
         "--no-open",

@@ -44,6 +44,20 @@ public static class Program
             }
         }
 
+        // 桌面专属 profile 自举（ADR shared-home-desktop-profile）：上游对自定义 profile 名不自动初始化，
+        // 缺清单直接拒启；必须在 spawn 前确保 desktop profile 就绪（幂等，已存在则零写入）。
+        try
+        {
+            if (DesktopProfileBootstrap.EnsureProfile(HarnessRuntimeHost.ResolveDshHome()))
+            {
+                Services.HostLog.Write("[host] 已初始化 profiles/desktop（bundles 对齐 web 模板）");
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.HostLog.Write($"[host] profiles/desktop 初始化失败（dsh 可能拒启，详见后续降级链路）：{ex.Message}");
+        }
+
         using var host = new HarnessRuntimeHost(bundledClosure);
         var webUrl = host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
         Console.WriteLine($"[host] runtime = {host.RuntimeDescription}");
@@ -184,6 +198,58 @@ public static class Program
             });
         }
 
+        // 共享 home 切换的启动期告知（ADR shared-home-desktop-profile）：版本底线检查 + 旧 home 一次性提示。
+        // 横幅必须等随包安装尘埃落定再注入：切换日首启普遍伴随补装（新 home 是空的），安装收尾会
+        // 覆写页面并重启运行时——先注入必被清掉，而旧 home 用户正是提示的目标受众。
+        // 降级形态（webUrl 为空）没有安装任务，信号立即置位保证横幅不被无限推迟。版本探测失败按未知处理只记日志。
+        var pluginInstallSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (webUrl is null)
+        {
+            pluginInstallSettled.TrySetResult();
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await pluginInstallSettled.Task.WaitAsync(TimeSpan.FromSeconds(120), supervisorCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (TimeoutException)
+            {
+                // 安装链路迟迟未定也照常告知：横幅是增强信息，不能因异常路径永久缺席
+            }
+
+            var home = HarnessRuntimeHost.ResolveDshHome();
+            var detected = await Services.RuntimeVersionGate.ProbeAsync(bundledClosure, supervisorCts.Token);
+            if (detected is not null)
+            {
+                Services.HostLog.Write($"[host] dsh 版本 {detected}（底线 {Services.RuntimeVersionGate.MinimumVersion}）");
+                if (Services.RuntimeVersionGate.IsBelowFloor(detected))
+                {
+                    Services.HostLog.Write($"[host] 警告：dsh {detected} 低于支持底线 {Services.RuntimeVersionGate.MinimumVersion}，已提示用户");
+                    await ShowBannerWhenReady(windowAccessor, Services.RuntimeVersionGate.BelowFloorBannerScript(detected), supervisorCts.Token);
+                }
+            }
+            else
+            {
+                Services.HostLog.Write("[host] dsh 版本探测失败，跳过底线检查");
+            }
+
+            // 用户已显式指回旧目录时不再提示「改用新目录」——自相矛盾且无信息量
+            if (LegacyHomeNotice.IsPresent() && !PathsEqual(home, LegacyHomeNotice.LegacyPrivateHome))
+            {
+                Services.HostLog.Write($"[host] 检测到旧版桌面数据目录 {LegacyHomeNotice.LegacyPrivateHome}；新版使用 {home}（未迁移）");
+                await ShowBannerWhenReady(
+                    windowAccessor,
+                    LegacyHomeNotice.BannerScript(LegacyHomeNotice.LegacyPrivateHome, home),
+                    supervisorCts.Token);
+            }
+        });
+
         // 市场后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装随包插件，装完自动刷新（不阻塞首启）
         // 对齐 Tauri 的“推荐预设”后台装 + pilot-harness 的随包 theme 已在 node_modules
         // 0.1.10 失败复盘：tgz 为 394B 假包（app）+ pnpm allowBuilds 未开致 ERR_PNPM_IGNORED_BUILDS + 检测/补 bundles 未落地
@@ -192,22 +258,6 @@ public static class Program
         {
             _ = Task.Run(async () =>
             {
-                // 本任务的诊断日志同步落盘（stdout 在桌面启动形态下不可见——v0.2.1 实证教训）
-                var hostLogPath = Path.Combine(HarnessRuntimeHost.ResolveDshHome(), "logs", "host.log");
-                void Tee(string msg)
-                {
-                    Console.WriteLine(msg);
-                    try
-                    {
-                        Directory.CreateDirectory(Path.GetDirectoryName(hostLogPath)!);
-                        File.AppendAllText(hostLogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {msg}\n");
-                    }
-                    catch (Exception logEx)
-                    {
-                        Console.WriteLine($"[host] 日志落盘失败：{logEx.Message}");
-                    }
-                }
-
                 try
                 {
                     await Task.Delay(TimeSpan.FromSeconds(3));
@@ -217,12 +267,12 @@ public static class Program
                     // 用户显式把 DSH_DESKTOP_DSH_HOME 指回真实 home 时仍跳过（防串扰，2026-08-22 实证）。
                     if (isDev && !devAutoIsolated)
                     {
-                        Tee("[host] 开发运行时且 DSH_HOME 为显式覆盖，跳过随包插件安装以防污染共享 profile");
+                        HostLog.Write("[host] 开发运行时且 DSH_HOME 为显式覆盖，跳过随包插件安装以防污染共享 profile");
                         return;
                     }
 
                     var dshHome = HarnessRuntimeHost.ResolveDshHome();
-                    var profileDir = Path.Combine(dshHome, "profiles", "web");
+                    var profileDir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
                     var profilePkg = Path.Combine(profileDir, "package.json");
                     var workspacePath = Path.Combine(profileDir, "pnpm-workspace.yaml");
 
@@ -230,7 +280,7 @@ public static class Program
                     var bundled = RuntimeLocator.TryLocateBundled(runtimeDir);
                     if (bundled is null)
                     {
-                        Tee("[host] 未找到捆绑运行时，跳过随包插件安装");
+                        HostLog.Write("[host] 未找到捆绑运行时，跳过随包插件安装");
                         return;
                     }
 
@@ -259,20 +309,20 @@ public static class Program
                                 var installedV = PluginVersionCheck.ReadInstalledVersion(profileDir, CompanionPkg);
                                 if (PluginVersionCheck.NeedsUpgrade(installedV, bundledV))
                                 {
-                                    Tee($"[host] 随包插件升级：{CompanionPkg} {installedV ?? "(不可读)"} → {bundledV}");
+                                    HostLog.Write($"[host] 随包插件升级：{CompanionPkg} {installedV ?? "(不可读)"} → {bundledV}");
                                     pending.Add((CompanionPkg, companionSpec));
                                 }
                             }
                             catch (Exception ex)
                             {
-                                Tee($"[host] {CompanionPkg} 版本比对失败，跳过升级检查：{ex.Message}");
+                                HostLog.Write($"[host] {CompanionPkg} 版本比对失败，跳过升级检查：{ex.Message}");
                             }
                         }
                     }
 
                     if (pending.Count == 0)
                     {
-                        Tee("[host] 随包插件已就位（bundles 含全部待装项），跳过安装");
+                        HostLog.Write("[host] 随包插件已就位（bundles 含全部待装项），跳过安装");
                         return;
                     }
 
@@ -284,7 +334,7 @@ public static class Program
 
                     foreach (var (_, spec) in pending)
                     {
-                        Tee($"[host] 随包插件安装 spec={spec}");
+                        HostLog.Write($"[host] 随包插件安装 spec={spec}");
                     }
 
                     // 首次严格（尊重 pnpm minimumReleaseAge 等供应链政策）；当整份 lockfile 被政策
@@ -302,7 +352,7 @@ public static class Program
                         psi.ArgumentList.Add(bundled.Value.DshEntry);
                         psi.ArgumentList.Add("plugin");
                         psi.ArgumentList.Add("--profile");
-                        psi.ArgumentList.Add("web");
+                        psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
                         psi.ArgumentList.Add("add");
                         foreach (var (_, spec) in pending)
                         {
@@ -333,12 +383,12 @@ public static class Program
                     }
 
                     var (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: false);
-                    Tee($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
+                    HostLog.Write($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
                     if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
                     {
-                        Tee("[host] lockfile 被 minimumReleaseAge 政策拒绝；放宽该政策重试一次（仅本次安装生效）");
+                        HostLog.Write("[host] lockfile 被 minimumReleaseAge 政策拒绝；放宽该政策重试一次（仅本次安装生效）");
                         (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: true);
-                        Tee($"[host] dsh plugin add(重试) exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
+                        HostLog.Write($"[host] dsh plugin add(重试) exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
                     }
 
                     if (exitCode == 0)
@@ -348,11 +398,21 @@ public static class Program
                         {
                             if (await MarketInstallHelper.EnsureBundlesContainsAsync(profilePkg, pkg))
                             {
-                                Tee($"[host] 已补写 bundles {pkg}");
+                                HostLog.Write($"[host] 已补写 bundles {pkg}");
                             }
                         }
 
-                        Tee("[host] 随包插件已后台安装，重启运行时以加载");
+                        // 4b) 桌面核心不变量：reconcile 无论怎么重整 bundles，web-app 层绝不能丢
+                        // （丢了下次启动就没有 Web UI）；缺失即补写并留痕。
+                        foreach (var builtin in DesktopProfileBootstrap.InitialBundles)
+                        {
+                            if (await MarketInstallHelper.EnsureBundlesContainsAsync(profilePkg, builtin))
+                            {
+                                HostLog.Write($"[host] 已补回桌面必需 bundle {builtin}");
+                            }
+                        }
+
+                        HostLog.Write("[host] 随包插件已后台安装，重启运行时以加载");
                         try
                         {
                             await windowAccessor.Current.EvaluateJavaScriptAsync(RecoveryScript);
@@ -366,11 +426,11 @@ public static class Program
                         try
                         {
                             host.Stop();
-                            Tee("[host] 已触发 dsh 重启（由监督器接管）");
+                            HostLog.Write("[host] 已触发 dsh 重启（由监督器接管）");
                         }
                         catch (Exception ex2)
                         {
-                            Tee($"[host] 触发重启失败：{ex2.Message}");
+                            HostLog.Write($"[host] 触发重启失败：{ex2.Message}");
                             try
                             {
                                 var newUrl = await host.RestartAsync(TimeSpan.FromSeconds(60));
@@ -390,12 +450,17 @@ public static class Program
                     }
                     else
                     {
-                        Tee($"[host] 随包插件安装失败 exit={exitCode}（常见：ERR_PNPM_IGNORED_BUILDS——workspace 已自动修复，下次启动自愈；详情见上方 stderr）");
+                        HostLog.Write($"[host] 随包插件安装失败 exit={exitCode}（常见：ERR_PNPM_IGNORED_BUILDS——workspace 已自动修复，下次启动自愈；详情见上方 stderr）");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Tee($"[host] 随包插件后台安装跳过：{ex.Message}");
+                    HostLog.Write($"[host] 随包插件后台安装跳过：{ex.Message}");
+                }
+                finally
+                {
+                    // 无论安装成败与否，启动期横幅都可以安全注入了（页面不会再被本任务覆写）
+                    pluginInstallSettled.TrySetResult();
                 }
             });
         }
@@ -461,6 +526,45 @@ public static class Program
                 Environment.Exit(0);
             });
         }
+
+        /// <summary>窗口就绪后注入横幅：Current 未就绪的 InvalidOperationException 逐秒重试（上限 30 次）；
+        /// 其余异常记日志放弃——横幅是增强告知，绝不拖垮启动链路。</summary>
+        static async Task ShowBannerWhenReady(CurrentWindowAccessor accessor, string script, CancellationToken ct)
+        {
+            for (var attempt = 0; attempt < 30 && !ct.IsCancellationRequested; attempt++)
+            {
+                try
+                {
+                    await accessor.Current.EvaluateJavaScriptAsync(script);
+                    return;
+                }
+                catch (InvalidOperationException)
+                {
+                    // 窗口尚未创建/已销毁：稍后重试。一次性提示必须送达，与 PushUpdateState 的丢弃策略不同
+                }
+                catch (Exception ex)
+                {
+                    Services.HostLog.Write($"[host] 横幅注入失败：{ex.Message}");
+                    return;
+                }
+
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        }
+
+        /// <summary>路径等值判定（Windows 不区分大小写）——旧 home 提示的指回守卫用。</summary>
+        static bool PathsEqual(string a, string b) =>
+            string.Equals(
+                Path.GetFullPath(a),
+                Path.GetFullPath(b),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
         /// <summary>把状态变化推给页面：插件监听 <c>dsh-desktop-update</c> CustomEvent 渲染更新按钮。</summary>
         static void PushUpdateState(CurrentWindowAccessor? accessor, Services.Update.UpdateState state)
