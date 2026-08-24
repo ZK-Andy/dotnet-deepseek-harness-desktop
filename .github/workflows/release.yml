@@ -84,6 +84,9 @@ jobs:
           echo "== 产物清单 =="; find release-assets -type f | sort
           echo "== SHA256SUMS =="; cat release-assets/SHA256SUMS.txt
 
+      - name: 发布 preflight 总检位（矩阵完备+体积下限+校验和复核，任一失败终止发布）
+        run: bash scripts/release-preflight.sh release-assets
+
       - name: 生成结构化 Release 正文
         id: notes
         run: |

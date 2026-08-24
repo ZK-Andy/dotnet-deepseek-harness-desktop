@@ -205,6 +205,11 @@ trim_runtime_closure() {
 
 trim_runtime_closure
 
+# 一方闭包图静态校验（批次一，ADR artifact-verification-chain）：裁剪后、自检前——
+# @deepseek-ai/* 生产依赖图全供给才放行，缺件在构建时 fail loud 而非运行时。
+echo "== [3.5/4] 一方闭包图静态校验"
+"$DEST/$NODE_DST" "$ROOT/scripts/verify-closure-graph.mjs" "$DEST"
+
 echo "== [4/4] 自检：spawn dsh web 应给出 URL（Linux 强校验，mac/win 轻校验）"
 if [[ "$PLATFORM" == linux-* ]]; then
   SMOKE_HOME="$(mktemp -d)"

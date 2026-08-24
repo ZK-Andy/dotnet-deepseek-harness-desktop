@@ -88,6 +88,17 @@ jobs:
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} -p:PublishAot=false --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-${{ matrix.rid }}
       - name: 打 macOS 包（dmg，文件名含 macos 标识；不再产独立 zip）
         run: bash scripts/package-macos.sh artifacts/publish-${{ matrix.rid }}
+      - name: 校验最终 dmg 内容（挂载断言布局与随包插件一致性，批次一）
+        run: |
+          set -euo pipefail
+          DMG="$(ls artifacts/${{ matrix.rid }}/*.dmg)"
+          MNT="$(mktemp -d)/mnt"
+          mkdir -p "$MNT"
+          # 断言失败也要卸载：trap 兜底 detach，失败路径不留挂载点给同 job 后续步骤
+          trap 'hdiutil detach "$MNT" >/dev/null 2>&1 || true' EXIT
+          hdiutil attach "$DMG" -mountpoint "$MNT" -nobrowse -readonly
+          bash scripts/verify-package-layout.sh --runtime resources/runtime --target "$MNT/DeepSeek.Harness.Desktop.app/Contents/Resources" --rt runtime
+          hdiutil detach "$MNT"
       - name: 上传
         uses: actions/upload-artifact@v4
         with:

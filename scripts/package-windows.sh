@@ -49,6 +49,9 @@ if [[ -d "$ROOT/resources/runtime" ]]; then
     SZ=$(stat -c%s "$STAGE/resources/runtime/dshmarket.tgz" 2>/dev/null || stat -f%z "$STAGE/resources/runtime/dshmarket.tgz" 2>/dev/null || echo 0)
     if [[ "$SZ" -lt 10240 ]]; then echo "error: dshmarket.tgz 过小" >&2; exit 1; fi
   fi
+  # 布局断言（批次一）：staging 是 Inno [Files] 的唯一内容源，断言 staging 即断言安装器——
+  # node/入口/tgz×2 存在且与源闭包逐字节一致，缺一 fail loud
+  bash "$ROOT/scripts/verify-package-layout.sh" --runtime "$ROOT/resources/runtime" --target "$STAGE"
 fi
 
 echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
