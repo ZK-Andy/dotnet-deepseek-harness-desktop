@@ -51,46 +51,53 @@ smoke_deb() {
   kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
   set -e
   sudo apt-get remove -y deepseek-harness-desktop >/dev/null 2>&1 || sudo dpkg -r deepseek-harness-desktop >/dev/null 2>&1 || true
-  rm -rf "$home" "$log"
   if [[ $rc -ne 0 ]]; then
-    echo "error: [deb] 冒烟失败——90s 内未出现 dsh web:" >&2
-    return 1
+    # 现场必须落进 CI 日志：应用秒退时 stderr 是唯一定位线索（arm64 首跑实证）
+    echo "error: [deb] 冒烟失败——90s 内未出现 dsh web:。日志尾部：" >&2
+    tail -40 "$log" >&2 || true
   fi
+  rm -rf "$home" "$log"
+  [[ $rc -eq 0 ]]
 }
 
 smoke_rpm_container() {
   local rpm_path="$1" base
   base="$(basename "$rpm_path")"
   echo "== [rpm] fedora 容器安装冒烟: $base"
-  # 容器内 root + 无 display：URL 行在窗口创建前输出，判定不受影响；
-  # 容器拉取失败与冒烟失败的日志分开打印，便于归因。
-  docker run --rm -i -v "$PKG_DIR:/pkg:ro" fedora:41 bash -s <<INNER
-# 刻意不带 -e：dnf 失败走上方显式分支打印包安装诊断，而非无声退出
+  # 容器内 root + 无 display：URL 行在窗口创建前输出，判定不受影响。
+  # heredoc 用引号界定符：宿主变量经 docker -e 显式注入，容器侧 $ 一律保持字面——
+  # 未加引号版本曾被宿主 set -u 撞上容器变量（$log 未定义）直接炸掉 rpm 路径（CI 实证）。
+  docker run --rm -i \
+    -v "$PKG_DIR:/pkg:ro" \
+    -e SMOKE_PKG_NAME="$base" \
+    -e SMOKE_APP_BIN="$APP_BIN" \
+    fedora:41 bash -s <<'INNER'
+# 刻意不带 -e：dnf 失败走显式分支打印包安装诊断，而非无声退出
 set -uo pipefail
 log=/tmp/smoke.log
-if ! dnf install -y --setopt=install_weak_deps=False "/pkg/$base" >"$log" 2>&1; then
+if ! dnf install -y --setopt=install_weak_deps=False "/pkg/$SMOKE_PKG_NAME" >"$log" 2>&1; then
   echo "error: [rpm] dnf 安装失败（显式 Requires 不满足或包损坏）："
-  tail -30 "\$log" >&2
+  tail -30 "$log" >&2
   exit 1
 fi
-home=\$(mktemp -d)
-timeout 100 env DSH_DESKTOP_DSH_HOME="\$home" DEEPSEEK_API_KEY=placeholder \\
-  $APP_BIN >"\$log" 2>&1 &
-pid=\$!
+home=$(mktemp -d)
+timeout 100 env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder \
+  "$SMOKE_APP_BIN" >"$log" 2>&1 &
+pid=$!
 # 与宿主侧 wait_url 同款探活：进程秒退时立即失败，不空转满 90s
-for _ in \$(seq 1 90); do
-  if grep -q "dsh web:" "\$log"; then
-    grep -m1 "dsh web:" "\$log"; kill \$pid 2>/dev/null; exit 0
+for _ in $(seq 1 90); do
+  if grep -q "dsh web:" "$log"; then
+    grep -m1 "dsh web:" "$log"; kill $pid 2>/dev/null; exit 0
   fi
-  if ! kill -0 \$pid 2>/dev/null; then
-    grep -q "dsh web:" "\$log" && { grep -m1 "dsh web:" "\$log"; exit 0; }
+  if ! kill -0 $pid 2>/dev/null; then
+    grep -q "dsh web:" "$log" && { grep -m1 "dsh web:" "$log"; exit 0; }
     break
   fi
   sleep 1
 done
 echo "error: [rpm] 冒烟失败——90s 内未出现 dsh web:。尾部："
-tail -30 "\$log" >&2
-kill \$pid 2>/dev/null
+tail -30 "$log" >&2
+kill $pid 2>/dev/null
 exit 1
 INNER
 }

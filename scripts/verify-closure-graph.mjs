@@ -15,7 +15,7 @@
 //
 // 用法：node verify-closure-graph.mjs <closure-dir>
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 
 const closureArg = process.argv[2];
 if (!closureArg) {
@@ -55,8 +55,12 @@ function resolveDep(fromPkgRealDir, dep) {
     const cand = join(dir, 'node_modules', ...dep.split('/'));
     if (existsSync(cand)) {
       const real = realpathSync(cand);
-      // 解析结果越出闭包 = 闭包边界破损（运行时同样会炸），按缺件处理
-      return real.startsWith(closureRoot + '/') ? real : null;
+      // 解析结果越出闭包 = 闭包边界破损（运行时同样会炸），按缺件处理。
+      // 用 relative 判定而非 startsWith：Windows 分隔符是 `\`，硬编码 '/' 在
+      // win runner 上永不匹配，会把健康闭包误报成全图缺件（CI 实测抓到）。
+      const rel = relative(closureRoot, real);
+      if (isAbsolute(rel) || rel.startsWith('..')) return null;
+      return real;
     }
     if (dir === closureRoot) return null;
     dir = dirname(dir);

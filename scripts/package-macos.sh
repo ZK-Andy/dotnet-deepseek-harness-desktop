@@ -19,7 +19,7 @@ ARCH_RAW="${ARCH:-arm64}"
 case "$ARCH_RAW" in
   x64|amd64|x86_64) ARCH="x64"; RID="osx-x64"; OUT_SUFFIX="osx-x64" ;;
   arm64|aarch64) ARCH="arm64"; RID="osx-arm64"; OUT_SUFFIX="osx-arm64" ;;
-  *) echo "error: 不支持 ARCH=$ARCH_RAW（仅 x64/arm64）" >&2; exit 1 ;;
+  *) echo "error: 不支持 ARCH=${ARCH_RAW}（仅 x64/arm64）" >&2; exit 1 ;;
 esac
 
 PUBLISH_DIR="${ARG1:-$ROOT/artifacts/publish-$RID}"

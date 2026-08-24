@@ -23,7 +23,7 @@ check_pattern() { # $1=glob 模式 $2=描述
   local pattern="$1" desc="$2"
   local -a files=($pattern)
   if [[ ${#files[@]} -eq 0 ]]; then
-    errors+=("缺 $desc（无匹配 $pattern）")
+    errors+=("缺 ${desc}（无匹配 $pattern）")
     return
   fi
   if [[ ${#files[@]} -gt 1 ]]; then

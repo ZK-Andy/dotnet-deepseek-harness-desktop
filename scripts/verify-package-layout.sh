@@ -50,7 +50,7 @@ check_tgz() {
   local name="$1" floor="$2"
   local src="$RUNTIME/$name" dst="$R/$name"
   if [[ ! -s "$src" ]]; then
-    errors+=("源闭包缺 $name（$src）——bundle-runtime-ci 未随包，先修上游")
+    errors+=("源闭包缺 ${name}（${src}）——bundle-runtime-ci 未随包，先修上游")
     return
   fi
   if [[ ! -f "$dst" ]]; then
@@ -87,4 +87,4 @@ if [[ ${#errors[@]} -gt 0 ]]; then
   for e in "${errors[@]}"; do echo "  ✗ $e" >&2; done
   exit 1
 fi
-echo "== 布局断言通过：$TARGET（node/入口/tgz×2 全供给且与源闭包一致）"
+echo "== 布局断言通过：${TARGET}（node/入口/tgz×2 全供给且与源闭包一致）"
