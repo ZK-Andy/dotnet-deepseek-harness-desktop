@@ -243,14 +243,17 @@ public static class Program
 
         // 托盘就绪化（批次三）：装菜单并显示。失败只降级记日志——无托盘环境是合法运行环境；
         // 但下方 hide-to-tray 拦截必须与托盘同 gate：没有召回通道还拦截关窗等于把窗口藏死。
+        // 顺序契约：必须先 Show 再 SetMenu——Linux 后端在 Show 前尚未注册 StatusNotifierItem，
+        // SetMenu 经 `_item?.` 静默丢弃（v0.3.0 实机图标可见但菜单全无的根因）；macOS 的
+        // RebuildMenu 在 status item 未创建时同样丢弃。Windows 两序皆可（菜单右键时才读）。
         var trayReady = false;
         if (trayAvailable)
         {
             try
             {
                 var tray = app.Services.GetRequiredService<TrayService>();
-                tray.SetMenu(Services.Tray.TrayMenuActions.BuildItems(includeUpdateItem: updateMachine is not null));
                 tray.Show();
+                tray.SetMenu(Services.Tray.TrayMenuActions.BuildItems(includeUpdateItem: updateMachine is not null));
                 trayReady = true;
                 Services.HostLog.Write("[host] 系统托盘已注册");
             }
@@ -278,6 +281,11 @@ public static class Program
         }
 
         using var supervisorCts = new CancellationTokenSource();
+        // 启动期横幅导航门控（ADR shell-firstboot-hardening）：安装任务触发监督器重启后页面会被
+        // NavigateAsync 整体替换，横幅必须等这次导航落地再注入，否则与导航竞速被清掉
+        // （v0.3.0 实机：18:30:01 注入 vs 18:30:03 导航，旧 home 横幅陪葬）。
+        var restartTriggered = 0;
+        var startupNavigationSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var supervisor = new RuntimeSupervisor(
             host,
             restartTimeout: TimeSpan.FromSeconds(60),
@@ -287,7 +295,8 @@ public static class Program
                 return ValueTask.CompletedTask;
             },
             navigate: url => windowAccessor.Current.NavigateAsync(url),
-            log: Services.HostLog.Write);
+            log: Services.HostLog.Write,
+            onNavigated: () => startupNavigationSettled.TrySetResult());
         var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
 
         // 自更新启动对账 + 后台检查一次（失败静默转 error 态，不影响首屏）
@@ -346,6 +355,23 @@ public static class Program
             catch (TimeoutException)
             {
                 // 安装链路迟迟未定也照常告知：横幅是增强信息，不能因异常路径永久缺席
+            }
+
+            // 安装触发了重启时，再等监督器把新 URL 导航完成——此刻起页面才不会再被整体替换。
+            // 30s 兜底：导航迟迟不来（重启失败重试中）也照常告知，与上方 settled 超时同哲学。
+            if (Volatile.Read(ref restartTriggered) == 1)
+            {
+                try
+                {
+                    await startupNavigationSettled.Task.WaitAsync(TimeSpan.FromSeconds(30), supervisorCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (TimeoutException)
+                {
+                }
             }
 
             var home = HarnessRuntimeHost.ResolveDshHome();
@@ -554,6 +580,7 @@ public static class Program
 
                         // 仅刷新 WebView 不会让服务端重载 package.json，交由 RuntimeSupervisor 重启 dsh 进程并导航新 URL
                         // 此处直接 Stop，Supervisor 的 RunAsync 会检测退出→RestartAsync→Navigate
+                        Volatile.Write(ref restartTriggered, 1);
                         try
                         {
                             host.Stop();

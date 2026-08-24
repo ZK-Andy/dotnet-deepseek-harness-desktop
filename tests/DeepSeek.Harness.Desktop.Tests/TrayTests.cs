@@ -31,7 +31,7 @@ public class TrayMenuBuildTests
         var items = TrayMenuActions.BuildItems(includeUpdateItem: false);
 
         Assert.Equal(3, items.Count);
-        Assert.False(items.Any(i => i.Id == TrayMenuActions.CheckUpdateItemId));
+        Assert.DoesNotContain(items, i => i.Id == TrayMenuActions.CheckUpdateItemId);
         Assert.True(items[1].Separator);
         Assert.Equal(TrayMenuActions.QuitItemId, items[2].Id);
     }

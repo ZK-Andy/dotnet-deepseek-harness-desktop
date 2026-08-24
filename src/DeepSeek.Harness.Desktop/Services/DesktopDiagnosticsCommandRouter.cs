@@ -48,7 +48,7 @@ public sealed class DesktopDiagnosticsCommandRouter : ICommandRouter
             var home = _home ?? HarnessRuntimeHost.ResolveDshHome();
             var version = _appVersion ?? Update.AppVersion.Current();
             var result = _outputDirectory is null
-                ? DiagnosticsExporter.ExportWithFallback(home, version)
+                ? DiagnosticsExporter.ExportWithFallback(home, version, _log)
                 : DiagnosticsExporter.Export(home, _outputDirectory, version);
             _log?.Invoke($"[host] 诊断包已导出：{result.ZipPath}（{result.Included.Count} 项）");
             return ValueTask.FromResult($"{{\"path\":{Quote(result.ZipPath)}}}");

@@ -34,21 +34,43 @@ public static class DiagnosticsExporter
             """;
     }
 
-    /// <summary>导出诊断 zip（带回退）：优先用户文档目录；不可写（只读/无目录权限）时
-    /// 回退 <c>&lt;home&gt;/diagnostics/</code> 并留痕——取证功能不因环境怪异而缺席。</summary>
-    public static DiagnosticsExportResult ExportWithFallback(string home, string appVersion)
+    /// <summary>导出诊断 zip（带回退）：优先用户文档目录；未解析或不可写时
+    /// 回退 <c>&lt;home&gt;/diagnostics/</c> 并留痕（经 <paramref name="log"/> 进 host.log，
+    /// Console 在打包产品不可见）——取证功能不因环境怪异而缺席。</summary>
+    public static DiagnosticsExportResult ExportWithFallback(string home, string appVersion, Action<string>? log = null)
     {
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        return ExportWithFallback(home, appVersion, documents, log);
+    }
+
+    /// <summary>可注入文档目录的核心实现（internal，供回归测试模拟解析为空/不可写环境）。</summary>
+    internal static DiagnosticsExportResult ExportWithFallback(
+        string home, string appVersion, string documentsDirectory, Action<string>? log)
+    {
+        if (string.IsNullOrWhiteSpace(documentsDirectory))
+        {
+            // 文档目录解析为空（如 xdg-user-dirs 未初始化）——空路径会让 Path.Combine 产出相对路径，
+            // 后续异常类型还不落在回退过滤内，必须显式守卫直走回退
+            return ExportToFallback(home, appVersion, "文档目录解析为空", log);
+        }
+
         try
         {
-            return Export(home, Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), appVersion);
+            return Export(home, documentsDirectory, appVersion);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            var fallback = Path.Combine(home, "diagnostics");
-            var result = Export(home, fallback, appVersion);
-            Console.WriteLine($"[host] 文档目录不可写（{ex.Message}），诊断包已回退到 {fallback}");
-            return result;
+            return ExportToFallback(home, appVersion, $"文档目录不可写（{ex.Message}）", log);
         }
+    }
+
+    /// <summary>回退导出：<c>&lt;home&gt;/diagnostics/</c>，原因留痕 host.log。</summary>
+    private static DiagnosticsExportResult ExportToFallback(string home, string appVersion, string reason, Action<string>? log)
+    {
+        var fallback = Path.Combine(home, "diagnostics");
+        var result = Export(home, fallback, appVersion);
+        log?.Invoke($"[host] {reason}，诊断包已回退到 {fallback}");
+        return result;
     }
 
     /// <summary>导出诊断 zip。</summary>

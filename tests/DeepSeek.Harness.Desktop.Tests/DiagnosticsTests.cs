@@ -60,6 +60,70 @@ public class DiagnosticsExporterTests
         }
     }
 
+    /// <summary>回退链回归（v0.3.0 实机验收批次）：文档目录解析为空 / 不可写时，
+    /// zip 必须落到 &lt;home&gt;/diagnostics 且原因留痕 log——取证功能不缺席也不静默。</summary>
+    public class ExportFallbackTests
+    {
+        [Fact]
+        public void EmptyDocuments_FallsBackToHomeDiagnostics_WithLog()
+        {
+            var home = NewDir();
+            var logs = new List<string>();
+            try
+            {
+                WriteFile(home, "logs/host.log", "line");
+
+                var result = DiagnosticsExporter.ExportWithFallback(
+                    home, appVersion: "0.3.1-test", documentsDirectory: "", log: logs.Add);
+
+                Assert.StartsWith(Path.Combine(home, "diagnostics"), result.ZipPath);
+                Assert.True(File.Exists(result.ZipPath));
+                Assert.Contains(logs, m => m.Contains("文档目录解析为空") && m.Contains("diagnostics"));
+            }
+            finally
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+
+        [Fact]
+        public void UnwritableDocuments_FallsBackToHomeDiagnostics_WithReason()
+        {
+            var home = NewDir();
+            // 文档目录指向一个常规文件：CreateDirectory 必败，异常落在回退过滤内
+            var fileAsDir = Path.Combine(home, "documents-file");
+            File.WriteAllText(fileAsDir, "x");
+            var logs = new List<string>();
+            try
+            {
+                var result = DiagnosticsExporter.ExportWithFallback(
+                    home, appVersion: "0.3.1-test", documentsDirectory: fileAsDir, log: logs.Add);
+
+                Assert.StartsWith(Path.Combine(home, "diagnostics"), result.ZipPath);
+                Assert.True(File.Exists(result.ZipPath));
+                Assert.Contains(logs, m => m.Contains("文档目录不可写") && m.Contains(fileAsDir));
+            }
+            finally
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+
+        private static string NewDir()
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "dsh-diag-fallback-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+
+        private static void WriteFile(string root, string relative, string content)
+        {
+            var path = Path.Combine(root, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, content);
+        }
+    }
+
     private static string NewDir()
     {
         var dir = Path.Combine(Path.GetTempPath(), "dsh-diag-" + Guid.NewGuid().ToString("N"));
