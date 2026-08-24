@@ -10,7 +10,7 @@ Status: implemented
 
 启动后台随包插件任务增加 **companion 版本感知升级**：已就位时比对随包 tgz 与 profile 已装副本的版本号，随包更新即加入待装清单，复用既有安装管线（单次 spawn `plugin add` + store 注入 + bundles 兜底补写 + `host.Stop()` 交监督器重启加载新版）。
 
-- 版本来源两侧都读现成的 `package.json`，不新增持久状态：随包侧 `PluginVersionCheck.ReadBundledVersion` 用 `System.Formats.Tar` + `GZipStream` 从 tgz 解 `package/package.json`（目录形态直读），已装侧 `ReadInstalledVersion` 读 `<DSH_HOME>/profiles/web/node_modules/<pkg>/package.json`。
+- 版本来源两侧都读现成的 `package.json`，不新增持久状态：随包侧 `PluginVersionCheck.ReadBundledVersion` 用 `System.Formats.Tar` + `GZipStream` 从 tgz 解 `package/package.json`（目录形态直读），已装侧 `ReadInstalledVersion` 读 `<DSH_HOME>/profiles/desktop/node_modules/<pkg>/package.json`（共享 home 切换前的历史版本读 `profiles/web`）。
 - 比较复用 `UpdateVersion.Compare` 数字段逐段比；判定 `NeedsUpgrade` = 已装版本不可读（含未装/副本损坏）或随包更新。随包侧结构异常 fail loud 记日志跳过（自家产物坏了必须可见），已装侧异常返回 null 视为未知并走重装修复（profile 可再生）。
 - 范围仅 `dsh-desktop-companion`（用户拍板）；`dshmarket` 不纳入。
 - 检测信号为**版本号**（用户拍板）：改插件必须 bump `plugins/dsh-desktop-companion/package.json` 的 version，否则升级静默不触发。
