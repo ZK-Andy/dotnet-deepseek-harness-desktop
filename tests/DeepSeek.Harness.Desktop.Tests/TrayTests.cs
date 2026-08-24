@@ -226,3 +226,42 @@ public class TrayCheckFeedbackTests
         Assert.Null(TrayCheckFeedback.Message(new Services.Update.UpdateState(status)));
     }
 }
+
+/// <summary>托盘唤回的窗口态探测：视口占满可用区即大窗，解析容错、未知返回 null。</summary>
+public class TrayWindowStateProbeTests
+{
+    [Theory]
+    [InlineData(1920, 1080, 1920, 1041, true)]   // 精确占满（面板扣除后的工作区）
+    [InlineData(1912, 1080, 1920, 1041, true)]   // 容差内
+    [InlineData(1600, 900, 1920, 1041, false)]   // 普通窗口
+    [InlineData(2560, 1440, 1920, 1041, true)]   // 全屏（大于工作区也算大窗）
+    public void IsMaximized_ByViewportAgainstWorkArea(int w, int h, int sw, int sh, bool expected)
+    {
+        Assert.Equal(expected, TrayWindowStateProbe.IsMaximized(w, h, sw, sh));
+    }
+
+    [Fact]
+    public void Parse_PlainJson_Works()
+    {
+        Assert.True(TrayWindowStateProbe.Parse("""{"w":1920,"h":1080,"sw":1920,"sh":1041}"""));
+        Assert.False(TrayWindowStateProbe.Parse("""{"w":800,"h":600,"sw":1920,"sh":1041}"""));
+    }
+
+    [Fact]
+    public void Parse_QuotedWrapper_UnwrapsAndParses()
+    {
+        var wrapped = System.Text.Json.JsonSerializer.Serialize("""{"w":1920,"h":1080,"sw":1920,"sh":1041}""");
+        Assert.True(TrayWindowStateProbe.Parse(wrapped));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-json")]
+    [InlineData("""{"w":"x"}""")]
+    [InlineData("""[]""")]
+    public void Parse_InvalidInput_ReturnsNull(string? raw)
+    {
+        Assert.Null(TrayWindowStateProbe.Parse(raw));
+    }
+}
