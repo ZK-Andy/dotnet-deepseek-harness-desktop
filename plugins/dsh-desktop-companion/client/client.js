@@ -138,7 +138,8 @@
             'border:2px solid var(--dsw-alias-state-success-primary,#22c55e);' +
             'animation:ddc-rot 1s linear infinite}' +
             '@keyframes ddc-rot{to{transform:rotate(360deg)}}' +
-            '.ddc-set{max-width:520px;display:flex;flex-direction:column;gap:12px;padding:4px 0}' +
+            '.ddc-set{display:flex;flex-direction:column;gap:12px;padding:4px 0}' +
+            '.ddc-page{max-width:520px;display:flex;flex-direction:column;gap:24px}' +
             '.ddc-set .ddc-cur,.ddc-set .ddc-status,.ddc-set .ddc-hint{font-size:13px;line-height:1.5}' +
             '.ddc-set .ddc-cur{opacity:.72}' +
             '.ddc-set .ddc-err{color:#ef4444;color:var(--dsw-alias-state-danger-primary,#ef4444)}' +
@@ -359,8 +360,9 @@
               return h(UpdateButton, props)
             })
           })
-          // 设置页「桌面设置」：手动检查入口（遗留项①后半，见 ADR companion-update-settings-section）；
-          // order 50 排在市场（40）之后；无自更新栈时由 UpdateSection 自行降级为不可用提示
+          // 设置页「桌面设置」（order 50）：更新 / 诊断 / 开机自启三块合一页——用户拍板
+          // 不为每块单开导航页（ADR companion-settings-consolidation）；
+          // 无自更新栈时由 UpdateSection 自行降级为不可用提示，其余块不受影响
           ctx.slots.inject('settings.section', function () {
             return ctx.slots.register({
               name: 'settings.section',
@@ -368,29 +370,10 @@
               order: 50,
               label: function () { return STR.label },
             }, function (props) {
-              return h(UpdateSection, props)
-            })
-          })
-          // 「诊断」区块：一键导出诊断 zip（ADR shell-observability-diagnostics）
-          ctx.slots.inject('settings.section', function () {
-            return ctx.slots.register({
-              name: 'settings.section',
-              id: 'dsh-desktop-companion-diagnostics',
-              order: 51,
-              label: function () { return '\u8bca\u65ad' },
-            }, function (props) {
-              return h(DiagnosticsSection, props)
-            })
-          })
-          // 「桌面」区块：开机自启开关（ADR shell-convenience-autostart-ready-notify）
-          ctx.slots.inject('settings.section', function () {
-            return ctx.slots.register({
-              name: 'settings.section',
-              id: 'dsh-desktop-companion-desktop',
-              order: 52,
-              label: function () { return DESK.autostart },
-            }, function (props) {
-              return h(DesktopSection, props)
+              return h('div', { className: 'ddc-page' },
+                h(UpdateSection, props),
+                h(DiagnosticsSection, props),
+                h(DesktopSection, props))
             })
           })
           return true
