@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <PackageReference Include="Ryn" Version="0.30.0" />
+    <PackageReference Include="Ryn.Plugins.Tray" Version="0.30.1" />
     <PackageReference Include="Ryn.Ipc.Generator" Version="0.30.0"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
