@@ -5,16 +5,17 @@
 ## 概览
 
 ```
-┌─────────────┐  spawn --profile web --port 0   ┌─────────────────┐
-│ Ryn Shell   │ ─────────────────────────────▶ │ dsh web (Node)  │
+┌─────────────┐ spawn --profile desktop --port 0 ┌─────────────────┐
+│ Ryn Shell   │ ─────────────────────────────▶  │ dsh web (Node)  │
 │ (C#/.NET)   │  ◀─ dsh web: http://127.0.0.1 ─ │ @deepseek-ai/dsh│
-│ WebView     │  opts.Url = webUrl            │ private DSH_HOME│
-└─────────────┘                               └─────────────────┘
+│ WebView     │  opts.Url = webUrl             │ shared ~/.dsh   │
+└─────────────┘                                └─────────────────┘
 ```
 
 * 壳只管生命周期、窗口、恢复；`dsh` 的插件树即应用运行时。
-* `DSH_HOME` 私有化：`~/.local/share/DeepSeek.Harness.Desktop/dsh`（`LocalApplicationData`），经 `HarnessRuntimeHost.ResolveDshHome()` 解析，环境变量 `DSH_DESKTOP_DSH_HOME` 覆盖。
+* **共享 home（B 形态）**：默认上游规范 `~/.dsh`，经 `HarnessRuntimeHost.ResolveDshHome()` 解析——优先级：`DSH_DESKTOP_DSH_HOME`（dev 隔离/用户回退）> 生态标准 `DSH_HOME` > `~/.dsh`；home 层数据（sessions/credentials/workspaces）与 CLI/TUI/Web 互通。桌面插件装配走专属 `profiles/desktop`（`DesktopProfileBootstrap` 在首次 spawn 前按上游 `initProfile` 同款三件套自举，bundles 对齐 web 模板）。
 * 无内置运行时回退 `PATH dsh`（开发期）。
+* 启动期告知（ADR `implemented/architecture/2026-08-23-shared-home-desktop-profile`）：`RuntimeVersionGate` 只读探测 dsh 版本低于底线仅横幅提示不阻断；检测到 v0.2.x 私有 home 残留则一次性提示新位置与回退方式（不迁移）。
 
 ## 壳与窗口
 
@@ -40,7 +41,7 @@
   1b. `dsh-desktop-companion` 已就位时做版本感知升级：`PluginVersionCheck` 比对随包 tgz 内 `package/package.json` 的 version 与 profile `node_modules` 副本 version，随包更新即入待装清单走同一安装管线（改插件必须 bump version，否则不触发；见 ADR `implemented/feature/2026-08-22-companion-plugin-version-aware-upgrade`）。
   2. `EnsureWorkspaceAllowBuilds` 把 `pnpm-workspace.yaml` 的 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）置 `true`。
   3. spec 解析：市场走 `ResolveMarketSpec`（`resources/runtime/dshmarket.tgz >10K` → 目录 → `dshmarket@1.15.0`）；伴生走 `ResolveCompanionSpec`（tgz `>1K` → 闭包目录 → 无即跳过，无 registry 回退）。
-  4. 单次 spawn `bundled node dsh/lib/bin.js plugin --profile web add <spec…>` 多包安装（注入 `DSH_HOME/.pnpm-store`），`exit 0` 后对每项 `EnsureBundlesContainsAsync(pkg)` 兜底。
+  4. 单次 spawn `bundled node dsh/lib/bin.js plugin --profile desktop add <spec…>` 多包安装（注入 `DSH_HOME/.pnpm-store`），`exit 0` 后对每项 `EnsureBundlesContainsAsync(pkg)` 兜底，并补回桌面必需 bundle（`dsh-base`/`dsh-web-app`）。
   5. `EvaluateRecovery + host.Stop()` 交 `RuntimeSupervisor` 重启并导航新 `URL`。
 * `dsh` 的 `reconcilePlugins` 在 `plugin add` 后自动把包名追加到 `dsh.profile.bundles`（`pilot-harness` 同款）。
 

@@ -35,11 +35,11 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 
 ## Features
 
-- ⚡️ **Zero-setup, download and run** — bundles a Node binary + the `@deepseek-ai/dsh` dependency closure (`resources/runtime/`); the shell spawns `dsh web` with a private `DSH_HOME`. No PATH `dsh`/`node` required (falls back to PATH `dsh` if the bundle is absent).
+- ⚡️ **Zero-setup, download and run** — bundles a Node binary + the `@deepseek-ai/dsh` dependency closure (`resources/runtime/`); the shell spawns dsh in the shared data directory `~/.dsh` under a dedicated `desktop` profile. No PATH `dsh`/`node` required (falls back to PATH `dsh` if the bundle is absent). Sessions, credentials and plugins are **one universe with the CLI, TUI and Web**.
 - 🔒 **Native, lightweight shell** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
 - 🔄 **Crash self-heal** — the shell supervises the runtime process: crash → recovery screen → auto-restart → same window back to a new URL; **the port stays stable** so the Web UI origin (and page-level session memory) survives — **return to your previous conversation after a crash**.
 - ⬆️ **Self-update** — background check at launch plus a manual check under Settings → Desktop Update; one-click install & restart when a new version is found (`SHA256`-verified packages; `macOS` guides manual update). See [Auto-Update](#auto-update) below.
-- 🧩 **Plugin market bundled** — `dsh-market` ships with the package (`dshmarket.tgz`), quietly installed to `DSH_HOME` on first launch; it auto-restarts to appear. `1200+` plugins are searchable and one-click installable.
+- 🧩 **Plugin market bundled** — `dsh-market` ships with the package (`dshmarket.tgz`), quietly installed to the dedicated desktop profile (`~/.dsh/profiles/desktop`) on first launch; it auto-restarts to appear. `1200+` plugins are searchable and one-click installable.
 - 🖼️ **Native icons / Wayland-ready** — icons ship into `hicolor`; `ryn.json:identifier` and `StartupWMClass` are both `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`, so the taskbar associates correctly.
 
 ## Download and install
@@ -73,7 +73,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 │   spawn dsh → parse dsh web: URL → load the Web UI    │
 │   crash supervision → stable-port restart → back      │
 └─────────────────────────┬────────────────────────────┘
-                          │ spawn + private DSH_HOME
+                          │ spawn + shared ~/.dsh · desktop profile
 ┌─────────────────────────▼────────────────────────────┐
 │ Bundled runtime resources/runtime/                    │
 │   Node binary + @deepseek-ai/dsh closure + dshmarket  │

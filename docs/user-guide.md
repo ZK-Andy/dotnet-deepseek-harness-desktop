@@ -45,15 +45,18 @@
 
 ## 数据与日志位置
 
-应用数据（含会话、凭据、插件）存放在私有数据目录：
+桌面端与 DeepSeek Harness 生态**共享同一数据目录**——会话、凭据、工作区与 CLI/TUI/Web 互通；桌面使用其中专属的 `profiles/desktop` 子目录承载插件装配：
 
-| 平台 | 路径 |
+| 平台 | 数据目录 |
 |---|---|
-| Linux | `~/.local/share/DeepSeek.Harness.Desktop/dsh` |
-| macOS | `~/Library/Application Support/DeepSeek.Harness.Desktop/dsh` |
-| Windows | `%LOCALAPPDATA%\DeepSeek.Harness.Desktop\dsh` |
+| Linux / macOS | `~/.dsh` |
+| Windows | `%USERPROFILE%\.dsh` |
 
-运行日志位于该目录下 `logs/host.log`。
+设置环境变量 `DSH_HOME` 可整体改到其他目录（与上游工具同语义）；`DSH_DESKTOP_DSH_HOME` 只影响桌面端。
+
+运行日志位于数据目录下 `logs/host.log`。
+
+**从 v0.2.x 及更早版本升级**：旧版使用私有目录（Linux `~/.local/share/DeepSeek.Harness.Desktop/dsh`、macOS `~/Library/Application Support/DeepSeek.Harness.Desktop/dsh`、Windows `%LOCALAPPDATA%\DeepSeek.Harness.Desktop\dsh`）。新版**不做自动迁移**：升级前请自行备份；首次启动会出现一次性提示，新目录从干净状态开始。旧数据原地保留——需要的会话/凭据可手动拷入新目录，或设置 `DSH_DESKTOP_DSH_HOME` 指回旧目录继续使用；确认不再需要后删除旧目录即可。
 
 **彻底卸载**：卸载应用包后，手动删除上述数据目录即可清除全部本地数据。
 

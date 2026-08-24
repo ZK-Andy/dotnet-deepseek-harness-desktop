@@ -12,13 +12,13 @@ It bundles the complete DeepSeek Harness runtime (Node + dependency closure) for
 Yes. First launch installs bundled plugins in the background and restarts the runtime; it takes a couple of seconds.
 
 **Q: Are my sessions preserved after an upgrade?**
-Yes. Sessions persist in the local data directory and the app keeps a stable port, so it returns to your last session automatically.
+Yes within the same data directory (v0.3+ upgrades). Sessions persist locally and the app keeps a stable port, so it returns to your last session automatically.
 
 **Q: Where does my data live? Is it uploaded?**
-Everything stays in the private data directory on your machine (paths in [user-guide.en.md](user-guide.en.md)). Model calls go straight from your machine to the provider you configured.
+Everything stays in the shared data directory `~/.dsh` on your machine (`%USERPROFILE%\.dsh` on Windows; paths in [user-guide.en.md](user-guide.en.md)). Model calls go straight from your machine to the provider you configured.
 
 **Q: Does it share data with the dsh CLI / TUI?**
-The current preview uses a separate private data directory. Sharing the canonical home (`~/.dsh`) with the CLI is on the roadmap as a breaking change; the README will call for backups when that ships.
+Yes. The desktop uses the same canonical home as CLI/TUI/Web (`~/.dsh`, overridable via `DSH_HOME`), so sessions, credentials and workspaces interoperate; desktop plugin assembly lives in a dedicated `profiles/desktop` subdirectory. Upgrading from v0.2.x or earlier is a breaking switch — the old private directory is not migrated automatically; back up first, see [user-guide.en.md](user-guide.en.md).
 
 **Q: System tray / minimize to tray / autostart?**
 The tray is on the roadmap (see the todo list); other desktop basics will follow in subsequent releases.

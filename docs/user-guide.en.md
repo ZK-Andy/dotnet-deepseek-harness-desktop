@@ -45,15 +45,18 @@ Unsigned builds: this project is open source and ships without paid code signing
 
 ## Data & Logs
 
-All app data (sessions, credentials, plugins) lives in a private data directory:
+The desktop shares **one data directory with the DeepSeek Harness ecosystem** — sessions, credentials and workspaces interoperate with CLI/TUI/Web; the desktop keeps plugin assembly in its own `profiles/desktop` subdirectory:
 
-| Platform | Path |
+| Platform | Data directory |
 |---|---|
-| Linux | `~/.local/share/DeepSeek.Harness.Desktop/dsh` |
-| macOS | `~/Library/Application Support/DeepSeek.Harness.Desktop/dsh` |
-| Windows | `%LOCALAPPDATA%\DeepSeek.Harness.Desktop\dsh` |
+| Linux / macOS | `~/.dsh` |
+| Windows | `%USERPROFILE%\.dsh` |
+
+Set the `DSH_HOME` environment variable to move everything elsewhere (same semantics as upstream tools); `DSH_DESKTOP_DSH_HOME` affects only the desktop.
 
 Runtime logs are written to `logs/host.log` inside that directory.
+
+**Upgrading from v0.2.x or earlier**: old versions used a private directory (Linux `~/.local/share/DeepSeek.Harness.Desktop/dsh`, macOS `~/Library/Application Support/DeepSeek.Harness.Desktop/dsh`, Windows `%LOCALAPPDATA%\DeepSeek.Harness.Desktop\dsh`). The new version does **not migrate automatically**: back up before upgrading; a one-time notice appears on first launch and the new directory starts clean. Old data stays in place — copy the sessions/credentials you need into the new directory, or set `DSH_DESKTOP_DSH_HOME` to point back at the old one; delete it once you no longer need it.
 
 **Full uninstall**: remove the app package, then delete the data directory above.
 

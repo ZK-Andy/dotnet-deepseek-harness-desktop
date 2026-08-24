@@ -35,11 +35,11 @@
 
 ## 功能
 
-- ⚡️ **零环境、下载即用** — 内置 Node 二进制 + `@deepseek-ai/dsh` 依赖闭包（`resources/runtime/`），壳在私有 `DSH_HOME` 拉起 `dsh web`；无 PATH `dsh`/`node` 也能跑（缺内置时回退 PATH dsh）。
+- ⚡️ **零环境、下载即用** — 内置 Node 二进制 + `@deepseek-ai/dsh` 依赖闭包（`resources/runtime/`），壳在共享数据目录 `~/.dsh` 以专属 `desktop` profile 拉起 dsh；无 PATH `dsh`/`node` 也能跑（缺内置时回退 PATH dsh）。会话/凭据/插件与 CLI、TUI、Web **同一宇宙互通**。
 - 🔒 **原生轻量壳** — C# 后端跑在系统 WebView（WebView2 / WKWebView / WebKitGTK），NativeAOT 就绪，能力沙箱 deny-by-default（`ryn.json`）。
 - 🔄 **崩溃自愈** — 壳监督运行时子进程：崩溃 → 恢复屏 → 自动重启 → 同一窗口回到新 URL；**端口保持稳定**，Web UI origin（及页面级会话记忆）存活——**崩溃后回到之前对话**。
 - ⬆️ **自更新** — 启动后台检查一次 + 设置页手动检查；发现新版本一键安装并自动重启（安装包 `SHA256` 强校验；`macOS` 引导手动更新），详见下方[「自动更新」](#自动更新)。
-- 🧩 **插件市场预装** — `dsh-market` 随包（`dshmarket.tgz`），首启后台静默安装到 `DSH_HOME`，装完自动重启即现；`1200+` 插件可搜一键装。
+- 🧩 **插件市场预装** — `dsh-market` 随包（`dshmarket.tgz`），首启后台静默安装到桌面专属 profile（`~/.dsh/profiles/desktop`），装完自动重启即现；`1200+` 插件可搜一键装。
 - 🖼️ **原生图标 / Wayland 就绪** — 图标随包入 `hicolor`，`ryn.json:identifier` 与 `StartupWMClass` 均为 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`，任务栏正确关联。
 
 ## 下载安装
@@ -73,7 +73,7 @@
 │   拉起 dsh → 解析 dsh web: URL → 加载 Web UI           │
 │   崩溃监督 → 稳定端口重启 → 回到之前对话                 │
 └─────────────────────────┬────────────────────────────┘
-                          │ spawn + 私有 DSH_HOME
+                          │ spawn + 共享 ~/.dsh · desktop profile
 ┌─────────────────────────▼────────────────────────────┐
 │ 内置运行时 resources/runtime/                          │
 │   Node 二进制 + @deepseek-ai/dsh 闭包 + dshmarket.tgz   │

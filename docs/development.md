@@ -18,7 +18,7 @@ scripts/  bundle-runtime{-ci,}.sh, package-linux.sh, verify-*.py
 ```
 
 * `appsettings.json`：`DevTools:false`；`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
-* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（覆盖 `resources/runtime`）、`DSH_DESKTOP_DSH_HOME`（覆盖 `~/.local/share/DeepSeek.Harness.Desktop/dsh`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。
+* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（覆盖 `resources/runtime`）、`DSH_DESKTOP_DSH_HOME`（桌面专属覆盖，默认共享 `~/.dsh`；dev 自动隔离到 `<仓库>/.cache/dev-home`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。
 
 ## 捆绑运行时
 
@@ -95,6 +95,6 @@ SELF_SIGN=1 bash scripts/package-windows.sh artifacts/publish-win-x64
 
 ## 常见问题
 
-* `/home` 只读：写 `DSH_HOME` 由壳注入 `~/.local/share/DeepSeek.Harness.Desktop/dsh/.pnpm-store`，用 `systemd-run --user` 清缓存：`systemd-run --user --pipe --wait bash -c 'rm -rf ~/.local/share/DeepSeek.Harness.Desktop/dsh'`
+* `/home` 只读：写 `DSH_HOME` 由壳注入 `~/.dsh/.pnpm-store`，用 `systemd-run --user` 清缓存：`systemd-run --user --pipe --wait bash -c 'rm -rf ~/.dsh'`
 * `dsh web` 不出 `URL`：看 `host.StderrTail` 与 `journalctl --user -t deepseek-harness-desktop.desktop`；`60s` 超时仅看日志，不以 `timeout` 退出码判。
 * `Wayland` 任务栏 `generic`：`ryn.json:identifier` 与 `desktop StartupWMClass` 必须同为 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
