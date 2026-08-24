@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-1. **托盘注册**：`AddRynTray` 进 `ConfigureServices`；Build 后解析 `TrayService` 装菜单并 `Show()`。菜单项 = 显示主窗 / 检查更新（仅自更新栈装载时）/ 分隔线 / 退出。
+1. **托盘注册**：`AddRynTray` 进 `ConfigureServices`；Build 后解析 `TrayService` 就绪化。菜单项 = 显示主窗 / 检查更新（仅自更新栈装载时）/ 分隔线 / 退出。就绪化顺序契约（v0.3.0 实机修正）：**先 Show 后 SetMenu**——Linux 后端 Show 前未注册 StatusNotifierItem，SetMenu 被静默丢弃（macOS 同类时序），详见 [bug-fix shell-firstboot-hardening](../bug-fix/2026-08-24-shell-firstboot-hardening.md)。
 2. **点击语义走 Web 层中继（关键取舍）**：托盘点击事件在上游被 `TrayService.EmitEvent`（internal 属性）发往 Web 层（`window.__ryn._emit`）。原生侧拦截需反射私有面——本项目 `PublishAot=true`，反射跨程序集私有成员在 AOT 下不可靠，**排除**。改为：companion 插件做哑中继（`__ryn.on('tray.clicked'/'tray.menuItemClicked')` → `invoke('desktop.tray.event', {event,data})`），宿主新增同名命令路由把事件解析为动作。动作解析留在宿主纯函数（`TrayMenuActions.TryResolve`）可单测；中继只转发白名单事件名，不含语义。
 3. **hide-to-tray**：订阅 `IRynWindow.Closing`（deferred 代理会缓冲订阅）；默认 `Cancel=true` + `HideAsync()`。放行唯一通道是 `CloseGate.ApproveExit()`——托盘「退出」与自更新安装路径（原有关窗让位逻辑）先批准再 Close，两处共用同一闸门防语义漂移。
 4. **失败降级耦合**：托盘初始化失败（无系统托盘环境等）只记日志降级，但 **Closing 拦截必须同 gate**——没有托盘还拦截关窗等于把窗口藏死。tray 未就绪时关窗行为保持原生直退。
