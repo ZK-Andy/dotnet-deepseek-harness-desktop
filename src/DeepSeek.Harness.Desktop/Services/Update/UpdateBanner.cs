@@ -16,7 +16,7 @@ public static class UpdateBanner
                "var b=document.createElement('div');" +
                "b.id=id;" +
                "b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 16px 8px 40px;background:#14251b;color:#d9f2e3;font:13px/1.5 system-ui,sans-serif;border-bottom:1px solid #1f3a2a';" +
-               "if(document.getElementById('dsh-desktop-version-floor-banner')||document.getElementById('dsh-desktop-legacy-home-banner')||document.getElementById('dsh-desktop-run-marker-banner'))b.style.top='44px';" +
+               "if(document.getElementById('dsh-desktop-version-floor-banner')||document.getElementById('dsh-desktop-run-marker-banner'))b.style.top='44px';" +
                "b.textContent=" + JsString(text) + ";" +
                "var x=document.createElement('button');" +
                "x.textContent='知道了';" +

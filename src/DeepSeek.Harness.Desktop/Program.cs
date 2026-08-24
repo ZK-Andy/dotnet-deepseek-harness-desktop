@@ -390,14 +390,11 @@ public static class Program
                 Services.HostLog.Write("[host] dsh 版本探测失败，跳过底线检查");
             }
 
-            // 用户已显式指回旧目录时不再提示「改用新目录」——自相矛盾且无信息量
+            // 旧 home 留痕仅进日志（界面横幅已按用户拍板去除，ADR companion-settings-consolidation）；
+            // 指回旧目录时不记「改用新目录」——自相矛盾且无信息量
             if (LegacyHomeNotice.IsPresent() && !PathsEqual(home, LegacyHomeNotice.LegacyPrivateHome))
             {
                 Services.HostLog.Write($"[host] 检测到旧版桌面数据目录 {LegacyHomeNotice.LegacyPrivateHome}；新版使用 {home}（未迁移）");
-                await ShowBannerWhenReady(
-                    windowAccessor,
-                    LegacyHomeNotice.BannerScript(LegacyHomeNotice.LegacyPrivateHome, home),
-                    supervisorCts.Token);
             }
 
             // 上轮非受控退出：提示但不暗示应用故障（用户杀进程也属此类），引导导出诊断

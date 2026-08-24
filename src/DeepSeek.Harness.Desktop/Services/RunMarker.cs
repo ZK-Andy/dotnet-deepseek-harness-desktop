@@ -91,7 +91,7 @@ public static class RunMarker
                "var b=document.createElement('div');" +
                "b.id=id;" +
                "b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 16px 8px 40px;background:#1b1b26;color:#e6e6ea;font:13px/1.5 system-ui,sans-serif;border-bottom:1px solid #2a2a3a';" +
-               "if(document.getElementById('dsh-desktop-version-floor-banner')||document.getElementById('dsh-desktop-legacy-home-banner'))b.style.top='44px';" +
+               "if(document.getElementById('dsh-desktop-version-floor-banner'))b.style.top='44px';" +
                "b.textContent=" + JsString("上次运行未正常退出（如手动结束进程）。若应用行为异常，请在设置页导出诊断信息。") + ";" +
                "var x=document.createElement('button');" +
                "x.textContent='知道了';" +
