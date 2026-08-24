@@ -21,6 +21,9 @@
  * - Self-update section in Settings (settings.section): current version,
  *   manual check entry, full status line incl. host-reported error reason;
  *   shows an "unavailable" hint when the runtime has no update stack (dev).
+ * - Tray event relay: forwards Ryn tray plugin events (tray.clicked,
+ *   tray.menuItemClicked) to the host via desktop.tray.event; show /
+ *   check-update / quit semantics are resolved on the host side.
  */
 ;(function () {
   if (typeof window === 'undefined' || !window.__ModuleLoader__) return
@@ -69,6 +72,25 @@
             document.addEventListener('click', onClick, true)
           }
         } catch (e) { /* no __ryn bridge (plain browser tab): keep page fully functional */ }
+
+        // 托盘事件中继（批次三，ADR shell-tray-hide-to-tray）：Ryn 托盘插件把点击事件发到
+        // Web 层（window.__ryn.on）；页面是常驻层（隐藏到托盘后仍存活），在此把白名单事件
+        // 原样转发回宿主命令，语义解析在宿主纯函数里。只做哑中继：不判断动作、不改载荷。
+        try {
+          if (window.__ryn && window.__ryn.on && !window.__dshDesktopCompanionTrayRelay) {
+            window.__dshDesktopCompanionTrayRelay = true
+            var rynTray = window.__ryn
+            var relayToHost = function (name) {
+              return function (data) {
+                // 中继失败静默吞：宿主路由缺失（旧壳）或窗口销毁中，托盘动作本就有菜单兜底
+                rynTray.invoke('desktop.tray.event', { event: name, data: data === undefined ? null : data })
+                  .catch(function () {})
+              }
+            }
+            window.__ryn.on('tray.clicked', relayToHost('tray.clicked'))
+            window.__ryn.on('tray.menuItemClicked', relayToHost('tray.menuItemClicked'))
+          }
+        } catch (e) { /* no __ryn bridge: nothing to relay */ }
 
         var parseState = function (raw) {
           if (raw && typeof raw === 'object') return raw

@@ -3,6 +3,7 @@ using DeepSeek.Harness.Desktop.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Core;
 using Ryn.Ipc;
+using Ryn.Plugins.Tray;
 
 namespace DeepSeek.Harness.Desktop;
 
@@ -99,6 +100,10 @@ public static class Program
             Console.WriteLine($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', host.StderrTail.TakeLast(8))}");
         }
 
+        // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：默认拦截关窗转托盘隐藏，
+        // 托盘「退出」与上方自更新安装路径先批准再 Close。托盘未就绪时拦截不生效（关窗直退）。
+        var closeGate = new Services.Tray.CloseGate();
+
         // 自更新栈（仅 ready 对外可见；机制见 ADR desktop-shell-self-update）：
         // 状态机纯逻辑可单测，检查/下载/安装全部委托注入；状态经 CustomEvent 推给插件 UI。
         // dev 运行时不装载（除非 DSH_DESKTOP_UPDATE_FORCE=1 显式开启验证）：dev 构建版本同 csproj，
@@ -127,6 +132,8 @@ public static class Program
                     // 安装脚本的等待环随即放行 rpm/dpkg 并拉起新版。缺这步脚本会死等本进程。
                     await Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, ct);
                     Console.WriteLine("[update] 授权通过，关闭应用以继续安装…");
+                    // 安装路径与托盘退出共用闸门：先批准，Close 才不会被 hide-to-tray 拦截转成隐藏
+                    closeGate.ApproveExit();
                     try
                     {
                         updateWindow?.Current?.Close();
@@ -156,6 +163,10 @@ public static class Program
             Console.WriteLine($"[host] 自更新：dev 运行时不装载（DSH_DESKTOP_UPDATE_FORCE=1 可显式开启）");
         }
 
+        // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 trayReady）
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
+        var trayAvailable = File.Exists(iconPath);
+
         var app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
             {
@@ -175,7 +186,6 @@ public static class Program
                 opts.Height = 800;
                 opts.ApplicationId = DevEnvironment.ApplicationIdFor(
                     "io.github.ZK-Andy.dotnet-deepseek-harness-desktop", isDev);
-                var iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
                 if (File.Exists(iconPath))
                 {
                     opts.IconPath = iconPath;
@@ -203,11 +213,70 @@ public static class Program
                 {
                     services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine));
                 }
+                // 托盘（批次三，ADR shell-tray-hide-to-tray）：图标+菜单；点击语义经 companion 中继
+                // 回 desktop.tray.event 在宿主解析——EmitEvent 是插件内部属性，AOT 下反射不可用
+                if (trayAvailable)
+                {
+                    services.AddRynTray(o =>
+                    {
+                        o.IconPath = iconPath;
+                        o.Tooltip = "DeepSeek Harness Desktop";
+                    });
+                }
+                // 托盘事件路由：窗口动作经委托接 deferred 代理（注册期无需窗口就绪；
+                // 委托注入让退出顺序契约可用记序 fake 测试）
+                services.AddSingleton<ICommandRouter>(sp =>
+                {
+                    var trayWindow = sp.GetRequiredService<IRynWindow>();
+                    return new Services.Tray.DesktopTrayCommandRouter(
+                        () => trayWindow.ShowAsync().AsTask(),
+                        trayWindow.Close,
+                        closeGate,
+                        updateMachine,
+                        Services.HostLog.Write);
+                });
             })
             .Build();
 
         var windowAccessor = app.Services.GetRequiredService<CurrentWindowAccessor>();
         updateWindow = windowAccessor;
+
+        // 托盘就绪化（批次三）：装菜单并显示。失败只降级记日志——无托盘环境是合法运行环境；
+        // 但下方 hide-to-tray 拦截必须与托盘同 gate：没有召回通道还拦截关窗等于把窗口藏死。
+        var trayReady = false;
+        if (trayAvailable)
+        {
+            try
+            {
+                var tray = app.Services.GetRequiredService<TrayService>();
+                tray.SetMenu(Services.Tray.TrayMenuActions.BuildItems(includeUpdateItem: updateMachine is not null));
+                tray.Show();
+                trayReady = true;
+                Services.HostLog.Write("[host] 系统托盘已注册");
+            }
+            catch (Exception ex)
+            {
+                Services.HostLog.Write($"[host] 系统托盘初始化失败，关闭窗口将直接退出：{ex.Message}");
+            }
+        }
+
+        if (trayReady)
+        {
+            // IRynWindow 是 deferred 代理：此处窗口尚未创建，Closing 订阅会被缓冲到窗口就绪后挂载。
+            // 回调内绝不抛异常——上游对抛异常的 Closing 处理是「放行关窗」，比隐藏更危险。
+            var trayWindow = app.Services.GetRequiredService<IRynWindow>();
+            trayWindow.Closing += (_, e) =>
+            {
+                if (!closeGate.ShouldCancelClose)
+                {
+                    return;
+                }
+
+                e.Cancel = true;
+                _ = HideForTrayAsync(trayWindow);
+            };
+        }
+
         using var supervisorCts = new CancellationTokenSource();
         var supervisor = new RuntimeSupervisor(
             host,
@@ -620,6 +689,19 @@ public static class Program
                 {
                     return;
                 }
+            }
+        }
+
+        /// <summary>hide-to-tray：窗口藏起来而非销毁。失败只留日志，不拖垮关窗链路。</summary>
+        static async Task HideForTrayAsync(IRynWindow window)
+        {
+            try
+            {
+                await window.HideAsync();
+            }
+            catch (Exception ex)
+            {
+                Services.HostLog.Write($"[tray] 隐藏窗口失败：{ex.Message}");
             }
         }
 
