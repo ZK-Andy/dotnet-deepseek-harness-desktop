@@ -3,9 +3,11 @@
 import pathlib, re, sys
 root = pathlib.Path(__file__).resolve().parents[1]
 ok = True
-# 检查 Issue 模板含 Owner/priority/class（排除 config.yml）
+# 检查 Issue 模板含 Owner/priority/class。
+# 豁免：config.yml（表单配置非模板）；test_feedback.yml（30 秒轻量反馈表，
+# 治理字段由分诊时补——此前无自动执行点，本脚本对本仓模板长期红着没人发现）。
 for p in (root / ".github/ISSUE_TEMPLATE").glob("*.yml"):
-    if p.name == "config.yml":
+    if p.name in ("config.yml", "test_feedback.yml"):
         continue
     t = p.read_text()
     for kw in ["owner", "priority", "class"]:

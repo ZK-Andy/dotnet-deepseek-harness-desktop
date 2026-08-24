@@ -50,6 +50,7 @@ jobs:
           python3 scripts/verify-adr-format.py
           python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json
           python3 scripts/verify-md-links.py
+          python3 scripts/verify-governance.py
       - name: build
         run: dotnet build dotnet-deepseek-harness-desktop.slnx -c Debug
       - name: test with coverage
