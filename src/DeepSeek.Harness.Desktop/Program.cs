@@ -109,6 +109,7 @@ public static class Program
             Environment.GetEnvironmentVariable(Services.Update.UpdateOptions.ForceDevEnv));
         Services.Update.UpdateStateMachine? updateMachine = null;
         CurrentWindowAccessor? updateWindow = null;
+        var readyNotified = false;
         if (updateEnabled)
         {
             var updateOptions = Services.Update.UpdateOptions.Load(AppContext.BaseDirectory);
@@ -195,6 +196,8 @@ public static class Program
                 services.AddSingleton<ICommandRouter, Services.ExternalLinkCommandRouter>();
                 // 诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）
                 services.AddSingleton<ICommandRouter>(new Services.DesktopDiagnosticsCommandRouter(log: Services.HostLog.Write));
+                // 开机自启开关（desktop.autostart.getState/set）
+                services.AddSingleton<ICommandRouter>(new Services.AutostartCommandRouter(log: Services.HostLog.Write));
                 // 自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）
                 if (updateMachine is not null)
                 {
@@ -221,6 +224,20 @@ public static class Program
         // 自更新启动对账 + 后台检查一次（失败静默转 error 态，不影响首屏）
         if (updateMachine is not null)
         {
+            // 就绪横幅（批次三）：ready 到达一次性提示（订阅在窗口句柄就绪后建立，去重防重试期反复弹）
+            updateMachine.Subscribe(state =>
+            {
+                if (state.Status == Services.Update.UpdateStatus.Ready &&
+                    state.Version is not null && !readyNotified)
+                {
+                    readyNotified = true;
+                    _ = ShowBannerWhenReady(
+                        windowAccessor,
+                        Services.Update.UpdateBanner.ReadyScript(state.Version),
+                        supervisorCts.Token);
+                }
+            });
+
             _ = Task.Run(async () =>
             {
                 try

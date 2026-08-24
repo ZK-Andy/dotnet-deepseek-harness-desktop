@@ -288,6 +288,46 @@
                   : h('div', { className: 'ddc-err' }, DIAG.fail + '：' + result.error))
           }
 
+          // 「桌面」区块（order 52）：开机自启开关（ADR shell-convenience-autostart-ready-notify）
+          var DESK = {
+            autostart: '\u5f00\u673a\u81ea\u542f',
+            on: '\u5df2\u542f\u7528',
+            off: '\u672a\u542f\u7528',
+            enableBtn: '\u542f\u7528',
+            disableBtn: '\u505c\u7528',
+          }
+          function DesktopSection() {
+            var sp = reactMod.useState(null)
+            var enabled = sp[0]
+            var setEnabled = sp[1]
+            reactMod.useEffect(function () {
+              window.__ryn.invoke('desktop.autostart.getState', {}).then(function (res) {
+                var p = null
+                try { p = JSON.parse(res) } catch (e1) {}
+                if (p && typeof p.enabled === 'boolean') setEnabled(p.enabled)
+              }, function () { setEnabled(false) })
+            }, [])
+            var toggle = function () {
+              var next = !enabled
+              setEnabled(null)
+              window.__ryn.invoke('desktop.autostart.set', { enabled: next }).then(function (res) {
+                var p = null
+                try { p = JSON.parse(res) } catch (e3) {}
+                setEnabled(p && typeof p.enabled === 'boolean' ? p.enabled : next)
+              }, function () { setEnabled(!next) })
+            }
+            return h('div', { className: 'ddc-set' },
+              h('div', { className: 'ddc-row' },
+                h('span', { className: 'ddc-cur' },
+                  DESK.autostart + '\uff1a' + (enabled === null ? '…' : (enabled ? DESK.on : DESK.off))),
+                h('button', {
+                  className: 'ddc-btn',
+                  type: 'button',
+                  disabled: enabled === null,
+                  onClick: toggle,
+                }, enabled ? DESK.disableBtn : DESK.enableBtn)))
+          }
+
           ctx.slots.inject('sidebar.footer.action', function () {
             return ctx.slots.register({
               name: 'sidebar.footer.action',
@@ -318,6 +358,17 @@
               label: function () { return '\u8bca\u65ad' },
             }, function (props) {
               return h(DiagnosticsSection, props)
+            })
+          })
+          // 「桌面」区块：开机自启开关（ADR shell-convenience-autostart-ready-notify）
+          ctx.slots.inject('settings.section', function () {
+            return ctx.slots.register({
+              name: 'settings.section',
+              id: 'dsh-desktop-companion-desktop',
+              order: 52,
+              label: function () { return DESK.autostart },
+            }, function (props) {
+              return h(DesktopSection, props)
             })
           })
           return true
