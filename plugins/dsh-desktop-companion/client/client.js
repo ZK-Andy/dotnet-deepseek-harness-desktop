@@ -142,6 +142,8 @@
             '.ddc-page{max-width:520px;display:flex;flex-direction:column;gap:24px}' +
             '.ddc-set .ddc-cur,.ddc-set .ddc-status,.ddc-set .ddc-hint{font-size:13px;line-height:1.5}' +
             '.ddc-set .ddc-cur{opacity:.72}' +
+            '.ddc-set .ddc-row{display:flex;align-items:center;gap:12px}' +
+            '.ddc-set .ddc-row .ddc-cur{flex:1 1 auto;min-width:0}' +
             '.ddc-set .ddc-err{color:#ef4444;color:var(--dsw-alias-state-danger-primary,#ef4444)}' +
             '.ddc-btn{height:30px;padding:0 14px;border-radius:8px;border:1px solid rgba(127,127,127,.35);' +
             'background:transparent;color:inherit;cursor:pointer;font-size:13px;' +
@@ -239,7 +241,7 @@
               var onEvt = function (e) { if (e.detail) setState(e.detail) }
               document.addEventListener('dsh-desktop-update', onEvt)
               queryState().then(function (s) {
-                setState(parseState(s) || null)
+                setState(parseFrame(s) || null)
               }).catch(function (e3) {
                 console.warn(TAG, 'update section unavailable:', e3 && e3.message)
                 setState(null)
