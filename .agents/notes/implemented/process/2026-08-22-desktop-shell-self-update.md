@@ -26,7 +26,7 @@ C# 胖后端 + 伴生插件瘦 UI：
 - 右下角 shell.overlay 圆点 pill：落败——实机反馈小屏时与输入框重叠；且 overlay 属悬浮层不如侧栏动作位贴合导航结构。
 - 更新按钮与设置按钮同排右侧：暂缓——现版壳该行为 single 座位，需 pnpm patch 内置闭包或上游 PR 才能实现；先用一等 list 插槽验证端到端机制，视觉不满意再走上游贡献。
 - api.github.com 直查 latest：落败——匿名 60 次/h 限流，多客户端场景必踩。
-- 轮询 + toast（hairyf/opencode 默认行为）：用户明确否决——启动检查一次即可，toast 只允许手动路径（手动入口现由伴生插件 settings.section「桌面更新」页承载，见 2026-08-22-companion-update-settings-section）。
+- 轮询 + toast（hairyf/opencode 默认行为）：用户明确否决——启动检查一次即可，toast 只允许手动路径（手动入口现由伴生插件 settings.section「桌面设置」页承载（初版显示「桌面更新」，后改名），见 2026-08-22-companion-update-settings-section）。
 - macOS 静默安装：v1 不做——无签名 + Gatekeeper 使静默链路不可靠，明确报错引导手动下载 dmg。
 
 ## Consequences

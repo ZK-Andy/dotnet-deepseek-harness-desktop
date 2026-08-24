@@ -34,11 +34,11 @@ Unsigned builds: this project is open source and ships without paid code signing
 
 - **Session restore**: restarting the app returns you to your last session; runtime crashes auto-recover into the current conversation.
 - **External links** open in your system browser.
-- **Desktop update entry**: the "Desktop Update" section in Settings shows the current version and offers a manual check.
+- **Desktop update entry**: the "Desktop Settings" section in Settings shows the current version and offers a manual check.
 
 ## Updates
 
-- New versions are checked once at startup; you can also check manually under Settings → "Desktop Update".
+- New versions are checked once at startup; you can also check manually under Settings → "Desktop Settings".
 - When an update is found, one click runs the flow: authorize → app exits → install completes → relaunch on the new version.
 - Packages are SHA256-verified; macOS guides you through a manual replace.
 - Cancel at any time — the current version stays untouched.

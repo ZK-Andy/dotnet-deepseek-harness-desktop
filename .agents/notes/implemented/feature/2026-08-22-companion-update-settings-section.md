@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-伴生插件注册 `settings.section`「桌面更新」设置页（order 50，市场之后），作为自更新的常驻手动入口；宿主状态契约小幅扩展支撑页面信息：
+伴生插件注册 `settings.section` 设置页（初版显示「桌面更新」，现显示「桌面设置」）（order 50，市场之后），作为自更新的常驻手动入口；宿主状态契约小幅扩展支撑页面信息：
 
 - 页面内容：当前版本行 + 状态行（尚未检查/检查中/下载中 vX.Y.Z/已最新/vX.Y.Z 就绪/安装中）+ 「检查更新」按钮（busy 态禁用）；`ready` 追加「立即安装并重启」主按钮；`error` 状态行显宿主传回的具体原因。
 - 契约扩展：`UpdateState.ToJson` 增加 `current` 字段（`Transition` 单点补齐自 `_currentVersion`，推送与订阅回调统一发补齐后的帧）与 error 态 `message`（`JsonEncodedText` 转义）；旧字段形状不动，向后兼容。

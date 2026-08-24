@@ -164,7 +164,7 @@
           }
 
           var STR = {
-            label: '\u684c\u9762\u66f4\u65b0',
+            label: '\u684c\u9762\u8bbe\u7f6e',
             cur: '\u5f53\u524d\u7248\u672c',
             idle: '\u5c1a\u672a\u68c0\u67e5\u66f4\u65b0',
             checking: '\u6b63\u5728\u68c0\u67e5\u66f4\u65b0\u2026',
@@ -255,12 +255,12 @@
             return ctx.slots.register({
               name: 'sidebar.footer.action',
               id: 'dsh-desktop-companion-update',
-              label: function () { return '\u684c\u9762\u66f4\u65b0' },
+              label: function () { return '\u684c\u9762\u8bbe\u7f6e' },
             }, function (props) {
               return h(UpdateButton, props)
             })
           })
-          // 设置页「桌面更新」：手动检查入口（遗留项①后半，见 ADR companion-update-settings-section）；
+          // 设置页「桌面设置」：手动检查入口（遗留项①后半，见 ADR companion-update-settings-section）；
           // order 50 排在市场（40）之后；无自更新栈时由 UpdateSection 自行降级为不可用提示
           ctx.slots.inject('settings.section', function () {
             return ctx.slots.register({

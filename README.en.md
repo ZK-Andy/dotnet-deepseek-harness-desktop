@@ -38,7 +38,7 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 - ⚡️ **Zero-setup, download and run** — bundles a Node binary + the `@deepseek-ai/dsh` dependency closure (`resources/runtime/`); the shell spawns dsh in the shared data directory `~/.dsh` under a dedicated `desktop` profile. No PATH `dsh`/`node` required (falls back to PATH `dsh` if the bundle is absent). Sessions, credentials and plugins are **one universe with the CLI, TUI and Web**.
 - 🔒 **Native, lightweight shell** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
 - 🔄 **Crash self-heal** — the shell supervises the runtime process: crash → recovery screen → auto-restart → same window back to a new URL; **the port stays stable** so the Web UI origin (and page-level session memory) survives — **return to your previous conversation after a crash**.
-- ⬆️ **Self-update** — background check at launch plus a manual check under Settings → Desktop Update; one-click install & restart when a new version is found (`SHA256`-verified packages; `macOS` guides manual update). See [Auto-Update](#auto-update) below.
+- ⬆️ **Self-update** — background check at launch plus a manual check under Settings → Desktop Settings; one-click install & restart when a new version is found (`SHA256`-verified packages; `macOS` guides manual update). See [Auto-Update](#auto-update) below.
 - 🧩 **Plugin market bundled** — `dsh-market` ships with the package (`dshmarket.tgz`), quietly installed to the dedicated desktop profile (`~/.dsh/profiles/desktop`) on first launch; it auto-restarts to appear. `1200+` plugins are searchable and one-click installable.
 - 🖼️ **Native icons / Wayland-ready** — icons ship into `hicolor`; `ryn.json:identifier` and `StartupWMClass` are both `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`, so the taskbar associates correctly.
 
@@ -60,7 +60,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 ## Auto-Update
 
-- New versions are checked once in the background at launch (no polling, no interruptions); you can also check manually under **Settings → Desktop Update**.
+- New versions are checked once in the background at launch (no polling, no interruptions); you can also check manually under **Settings → Desktop Settings**.
 - When a new version is found, a download button appears at the bottom of the sidebar — click it to download, verify and **install & restart in one click** (one system authorization prompt on `Linux`).
 - Packages are strictly verified against `SHA256SUMS` before installation; a failed check refuses to install.
 - `macOS` does not support silent in-app updates yet — you will be guided to download the `dmg` manually.
