@@ -24,15 +24,15 @@ concurrency:
 
 jobs:
   build-linux:
+    # arm64 停发（2026-08-24 拍板）：上游 Ryn.Interop 无 linux-arm64 原生库，包能装但 GUI 壳
+    # 必崩——安装冒烟在 CI 实证。恢复条件：上游供给 linux-arm64 native（x64 job 的探测步骤
+    # 会在供给出现时以 ::warning 提醒）；届时恢复 matrix 条目 + release-preflight 矩阵两行。
     strategy:
       matrix:
         include:
           - arch: amd64
             rid: linux-x64
             runs-on: ubuntu-latest
-          - arch: arm64
-            rid: linux-arm64
-            runs-on: ubuntu-24.04-arm
     runs-on: ${{ matrix.runs-on }}
     env:
       DOTNET_NOLOGO: '1'
@@ -129,6 +129,18 @@ jobs:
       - name: 安装冒烟（装包→启动→等 dsh web URL 行，批次一）
         shell: bash
         run: bash scripts/smoke-install-linux.sh artifacts/${{ matrix.rid }}
+
+      - name: 上游 linux-arm64 native 供给探测（恢复 arm64 打包的条件信号）
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver="$(curl -fsSL https://api.nuget.org/v3-flatcontainer/ryn.interop/index.json | jq -r '.versions[-1]')"
+          curl -fsSL "https://api.nuget.org/v3-flatcontainer/ryn.interop/$ver/ryn.interop.$ver.nupkg" -o /tmp/ri.nupkg
+          if tar -tf /tmp/ri.nupkg | grep -q 'runtimes/linux-arm64/native'; then
+            echo "::warning::Ryn.Interop $ver 已含 linux-arm64 native——可恢复 arm64 打包：还原 package-linux.yml matrix 条目与 release-preflight 矩阵两行（见 ADR artifact-verification-chain）"
+          else
+            echo "上游仍未供给 linux-arm64 native（最新 $ver）；arm64 打包保持停发"
+          fi
 
       - name: 上传预览/发布产物（7 天，与 pilot-harness pilot-harness-* 一致） 
         uses: actions/upload-artifact@v4

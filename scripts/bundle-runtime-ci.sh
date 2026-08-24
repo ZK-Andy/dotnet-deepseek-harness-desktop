@@ -167,16 +167,27 @@ echo "   dsh-desktop-companion tgz 已随包：$DEST/dsh-desktop-companion.tgz (
 echo "== [3/3] 组装 resources/runtime（整棵 node_modules，pilot-harness 同款）"
 rm -rf "$DEST/dsh" "$DEST/node_modules"
 mkdir -p "$DEST/node_modules"
-# 保留 pnpm 内部相对 symlink 结构整树拷入；pilot-harness 亦保留 node_modules 原样（含 prebuild），不走 asar
-if ! $CP_A node_modules/. "$DEST/node_modules/" 2>/dev/null; then
-  echo "   cp $CP_A 失败，尝试解引用/robocopy 回退"
-  if command -v powershell >/dev/null 2>&1; then
-    powershell -Command "Copy-Item -Path 'node_modules/*' -Destination '$DEST/node_modules' -Recurse -Force" 2>/dev/null || true
+# 拷贝语义必须保住 pnpm 链接结构：Node 从「包的真实位置」向上解析依赖，
+# 顶层入口若被解引用成孤立真目录（cp -Lr 对 junction 的实际行为），其
+# .pnpm 兄弟上下文即断裂——Windows 首跑图校验实证全图缺件。
+#  - Linux/mac: cp -a 保留 symlink
+#  - Windows: robocopy /SL 保留 junction/symlink 本身（与 cp -a 语义对称）；
+#    robocopy 退出码 <8 均为成功（1=拷了文件 2=有 extra 等按位提示）
+if [[ "$PLATFORM" == win-* ]] && command -v robocopy >/dev/null 2>&1; then
+  SRC_WIN="$(cygpath -w "$(pwd)/node_modules")"
+  DST_WIN="$(cygpath -w "$DEST/node_modules")"
+  echo "   robocopy /SL 保留链接结构: $SRC_WIN → $DST_WIN"
+  robocopy "$SRC_WIN" "$DST_WIN" /E /SL /NFL /NDL /NJH /NJS /NP || RC=$?
+  RC=${RC:-0}
+  if [[ $RC -ge 8 ]]; then
+    echo "warn: robocopy 失败 rc=$RC，回退 cp 解引用（图校验将把关链接完整性）" >&2
+    $CP_A node_modules/. "$DEST/node_modules/" || true
   fi
-  # 最后尝试普通 cp（解引用）
-  cp -Lr node_modules/. "$DEST/node_modules/" 2>/dev/null || cp -r node_modules/. "$DEST/node_modules/" 2>/dev/null || true
-  [[ -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 拷贝后仍缺入口" >&2; exit 1; }
+else
+  # 保留 pnpm 内部相对 symlink 结构整树拷入；pilot-harness 亦保留 node_modules 原样（含 prebuild），不走 asar
+  $CP_A node_modules/. "$DEST/node_modules/"
 fi
+[[ -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 拷贝后仍缺入口" >&2; exit 1; }
 
 # 裁剪闭包（per-arch + 无风险冗余）：
 #  - node-pty 删「非当前平台」prebuild 目录（node-pty 运行时按 process.platform+arch 选目录，删别的平台安全）

@@ -10,8 +10,10 @@ Grab the installer for your platform from [GitHub Releases](https://github.com/Z
 |---|---|
 | Windows 10/11 x64 | `..._windows-x64-setup.exe` |
 | macOS Apple Silicon / Intel | `..._macos-arm64.dmg` / `..._macos-x64.dmg` |
-| Debian/Ubuntu x64 / arm64 | `..._linux-amd64.deb` / `..._linux-arm64.deb` |
-| Fedora/RHEL x86_64 / aarch64 | `..._linux-x86_64.rpm` / `..._linux-aarch64.rpm` |
+| Debian/Ubuntu x64 | `..._linux-amd64.deb` |
+| Fedora/RHEL x86_64 | `..._linux-x86_64.rpm` |
+
+> Linux arm64 is not provided for now (upstream native library unavailable; the package would not start). This table updates when it returns.
 
 **No Node.js or command-line tools required** — the full DeepSeek Harness runtime is bundled; download and run.
 
