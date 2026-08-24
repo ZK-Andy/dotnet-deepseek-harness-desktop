@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # smoke-install-linux.sh — Linux 安装冒烟（批次一，ADR artifact-verification-chain）。
-# 对构建产物目录中的 deb/rpm 做「干净环境装包 → 启动 → 等 dsh web: URL」全链路验证：
+# 对构建产物目录中的 deb/rpm 做「干净环境装包 → 启动 → 等 dsh web URL」全链路验证：
 #   deb → runner 原生 apt 安装（真实解析 Depends）
 #   rpm → fedora 容器内 dnf 安装（AutoReqProv:no 的显式 Requires 是否够，装了才知道）
-# 判定信号 = 桌面程序 stdout 的 `[host] dsh web:` 行——打印于窗口创建之前，
+# 判定信号 = 桌面程序 stdout 的 `[host] dsh web =` 行（注意是等号——`dsh web:` 冒号格式是 dsh 子进程自检的输出，壳进程打印的是等号格式；首版判定串错位致冒烟恒败，CI 实证）。
 # 无需 display 即可证明「包装得上、依赖齐、运行时定位成功、捆绑闭包能起 dsh」。
 # 直击事故类：v0.2.x「rpm 实机装不上 / 闭包残缺 dsh 起不来」。
 #
@@ -15,19 +15,19 @@ PKG_DIR="${1:?usage: smoke-install-linux.sh <dir-with-deb/rpm>}"
 PKG_DIR="$(realpath "$PKG_DIR")"
 APP_BIN="/usr/bin/deepseek-harness-desktop"
 
-# 等待启动日志出现 dsh web: 的公共循环（90×1s）。进程探活用 kill -0 <pid>：
+# 等待启动日志出现 [host] dsh web = 的公共循环（90×1s）。进程探活用 kill -0 <pid>：
 # 安装后的入口是小写符号链接（/usr/bin/deepseek-harness-desktop），pgrep 按
 # 大写二进制名匹配会立刻误判「进程已死」。进程退出后再补扫一次日志，兜住
 # 「URL 已打出但进程随即退出」的窗口。
 wait_url() { # $1=日志 $2=pid
   local log="$1" pid="$2"
   for _ in $(seq 1 90); do
-    if grep -q "dsh web:" "$log"; then
-      grep -m1 "dsh web:" "$log"
+    if grep -q "\[host\] dsh web =" "$log"; then
+      grep -m1 "\[host\] dsh web =" "$log"
       return 0
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
-      grep -q "dsh web:" "$log" && { grep -m1 "dsh web:" "$log"; return 0; }
+      grep -q "\[host\] dsh web =" "$log" && { grep -m1 "\[host\] dsh web =" "$log"; return 0; }
       return 1
     fi
     sleep 1
@@ -42,7 +42,7 @@ smoke_deb() {
   sudo apt-get update -qq
   # apt 直接吃绝对路径的 deb 并自动解 Depends（libwebkitgtk-6.0-4 等）
   sudo apt-get install -y "$deb" >/dev/null
-  echo "== [deb] 启动冒烟（等 dsh web:）"
+  echo "== [deb] 启动冒烟（等 dsh web URL 行）"
   set +e
   env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder \
     timeout 100 "$APP_BIN" >"$log" 2>&1 &
@@ -53,7 +53,7 @@ smoke_deb() {
   sudo apt-get remove -y deepseek-harness-desktop >/dev/null 2>&1 || sudo dpkg -r deepseek-harness-desktop >/dev/null 2>&1 || true
   if [[ $rc -ne 0 ]]; then
     # 现场必须落进 CI 日志：应用秒退时 stderr 是唯一定位线索（arm64 首跑实证）
-    echo "error: [deb] 冒烟失败——90s 内未出现 dsh web:。日志尾部：" >&2
+    echo "error: [deb] 冒烟失败——90s 内未出现 [host] dsh web =。日志尾部：" >&2
     cat "$log" >&2 || true
   fi
   rm -rf "$home" "$log"
@@ -86,16 +86,16 @@ timeout 100 env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder \
 pid=$!
 # 与宿主侧 wait_url 同款探活：进程秒退时立即失败，不空转满 90s
 for _ in $(seq 1 90); do
-  if grep -q "dsh web:" "$log"; then
-    grep -m1 "dsh web:" "$log"; kill $pid 2>/dev/null; exit 0
+  if grep -q "\[host\] dsh web =" "$log"; then
+    grep -m1 "\[host\] dsh web =" "$log"; kill $pid 2>/dev/null; exit 0
   fi
   if ! kill -0 $pid 2>/dev/null; then
-    grep -q "dsh web:" "$log" && { grep -m1 "dsh web:" "$log"; exit 0; }
+    grep -q "\[host\] dsh web =" "$log" && { grep -m1 "\[host\] dsh web =" "$log"; exit 0; }
     break
   fi
   sleep 1
 done
-echo "error: [rpm] 冒烟失败——90s 内未出现 dsh web:。尾部："
+echo "error: [rpm] 冒烟失败——90s 内未出现 [host] dsh web =。尾部："
 tail -30 "$log" >&2
 kill $pid 2>/dev/null
 exit 1
