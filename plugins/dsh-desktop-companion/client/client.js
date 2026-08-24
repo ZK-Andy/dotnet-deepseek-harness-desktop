@@ -92,7 +92,10 @@
           }
         } catch (e) { /* no __ryn bridge: nothing to relay */ }
 
-        var parseState = function (raw) {
+        // invoke 响应归一化：Ryn 桥接对非空响应 resolve 的是 JSON.parse 后的值（通常是对象），
+        // 空响应是 undefined；字符串分支只为兼容手工构造的帧。所有命令响应一律先过这里，
+        // 禁止直接 JSON.parse——v0.3.0 实机自启开关/诊断导出两缺陷的根因就是对对象二次 parse。
+        var parseFrame = function (raw) {
           if (raw && typeof raw === 'object') return raw
           try { return JSON.parse(raw) } catch (e) { return null }
         }
@@ -158,7 +161,7 @@
               document.addEventListener('dsh-desktop-update', onEvt)
               // 第二个参数必须传（空对象即可）：空参数体的 invoke 在宿主分发层会 500
               window.__ryn.invoke('desktop.update.getState', {}).then(function (s) {
-                var parsed = parseState(s)
+                var parsed = parseFrame(s)
                 if (parsed && parsed.status === 'ready') setState(parsed)
               }).catch(function (e3) { console.warn(TAG, 'getState failed', e3 && e3.message) })
               return function () { document.removeEventListener('dsh-desktop-update', onEvt) }
@@ -294,8 +297,7 @@
                   disabled: !!result,
                   onClick: function () {
                     window.__ryn.invoke('desktop.diagnostics.export', {}).then(function (res) {
-                      var parsed = null
-                      try { parsed = JSON.parse(res) } catch (e2) {}
+                      var parsed = parseFrame(res)
                       if (parsed && parsed.path) setResult(parsed.path)
                       else setResult({ error: (parsed && parsed.error) || DIAG.fail })
                     }, function () {
@@ -324,8 +326,7 @@
             var setEnabled = sp[1]
             reactMod.useEffect(function () {
               window.__ryn.invoke('desktop.autostart.getState', {}).then(function (res) {
-                var p = null
-                try { p = JSON.parse(res) } catch (e1) {}
+                var p = parseFrame(res)
                 if (p && typeof p.enabled === 'boolean') setEnabled(p.enabled)
               }, function () { setEnabled(false) })
             }, [])
@@ -333,8 +334,7 @@
               var next = !enabled
               setEnabled(null)
               window.__ryn.invoke('desktop.autostart.set', { enabled: next }).then(function (res) {
-                var p = null
-                try { p = JSON.parse(res) } catch (e3) {}
+                var p = parseFrame(res)
                 setEnabled(p && typeof p.enabled === 'boolean' ? p.enabled : next)
               }, function () { setEnabled(!next) })
             }
