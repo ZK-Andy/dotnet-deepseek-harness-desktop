@@ -54,7 +54,7 @@ smoke_deb() {
   if [[ $rc -ne 0 ]]; then
     # 现场必须落进 CI 日志：应用秒退时 stderr 是唯一定位线索（arm64 首跑实证）
     echo "error: [deb] 冒烟失败——90s 内未出现 dsh web:。日志尾部：" >&2
-    tail -40 "$log" >&2 || true
+    cat "$log" >&2 || true
   fi
   rm -rf "$home" "$log"
   [[ $rc -eq 0 ]]

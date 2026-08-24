@@ -107,6 +107,15 @@ while (queue.length > 0) {
     if (!dep.startsWith('@deepseek-ai/')) continue;
     const depDir = resolveDep(realDir, dep);
     if (depDir === null) {
+      // 首批缺件附探测现场：解析起点与其 @deepseek-ai/ 目录实际内容——
+      // Windows 拷贝层 junction 断裂类问题只有看到目录实况才能归因
+      if (missing.length < 3) {
+        let listing = '(readdir 失败)';
+        try {
+          listing = readdirSync(join(dirname(realDir), 'node_modules', '@deepseek-ai')).join(', ');
+        } catch { /* 目录不存在本身就是线索 */ }
+        console.error(`  probe: 起点=${dirname(realDir)}；其下 @deepseek-ai/ 内容: ${listing}`);
+      }
       missing.push({ name: dep, requiredBy: name });
       continue;
     }
