@@ -22,8 +22,28 @@ public static class Program
     /// 后台监督 dsh 子进程——崩溃只重启子进程并导航新 URL（不重启桌面进程）；dsh 起不来时降级加载本地 wwwroot。
     /// </summary>
     [STAThread]
-    public static void Main()
+    public static int Main(string[] args)
     {
+        // 无 UI 兜底诊断导出（ADR shell-observability-diagnostics）：先于一切启动逻辑——
+        // 不 spawn dsh、不开窗、不做 dev 隔离，覆盖「闪退进不了界面」的取证场景。
+        // CLI 形态下 stdout 可见；失败以非零退出码 fail loud（脚本可判定）。
+        if (Array.IndexOf(args, "--export-diagnostics") >= 0)
+        {
+            try
+            {
+                var result = DiagnosticsExporter.ExportWithFallback(
+                    HarnessRuntimeHost.ResolveDshHome(),
+                    Services.Update.AppVersion.Current());
+                Console.WriteLine($"[host] 诊断包已导出：{result.ZipPath}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[host] 诊断包导出失败：{ex.Message}");
+                return 1;
+            }
+        }
+
         // 开发运行时完全隔离（ADR dev-runtime-isolation）：ApplicationId 加 .dev 后缀避开
         // GTK 同 id 单实例互斥（与已装正式版可同时开窗）；DSH_HOME 未显式覆盖时自动指向
         // 仓库 .cache/dev-home，杜绝与正式版共享 profile 的串扰。
@@ -59,6 +79,15 @@ public static class Program
         }
 
         using var host = new HarnessRuntimeHost(bundledClosure);
+
+        // 崩溃取证 marker（ADR shell-observability-diagnostics）：遗留即判定上轮非受控退出；
+        // 正常退出路径在 Main 尾部按 token 清除
+        var marker = RunMarker.Acquire(HarnessRuntimeHost.ResolveDshHome());
+        var previousRunUnclean = marker.PreviousRunUnclean;
+        if (previousRunUnclean)
+        {
+            Services.HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
+        }
         var webUrl = host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
         Console.WriteLine($"[host] runtime = {host.RuntimeDescription}");
         if (webUrl is not null)
@@ -110,7 +139,15 @@ public static class Program
                     StartExitFallback(ct);
                 },
                 persistence: new Services.Update.FileReadyPersistence(updatesDir),
-                onTransition: state => PushUpdateState(updateWindow, state));
+                onTransition: state =>
+                {
+                    // 自更新链路留痕：每次状态变化进 host.log（stdout 不可见教训的统一收口）
+                    Services.HostLog.Write(
+                        "[update] " + state.Status
+                        + (state.Version is null ? "" : $" {state.Version}")
+                        + (state.Message is null ? "" : $"：{state.Message}"));
+                    PushUpdateState(updateWindow, state);
+                });
             Console.WriteLine($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}");
         }
         else
@@ -156,6 +193,8 @@ public static class Program
                 services.AddRynCommands();
                 // 外部链接 → 系统默认浏览器（宿主命令路由，见 proposed bug-fix ADR）
                 services.AddSingleton<ICommandRouter, Services.ExternalLinkCommandRouter>();
+                // 诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）
+                services.AddSingleton<ICommandRouter>(new Services.DesktopDiagnosticsCommandRouter(log: Services.HostLog.Write));
                 // 自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）
                 if (updateMachine is not null)
                 {
@@ -176,7 +215,7 @@ public static class Program
                 return ValueTask.CompletedTask;
             },
             navigate: url => windowAccessor.Current.NavigateAsync(url),
-            log: Console.WriteLine);
+            log: Services.HostLog.Write);
         var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
 
         // 自更新启动对账 + 后台检查一次（失败静默转 error 态，不影响首屏）
@@ -247,6 +286,12 @@ public static class Program
                     windowAccessor,
                     LegacyHomeNotice.BannerScript(LegacyHomeNotice.LegacyPrivateHome, home),
                     supervisorCts.Token);
+            }
+
+            // 上轮非受控退出：提示但不暗示应用故障（用户杀进程也属此类），引导导出诊断
+            if (previousRunUnclean)
+            {
+                await ShowBannerWhenReady(windowAccessor, RunMarker.UncleanBannerScript(), supervisorCts.Token);
             }
         });
 
@@ -487,6 +532,8 @@ public static class Program
         }
 
         host.Stop();
+        RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), marker.Token);
+        return 0;
 
         /// <summary>当前平台的更新资产 RID（与 release 资产命名后缀对应）。</summary>
         static string UpdateRid()

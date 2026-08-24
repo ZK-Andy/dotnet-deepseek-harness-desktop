@@ -251,6 +251,43 @@
                   : null))
           }
 
+          // 设置页「诊断」区块（order 51）：一键导出诊断 zip。点击即隐私确认——
+          // 包内容为白名单日志与运行状态，不含会话/凭据；宿主无此命令时失败转页内提示
+          var DIAG = {
+            btn: '\u5bfc\u51fa\u8bca\u65ad\u4fe1\u606f',
+            hint: '\u4ec5\u5305\u542b\u65e5\u5fd7\u4e0e\u8fd0\u884c\u72b6\u6001\uff0c\u4e0d\u542b\u4f1a\u8bdd\u4e0e\u51ed\u636e',
+            savedPrefix: '\u5df2\u4fdd\u5b58\u81f3\uff1a',
+            fail: '\u5bfc\u51fa\u5931\u8d25',
+          }
+          function DiagnosticsSection() {
+            var pair = reactMod.useState(null)
+            var result = pair[0]
+            var setResult = pair[1]
+            return h('div', { className: 'ddc-set' },
+              h('div', { className: 'ddc-hint' }, DIAG.hint),
+              h('div', { className: 'ddc-row' },
+                h('button', {
+                  className: 'ddc-btn',
+                  type: 'button',
+                  disabled: !!result,
+                  onClick: function () {
+                    window.__ryn.invoke('desktop.diagnostics.export', {}).then(function (res) {
+                      var parsed = null
+                      try { parsed = JSON.parse(res) } catch (e2) {}
+                      if (parsed && parsed.path) setResult(parsed.path)
+                      else setResult({ error: (parsed && parsed.error) || DIAG.fail })
+                    }, function () {
+                      setResult({ error: DIAG.fail })
+                    })
+                  },
+                }, DIAG.btn)),
+              result === null
+                ? null
+                : typeof result === 'string'
+                  ? h('div', { className: 'ddc-hint' }, DIAG.savedPrefix + result)
+                  : h('div', { className: 'ddc-err' }, DIAG.fail + '：' + result.error))
+          }
+
           ctx.slots.inject('sidebar.footer.action', function () {
             return ctx.slots.register({
               name: 'sidebar.footer.action',
@@ -270,6 +307,17 @@
               label: function () { return STR.label },
             }, function (props) {
               return h(UpdateSection, props)
+            })
+          })
+          // 「诊断」区块：一键导出诊断 zip（ADR shell-observability-diagnostics）
+          ctx.slots.inject('settings.section', function () {
+            return ctx.slots.register({
+              name: 'settings.section',
+              id: 'dsh-desktop-companion-diagnostics',
+              order: 51,
+              label: function () { return '\u8bca\u65ad' },
+            }, function (props) {
+              return h(DiagnosticsSection, props)
             })
           })
           return true

@@ -44,6 +44,13 @@ public sealed class RuntimeSupervisor
             }
 
             _log?.Invoke("[supervisor] dsh 子进程退出，执行恢复…");
+            // 子进程死前 stderr 只存内存尾巴，随进程消失——趁恢复前落盘留证
+            var stderrTail = _host.StderrTail;
+            if (stderrTail.Count > 0)
+            {
+                _log?.Invoke($"[supervisor] 子进程 stderr 尾部：\n{string.Join('\n', stderrTail.TakeLast(8))}");
+            }
+
             try
             {
                 await _showRecovery();
