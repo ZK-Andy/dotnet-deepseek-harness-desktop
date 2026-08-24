@@ -177,7 +177,9 @@ if [[ "$PLATFORM" == win-* ]] && command -v robocopy >/dev/null 2>&1; then
   SRC_WIN="$(cygpath -w "$(pwd)/node_modules")"
   DST_WIN="$(cygpath -w "$DEST/node_modules")"
   echo "   robocopy /SL 保留链接结构: $SRC_WIN → $DST_WIN"
-  robocopy "$SRC_WIN" "$DST_WIN" /E /SL /NFL /NDL /NJH /NJS /NP || RC=$?
+  # MSYS2_ARG_CONV_EXCL：Git Bash 会把 /E 这类开关当 POSIX 路径转成 "E:/"（首跑实证
+  # Invalid Parameter #3），排除转换后原样传给 robocopy
+  MSYS2_ARG_CONV_EXCL='*' robocopy "$SRC_WIN" "$DST_WIN" /E /SL /NFL /NDL /NJH /NJS /NP || RC=$?
   RC=${RC:-0}
   if [[ $RC -ge 8 ]]; then
     echo "warn: robocopy 失败 rc=$RC，回退 cp 解引用（图校验将把关链接完整性）" >&2
