@@ -65,4 +65,5 @@
 1. **启动白屏或一直「重连中」**：查看 `logs/host.log` 末尾的错误信息。
 2. **更新失败**：校验不通过时应用会拒绝安装（安全设计），直接重新下载最新安装包覆盖安装即可。
 3. **插件市场打不开**：首次补装可能因网络较慢，重启一次应用通常自愈。
-4. 以上无法解决时，欢迎到 [Issues](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues) 反馈，附上系统平台与 `host.log` 相关片段。
+4. **收集诊断信息**：设置 → 诊断 →「导出诊断信息」生成 zip（仅日志与运行状态，不含会话与凭据）；界面打不开时用命令行 `<安装的可执行文件> --export-diagnostics`。
+5. 以上无法解决时，欢迎到 [Issues](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues) 反馈，附上系统平台与 `host.log` 相关片段。

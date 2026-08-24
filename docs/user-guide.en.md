@@ -65,4 +65,5 @@ Runtime logs are written to `logs/host.log` inside that directory.
 1. **Blank window or endless "reconnecting"**: check the tail of `logs/host.log`.
 2. **Update fails**: signature verification failures refuse to install (by design); re-download the latest installer and install over the old one.
 3. **Plugin market missing**: a slow network can stall the first-run install; restarting the app usually self-heals.
-4. Still stuck? Open an [issue](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues) with your platform and the relevant part of `host.log`.
+4. **Collect diagnostics**: Settings → Diagnostics → "Export diagnostics" creates a zip (logs and runtime state only; no sessions or credentials). If the window never opens, run the installed executable with `--export-diagnostics`.
+5. Still stuck? Open an [issue](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues) with your platform and the relevant part of `host.log`.
