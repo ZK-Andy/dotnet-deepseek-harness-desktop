@@ -35,10 +35,12 @@ Unsigned builds: this project is open source and ships without paid code signing
 - **Session restore**: restarting the app returns you to your last session; runtime crashes auto-recover into the current conversation.
 - **External links** open in your system browser.
 - **Desktop update entry**: the "Desktop Settings" section in Settings shows the current version and offers a manual check.
+- **System tray**: a tray icon stays resident with a menu of Show window / Check for updates / Quit; clicking the window close button **hides to the tray** instead of quitting — reopen or quit from the tray menu.
+- **Launch at login**: toggle it under Settings → "Desktop Settings" → "Launch at login".
 
 ## Updates
 
-- New versions are checked once at startup; you can also check manually under Settings → "Desktop Settings".
+- New versions are checked once at startup; you can also check manually under Settings → "Desktop Settings", or via the tray menu's "Check for updates".
 - When an update is found, one click runs the flow: authorize → app exits → install completes → relaunch on the new version.
 - Packages are SHA256-verified; macOS guides you through a manual replace.
 - Cancel at any time — the current version stays untouched.
@@ -63,7 +65,8 @@ Runtime logs are written to `logs/host.log` inside that directory.
 ## Troubleshooting
 
 1. **Blank window or endless "reconnecting"**: check the tail of `logs/host.log`.
-2. **Update fails**: signature verification failures refuse to install (by design); re-download the latest installer and install over the old one.
-3. **Plugin market missing**: a slow network can stall the first-run install; restarting the app usually self-heals.
-4. **Collect diagnostics**: Settings → Diagnostics → "Export diagnostics" creates a zip (logs and runtime state only; no sessions or credentials). If the window never opens, run the installed executable with `--export-diagnostics`.
-5. Still stuck? Open an [issue](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues) with your platform and the relevant part of `host.log`.
+2. **Window "disappeared" after closing**: the close button hides the app to the system tray (it keeps running); pick "Show window" from the tray menu to bring it back, or quit fully via the tray menu. On desktops without a tray, the app logs a fallback and closing exits for real.
+3. **Update fails**: signature verification failures refuse to install (by design); re-download the latest installer and install over the old one.
+4. **Plugin market missing**: a slow network can stall the first-run install; restarting the app usually self-heals.
+5. **Collect diagnostics**: Settings → Diagnostics → "Export diagnostics" creates a zip (logs and runtime state only; no sessions or credentials). If the window never opens, run the installed executable with `--export-diagnostics`.
+6. Still stuck? Open an [issue](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues) with your platform and the relevant part of `host.log`.

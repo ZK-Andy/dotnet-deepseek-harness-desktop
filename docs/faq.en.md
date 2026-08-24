@@ -21,7 +21,7 @@ Everything stays in the shared data directory `~/.dsh` on your machine (`%USERPR
 Yes. The desktop uses the same canonical home as CLI/TUI/Web (`~/.dsh`, overridable via `DSH_HOME`), so sessions, credentials and workspaces interoperate; desktop plugin assembly lives in a dedicated `profiles/desktop` subdirectory. Upgrading from v0.2.x or earlier is a breaking switch — the old private directory is not migrated automatically; back up first, see [user-guide.en.md](user-guide.en.md).
 
 **Q: System tray / minimize to tray / autostart?**
-The tray is on the roadmap (see the todo list); other desktop basics will follow in subsequent releases.
+All included: a resident tray icon (menu: Show window / Check for updates / Quit), close hides to the tray by default, and launch-at-login toggles under Settings → "Desktop Settings". See [user-guide.en.md](user-guide.en.md).
 
 **Q: Update failed or the update button shows an error?**
 Packages are SHA256-verified; failed verification refuses to install (by design). Re-download the latest installer from Releases and install over — user data is untouched.
