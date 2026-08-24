@@ -60,7 +60,7 @@ Set the `DSH_HOME` environment variable to move everything elsewhere (same seman
 
 Runtime logs are written to `logs/host.log` inside that directory.
 
-**Upgrading from v0.2.x or earlier**: old versions used a private directory (Linux `~/.local/share/DeepSeek.Harness.Desktop/dsh`, macOS `~/Library/Application Support/DeepSeek.Harness.Desktop/dsh`, Windows `%LOCALAPPDATA%\DeepSeek.Harness.Desktop\dsh`). The new version does **not migrate automatically**: back up before upgrading; a one-time notice appears on first launch and the new directory starts clean. Old data stays in place — copy the sessions/credentials you need into the new directory, or set `DSH_DESKTOP_DSH_HOME` to point back at the old one; delete it once you no longer need it.
+**Upgrading from v0.2.x or earlier**: old versions used a private directory (Linux `~/.local/share/DeepSeek.Harness.Desktop/dsh`, macOS `~/Library/Application Support/DeepSeek.Harness.Desktop/dsh`, Windows `%LOCALAPPDATA%\DeepSeek.Harness.Desktop\dsh`). The new version does **not migrate automatically**: back up before upgrading; the new directory starts clean. Old data stays in place — copy the sessions/credentials you need into the new directory, or set `DSH_DESKTOP_DSH_HOME` to point back at the old one; delete it once you no longer need it.
 
 **Full uninstall**: remove the app package, then delete the data directory above.
 
@@ -70,5 +70,5 @@ Runtime logs are written to `logs/host.log` inside that directory.
 2. **Window "disappeared" after closing**: the close button hides the app to the system tray (it keeps running); pick "Show window" from the tray menu to bring it back, or quit fully via the tray menu. On desktops without a tray, the app logs a fallback and closing exits for real.
 3. **Update fails**: signature verification failures refuse to install (by design); re-download the latest installer and install over the old one.
 4. **Plugin market missing**: a slow network can stall the first-run install; restarting the app usually self-heals.
-5. **Collect diagnostics**: Settings → Diagnostics → "Export diagnostics" creates a zip (logs and runtime state only; no sessions or credentials). If the window never opens, run the installed executable with `--export-diagnostics`.
+5. **Collect diagnostics**: Settings → "Desktop Settings" → "Export diagnostics" creates a zip (logs and runtime state only; no sessions or credentials). If the window never opens, run the installed executable with `--export-diagnostics`.
 6. Still stuck? Open an [issue](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues) with your platform and the relevant part of `host.log`.

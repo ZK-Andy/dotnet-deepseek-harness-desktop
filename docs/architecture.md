@@ -16,7 +16,7 @@
 * **共享 home（B 形态）**：默认上游规范 `~/.dsh`，经 `HarnessRuntimeHost.ResolveDshHome()` 解析——优先级：`DSH_DESKTOP_DSH_HOME`（dev 隔离/用户回退）> 生态标准 `DSH_HOME` > `~/.dsh`；home 层数据（sessions/credentials/workspaces）与 CLI/TUI/Web 互通。桌面插件装配走专属 `profiles/desktop`（`DesktopProfileBootstrap` 在首次 spawn 前按上游 `initProfile` 同款三件套自举，bundles 对齐 web 模板）。
 * 无内置运行时回退 `PATH dsh`（开发期）。
 * **可观测性**（ADR `2026-08-24-shell-observability-diagnostics`）：全部壳侧诊断经 `HostLog` 双写 stdout 与 `<home>/logs/host.log`（超 5MB 滚动 .old）；supervisor 恢复时落子进程 stderr 尾部、自更新状态机每次变化留痕；`RunMarker` 启动占位/owner 清理判定非受控退出（横幅提示）；`desktop.diagnostics.export` + CLI `--export-diagnostics` 导出白名单诊断 zip 到用户文档目录。
-* 启动期告知（ADR `implemented/architecture/2026-08-23-shared-home-desktop-profile`）：`RuntimeVersionGate` 只读探测 dsh 版本低于底线仅横幅提示不阻断；检测到 v0.2.x 私有 home 残留则一次性提示新位置与回退方式（不迁移）。
+* 启动期告知（ADR `implemented/architecture/2026-08-23-shared-home-desktop-profile`）：`RuntimeVersionGate` 只读探测 dsh 版本低于底线仅横幅提示不阻断；检测到 v0.2.x 私有 home 残留则在 host.log 留痕（界面横幅已去除，见 ADR `implemented/bug-fix/2026-08-24-companion-settings-consolidation`）。
 * **系统托盘与 hide-to-tray**（ADR `implemented/architecture/2026-08-24-shell-tray-hide-to-tray`）：`Ryn.Plugins.Tray` 注册图标 + 菜单（显示主窗/检查更新/退出）；点击事件经 companion 中继（`__ryn.on` → `desktop.tray.event`）回宿主解析——`TrayService.EmitEvent` 是插件内部属性，AOT 下反射不可用。关窗默认取消并隐藏（`CloseGate` 唯一放行通道：托盘退出与自更新安装路径先批准再 Close）；托盘初始化失败时拦截不同步生效，关窗保持直退。
 
 ## 壳与窗口
@@ -57,7 +57,7 @@
 * 状态机 `Services/Update/UpdateStateMachine`（移植 opencode updater-controller）：`idle→checking→downloading→ready→installing` + up-to-date/error；检查/下载/安装委托注入 + ready 持久化接口，纯逻辑可单测。启动对账（记录版本不高于当前或损坏 → 清记录）后自动检查一次，失败静默转 error；并发检查互斥。
 * Feed：`releases.atom` 最新稳定 tag + `expanded_assets/<tag>` 抓资产 href（绕 api 限流）；`ReleaseMeta.Pick` 按 RID 后缀挑资产。下载 `.part` 原子改名 + SHA256SUMS 强校验（**release 未附校验文件或 HTTP 非 2xx 时 fail loud 拒装**）→ `<DSH_HOME>/updates/`。
 * 安装：Linux pkexec 脚本（等本进程退出→dpkg/rpm→runuser 降权拉起新版）；Windows Inno `/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`；macOS v1 报错引导手动。
-* UI：伴生插件注册 `sidebar.footer.action`（侧栏底部设置入口上方动作行）；**仅 ready 渲染**圆形下载钮，hover 展开版本文字，点击即装+重启；installing 转圈禁点。伴生插件另注册 `settings.section`「桌面设置」页（order 50，市场之后）：当前版本 + 手动检查按钮 + 完整状态行（error 显宿主传回原因；无自更新栈的运行时降级为页内不可用提示）。状态经宿主 CustomEvent `dsh-desktop-update` 推送，初值走 `ryn.invoke('desktop.update.getState')`；状态帧含 `current`（当前版本）与 error 态 `message` 字段。
+* UI：伴生插件注册 `sidebar.footer.action`（侧栏底部设置入口上方动作行）；**仅 ready 渲染**圆形下载钮，hover 展开版本文字，点击即装+重启；installing 转圈禁点。伴生插件另注册单一 `settings.section`「桌面设置」页（order 50，市场之后；ADR `implemented/bug-fix/2026-08-24-companion-settings-consolidation`）：更新块（当前版本 + 手动检查按钮 + 完整状态行，error 显宿主传回原因，无自更新栈降级为页内不可用提示）+ 诊断导出块 + 开机自启开关三块合一页。状态经宿主 CustomEvent `dsh-desktop-update` 推送，初值走 `ryn.invoke('desktop.update.getState')`；状态帧含 `current`（当前版本）与 error 态 `message` 字段。
 * 参数：appsettings.json `Update` 节（Repository/超时/目录）；当前版本 = csproj `<Version>`（发布 CI 以 `-p:Version=` 覆盖，输入留空回退 csproj、空值 fail loud）。**dev 运行时不装载自更新栈**（除非 `DSH_DESKTOP_UPDATE_FORCE=1` 显式开启）。
 
 ## 打包

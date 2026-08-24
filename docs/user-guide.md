@@ -60,7 +60,7 @@
 
 运行日志位于数据目录下 `logs/host.log`。
 
-**从 v0.2.x 及更早版本升级**：旧版使用私有目录（Linux `~/.local/share/DeepSeek.Harness.Desktop/dsh`、macOS `~/Library/Application Support/DeepSeek.Harness.Desktop/dsh`、Windows `%LOCALAPPDATA%\DeepSeek.Harness.Desktop\dsh`）。新版**不做自动迁移**：升级前请自行备份；首次启动会出现一次性提示，新目录从干净状态开始。旧数据原地保留——需要的会话/凭据可手动拷入新目录，或设置 `DSH_DESKTOP_DSH_HOME` 指回旧目录继续使用；确认不再需要后删除旧目录即可。
+**从 v0.2.x 及更早版本升级**：旧版使用私有目录（Linux `~/.local/share/DeepSeek.Harness.Desktop/dsh`、macOS `~/Library/Application Support/DeepSeek.Harness.Desktop/dsh`、Windows `%LOCALAPPDATA%\DeepSeek.Harness.Desktop\dsh`）。新版**不做自动迁移**：升级前请自行备份；新目录从干净状态开始。旧数据原地保留——需要的会话/凭据可手动拷入新目录，或设置 `DSH_DESKTOP_DSH_HOME` 指回旧目录继续使用；确认不再需要后删除旧目录即可。
 
 **彻底卸载**：卸载应用包后，手动删除上述数据目录即可清除全部本地数据。
 
@@ -70,5 +70,5 @@
 2. **窗口关闭后「不见了」**：关闭按钮默认隐藏到系统托盘（应用仍在运行），从托盘图标菜单选「显示主窗」即可召回；彻底退出请用托盘菜单的「退出」。若桌面环境无系统托盘，应用会记录降级日志并保持关窗即退出的行为。
 3. **更新失败**：校验不通过时应用会拒绝安装（安全设计），直接重新下载最新安装包覆盖安装即可。
 4. **插件市场打不开**：首次补装可能因网络较慢，重启一次应用通常自愈。
-5. **收集诊断信息**：设置 → 诊断 →「导出诊断信息」生成 zip（仅日志与运行状态，不含会话与凭据）；界面打不开时用命令行 `<安装的可执行文件> --export-diagnostics`。
+5. **收集诊断信息**：设置 →「桌面设置」→「导出诊断信息」生成 zip（仅日志与运行状态，不含会话与凭据）；界面打不开时用命令行 `<安装的可执行文件> --export-diagnostics`。
 6. 以上无法解决时，欢迎到 [Issues](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues) 反馈，附上系统平台与 `host.log` 相关片段。
