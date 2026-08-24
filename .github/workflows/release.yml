@@ -27,9 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: false
-        with:
           fetch-depth: 0   # 全量历史 + tags，供 release-notes.sh 生成 compare 与分类
+          persist-credentials: false
 
       - name: 等待三平台产物就绪（本 tag 构建）
         env:
