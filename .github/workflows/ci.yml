@@ -6,11 +6,42 @@ on:
   pull_request:
     branches: [main]
 
+# 同 ref 新推自动取消在跑的旧一轮，省 CI 分钟
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # 改动面分类：纯文档改动让 build-test 显式跳过（run 仍 conclusive 成功），
+  # 规避「workflow 级 path filter 跳过导致 PR check 永远 pending」的问题。
+  # code 面含 scripts/（文档门禁脚本本身变更须全量验证）与本文件（CI 变更自验）。
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'tests/**'
+              - 'scripts/**'
+              - '*.slnx'
+              - '.github/workflows/ci.yml'
+
   build-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
