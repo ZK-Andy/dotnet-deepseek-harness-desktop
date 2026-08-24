@@ -47,7 +47,7 @@ echo "== 资产矩阵 =="
 # 与 *_linux-aarch64.rpm 两行并同步 package-linux.yml matrix。
 ALLOWED=()
 check_pattern 'deepseek-harness-desktop_*_linux-amd64.deb' 'linux amd64 deb'
-check_pattern 'deepseek-harness-desktop_*_linux-x86_64.rpm' 'linux x86_64 rpm'
+check_pattern 'deepseek-harness-desktop-*_linux-x86_64.rpm' 'linux x86_64 rpm'
 check_pattern 'DeepSeek.Harness.Desktop_*_macos-arm64.dmg' 'macOS arm64 dmg'
 check_pattern 'DeepSeek.Harness.Desktop_*_macos-x64.dmg' 'macOS x64 dmg'
 check_pattern 'DeepSeek.Harness.Desktop_*_windows-x64-setup.exe' 'Windows x64 安装器'
