@@ -186,3 +186,43 @@ public class DesktopTrayCommandRouterTests
         Assert.Equal("null", frame);
     }
 }
+
+/// <summary>托盘「检查更新」通知文案映射：结束态给结论，中间态不打扰。</summary>
+public class TrayCheckFeedbackTests
+{
+    [Fact]
+    public void UpToDate_PromptsAlreadyLatest()
+    {
+        var message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.UpToDate, Current: "9.9.9"));
+
+        Assert.Equal("已是最新版本", message);
+    }
+
+    [Fact]
+    public void Ready_IncludesTargetVersion_AndInstallHint()
+    {
+        var message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.Ready, Version: "1.2.3"));
+
+        Assert.Contains("1.2.3", message);
+        Assert.Contains("桌面设置", message);
+    }
+
+    [Fact]
+    public void Error_IncludesReason()
+    {
+        var message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.Error, Message: "网络不可达"));
+
+        Assert.Contains("检查更新失败", message);
+        Assert.Contains("网络不可达", message);
+    }
+
+    [Theory]
+    [InlineData(Services.Update.UpdateStatus.Idle)]
+    [InlineData(Services.Update.UpdateStatus.Checking)]
+    [InlineData(Services.Update.UpdateStatus.Downloading)]
+    [InlineData(Services.Update.UpdateStatus.Installing)]
+    public void IntermediateStates_DoNotNotify(Services.Update.UpdateStatus status)
+    {
+        Assert.Null(TrayCheckFeedback.Message(new Services.Update.UpdateState(status)));
+    }
+}

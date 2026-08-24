@@ -24,6 +24,7 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
     private readonly CloseGate _closeGate;
     private readonly Update.UpdateStateMachine? _updateMachine;
     private readonly Action<string>? _log;
+    private readonly Action<string, string>? _notify;
 
     /// <summary>创建路由。</summary>
     /// <param name="showWindow">显示主窗动作（宿主接线为 deferred 窗口的 ShowAsync）。</param>
@@ -31,18 +32,22 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
     /// <param name="closeGate">关窗闸门：退出路径先批准再 Close，放行 hide-to-tray 拦截。</param>
     /// <param name="updateMachine">自更新状态机；未装载（dev 门禁）时「检查更新」无动作。</param>
     /// <param name="log">日志回调（可选）。</param>
+    /// <param name="notify">托盘通知回调（可选）：菜单触发的检查没有页面反馈面，结论经系统
+    /// 托盘通知送达（标题, 正文）。设置页手动检查不走这里，避免双重打扰。</param>
     public DesktopTrayCommandRouter(
         Func<Task> showWindow,
         Action closeWindow,
         CloseGate closeGate,
         Update.UpdateStateMachine? updateMachine,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        Action<string, string>? notify = null)
     {
         _showWindow = showWindow;
         _closeWindow = closeWindow;
         _closeGate = closeGate;
         _updateMachine = updateMachine;
         _log = log;
+        _notify = notify;
     }
 
     /// <inheritdoc />
@@ -91,7 +96,12 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
                     {
                         try
                         {
-                            await machine.CheckAsync(cancellationToken);
+                            var result = await machine.CheckAsync(cancellationToken);
+                            var message = TrayCheckFeedback.Message(result);
+                            if (message is not null)
+                            {
+                                _notify?.Invoke(TrayCheckFeedback.Title, message);
+                            }
                         }
                         catch (OperationCanceledException)
                         {
@@ -99,6 +109,7 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
                         catch (Exception ex)
                         {
                             _log?.Invoke($"[tray] 更新检查失败：{ex.Message}");
+                            _notify?.Invoke(TrayCheckFeedback.Title, "检查更新失败：" + ex.Message);
                         }
                     });
                 }

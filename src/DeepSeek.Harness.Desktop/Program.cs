@@ -167,6 +167,11 @@ public static class Program
         var iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
         var trayAvailable = File.Exists(iconPath);
 
+        // hide-to-tray 唤回的最大化保持（ADR tray-recall-maximize-and-check-feedback）：
+        // 上游 ShowAsync 不保留最大化（0.3.1 实机实证），记录隐藏前的窗口态，唤回后补一次
+        // ToggleMaximize。仅跟踪 Maximized/Normal；SetFullscreen 全屏不在范围，属已知边界。
+        var maximizedAtHide = 0;
+
         var app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
             {
@@ -228,12 +233,32 @@ public static class Program
                 services.AddSingleton<ICommandRouter>(sp =>
                 {
                     var trayWindow = sp.GetRequiredService<IRynWindow>();
+                    async Task RecallAsync()
+                    {
+                        await trayWindow.ShowAsync().AsTask();
+                        // 等 WM 落地 unmap/remap 的几何再补最大化；时序经验值，真机可调
+                        try
+                        {
+                            await Task.Delay(150);
+                        }
+                        catch
+                        {
+                        }
+
+                        if (Volatile.Read(ref maximizedAtHide) == 1)
+                        {
+                            trayWindow.ToggleMaximize();
+                        }
+                    }
+
                     return new Services.Tray.DesktopTrayCommandRouter(
-                        () => trayWindow.ShowAsync().AsTask(),
+                        RecallAsync,
                         trayWindow.Close,
                         closeGate,
                         updateMachine,
-                        Services.HostLog.Write);
+                        Services.HostLog.Write,
+                        notify: (title, message) =>
+                            sp.GetRequiredService<TrayService>().ShowNotification(title, message));
                 });
             })
             .Build();
@@ -277,6 +302,18 @@ public static class Program
 
                 e.Cancel = true;
                 _ = HideForTrayAsync(trayWindow);
+            };
+            trayWindow.StateChanged += (_, e) =>
+            {
+                // Minimized 不清标志：最小化再还原仍回最大化；只有用户主动还原才清除
+                if (e.State == WindowState.Maximized)
+                {
+                    Volatile.Write(ref maximizedAtHide, 1);
+                }
+                else if (e.State == WindowState.Normal)
+                {
+                    Volatile.Write(ref maximizedAtHide, 0);
+                }
             };
         }
 
