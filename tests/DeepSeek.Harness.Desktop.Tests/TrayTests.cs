@@ -227,41 +227,17 @@ public class TrayCheckFeedbackTests
     }
 }
 
-/// <summary>托盘唤回的窗口态探测：视口占满可用区即大窗，解析容错、未知返回 null。</summary>
-public class TrayWindowStateProbeTests
+/// <summary>托盘唤回的最大化补正判定：未知不动作、已最大化不动作，其余才补一次。</summary>
+public class TrayRecallMaximizeTests
 {
     [Theory]
-    [InlineData(1920, 1080, 1920, 1041, true)]   // 精确占满（面板扣除后的工作区）
-    [InlineData(1912, 1080, 1920, 1041, true)]   // 容差内
-    [InlineData(1600, 900, 1920, 1041, false)]   // 普通窗口
-    [InlineData(2560, 1440, 1920, 1041, true)]   // 全屏（大于工作区也算大窗）
-    public void IsMaximized_ByViewportAgainstWorkArea(int w, int h, int sw, int sh, bool expected)
+    [InlineData(1, false, true)]    // 隐藏前最大化、唤回后非最大化 → 补一次
+    [InlineData(1, true, false)]    // 唤回后仍最大化（上游 show 保几何）→ 不动
+    [InlineData(0, false, false)]   // 隐藏前非最大化 → 不动
+    [InlineData(-1, false, false)]  // 采样未知 → 绝不动（行为退回修复前）
+    [InlineData(-1, true, false)]
+    public void ShouldRestore_MatchesContract(int maximizedAtHide, bool isNowMaximized, bool expected)
     {
-        Assert.Equal(expected, TrayWindowStateProbe.IsMaximized(w, h, sw, sh));
-    }
-
-    [Fact]
-    public void Parse_PlainJson_Works()
-    {
-        Assert.True(TrayWindowStateProbe.Parse("""{"w":1920,"h":1080,"sw":1920,"sh":1041}"""));
-        Assert.False(TrayWindowStateProbe.Parse("""{"w":800,"h":600,"sw":1920,"sh":1041}"""));
-    }
-
-    [Fact]
-    public void Parse_QuotedWrapper_UnwrapsAndParses()
-    {
-        var wrapped = System.Text.Json.JsonSerializer.Serialize("""{"w":1920,"h":1080,"sw":1920,"sh":1041}""");
-        Assert.True(TrayWindowStateProbe.Parse(wrapped));
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("not-json")]
-    [InlineData("""{"w":"x"}""")]
-    [InlineData("""[]""")]
-    public void Parse_InvalidInput_ReturnsNull(string? raw)
-    {
-        Assert.Null(TrayWindowStateProbe.Parse(raw));
+        Assert.Equal(expected, TrayRecallMaximize.ShouldRestore(maximizedAtHide, isNowMaximized));
     }
 }

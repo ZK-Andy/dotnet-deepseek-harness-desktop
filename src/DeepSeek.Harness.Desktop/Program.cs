@@ -168,10 +168,10 @@ public static class Program
         var trayAvailable = File.Exists(iconPath);
 
         // hide-to-tray 唤回的最大化保持（ADR tray-recall-maximize-and-check-feedback）：
-        // 上游 ShowAsync 不保留最大化（0.3.2 实机复验仍复现），且 IRynWindow 无状态查询属性——
-        // 以页面视口探测为查询通道（outer 对比 screen.avail，见 TrayWindowStateProbe）：
-        // 隐藏前采样，唤回后探测确认仍非最大化才补一次 ToggleMaximize。
-        // -1=未知（探测不可用，唤回不动作，行为退回修复前）；全屏属大窗同样命中。
+        // 上游 ShowAsync 不保留最大化（0.3.2 实机复验仍复现）。Ryn 0.30.4 起暴露原生
+        // IRynWindow.IsMaximized（MAXIMIZE 事件镜像 + 启动期原生同步），数据源由页面
+        // 视口探测切换为该属性：隐藏前采样，唤回后确认仍非最大化才补一次 ToggleMaximize。
+        // -1=未知（采样异常，唤回不动作，行为退回修复前）。
         var maximizedAtHide = -1;
 
         var app = RynApplication.CreateBuilder()
@@ -238,38 +238,14 @@ public static class Program
                     async Task RecallAsync()
                     {
                         await trayWindow.ShowAsync().AsTask();
-                        if (Volatile.Read(ref maximizedAtHide) != 1)
+                        // 延迟一拍再读原生状态：给 WM 的 unmap/remap 与可能迟到的 MAXIMIZE
+                        // 事件留窗口，避免与其状态重放竞态（native 查询本身无需等页面几何
+                        // 落地；亚秒级等待不接监督器取消令牌）。
+                        await Task.Delay(300);
+                        if (Services.Tray.TrayRecallMaximize.ShouldRestore(
+                                Volatile.Read(ref maximizedAtHide), trayWindow.IsMaximized))
                         {
-                            return;
-                        }
-
-                        // WM 落地 unmap/remap 的几何需要时间：探测确认仍非最大化才补一次
-                        // toggle——单次补正不横跳；若上游将来修复 show 保几何，探测读到已
-                        // 最大化会自动跳过。连续探测不可用则放弃（行为退回修复前）。
-                        // 时序上限 ~1s，不接监督器取消令牌：唤回末尾的亚秒级等待无需取消语义。
-                        for (var attempt = 0; attempt < 5; attempt++)
-                        {
-                            try
-                            {
-                                await Task.Delay(200);
-                            }
-                            catch
-                            {
-                                return;
-                            }
-
-                            var now = await ProbeMaximizedAsync(trayWindow);
-                            if (now is null)
-                            {
-                                continue;
-                            }
-
-                            if (now == false)
-                            {
-                                trayWindow.ToggleMaximize();
-                            }
-
-                            return;
+                            trayWindow.ToggleMaximize();
                         }
                     }
 
@@ -737,12 +713,14 @@ public static class Program
         {
             try
             {
-                maximizedAtHide = await ProbeMaximizedAsync(window) == true ? 1 : 0;
+                // Ryn 0.30.4 起的原生查询（IRynWindow.IsMaximized）：替代已删除的页面视口探测
+                maximizedAtHide = window.IsMaximized ? 1 : 0;
             }
-            catch
+            catch (Exception ex)
             {
-                // 探测失败按未知处理：唤回路径对未知不动作，行为退回修复前
+                // deferred 代理在窗口未就绪时可能抛出：按未知处理，唤回路径对未知不动作
                 maximizedAtHide = -1;
+                Services.HostLog.Write($"[tray] 最大化采样失败：{ex.Message}");
             }
 
             try
@@ -752,20 +730,6 @@ public static class Program
             catch (Exception ex)
             {
                 Services.HostLog.Write($"[tray] 隐藏窗口失败：{ex.Message}");
-            }
-        }
-
-        /// <summary>页面视口探测窗口是否大窗（最大化/全屏）：增强信息，任何异常都按未知处理。</summary>
-        static async Task<bool?> ProbeMaximizedAsync(IRynWindow window)
-        {
-            try
-            {
-                var raw = await window.EvaluateJavaScriptAsync(Services.Tray.TrayWindowStateProbe.Script);
-                return Services.Tray.TrayWindowStateProbe.Parse(raw);
-            }
-            catch
-            {
-                return null;
             }
         }
 
