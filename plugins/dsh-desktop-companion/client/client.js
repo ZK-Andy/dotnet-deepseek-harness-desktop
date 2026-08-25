@@ -165,7 +165,7 @@
               // 第二个参数必须传（空对象即可）：空参数体的 invoke 在宿主分发层会 500
               window.__ryn.invoke('desktop.update.getState', {}).then(function (s) {
                 var parsed = parseFrame(s)
-                if (parsed && parsed.status === 'ready') setState(parsed)
+                if (parsed && (parsed.status === 'ready' || parsed.status === 'installing')) setState(parsed)
               }).catch(function (e3) { console.warn(TAG, 'getState failed', e3 && e3.message) })
               return function () { document.removeEventListener('dsh-desktop-update', onEvt) }
             }, [])
