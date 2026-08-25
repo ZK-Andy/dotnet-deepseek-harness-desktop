@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-1. **设置页整体切换 opencode settings-v2 形态**（源码对照 `anomalyco/opencode` `packages/app/src/components/settings-v2/`）：分组标题 + 圆角列表容器（inset 半像素描边）+ 「标题/描述居左、控件居右」行。全部动作按钮统一为 **ButtonV2 neutral 克隆**（28px 高 / 11px 内边距 / 6px 圆角 / 13px·w530）；布尔项统一为 **Switch 克隆**（28×16 轨道 + 14×14 滑块，checked 走 success-primary 令牌）。检查更新按 opencode 同款独立成行，按钮标签随状态机切换（立即检查→检查中…→下载中…→安装并重启→安装中…），ready 态安装入口并入该按钮、不再单设主按钮。
+1. **设置页整体切换原生 settings 区块形态**（结构参照 `anomalyco/opencode` settings-v2 的行式布局；视觉令牌对齐 dsh 原生 `settings-plugins/general` 页——规格自真实 DOM 的内联主题样式中提取）：分组标题 16px/600·lh1.5（首版 line-height:1 曾致 CJK 标题视觉截断）；卡片 = `bg-layer-3` 底 + 1px `border-l2` 描边 + 12px 圆角；行内「标题(13px/500)/描述(label-tertiary 12px) 居左、控件居右」，行间 border-l2 分隔。按钮为原生 save/discard 两态（主=反色填充，次=描边幽灵）；检查更新独立成行、标签随状态机切换（立即检查→检查中…→下载中…→安装并重启→安装中…），ready 态安装入口并入该按钮。布尔项为 Switch 克隆（28×16 轨道 + 14×14 滑块，checked 走 success-primary）。修正版以 headless Chrome + 真实主题令牌确定性验证：25 节点零截断、计算样式逐项命中、双跑字节级一致。
 2. **新增「关闭时最小化到托盘」开关行**（文案按用户拍板原文）：宿主新增 `CloseBehaviorPreference`（持久化 `<DSH_HOME>/desktop-preferences.json`）+ `desktop.closeToTray.getState/set` 路由（帧含 `available` 标记托盘就绪与否，无托盘环境客户端禁用开关）。`Closing` 回调裁决改为：闸门放行通道优先，其次偏好为真才取消关窗转隐藏。
 
 ## Alternatives considered
@@ -20,8 +20,8 @@ Status: implemented
 
 ## Consequences
 
-- companion version bump **0.0.12**（版本感知升级约定），随下版发版生效。
-- 按钮中性底色采用半透明灰而非主题实色令牌：dsh 未暴露完整 v2 背景/描边令牌面，半透明方案深浅主题均成立；后续 dsh 补齐令牌可一行切换。
+- companion version bump **0.0.13**（版本感知升级约定），随下版发版生效。
+- 视觉令牌直接消费宿主运行时注入的 `--dsw-alias-*` 主题变量（theme 插件按用户主题注入），深浅色自动跟随；迷你宿主验证须先注入 theme 块否则变量悬空。
 - ready 态安装入口从独立主按钮并入检查更新按钮：侧栏圆形更新钮不受影响，两条安装入口并存如前。
 - 测试 252/252（+8：偏好持久化 4 例、路由契约 4 例）；client.js `node --check` 过。
 

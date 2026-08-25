@@ -138,40 +138,43 @@
             'border:2px solid var(--dsw-alias-state-success-primary,#22c55e);' +
             'animation:ddc-rot 1s linear infinite}' +
             '@keyframes ddc-rot{to{transform:rotate(360deg)}}' +
-            // 设置页视觉（opencode settings-v2 同款）：分组标题 + 圆角列表容器 +
-            // 「标题/描述 左、控件 右」行；按钮为 ButtonV2 neutral 克隆，开关为 Switch 克隆。
-            // 半透明中性色不依赖主题令牌，深浅色主题下均成立。
-            '.ddc-page{max-width:520px;display:flex;flex-direction:column;gap:26px}' +
+            // 设置页视觉对齐原生设置区块（settings-plugins/general 的 token 规格）：
+            // 分组标题 16px/600；卡片 = bg-layer-3 底 + border-l2 描边 + 12px 圆角；
+            // 行内「标题/描述 左、控件 右」，行间以 border-l2 分隔；按钮为原生
+            // save/discard 两态（主=反色填充，次=描边幽灵）；开关为 28×16 克隆。
+            '.ddc-page{max-width:760px;display:flex;flex-direction:column;gap:12px;' +
+            'color:var(--dsw-alias-label-primary)}' +
             '.ddc-group{display:flex;flex-direction:column;gap:10px}' +
-            '.ddc-gtitle{font-size:15px;font-weight:640;line-height:1}' +
-            '.ddc-list{border-radius:8px;background:rgba(127,127,127,.05);' +
-            'box-shadow:inset 0 0 0 0.5px rgba(127,127,127,.25);padding:0 16px}' +
-            '.ddc-row2{display:flex;align-items:center;gap:16px;padding:14px 0;' +
-            'border-bottom:0.5px solid rgba(127,127,127,.18)}' +
-            '.ddc-row2:last-child{border-bottom:none}' +
-            '.ddc-copy{flex:1;display:flex;flex-direction:column;gap:7px;min-width:0}' +
-            '.ddc-title{font-size:13px;font-weight:530;line-height:1}' +
-            '.ddc-desc{font-size:12.5px;font-weight:440;line-height:19px;opacity:.62}' +
-            '.ddc-ctl{display:flex;justify-content:flex-end}' +
-            '.ddc-err{color:#ef4444;color:var(--dsw-alias-state-danger-primary,#ef4444)}' +
-            '.ovn-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;' +
-            'height:28px;padding:0 11px;border-radius:6px;border:none;font-style:normal;' +
-            'font-weight:530;font-size:13px;line-height:20px;color:inherit;' +
-            'background:rgba(127,127,127,.14);cursor:pointer;user-select:none;' +
-            'font-variant-numeric:tabular-nums;transition:background .15s ease}' +
-            '.ovn-btn:hover:not(:disabled){background:rgba(127,127,127,.22)}' +
-            '.ovn-btn:active:not(:disabled){background:rgba(127,127,127,.3)}' +
-            '.ovn-btn:disabled{opacity:.5;cursor:not-allowed}' +
+            '.ddc-gtitle{margin:0;font-size:16px;font-weight:600;line-height:1.5}' +
+            '.ddc-list{border:1px solid var(--dsw-alias-border-l2);' +
+            'background:var(--dsw-alias-bg-layer-3);border-radius:12px;padding:4px 16px}' +
+            '.ddc-row2{display:flex;align-items:center;gap:12px;padding:12px 0}' +
+            '.ddc-row2 + .ddc-row2{border-top:1px solid var(--dsw-alias-border-l2)}' +
+            '.ddc-copy{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}' +
+            '.ddc-title{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500;line-height:1.5}' +
+            '.ddc-desc{color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:400;line-height:1.5;margin:0}' +
+            '.ddc-ctl{display:flex;justify-content:flex-end;align-items:center;gap:8px;flex:none}' +
+            '.ddc-err{color:#ef4444;color:var(--dsw-alias-state-error-primary,#ef4444)}' +
+            '.ovn-btn{appearance:none;font:inherit;cursor:pointer;border:1px solid transparent;' +
+            'border-radius:8px;padding:5px 14px;font-size:13px;line-height:1.5;' +
+            'background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3);' +
+            'transition:filter .15s ease}' +
+            '.ovn-btn:hover:not(:disabled){filter:brightness(1.08)}' +
+            '.ovn-btn:disabled{opacity:.4;cursor:default}' +
+            '.ovn-btn--ghost{background:transparent;border-color:var(--dsw-alias-border-l2);' +
+            'color:var(--dsw-alias-label-secondary)}' +
+            '.ovn-btn--ghost:hover:not(:disabled){color:var(--dsw-alias-label-primary);' +
+            'border-color:var(--dsw-alias-label-dimmed);filter:none}' +
             '.ddc-sw{position:relative;width:28px;height:16px;flex:none;border-radius:3px;' +
-            'border:1px solid rgba(127,127,127,.45);background:transparent;cursor:pointer;' +
+            'border:1px solid var(--dsw-alias-border-l2);background:transparent;cursor:pointer;' +
             'padding:0;transition:background .15s,border-color .15s}' +
-            '.ddc-sw:hover:not(:disabled){border-color:rgba(127,127,127,.75)}' +
+            '.ddc-sw:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed)}' +
             '.ddc-sw[aria-checked="true"]{border-color:transparent;' +
             'background:#22c55e;background:var(--dsw-alias-state-success-primary,#22c55e)}' +
-            '.ddc-sw[disabled]{opacity:.5;cursor:not-allowed}' +
+            '.ddc-sw[disabled]{opacity:.4;cursor:default}' +
             '.ddc-sw i{position:absolute;top:50%;left:1px;width:14px;height:14px;margin-top:-7px;' +
-            'border-radius:2px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);' +
-            'transform:translateX(0);transition:transform .15s}' +
+            'border-radius:2px;background:var(--dsw-alias-bg-base,#fff);' +
+            'box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translateX(0);transition:transform .15s}' +
             '.ddc-sw[aria-checked="true"] i{transform:translateX(11px)}'
           if (!document.getElementById(style.id)) document.head.append(style)
 
@@ -326,7 +329,8 @@
                     h('div', { className: 'ddc-desc' }, STR.checkDesc)),
                   h('div', { className: 'ddc-ctl' },
                     h('button', {
-                      className: 'ovn-btn',
+                      // 原生 save/discard 两态：ready=主按钮（安装入口），其余=描边幽灵
+                      className: state.status === 'ready' ? 'ovn-btn' : 'ovn-btn ovn-btn--ghost',
                       type: 'button',
                       disabled: busy,
                       onClick: function () {
@@ -364,7 +368,7 @@
                         : h('div', { className: 'ddc-desc ddc-err' }, DIAG.fail + '：' + result.error)),
                   h('div', { className: 'ddc-ctl' },
                     h('button', {
-                      className: 'ovn-btn',
+                      className: 'ovn-btn ovn-btn--ghost',
                       type: 'button',
                       disabled: !!result,
                       onClick: function () {
