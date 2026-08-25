@@ -42,7 +42,7 @@
   1. `BundledPluginCatalog.AssemblePending` 清单逐项组装待装清单：未装即装；已装则 `PluginVersionCheck` 比对随包 tgz 内 `package/package.json` 的 version 与 profile `node_modules` 副本 version，闭包更新即入列（改清单内插件必须 bump version，否则不触发；spec 缺失、解析器异常或脏版本串按单插件记日志跳过；见 ADR `implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog`）。
   1b. 清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`。
   2. `EnsureWorkspaceAllowBuilds` 把 `pnpm-workspace.yaml` 的 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）置 `true`。
-  3. spec 解析：市场走 `ResolveMarketSpec`（`resources/runtime/dshmarket.tgz >10K` → 目录 → `dshmarket@1.15.0`）；伴生走 `ResolveCompanionSpec`（tgz `>1K` → 闭包目录 → 无即跳过，无 registry 回退）。
+  3. spec 解析：市场走 `ResolveMarketSpec`（`resources/runtime/dshmarket.tgz >10K` → 目录 → `dshmarket@<tgz 版本>`）；伴生走 `ResolveCompanionSpec`（tgz `>1K` → 闭包目录 → 无即跳过，无 registry 回退）。
   4. 单次 spawn `bundled node dsh/lib/bin.js plugin --profile desktop add <spec…>` 多包安装（注入 `DSH_HOME/.pnpm-store`），`exit 0` 后对每项 `EnsureBundlesContainsAsync(pkg)` 兜底，并补回桌面必需 bundle（`dsh-base`/`dsh-web-app`）。
   5. `EvaluateRecovery + host.Stop()` 交 `RuntimeSupervisor` 重启并导航新 `URL`。
 * `dsh` 的 `reconcilePlugins` 在 `plugin add` 后自动把包名追加到 `dsh.profile.bundles`（`pilot-harness` 同款）。
@@ -62,8 +62,8 @@
 
 ## 打包
 
-* `scripts/bundle-runtime-ci.sh`：下载 `Node 22.23.1`（`linux-x64/arm64`, `win-x64`, `osx-x64/arm64`）+ `pnpm add @deepseek-ai/dsh@${DSH_VERSION:-0.1.1-rc.2} --allow-build=*` + `dshmarket@1.15.0 --allow-build=esbuild`（`--store-dir $PNPM_STORE_DIR`，默认 `$HOME/.dsh-pnpm/store`，CI 由 `actions/cache` 跨 run 持久化缓存，命中免重下包/重编原生模块），`curl` 官方 `497K` `dshmarket.tgz`（`>10K/name` 双校验）+ 仓库源码 staging tar 出 `dsh-desktop-companion.tgz`（package/ 前缀，源码缺失 fail loud）→ `cp -a node_modules/. resources/runtime/node_modules/`，`60s` 抓 `dsh web:` 自检。
-* `scripts/package-linux.sh`：`dotnet publish -r linux-x64`（arm64 停发——上游 Ryn 无 linux-arm64 原生库，装上起不来；恢复条件与探测位见验证链 ADR） → `staging` 校验 `node + dsh/lib/bin.js + dshmarket.tgz 497K` → `deb (Depends: libwebkitgtk-6.0-4, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4, BuildArch x86_64/aarch64)`。
+* `scripts/bundle-runtime-ci.sh`：下载 `Node 24.19.0 LTS`（`linux-x64/arm64`, `win-x64`, `osx-x64/arm64`）+ `pnpm add @deepseek-ai/dsh@${DSH_VERSION:-0.1.1-rc.2} --allow-build=*` + `dshmarket@1.29.2 --allow-build=esbuild`（`--store-dir $PNPM_STORE_DIR`，默认 `$HOME/.dsh-pnpm/store`，CI 由 `actions/cache` 跨 run 持久化缓存，命中免重下包/重编原生模块），`curl` 官方 `dshmarket.tgz`（`>10K/name` 双校验）+ 仓库源码 staging tar 出 `dsh-desktop-companion.tgz`（package/ 前缀，源码缺失 fail loud）→ `cp -a node_modules/. resources/runtime/node_modules/`，`60s` 抓 `dsh web:` 自检。
+* `scripts/package-linux.sh`：`dotnet publish -r linux-x64|linux-arm64`（arm64 自 Ryn.Interop 0.30.4 供给 linux-arm64 native 起恢复发布，2026-08-25）→ `staging` 校验 `node + dsh/lib/bin.js + dshmarket.tgz` → `deb (Depends: libwebkitgtk-6.0-4, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4, BuildArch x86_64/aarch64)`。
 * `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → 单一安装产物：mac `dmg`（`hdiutil`，含 `.app`）/ win `exe` 安装器（`Inno Setup`/`NSIS`/`7z SFX`，`…-setup.exe`），文件名含 `…_macos-*/…_windows-*` 标识，签名占位（`codesign`/`signtool` 待证书）。**不单独产出便携 zip**（避免对 ~1.5GB 闭包重复压缩，对齐 pilot-harness 每平台单产物的思路）。
 * `resources/runtime` 含整树 `node_modules` + `node(.exe)` + `dshmarket.tgz` + `dsh-desktop-companion.tgz`，随 `usr/lib`/`Contents/Resources`/`stage` 进包；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。
 
