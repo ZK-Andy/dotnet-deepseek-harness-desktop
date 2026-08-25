@@ -26,7 +26,10 @@ jobs:
   build-linux:
     # arm64 于 2026-08-25 恢复：Ryn.Interop 0.30.4 起供给 runtimes/linux-arm64/native
     # （2026-08-24 曾因缺原生库停发，恢复依据见 ADR artifact-verification-chain）。
+    # fail-fast=false：两腿是独立平台，一腿失败不连坐另一腿（首跑 arm64 rpm 冒烟
+    # 抓到 EOL F41 缺 webkitgtk6.0 时，x64 的对照证据被取消掩埋——教训）。
     strategy:
+      fail-fast: false
       matrix:
         include:
           - arch: amd64

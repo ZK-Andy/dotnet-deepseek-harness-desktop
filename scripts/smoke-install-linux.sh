@@ -71,7 +71,7 @@ smoke_rpm_container() {
     -v "$PKG_DIR:/pkg:ro" \
     -e SMOKE_PKG_NAME="$base" \
     -e SMOKE_APP_BIN="$APP_BIN" \
-    fedora:41 bash -s <<'INNER'
+    fedora:44 bash -s <<'INNER'
 # 刻意不带 -e：dnf 失败走显式分支打印包安装诊断，而非无声退出
 set -uo pipefail
 log=/tmp/smoke.log
