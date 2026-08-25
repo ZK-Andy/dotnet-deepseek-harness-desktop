@@ -26,6 +26,9 @@ All included: a resident tray icon (menu: Show window / Check for updates / Quit
 **Q: Update failed or the update button shows an error?**
 Packages are SHA256-verified; failed verification refuses to install (by design). Re-download the latest installer from Releases and install over — user data is untouched.
 
+**Q: I attached my own MCP server (stdio) to the desktop app, but its tools never show up?**
+Tools not appearing means the connection failed — the current version gives no feedback on MCP connection failures. Check two things first: a stdio `command` must be an **absolute path** (apps launched from the desktop icon cannot see user directories like `~/.local/bin` that your terminal has); a command working in your terminal does not mean it resolves in the GUI session.
+
 **Q: Missing Linux dependencies?**
 The deb/rpm declare their runtime dependencies (WebKitGTK etc.); install through your package manager rather than extracting manually.
 
