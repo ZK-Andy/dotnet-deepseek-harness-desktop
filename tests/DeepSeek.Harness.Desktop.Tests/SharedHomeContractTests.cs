@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 
 /// <summary>
 /// 共享 home 契约（ADR shared-home-desktop-profile）：home 解析优先级、上游规范默认值，
-/// 以及「端口/日志等状态居 home 根、profile 目录只承载插件装配」的布局契约防回归。
+/// 以及「日志/updates 居 home 根、端口记忆按 profile 隔离」的布局契约防回归。
 /// 与 HarnessRuntimeHostTests 同集合串行（两者都改写进程级 DSH_HOME 覆盖变量）。
 /// </summary>
 [Collection("dsh-home-env")]
@@ -66,17 +66,21 @@ public class SharedHomeContractTests
     }
 
     [Fact]
-    public void HomeLevelState_StaysAtHomeRoot_NotUnderDesktopProfile()
+    public void PortMemory_LivesUnderDesktopProfile_LegacyPathKeptForMigrationRead()
     {
-        // 布局契约防回归：端口状态文件（及日志、updates 同理）必须居 home 根——
-        // home 层数据跨 profile 共享是共享 home 形态的前提；挪进 profiles/desktop 即破契约
+        // 布局契约（v0.3.5 实机事故修正）：端口记忆按 profile 隔离——桌面端与 web 会话
+        // 共享 home，home 根的全局记忆曾让两类实例互抢端口（恢复屏循环直至重启电脑）。
+        // 旧位置保留仅作迁移回读路径，不再写入。
         var home = TempDir("dsh-contract-root-");
         SetEnv(home, null);
         try
         {
             Assert.Equal(
-                Path.Combine(home, ".dsh-web-port"),
+                Path.Combine(home, "profiles", "desktop", ".dsh-web-port"),
                 HarnessRuntimeHost.ResolvePortFilePath());
+            Assert.Equal(
+                Path.Combine(home, ".dsh-web-port"),
+                HarnessRuntimeHost.ResolveLegacyPortFilePath());
         }
         finally
         {

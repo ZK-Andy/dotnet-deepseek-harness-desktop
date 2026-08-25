@@ -42,16 +42,33 @@ public sealed class HarnessRuntimeHost : IDisposable
 
     private const string PortFileName = ".dsh-web-port";
 
-    /// <summary>端口状态文件路径（落于 DSH_HOME 根——home 层跨 profile 共享，不进 profiles/&lt;name&gt;）。</summary>
-    internal static string ResolvePortFilePath() => Path.Combine(ResolveDshHome(), PortFileName);
+    /// <summary>端口状态文件路径（落于当前 profile 目录）。桌面端与 web 会话共享同一 DSH_HOME，
+    /// home 根的全局端口记忆会让两类 dsh 实例互相抢占端口——v0.3.5 实机事故：自更新拉起后
+    /// 与 web 会话在同一端口互顶，恢复屏循环直至用户重启电脑。按 profile 隔离后各记各的端口。</summary>
+    internal static string ResolvePortFilePath() =>
+        Path.Combine(ResolveDshHome(), "profiles", DesktopProfileName, PortFileName);
+
+    /// <summary>旧版端口记忆位置（home 根）：仅作迁移回读，不再写入。</summary>
+    internal static string ResolveLegacyPortFilePath() => Path.Combine(ResolveDshHome(), PortFileName);
 
     /// <summary>读取上次成功端口：跨 App 冷启动复用同端口 → WebView origin 不变 → dsh Web 端"当前会话"localStorage
-    /// （<c>dsh.sessions.current</c>，按 origin 隔离）仍命中 → 恢复上次会话。文件缺失/损坏/不可读 → null（回退 OS 分配）。</summary>
+    /// （<c>dsh.sessions.current</c>，按 origin 隔离）仍命中 → 恢复上次会话。新位置缺失时回读旧版 home 根文件
+    /// （存量升级零感知）；两处均缺失/损坏/不可读 → null（回退 OS 分配）。</summary>
     internal static int? TryLoadPersistedPort()
+    {
+        var port = TryReadPortFile(ResolvePortFilePath());
+        if (port is null && !File.Exists(ResolvePortFilePath()))
+        {
+            port = TryReadPortFile(ResolveLegacyPortFilePath());
+        }
+
+        return port;
+    }
+
+    private static int? TryReadPortFile(string path)
     {
         try
         {
-            var path = ResolvePortFilePath();
             if (!File.Exists(path))
             {
                 return null;
@@ -68,13 +85,20 @@ public sealed class HarnessRuntimeHost : IDisposable
         }
     }
 
-    /// <summary>持久化最近一次成功端口（尽力而为；写失败仅导致下次冷启动换端口→新会话，不阻断本次运行，故不 fail loud）。</summary>
+    /// <summary>持久化最近一次成功端口（尽力而为；写失败仅导致下次冷启动换端口→新会话，不阻断本次运行，故不 fail loud）。
+    /// 只写当前 profile 路径——绝不回写旧版 home 根文件，避免跨 profile 争抢延续。</summary>
     internal static void PersistPort(int port)
     {
         try
         {
-            Directory.CreateDirectory(ResolveDshHome());
-            File.WriteAllText(ResolvePortFilePath(), port.ToString());
+            var path = ResolvePortFilePath();
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            File.WriteAllText(path, port.ToString());
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

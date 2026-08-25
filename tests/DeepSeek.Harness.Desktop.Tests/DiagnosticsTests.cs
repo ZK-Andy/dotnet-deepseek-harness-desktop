@@ -17,7 +17,8 @@ public class DiagnosticsExporterTests
         {
             // home 内同时布置「应收录」与「必须排除」的文件
             WriteFile(home, "logs/host.log", "host log line");
-            WriteFile(home, ".dsh-web-port", "4242");
+            WriteFile(home, "profiles/desktop/.dsh-web-port", "4242");
+            WriteFile(home, ".dsh-web-port", "1111");
             WriteFile(home, ".credentials.yaml", "SECRET-CREDENTIALS");
             WriteFile(home, "sessions/session.json", "SECRET-SESSION");
             WriteFile(home, "profiles/desktop/package.json", "{}");
@@ -51,7 +52,8 @@ public class DiagnosticsExporterTests
 
             // 可选缺失文件（.old / marker）不出现也不报错
             Assert.DoesNotContain("logs/host.log.old", names);
-            Assert.Equal(3, result.Included.Count);
+            Assert.Contains("state/web-port-legacy.txt", names);
+            Assert.Equal(4, result.Included.Count);
         }
         finally
         {

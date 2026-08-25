@@ -16,7 +16,8 @@ public static class DiagnosticsExporter
     {
         ("logs/host.log", "logs/host.log"),
         ("logs/host.log.old", "logs/host.log.old"),
-        (".dsh-web-port", "state/web-port.txt"),
+        ("profiles/desktop/.dsh-web-port", "state/web-port.txt"),
+        (".dsh-web-port", "state/web-port-legacy.txt"),
         ("logs/run-marker.json", "state/run-marker.json"),
     };
 

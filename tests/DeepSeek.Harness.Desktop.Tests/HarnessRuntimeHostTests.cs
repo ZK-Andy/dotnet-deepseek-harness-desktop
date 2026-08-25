@@ -165,13 +165,73 @@ public class HarnessRuntimeHostTests
     }
 
     [Fact]
+    public void LegacyHomeRootFile_UsedWhenProfileFileMissing()
+    {
+        // 迁移回读：0.3.5 及之前把端口记忆写在 home 根；升级后首次启动应零感知沿用
+        var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(home, "profiles", "desktop"));
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
+        try
+        {
+            File.WriteAllText(HarnessRuntimeHost.ResolveLegacyPortFilePath(), "46777");
+            Assert.Equal(46777, HarnessRuntimeHost.TryLoadPersistedPort());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
+            if (Directory.Exists(home)) Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Persist_WritesProfilePathOnly_LegacyFileUntouched()
+    {
+        // 写入绝不回流旧位置：跨 profile 争抢不能借尸还魂
+        var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(home);
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
+        try
+        {
+            File.WriteAllText(HarnessRuntimeHost.ResolveLegacyPortFilePath(), "1111");
+            HarnessRuntimeHost.PersistPort(4242);
+
+            Assert.Equal("4242", File.ReadAllText(HarnessRuntimeHost.ResolvePortFilePath()));
+            Assert.Equal("1111", File.ReadAllText(HarnessRuntimeHost.ResolveLegacyPortFilePath()));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
+            if (Directory.Exists(home)) Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ProfileFile_MissingButLegacyCorrupt_ReturnsNull()
+    {
+        // 旧文件损坏同样按无记忆处理，不得抛出阻断启动
+        var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(home);
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
+        try
+        {
+            File.WriteAllText(HarnessRuntimeHost.ResolveLegacyPortFilePath(), "not-a-number");
+            Assert.Null(HarnessRuntimeHost.TryLoadPersistedPort());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
+            if (Directory.Exists(home)) Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
     public void TryLoadPersistedPort_CorruptFile_ReturnsNull()
     {
         var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         try
         {
-            Directory.CreateDirectory(home);
+            Directory.CreateDirectory(Path.Combine(home, "profiles", "desktop"));
             File.WriteAllText(HarnessRuntimeHost.ResolvePortFilePath(), "not-a-number");
             Assert.Null(HarnessRuntimeHost.TryLoadPersistedPort());
 
