@@ -10,10 +10,8 @@
 |---|---|
 | Windows 10/11 x64 | `..._windows-x64-setup.exe` |
 | macOS Apple Silicon / Intel | `..._macos-arm64.dmg` / `..._macos-x64.dmg` |
-| Debian/Ubuntu x64 | `..._linux-amd64.deb` |
-| Fedora/RHEL x86_64 | `..._linux-x86_64.rpm` |
-
-> Linux arm64 暂不提供（上游原生库缺供给，装上也起不来）；恢复后此表更新。
+| Debian/Ubuntu x64 / arm64 | `..._linux-amd64.deb` / `..._linux-arm64.deb` |
+| Fedora/RHEL x86_64 / aarch64 | `..._linux-x86_64.rpm` / `..._linux-aarch64.rpm` |
 
 **无需安装 Node.js 或命令行工具**——应用内置完整的 DeepSeek Harness 运行时，下载即用。
 

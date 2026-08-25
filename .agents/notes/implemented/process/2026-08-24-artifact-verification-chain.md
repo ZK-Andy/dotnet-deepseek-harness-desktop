@@ -28,5 +28,6 @@ Status: implemented
 - preflight 50MB 体积下限是经验值：若未来瘦身后正常包逼近下限会造成误杀，届时随瘦身同 PR 调整（坑位已记入 release-flow 卡）。
 - 闭包缓存命中路径不重跑图校验：签名未变即内容未变，上次构建时已校验；签名变更触发全量重建时校验随之重跑。
 - Linux 平台 job 预计增加约 3 分钟（apt/dnf 安装 WebKitGTK 依赖 + 90s 冒烟窗口）；mac/win 断言为秒级。
-- **验证链首战战果（落地当日 CI 实测）**：①**linux-arm64 发布包 GUI 壳必崩**——上游 Ryn.Interop 无 linux-arm64 原生库（最新 v0.30.2 仍无），node/dsh 部分正常而壳 Run 即 DllNotFound；安装冒烟当场抓获，拍板停发 arm64：matrix 移除 + preflight 矩阵同步移除两行 + x64 job 加 nuget 供给探测位（上游供给出现即 ::warning 提醒恢复）。②**Windows 闭包拷贝断裂**——`cp -Lr` 对 junction 的解引用把入口变成孤立真目录，破坏 Node「从真实位置向上解析」所依赖的 `.pnpm` 兄弟上下文，图校验全图缺件拦截；修复 = Windows 分支改 `robocopy /E /SL` 保留链接结构（与 cp -a 语义对称），失败才回退解引用并由图校验把关。③冒烟判定串错位自纠：壳进程打印 `[host] dsh web =`（等号），冒号格式属 dsh 子进程自检输出——判定信号自此钉死等号格式。
+- **验证链首战战果（落地当日 CI 实测）**：①**linux-arm64 发布包 GUI 壳必崩**——上游 Ryn.Interop 无 linux-arm64 原生库（当时最新 v0.30.2 仍无），node/dsh 部分正常而壳 Run 即 DllNotFound；安装冒烟当场抓获，拍板停发 arm64：matrix 移除 + preflight 矩阵同步移除两行 + x64 job 加 nuget 供给探测位。②**Windows 闭包拷贝断裂**——`cp -Lr` 对 junction 的解引用把入口变成孤立真目录，破坏 Node「从真实位置向上解析」所依赖的 `.pnpm` 兄弟上下文，图校验全图缺件拦截；修复 = Windows 分支改 `robocopy /E /SL` 保留链接结构（与 cp -a 语义对称），失败才回退解引用并由图校验把关。③冒烟判定串错位自纠：壳进程打印 `[host] dsh web =`（等号），冒号格式属 dsh 子进程自检输出——判定信号自此钉死等号格式。
+- **arm64 已于 2026-08-25 恢复发布**：Ryn.Interop 0.30.4 起供给 `runtimes/linux-arm64/native`，matrix/preflight 两行补回、探测位完成使命删除——升级细节与决策见 [runtime-deps-upgrade-and-arm64-resume](2026-08-25-runtime-deps-upgrade-and-arm64-resume.md)。
 - 冒烟对「无 display 环境」的边界实证：GUI 壳在 runner 上走到 Run 后因 GTK/原生库失败退出属预期，URL 行先于窗口创建输出，判定不受影响；托盘初始化失败降级日志（关窗直退）同轮实证降级耦合生效。

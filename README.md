@@ -48,11 +48,9 @@
 
 | 平台 | 架构 | 包格式 |
 |---|---|---|
-| `Linux` | `x64` | `deb`（`…_linux-amd64.deb`）/ `rpm`（`…_linux-x86_64.rpm`） |
+| `Linux` | `x64` / `arm64` | `deb`（`…_linux-amd64.deb` / `…_linux-arm64.deb`）/ `rpm`（`…_linux-x86_64.rpm` / `…_linux-aarch64.rpm`） |
 | `macOS` | `arm64` / `x64` | `dmg` |
 | `Windows` | `x64` | `exe` 安装器（`…-setup.exe`） |
-
-> **Linux arm64 暂不提供**：GUI 壳依赖的原生库上游（Ryn）尚无 linux-arm64 供给，装上也起不来——与其发不能用的包不如不发；上游支持后恢复（验证链 ADR 有探测位自动提醒）。
 
 > **预览版提示**：项目处于早期预览阶段，可能存在破坏性变更（数据目录布局、配置格式、内置组件版本等），**不保证跨版本数据兼容**；升级前请自行备份重要会话与配置。
 >

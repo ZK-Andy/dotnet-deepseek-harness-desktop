@@ -43,11 +43,11 @@ check_pattern() { # $1=glob 模式 $2=描述
 
 echo "== 资产矩阵 =="
 # 矩阵单一来源：check_pattern 命中的文件记入 ALLOWED，意外资产扫描复用同一份清单
-# linux arm64 停发（2026-08-24 拍板，上游无原生库）；恢复时补回 *_linux-arm64.deb
-# 与 *_linux-aarch64.rpm 两行并同步 package-linux.yml matrix。
 ALLOWED=()
 check_pattern 'deepseek-harness-desktop_*_linux-amd64.deb' 'linux amd64 deb'
+check_pattern 'deepseek-harness-desktop_*_linux-arm64.deb' 'linux arm64 deb'
 check_pattern 'deepseek-harness-desktop-*_linux-x86_64.rpm' 'linux x86_64 rpm'
+check_pattern 'deepseek-harness-desktop-*_linux-aarch64.rpm' 'linux aarch64 rpm'
 check_pattern 'DeepSeek.Harness.Desktop_*_macos-arm64.dmg' 'macOS arm64 dmg'
 check_pattern 'DeepSeek.Harness.Desktop_*_macos-x64.dmg' 'macOS x64 dmg'
 check_pattern 'DeepSeek.Harness.Desktop_*_windows-x64-setup.exe' 'Windows x64 安装器'

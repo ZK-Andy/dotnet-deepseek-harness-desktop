@@ -48,11 +48,9 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 | Platform | Arch | Formats |
 |---|---|---|
-| `Linux` | `x64` | `deb` (`…_linux-amd64.deb`) / `rpm` (`…_linux-x86_64.rpm`) |
+| `Linux` | `x64` / `arm64` | `deb` (`…_linux-amd64.deb` / `…_linux-arm64.deb`) / `rpm` (`…_linux-x86_64.rpm` / `…_linux-aarch64.rpm`) |
 | `macOS` | `arm64` / `x64` | `dmg` |
 | `Windows` | `x64` | `exe` installer (`…-setup.exe`) |
-
-> **Linux arm64 not provided for now**: the native library the GUI shell needs has no upstream (Ryn) linux-arm64 build — the package would install but never start. Shipping a broken package helps nobody; this returns once upstream supplies it (the verification chain ADR carries an automated probe).
 
 > **Preview notice**: this project is in an early preview stage and may ship **breaking changes** (data directory layout, configuration format, bundled component versions). **Cross-version data compatibility is not guaranteed**; back up important sessions and configuration before upgrading.
 >
