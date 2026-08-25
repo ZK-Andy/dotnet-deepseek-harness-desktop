@@ -1,5 +1,3 @@
-using System.Formats.Tar;
-using System.IO.Compression;
 using DeepSeek.Harness.Desktop.Services;
 using Xunit;
 
@@ -8,23 +6,11 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>PluginVersionCheck 的边界与错误路径：tgz/目录/已装副本三种版本来源 + 升级判定。</summary>
 public class PluginVersionCheckTests
 {
-    /// <summary>内存构造 gzip+tar 包（与 bundle-runtime-ci.sh 的 `tar -czf … package` 结构一致）。</summary>
+    /// <summary>内存构造 gzip+tar 包：自命名临时路径，条目构造委托给共享 <see cref="TestTarGz"/>。</summary>
     private static string WriteTgz(params (string EntryName, string Content)[] entries)
     {
         var p = Path.Combine(Path.GetTempPath(), "pvc-" + Guid.NewGuid().ToString("N") + ".tgz");
-        using (var fs = File.Create(p))
-        using (var gz = new GZipStream(fs, CompressionMode.Compress))
-        using (var writer = new TarWriter(gz))
-        {
-            foreach (var (name, content) in entries)
-            {
-                var entry = new PaxTarEntry(TarEntryType.RegularFile, name);
-                var bytes = System.Text.Encoding.UTF8.GetBytes(content);
-                entry.DataStream = new MemoryStream(bytes);
-                writer.WriteEntry(entry);
-            }
-        }
-
+        TestTarGz.Write(p, entries);
         return p;
     }
 

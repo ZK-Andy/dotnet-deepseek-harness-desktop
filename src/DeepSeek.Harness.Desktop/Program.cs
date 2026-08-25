@@ -485,41 +485,10 @@ public static class Program
                         return;
                     }
 
-                    // 1) 精确检测未就位的随包插件（JSON 解析，非字符串包含）
-                    var pending = new List<(string Package, string Spec)>();
-                    if (!MarketInstallHelper.IsBundleInstalled(profilePkg, "dshmarket"))
-                    {
-                        pending.Add(("dshmarket", MarketInstallHelper.ResolveMarketSpec(runtimeDir)));
-                    }
-
-                    // 版本感知升级（ADR companion-plugin-version-aware-upgrade）：已装但随包版本更新时
-                    // 重装——插件仅随壳分发，壳自更新后的首次启动在这里把 profile 里的旧副本带上新版本。
-                    const string CompanionPkg = "dsh-desktop-companion";
-                    var companionSpec = MarketInstallHelper.ResolveCompanionSpec(runtimeDir);
-                    if (companionSpec is not null)
-                    {
-                        if (!MarketInstallHelper.IsBundleInstalled(profilePkg, CompanionPkg))
-                        {
-                            pending.Add((CompanionPkg, companionSpec));
-                        }
-                        else
-                        {
-                            try
-                            {
-                                var bundledV = PluginVersionCheck.ReadBundledVersion(companionSpec);
-                                var installedV = PluginVersionCheck.ReadInstalledVersion(profileDir, CompanionPkg);
-                                if (PluginVersionCheck.NeedsUpgrade(installedV, bundledV))
-                                {
-                                    HostLog.Write($"[host] 随包插件升级：{CompanionPkg} {installedV ?? "(不可读)"} → {bundledV}");
-                                    pending.Add((CompanionPkg, companionSpec));
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                HostLog.Write($"[host] {CompanionPkg} 版本比对失败，跳过升级检查：{ex.Message}");
-                            }
-                        }
-                    }
+                    // 1) 清单逐项检测随包插件待装项：未装即装、闭包版本更新即升
+                    // （ADR bundled-plugin-version-aware-catalog）。
+                    var pending = BundledPluginCatalog.AssemblePending(
+                        BundledPluginCatalog.All, runtimeDir, profilePkg, profileDir, HostLog.Write);
 
                     if (pending.Count == 0)
                     {
