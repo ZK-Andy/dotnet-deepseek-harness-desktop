@@ -138,21 +138,41 @@
             'border:2px solid var(--dsw-alias-state-success-primary,#22c55e);' +
             'animation:ddc-rot 1s linear infinite}' +
             '@keyframes ddc-rot{to{transform:rotate(360deg)}}' +
-            '.ddc-set{display:flex;flex-direction:column;gap:12px;padding:4px 0}' +
-            '.ddc-page{max-width:520px;display:flex;flex-direction:column;gap:24px}' +
-            '.ddc-set .ddc-cur,.ddc-set .ddc-status,.ddc-set .ddc-hint{font-size:13px;line-height:1.5}' +
-            '.ddc-set .ddc-cur{opacity:.72}' +
-            '.ddc-set .ddc-row{display:flex;align-items:center;gap:12px}' +
-            '.ddc-set .ddc-row .ddc-cur{flex:1 1 auto;min-width:0}' +
-            '.ddc-set .ddc-err{color:#ef4444;color:var(--dsw-alias-state-danger-primary,#ef4444)}' +
-            '.ddc-btn{height:30px;padding:0 14px;border-radius:8px;border:1px solid rgba(127,127,127,.35);' +
-            'background:transparent;color:inherit;cursor:pointer;font-size:13px;' +
-            'transition:background .15s ease,border-color .15s ease}' +
-            '.ddc-btn:hover:not(:disabled){background:rgba(127,127,127,.12);border-color:rgba(127,127,127,.55)}' +
-            '.ddc-btn:disabled{opacity:.55;cursor:default}' +
-            '.ddc-btn-primary{background:#22c55e;background:var(--dsw-alias-state-success-primary,#22c55e);' +
-            'border-color:transparent;color:#e6fff2;color:var(--dsw-alias-state-success-tertiary,#e6fff2)}' +
-            '.ddc-btn-primary:hover:not(:disabled){filter:brightness(1.05)}'
+            // 设置页视觉（opencode settings-v2 同款）：分组标题 + 圆角列表容器 +
+            // 「标题/描述 左、控件 右」行；按钮为 ButtonV2 neutral 克隆，开关为 Switch 克隆。
+            // 半透明中性色不依赖主题令牌，深浅色主题下均成立。
+            '.ddc-page{max-width:520px;display:flex;flex-direction:column;gap:26px}' +
+            '.ddc-group{display:flex;flex-direction:column;gap:10px}' +
+            '.ddc-gtitle{font-size:15px;font-weight:640;line-height:1}' +
+            '.ddc-list{border-radius:8px;background:rgba(127,127,127,.05);' +
+            'box-shadow:inset 0 0 0 0.5px rgba(127,127,127,.25);padding:0 16px}' +
+            '.ddc-row2{display:flex;align-items:center;gap:16px;padding:14px 0;' +
+            'border-bottom:0.5px solid rgba(127,127,127,.18)}' +
+            '.ddc-row2:last-child{border-bottom:none}' +
+            '.ddc-copy{flex:1;display:flex;flex-direction:column;gap:7px;min-width:0}' +
+            '.ddc-title{font-size:13px;font-weight:530;line-height:1}' +
+            '.ddc-desc{font-size:12.5px;font-weight:440;line-height:19px;opacity:.62}' +
+            '.ddc-ctl{display:flex;justify-content:flex-end}' +
+            '.ddc-err{color:#ef4444;color:var(--dsw-alias-state-danger-primary,#ef4444)}' +
+            '.ovn-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;' +
+            'height:28px;padding:0 11px;border-radius:6px;border:none;font-style:normal;' +
+            'font-weight:530;font-size:13px;line-height:20px;color:inherit;' +
+            'background:rgba(127,127,127,.14);cursor:pointer;user-select:none;' +
+            'font-variant-numeric:tabular-nums;transition:background .15s ease}' +
+            '.ovn-btn:hover:not(:disabled){background:rgba(127,127,127,.22)}' +
+            '.ovn-btn:active:not(:disabled){background:rgba(127,127,127,.3)}' +
+            '.ovn-btn:disabled{opacity:.5;cursor:not-allowed}' +
+            '.ddc-sw{position:relative;width:28px;height:16px;flex:none;border-radius:3px;' +
+            'border:1px solid rgba(127,127,127,.45);background:transparent;cursor:pointer;' +
+            'padding:0;transition:background .15s,border-color .15s}' +
+            '.ddc-sw:hover:not(:disabled){border-color:rgba(127,127,127,.75)}' +
+            '.ddc-sw[aria-checked="true"]{border-color:transparent;' +
+            'background:#22c55e;background:var(--dsw-alias-state-success-primary,#22c55e)}' +
+            '.ddc-sw[disabled]{opacity:.5;cursor:not-allowed}' +
+            '.ddc-sw i{position:absolute;top:50%;left:1px;width:14px;height:14px;margin-top:-7px;' +
+            'border-radius:2px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);' +
+            'transform:translateX(0);transition:transform .15s}' +
+            '.ddc-sw[aria-checked="true"] i{transform:translateX(11px)}'
           if (!document.getElementById(style.id)) document.head.append(style)
 
           function UpdateButton(props) {
@@ -205,6 +225,20 @@
             unknown: '\u672a\u77e5\u539f\u56e0',
             checkBtn: '\u68c0\u67e5\u66f4\u65b0',
             unavail: '\u684c\u9762\u81ea\u66f4\u65b0\u5728\u5f53\u524d\u8fd0\u884c\u65f6\u4e0d\u53ef\u7528\uff08\u5f00\u53d1\u8fd0\u884c\u65f6\u53ef\u8bbe DSH_DESKTOP_UPDATE_FORCE=1 \u5f00\u542f\uff09',
+            // opencode settings-v2 同款行的文案
+            checkTitle: '检查更新',
+            checkDesc: '检查是否有可用的新版本',
+            actCheck: '立即检查',
+            actChecking: '检查中…',
+            actDownloading: '下载中…',
+            actInstall: '安装并重启',
+            actInstalling: '安装中…',
+            diagTitle: '导出诊断信息',
+            diagBtn: '导出',
+            autostartDesc: '登录后自动启动 DeepSeek Harness 桌面端',
+            closeTitle: '关闭时最小化到托盘',
+            closeDesc: '勾选后点击关闭按钮会隐藏到系统托盘，取消则直接退出应用。',
+            closeUnavailable: '当前运行环境无系统托盘，开关不可用。',
           }
 
           var statusText = function (s) {
@@ -232,6 +266,20 @@
             })
           }
 
+          // opencode Switch 同款开关（28×16 轨道 + 14×14 滑块）
+          function Switch2(props) {
+            return h('button', {
+              className: 'ddc-sw',
+              type: 'button',
+              role: 'switch',
+              'aria-checked': props.checked ? 'true' : 'false',
+              disabled: !!props.disabled,
+              onClick: function () {
+                if (!props.disabled && props.onChange) props.onChange(!props.checked)
+              },
+            }, h('i'))
+          }
+
           // 设置页区块：undefined=查询中不渲染，null=宿主无自更新栈（页内提示），对象=正常状态帧
           function UpdateSection() {
             var pair = reactMod.useState(undefined)
@@ -250,33 +298,45 @@
             }, [])
             if (state === undefined) return null
             if (state === null) {
-              return h('div', { className: 'ddc-set' }, h('div', { className: 'ddc-hint' }, STR.unavail))
+              return h('div', { className: 'ddc-group' },
+                h('div', { className: 'ddc-gtitle' }, '更新'),
+                h('div', { className: 'ddc-desc' }, STR.unavail))
             }
             var busy = state.status === 'checking' || state.status === 'downloading' || state.status === 'installing'
-            return h('div', { className: 'ddc-set' },
-              h('div', { className: 'ddc-cur' }, STR.cur + (state.current ? ' ' + state.current : '')),
-              h('div', { className: 'ddc-status' },
-                state.status === 'error'
-                  ? h('span', { className: 'ddc-err' }, STR.errPrefix + (state.message || STR.unknown))
-                  : statusText(state)),
-              h('div', { className: 'ddc-row' },
-                h('button', {
-                  className: 'ddc-btn',
-                  type: 'button',
-                  disabled: busy,
-                  onClick: function () {
-                    window.__ryn.invoke('desktop.update.check', {}).catch(function () {})
-                  },
-                }, STR.checkBtn),
-                state.status === 'ready'
-                  ? h('button', {
-                      className: 'ddc-btn ddc-btn-primary',
+            // 按钮标签随状态机切换（opencode updater-action 同款）：ready 即安装入口，不再单设主按钮
+            var actionLabel =
+              state.status === 'checking' ? STR.actChecking :
+              state.status === 'downloading' ? STR.actDownloading :
+              state.status === 'ready' ? STR.actInstall :
+              state.status === 'installing' ? STR.actInstalling : STR.actCheck
+            var statusLine = state.status === 'error'
+              ? h('span', { className: 'ddc-err' }, STR.errPrefix + (state.message || STR.unknown))
+              : statusText(state)
+            return h('div', { className: 'ddc-group' },
+              h('div', { className: 'ddc-gtitle' }, '更新'),
+              h('div', { className: 'ddc-list' },
+                h('div', { className: 'ddc-row2' },
+                  h('div', { className: 'ddc-copy' },
+                    h('div', { className: 'ddc-title' }, STR.cur),
+                    h('div', { className: 'ddc-desc' }, state.current || '—', ' · ', statusLine)),
+                  h('div', { className: 'ddc-ctl' })),
+                h('div', { className: 'ddc-row2' },
+                  h('div', { className: 'ddc-copy' },
+                    h('div', { className: 'ddc-title' }, STR.checkTitle),
+                    h('div', { className: 'ddc-desc' }, STR.checkDesc)),
+                  h('div', { className: 'ddc-ctl' },
+                    h('button', {
+                      className: 'ovn-btn',
                       type: 'button',
+                      disabled: busy,
                       onClick: function () {
-                        window.__ryn.invoke('desktop.update.install', {}).catch(function () {})
+                        if (state.status === 'ready') {
+                          window.__ryn.invoke('desktop.update.install', {}).catch(function () {})
+                        } else {
+                          window.__ryn.invoke('desktop.update.check', {}).catch(function () {})
+                        }
                       },
-                    }, STR.installBtn)
-                  : null))
+                    }, actionLabel)))))
           }
 
           // 设置页「诊断」区块（order 51）：一键导出诊断 zip。点击即隐私确认——
@@ -291,66 +351,103 @@
             var pair = reactMod.useState(null)
             var result = pair[0]
             var setResult = pair[1]
-            return h('div', { className: 'ddc-set' },
-              h('div', { className: 'ddc-hint' }, DIAG.hint),
-              h('div', { className: 'ddc-row' },
-                h('button', {
-                  className: 'ddc-btn',
-                  type: 'button',
-                  disabled: !!result,
-                  onClick: function () {
-                    window.__ryn.invoke('desktop.diagnostics.export', {}).then(function (res) {
-                      var parsed = parseFrame(res)
-                      if (parsed && parsed.path) setResult(parsed.path)
-                      else setResult({ error: (parsed && parsed.error) || DIAG.fail })
-                    }, function () {
-                      setResult({ error: DIAG.fail })
-                    })
-                  },
-                }, DIAG.btn)),
-              result === null
-                ? null
-                : typeof result === 'string'
-                  ? h('div', { className: 'ddc-hint' }, DIAG.savedPrefix + result)
-                  : h('div', { className: 'ddc-err' }, DIAG.fail + '：' + result.error))
+            return h('div', { className: 'ddc-group' },
+              h('div', { className: 'ddc-gtitle' }, '诊断'),
+              h('div', { className: 'ddc-list' },
+                h('div', { className: 'ddc-row2' },
+                  h('div', { className: 'ddc-copy' },
+                    h('div', { className: 'ddc-title' }, STR.diagTitle),
+                    result === null
+                      ? h('div', { className: 'ddc-desc' }, DIAG.hint)
+                      : typeof result === 'string'
+                        ? h('div', { className: 'ddc-desc' }, DIAG.savedPrefix + result)
+                        : h('div', { className: 'ddc-desc ddc-err' }, DIAG.fail + '：' + result.error)),
+                  h('div', { className: 'ddc-ctl' },
+                    h('button', {
+                      className: 'ovn-btn',
+                      type: 'button',
+                      disabled: !!result,
+                      onClick: function () {
+                        window.__ryn.invoke('desktop.diagnostics.export', {}).then(function (res) {
+                          var parsed = parseFrame(res)
+                          if (parsed && parsed.path) setResult(parsed.path)
+                          else setResult({ error: (parsed && parsed.error) || DIAG.fail })
+                        }, function () {
+                          setResult({ error: DIAG.fail })
+                        })
+                      },
+                    }, STR.diagBtn)))))
           }
 
-          // 「桌面」区块（order 52）：开机自启开关（ADR shell-convenience-autostart-ready-notify）
+          // 「桌面」区块：开机自启 + 关闭时最小化到托盘（均为 opencode 发行说明同款开关行）
           var DESK = {
             autostart: '\u5f00\u673a\u81ea\u542f',
-            on: '\u5df2\u542f\u7528',
-            off: '\u672a\u542f\u7528',
-            enableBtn: '\u542f\u7528',
-            disableBtn: '\u505c\u7528',
           }
           function DesktopSection() {
-            var sp = reactMod.useState(null)
-            var enabled = sp[0]
-            var setEnabled = sp[1]
+            var asp = reactMod.useState(null)
+            var enabled = asp[0]
+            var setEnabled = asp[1]
             reactMod.useEffect(function () {
               window.__ryn.invoke('desktop.autostart.getState', {}).then(function (res) {
                 var p = parseFrame(res)
                 if (p && typeof p.enabled === 'boolean') setEnabled(p.enabled)
               }, function () { setEnabled(false) })
             }, [])
-            var toggle = function () {
-              var next = !enabled
+            var toggleAutostart = function (next) {
               setEnabled(null)
               window.__ryn.invoke('desktop.autostart.set', { enabled: next }).then(function (res) {
                 var p = parseFrame(res)
                 setEnabled(p && typeof p.enabled === 'boolean' ? p.enabled : next)
               }, function () { setEnabled(!next) })
             }
-            return h('div', { className: 'ddc-set' },
-              h('div', { className: 'ddc-row' },
-                h('span', { className: 'ddc-cur' },
-                  DESK.autostart + '\uff1a' + (enabled === null ? '…' : (enabled ? DESK.on : DESK.off))),
-                h('button', {
-                  className: 'ddc-btn',
-                  type: 'button',
-                  disabled: enabled === null,
-                  onClick: toggle,
-                }, enabled ? DESK.disableBtn : DESK.enableBtn)))
+            return h('div', { className: 'ddc-group' },
+              h('div', { className: 'ddc-gtitle' }, '桌面'),
+              h('div', { className: 'ddc-list' },
+                h('div', { className: 'ddc-row2' },
+                  h('div', { className: 'ddc-copy' },
+                    h('div', { className: 'ddc-title' }, DESK.autostart),
+                    h('div', { className: 'ddc-desc' }, STR.autostartDesc)),
+                  h('div', { className: 'ddc-ctl' },
+                    Switch2({ checked: enabled, disabled: enabled === null, onChange: toggleAutostart }))),
+                CloseToTrayRow()))
+          }
+
+          // 关闭时最小化到托盘：宿主持久化于 <DSH_HOME>/desktop-preferences.json（默认开启，
+          // 与历史行为一致）。available=false 表示无系统托盘——隐藏无从谈起，开关禁用。
+          function CloseToTrayRow() {
+            var sp = reactMod.useState(null)
+            var st = sp[0]
+            var setSt = sp[1]
+            reactMod.useEffect(function () {
+              window.__ryn.invoke('desktop.closeToTray.getState', {}).then(function (res) {
+                var p = parseFrame(res)
+                if (p && typeof p.enabled === 'boolean') setSt({ enabled: p.enabled, available: !!p.available })
+                else setSt({ enabled: true, available: false })
+              }, function () { setSt({ enabled: true, available: false }) })
+            }, [])
+            var toggle = function (next) {
+              if (!st || !st.available) return
+              setSt({ enabled: next, available: true })
+              window.__ryn.invoke('desktop.closeToTray.set', { enabled: next }).then(function (res) {
+                var p = parseFrame(res)
+                if (p && typeof p.enabled === 'boolean') setSt({ enabled: p.enabled, available: !!p.available })
+                else setSt({ enabled: !next, available: true })
+              }, function () { setSt({ enabled: !next, available: true }) })
+            }
+            var unavailable = !!st && !st.available
+            var desc = unavailable
+              ? h('span', null, STR.closeDesc, h('br'), STR.closeUnavailable)
+              : STR.closeDesc
+            return h('div', { className: 'ddc-row2' },
+              h('div', { className: 'ddc-copy' },
+                h('div', { className: 'ddc-title' }, STR.closeTitle),
+                h('div', { className: 'ddc-desc' }, desc)),
+              h('div', { className: 'ddc-ctl' },
+                Switch2({
+                  checked: !!st && st.enabled,
+                  disabled: !st || unavailable,
+                  onChange: toggle,
+                })))
           }
 
           ctx.slots.inject('sidebar.footer.action', function () {

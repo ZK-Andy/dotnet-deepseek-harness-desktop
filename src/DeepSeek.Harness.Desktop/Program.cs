@@ -100,9 +100,12 @@ public static class Program
             Console.WriteLine($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', host.StderrTail.TakeLast(8))}");
         }
 
-        // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：默认拦截关窗转托盘隐藏，
-        // 托盘「退出」与上方自更新安装路径先批准再 Close。托盘未就绪时拦截不生效（关窗直退）。
+        // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：托盘「退出」与自更新安装路径
+        // 先批准再 Close。用户普通关窗是否转隐藏由 closeBehavior 偏好裁决（默认 true 保持
+        // 历史行为）；托盘未就绪时拦截不生效（关窗直退）。
         var closeGate = new Services.Tray.CloseGate();
+        var closeBehavior = new Services.Tray.CloseBehaviorPreference(
+            Path.Combine(HarnessRuntimeHost.ResolveDshHome(), Services.Tray.CloseBehaviorPreference.FileName));
 
         // 自更新栈（仅 ready 对外可见；机制见 ADR desktop-shell-self-update）：
         // 状态机纯逻辑可单测，检查/下载/安装全部委托注入；状态经 CustomEvent 推给插件 UI。
@@ -173,6 +176,9 @@ public static class Program
         // 视口探测切换为该属性：隐藏前采样，唤回后确认仍非最大化才补一次 ToggleMaximize。
         // -1=未知（采样异常，唤回不动作，行为退回修复前）。
         var maximizedAtHide = -1;
+        // 托盘就绪标志：先于服务注册声明（closeToTray 路由的 available 委托引用），
+        // 托盘初始化后赋值；初始化失败保持 false（关窗直退、偏好开关呈不可用）。
+        var trayReady = false;
 
         var app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
@@ -215,6 +221,10 @@ public static class Program
                 services.AddSingleton<ICommandRouter>(new Services.DesktopDiagnosticsCommandRouter(log: Services.HostLog.Write));
                 // 开机自启开关（desktop.autostart.getState/set）
                 services.AddSingleton<ICommandRouter>(new Services.AutostartCommandRouter(log: Services.HostLog.Write));
+                // 关闭最小化到托盘偏好（desktop.closeToTray.getState/set）；available 惰性求值——
+                // 服务注册早于托盘初始化，trayReady 由外层闭包稍后赋值
+                services.AddSingleton<ICommandRouter>(new Services.Tray.CloseToTrayCommandRouter(
+                    closeBehavior, () => trayReady, log: Services.HostLog.Write));
                 // 自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）
                 if (updateMachine is not null)
                 {
@@ -269,7 +279,6 @@ public static class Program
         // 顺序契约：必须先 Show 再 SetMenu——Linux 后端在 Show 前尚未注册 StatusNotifierItem，
         // SetMenu 经 `_item?.` 静默丢弃（v0.3.0 实机图标可见但菜单全无的根因）；macOS 的
         // RebuildMenu 在 status item 未创建时同样丢弃。Windows 两序皆可（菜单右键时才读）。
-        var trayReady = false;
         if (trayAvailable)
         {
             try
@@ -293,8 +302,9 @@ public static class Program
             var trayWindow = app.Services.GetRequiredService<IRynWindow>();
             trayWindow.Closing += (_, e) =>
             {
-                if (!closeGate.ShouldCancelClose)
+                if (!closeGate.ShouldCancelClose || !closeBehavior.HideOnClose)
                 {
+                    // 显式放行通道（托盘退出 / 自更新安装），或用户已选「关闭即退出」
                     return;
                 }
 
