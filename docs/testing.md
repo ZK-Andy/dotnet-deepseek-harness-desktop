@@ -1,6 +1,6 @@
 # Testing
 
-> `126/126` 通过，`dotnet test` 当前基线。
+> `245/245` 通过，`dotnet test` 当前基线。
 
 ## 单测
 
@@ -10,6 +10,8 @@
   * `HarnessRuntimeHostTests`：`port 0` 分配、记忆端口复用、占位回退、`RestartAsync`、`WaitForExitAsync`、`StderrTail`。
   * `RuntimeLocatorTests`：`DSH_DESKTOP_RUNTIME_DIR` 覆盖、`TryLocateBundled` 判 `node + dsh/lib/bin.js`。
   * `MarketInstallHelperTests`：`IsBundleInstalled(pkg)` 真/假/异常/按包独立、`CleanupBogusApp` 删 `app` 的 `tgz`/`NoOp`、`EnsureWorkspaceAllowBuilds` 占位替换与 `esbuild` 追加、`ResolveMarketSpec` 的 `tgz>10K/目录/registry` 三分支、`ResolveCompanionSpec` 的 `tgz>1K/目录/null` 三分支（无 registry 回退）、`EnsureBundlesContainsAsync` 追加/幂等/双包共存。
+  * `PluginVersionCheckTests`：tgz/目录两种随包形态解 version（含 `./package/` 前缀与无关条目）、损坏包与坏 version 字段 fail loud、已装副本缺失/损坏返 null、升级判定边界、脏版本段抛错。
+  * `BundledPluginCatalogTests`：清单装配判定（未装即装不读版本/落后即升带版本日志/同版与更高跳过）、副本缺失修复重装、spec 缺失与解析器异常单项隔离、registry 回退串放弃升级检查保留首装、待装顺序随清单、真实闭包布局端到端与空闭包回退。
   * `ExternalLinkPolicyTests`：站外/同源/非 http(s)/空 href/origin 边界的纯判定。
   * `ExternalLinkCommandRouterTests`：命令路由与打开器委托。
   * `UpdateVersionTests`：版本逐段比较（v 前缀/缺段补 0/预发布截断/**任一段非法 fail loud**）。

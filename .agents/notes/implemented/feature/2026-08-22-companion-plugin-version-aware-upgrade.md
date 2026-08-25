@@ -12,14 +12,14 @@ Status: implemented
 
 - 版本来源两侧都读现成的 `package.json`，不新增持久状态：随包侧 `PluginVersionCheck.ReadBundledVersion` 用 `System.Formats.Tar` + `GZipStream` 从 tgz 解 `package/package.json`（目录形态直读），已装侧 `ReadInstalledVersion` 读 `<DSH_HOME>/profiles/desktop/node_modules/<pkg>/package.json`（共享 home 切换前的历史版本读 `profiles/web`）。
 - 比较复用 `UpdateVersion.Compare` 数字段逐段比；判定 `NeedsUpgrade` = 已装版本不可读（含未装/副本损坏）或随包更新。随包侧结构异常 fail loud 记日志跳过（自家产物坏了必须可见），已装侧异常返回 null 视为未知并走重装修复（profile 可再生）。
-- 范围仅 `dsh-desktop-companion`（用户拍板）；`dshmarket` 不纳入。
+- 范围为随包插件全清单（接棒于 `2026-08-25-bundled-plugin-version-aware-catalog`）。
 - 检测信号为**版本号**（用户拍板）：改插件必须 bump `plugins/dsh-desktop-companion/package.json` 的 version，否则升级静默不触发。
 
 ## Alternatives considered
 
 - **tgz 内容哈希比对**（SHA256 记 profile 状态文件）：落败——免 bump 纪律、任何字节变化可检出，但无版本语义、多一份持久状态且不可读；用户明确要版本号进实现。哈希路线若日后需要可与版本号并存（哈希兜底 bump 遗漏）。
 - **仅壳自更新完成后触发**（记录上版壳版本做信号）：落败——需额外持久化壳版本，「随包 bundled vs 已装 installed」本身就是最小充分信号，且顺带修复手动误删 node_modules 副本等异常态。
-- **纳入 dshmarket**：落败——上游 registry 管理、市场 UI 可自行更新；闭包内 tgz 只有重新组包才变，感知收益趋零，徒增比对面。
+- **纳入 dshmarket**：落败——上游 registry 管理、市场 UI 可自行更新；闭包内 tgz 只有重新组包才变，感知收益趋零，徒增比对面。（该「收益趋零」前提已被 `2026-08-25-bundled-plugin-version-aware-catalog` 推翻：dshmarket 钉版落后 11 个 minor 且存量 profile 无自更新通道。）
 - **不做（维持手动重装）**：落败——三次手动重装实证该场景真实复发，自动化成本低（纯函数 + 一处分支）。
 
 ## Consequences
@@ -32,3 +32,4 @@ Status: implemented
 
 - `2026-08-21-desktop-shell-companion-plugin`：companion 插件来源、tgz staging 与安装链路。
 - `2026-08-22-desktop-shell-self-update`：壳自更新状态机——本机制覆盖其后「新版壳 × 旧版插件」的同步缺口。
+- `2026-08-25-bundled-plugin-version-aware-catalog`：范围泛化至随包全清单的接棒笔记。

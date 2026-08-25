@@ -29,7 +29,7 @@ Unsigned builds: this project is open source and ships without paid code signing
 
 1. The shell starts the bundled runtime automatically and loads the UI.
 2. Configure your own model API credentials in the in-app model settings.
-3. On first run the bundled plugins (market, desktop companion) install silently in the background; a brief dark "reconnecting" screen while the runtime restarts is **normal** — a couple of seconds.
+3. On first run the bundled plugins (market, desktop companion) install silently in the background; a brief dark "reconnecting" screen while the runtime restarts is **normal** — a couple of seconds. Bundled plugins follow the shell version: after a shell update, the first launch brings any plugin older than its bundled copy up to date (logged in `host.log`).
 4. Once ready, browse the plugin market and install community plugins.
 
 ## Daily Use
