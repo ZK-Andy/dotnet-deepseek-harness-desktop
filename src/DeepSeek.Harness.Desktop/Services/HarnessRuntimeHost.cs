@@ -180,6 +180,24 @@ public sealed class HarnessRuntimeHost : IDisposable
         "--no-open",
     };
 
+    /// <summary>构造子进程 PATH：把 <c>$HOME/.local/bin</c> 追加到现有 PATH 之后（缺则追加、已含幂等）。</summary>
+    /// <remarks>
+    /// GUI 会话应用继承的 PATH 是 systemd 用户管理器的默认精简值，不含用户级 bin 目录，
+    /// 而 dsh 内的 MCP stdio 等下游工具按命令名拉取外部进程时依赖它。追加而非前置：
+    /// 不改变系统命令的解析优先级（ADR gui-path-enrichment）。
+    /// </remarks>
+    internal static string BuildEnrichedPath(string? currentPath, string home, char separator)
+    {
+        var localBin = Path.Combine(home, ".local", "bin");
+        var existing = currentPath ?? string.Empty;
+        if (existing.Split(separator).Contains(localBin))
+        {
+            return existing;
+        }
+
+        return existing.Length == 0 ? localBin : existing + separator + localBin;
+    }
+
     private async Task<Uri?> StartCoreAsync(int? port, TimeSpan timeout, CancellationToken ct = default)
     {
         var home = ResolveDshHome();
@@ -215,6 +233,13 @@ public sealed class HarnessRuntimeHost : IDisposable
         psi.Environment["pnpm_config_cache_dir"] = Path.Combine(home, ".pnpm-cache");
         Directory.CreateDirectory(Path.Combine(home, ".pnpm-store"));
         Directory.CreateDirectory(Path.Combine(home, ".pnpm-cache"));
+
+        // GUI 会话的 PATH 不含 ~/.local/bin：MCP stdio 等下游按命令名拉取外部进程时
+        // 解析不到用户级命令（ADR gui-path-enrichment）。追加而非前置，不改系统优先级。
+        psi.Environment["PATH"] = BuildEnrichedPath(
+            psi.Environment.TryGetValue("PATH", out var currentPath) ? currentPath : null,
+            home,
+            Path.PathSeparator);
 
         _process = Process.Start(psi)
             ?? throw new InvalidOperationException("无法启动 dsh 进程。");

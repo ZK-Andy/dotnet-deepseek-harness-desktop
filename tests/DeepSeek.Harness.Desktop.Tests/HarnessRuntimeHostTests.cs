@@ -20,6 +20,36 @@ public class HarnessRuntimeHostTests
         Assert.Equal(HarnessRuntimeHost.DesktopProfileName, args[1]);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void BuildEnrichedPath_EmptyOrNullPath_BecomesLocalBinOnly(string? current)
+    {
+        Assert.Equal("/home/u/.local/bin", HarnessRuntimeHost.BuildEnrichedPath(current, "/home/u", ':'));
+    }
+
+    [Fact]
+    public void BuildEnrichedPath_MissingLocalBin_AppendsAfterExisting()
+    {
+        var enriched = HarnessRuntimeHost.BuildEnrichedPath("/usr/local/bin:/usr/bin", "/home/u", ':');
+        Assert.Equal("/usr/local/bin:/usr/bin:/home/u/.local/bin", enriched);
+    }
+
+    [Fact]
+    public void BuildEnrichedPath_AlreadyPresent_Idempotent()
+    {
+        const string path = "/home/u/.local/bin:/usr/bin";
+        Assert.Equal(path, HarnessRuntimeHost.BuildEnrichedPath(path, "/home/u", ':'));
+    }
+
+    [Fact]
+    public void BuildEnrichedPath_SimilarPrefixSegment_DoesNotFalsePositive()
+    {
+        // /home/u/.local/bin-extra 不是 ~/.local/bin 本尊，不得据此判已含。
+        var enriched = HarnessRuntimeHost.BuildEnrichedPath("/home/u/.local/bin-extra", "/home/u", ':');
+        Assert.Equal("/home/u/.local/bin-extra:/home/u/.local/bin", enriched);
+    }
+
     [Fact]
     public async Task StartAsync_ParsesRealDshWebUrl_WhenEnabled()
     {
