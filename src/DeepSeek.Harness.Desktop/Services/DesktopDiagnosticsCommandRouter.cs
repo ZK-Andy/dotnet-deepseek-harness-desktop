@@ -18,18 +18,22 @@ public sealed class DesktopDiagnosticsCommandRouter : ICommandRouter
     private readonly string? _outputDirectory;
     private readonly string? _appVersion;
     private readonly Action<string>? _log;
+    private readonly Func<string?>? _healthSnapshot;
 
-    /// <summary>创建路由；home/输出目录/版本默认运行时解析，日志委托默认不接（测试注入固定值）。</summary>
+    /// <summary>创建路由；home/输出目录/版本默认运行时解析，日志委托默认不接（测试注入固定值）。
+    /// <paramref name="healthSnapshot"/> 导出时刻求值页面健康快照（page-health-monitor 接线）。</summary>
     public DesktopDiagnosticsCommandRouter(
         string? home = null,
         string? outputDirectory = null,
         string? appVersion = null,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        Func<string?>? healthSnapshot = null)
     {
         _home = home;
         _outputDirectory = outputDirectory;
         _appVersion = appVersion;
         _log = log;
+        _healthSnapshot = healthSnapshot;
     }
 
     /// <inheritdoc />
@@ -48,8 +52,8 @@ public sealed class DesktopDiagnosticsCommandRouter : ICommandRouter
             var home = _home ?? HarnessRuntimeHost.ResolveDshHome();
             var version = _appVersion ?? Update.AppVersion.Current();
             var result = _outputDirectory is null
-                ? DiagnosticsExporter.ExportWithFallback(home, version, _log)
-                : DiagnosticsExporter.Export(home, _outputDirectory, version);
+                ? DiagnosticsExporter.ExportWithFallback(home, version, _log, _healthSnapshot)
+                : DiagnosticsExporter.Export(home, _outputDirectory, version, _healthSnapshot);
             _log?.Invoke($"[host] 诊断包已导出：{result.ZipPath}（{result.Included.Count} 项）");
             return ValueTask.FromResult($"{{\"path\":{Quote(result.ZipPath)}}}");
         }

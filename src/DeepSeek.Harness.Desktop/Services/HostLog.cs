@@ -14,9 +14,12 @@ internal static class HostLog
     /// <summary>写一条诊断日志（时间戳前缀；目录不存在则创建；超限先滚动）。</summary>
     public static void Write(string msg) => Write(HarnessRuntimeHost.ResolveDshHome(), msg);
 
-    /// <summary>同 <see cref="Write(string)"/>，home 由调用方给定（CLI/测试注入用）。</summary>
+    /// <summary>同 <see cref="Write(string)"/>，home 由调用方给定（CLI/测试注入用）。
+    /// 内容先经 <see cref="SecretMasker.Mask"/> 脱敏：本方法是 stdout 与落盘的唯一出口，
+    /// 诊断 zip 外发的 host.log 原文由此保证不含凭据形状内容（ADR diag-masking-and-recovery-page）。</summary>
     public static void Write(string home, string msg)
     {
+        msg = SecretMasker.Mask(msg) ?? msg;
         Console.WriteLine(msg);
         try
         {

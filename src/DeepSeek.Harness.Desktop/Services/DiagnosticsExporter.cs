@@ -21,8 +21,9 @@ public static class DiagnosticsExporter
         ("logs/run-marker.json", "state/run-marker.json"),
     };
 
-    /// <summary>生成 state.txt 内容（纯函数可单测）：版本/平台/home/时间戳等非敏感快照。</summary>
-    public static string BuildStateText(string appVersion, string home)
+    /// <summary>生成 state.txt 内容（纯函数可单测）：版本/平台/home/时间戳等非敏感快照；
+    /// 健康行来自页面健康观测（ADR page-health-monitor），未启用或尚无有效探针时记 n/a。</summary>
+    public static string BuildStateText(string appVersion, string home, string? health = null)
     {
         return $"""
             dsh-desktop diagnostics
@@ -32,44 +33,46 @@ public static class DiagnosticsExporter
             os         : {System.Runtime.InteropServices.RuntimeInformation.OSDescription}
             arch       : {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}
             home       : {home}
+            health     : {health ?? "n/a（未启用或尚无有效探针）"}
             """;
     }
 
     /// <summary>导出诊断 zip（带回退）：优先用户文档目录；未解析或不可写时
     /// 回退 <c>&lt;home&gt;/diagnostics/</c> 并留痕（经 <paramref name="log"/> 进 host.log，
-    /// Console 在打包产品不可见）——取证功能不因环境怪异而缺席。</summary>
-    public static DiagnosticsExportResult ExportWithFallback(string home, string appVersion, Action<string>? log = null)
+    /// Console 在打包产品不可见）——取证功能不因环境怪异而缺席。
+    /// <paramref name="healthSnapshot"/> 导出时刻惰性求值，收录页面健康观测最新快照。</summary>
+    public static DiagnosticsExportResult ExportWithFallback(string home, string appVersion, Action<string>? log = null, Func<string?>? healthSnapshot = null)
     {
         var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        return ExportWithFallback(home, appVersion, documents, log);
+        return ExportWithFallback(home, appVersion, documents, log, healthSnapshot);
     }
 
     /// <summary>可注入文档目录的核心实现（internal，供回归测试模拟解析为空/不可写环境）。</summary>
     internal static DiagnosticsExportResult ExportWithFallback(
-        string home, string appVersion, string documentsDirectory, Action<string>? log)
+        string home, string appVersion, string documentsDirectory, Action<string>? log, Func<string?>? healthSnapshot = null)
     {
         if (string.IsNullOrWhiteSpace(documentsDirectory))
         {
             // 文档目录解析为空（如 xdg-user-dirs 未初始化）——空路径会让 Path.Combine 产出相对路径，
             // 后续异常类型还不落在回退过滤内，必须显式守卫直走回退
-            return ExportToFallback(home, appVersion, "文档目录解析为空", log);
+            return ExportToFallback(home, appVersion, "文档目录解析为空", log, healthSnapshot);
         }
 
         try
         {
-            return Export(home, documentsDirectory, appVersion);
+            return Export(home, documentsDirectory, appVersion, healthSnapshot);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return ExportToFallback(home, appVersion, $"文档目录不可写（{ex.Message}）", log);
+            return ExportToFallback(home, appVersion, $"文档目录不可写（{ex.Message}）", log, healthSnapshot);
         }
     }
 
     /// <summary>回退导出：<c>&lt;home&gt;/diagnostics/</c>，原因留痕 host.log。</summary>
-    private static DiagnosticsExportResult ExportToFallback(string home, string appVersion, string reason, Action<string>? log)
+    private static DiagnosticsExportResult ExportToFallback(string home, string appVersion, string reason, Action<string>? log, Func<string?>? healthSnapshot = null)
     {
         var fallback = Path.Combine(home, "diagnostics");
-        var result = Export(home, fallback, appVersion);
+        var result = Export(home, fallback, appVersion, healthSnapshot);
         log?.Invoke($"[host] {reason}，诊断包已回退到 {fallback}");
         return result;
     }
@@ -78,8 +81,9 @@ public static class DiagnosticsExporter
     /// <param name="home">共享 DSH_HOME。</param>
     /// <param name="outputDirectory">zip 输出目录（默认调用方传用户文档目录）。</param>
     /// <param name="appVersion">写入 state.txt 的壳版本。</param>
+    /// <param name="healthSnapshot">导出时刻的页面健康快照求值委托（可空）。</param>
     /// <returns>zip 绝对路径与实际收录条目清单。</returns>
-    public static DiagnosticsExportResult Export(string home, string outputDirectory, string appVersion)
+    public static DiagnosticsExportResult Export(string home, string outputDirectory, string appVersion, Func<string?>? healthSnapshot = null)
     {
         Directory.CreateDirectory(outputDirectory);
         var zipPath = Path.Combine(
@@ -104,7 +108,7 @@ public static class DiagnosticsExporter
             var stateEntry = zip.CreateEntry("state/state.txt");
             using (var writer = new StreamWriter(stateEntry.Open(), new UTF8Encoding(false)))
             {
-                writer.Write(BuildStateText(appVersion, home));
+                writer.Write(BuildStateText(appVersion, home, healthSnapshot?.Invoke()));
             }
 
             included.Add("state/state.txt");

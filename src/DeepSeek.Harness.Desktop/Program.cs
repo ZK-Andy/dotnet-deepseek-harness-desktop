@@ -181,6 +181,8 @@ public static class Program
         // 托盘就绪标志：先于服务注册声明（closeToTray 路由的 available 委托引用），
         // 托盘初始化后赋值；初始化失败保持 false（关窗直退、偏好开关呈不可用）。
         var trayReady = false;
+        // 页面健康监视器：先于服务注册声明（诊断路由的快照委托引用），监督器接线处赋值
+        Services.PageHealthMonitor? healthMonitor = null;
 
         var app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
@@ -220,7 +222,15 @@ public static class Program
                 // 外部链接 → 系统默认浏览器（宿主命令路由，见 proposed bug-fix ADR）
                 services.AddSingleton<ICommandRouter, Services.ExternalLinkCommandRouter>();
                 // 诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）
-                services.AddSingleton<ICommandRouter>(new Services.DesktopDiagnosticsCommandRouter(log: Services.HostLog.Write));
+                services.AddSingleton<ICommandRouter>(new Services.DesktopDiagnosticsCommandRouter(
+                    log: Services.HostLog.Write, healthSnapshot: () => healthMonitor?.Snapshot));
+                // 恢复页退出（desktop.recovery.exit）：先批准关窗闸门再 Close——hide-to-tray 拦截下
+                // 未批准的 Close 会吞成隐藏；顺序契约与托盘退出同款（ADR diag-masking-and-recovery-page）
+                services.AddSingleton<ICommandRouter>(sp => new Services.RecoveryCommandRouter(
+                    approveExit: () => closeGate.ApproveExit(),
+                    closeWindow: () => sp.GetRequiredService<IRynWindow>().Close(),
+                    closeGate,
+                    Services.HostLog.Write));
                 // 开机自启开关（desktop.autostart.getState/set）
                 services.AddSingleton<ICommandRouter>(new Services.AutostartCommandRouter(log: Services.HostLog.Write));
                 // 关闭最小化到托盘偏好（desktop.closeToTray.getState/set）；available 惰性求值——
@@ -352,13 +362,25 @@ public static class Program
             restartTimeout: TimeSpan.FromSeconds(60),
             showRecovery: () =>
             {
-                _ = windowAccessor.Current.EvaluateJavaScriptAsync(RecoveryScript);
+                // 恢复页三件套（ADR diag-masking-and-recovery-page）：失败原因 + stderr 尾部展示 +
+                // 导出诊断/退出动作。desktop.* 走 Ryn 层 IPC 不依赖 dsh 存活；数据经 textContent
+                // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
+                var tail = host.StderrTail.TakeLast(12).ToList();
+                _ = windowAccessor.Current.EvaluateJavaScriptAsync(
+                    Services.RecoveryPageBuilder.BuildScript("运行时进程意外退出，正在自动重启", tail));
                 return ValueTask.CompletedTask;
             },
             navigate: url => windowAccessor.Current.NavigateAsync(url),
             log: Services.HostLog.Write,
             onNavigated: () => startupNavigationSettled.TrySetResult());
         var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
+
+        // 页面健康观测阶段 1（ADR page-health-monitor）：宿主只读探针轮询，不注入不依赖
+        // companion——「dsh 在跑但页面空白」类事故（历史三起全靠人肉发现）从此有自动留痕。
+        // 只记录迁移 + 快照进诊断包，绝不自动恢复：误报引发的重启循环比白屏更伤可用性，
+        // 是否接线裁决由阶段数据决定。首拍延迟 10s 避开启动空窗，探针异常按 Unknown 续跑。
+        healthMonitor = new Services.PageHealthMonitor(windowAccessor, Services.HostLog.Write);
+        _ = healthMonitor.RunAsync(TimeSpan.FromSeconds(10), supervisorCts.Token);
 
         // 自更新启动对账 + 后台检查一次（失败静默转 error 态，不影响首屏）
         if (updateMachine is not null)

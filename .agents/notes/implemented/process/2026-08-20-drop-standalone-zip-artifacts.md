@@ -20,6 +20,7 @@ Windows 打包（12.7 分）第二大热点是「打 Windows 包」（~363s）�
 - **保留 zip 但用 `-0`/store 免压缩**：落败——仍要产并上传一个 ~1.5GB 的 zip（体积等同闭包），带宽/上传无收益，且保留回退链与校验代；用户已定不需要便携 zip。
 - **只保留 Windows zip、去安装器**：落败——Windows 用户期待 exe 安装器，且安装器才是交付主形态。
 - **继续保留 zip+dmg / zip+exe 双产物**：落败——对比 pilot-harness（Windows 单 NSIS、macOS 单 dmg），双产物造成 ~1.5GB 重复压缩、上传双份，收益仅是少数便携场景，用户决定不要。
+- **便携 zip 覆盖无运行时的场景**：落败——三平台桌面壳都依赖系统 webview 运行时（Linux WebKitGTK / Windows WebView2 / macOS WKWebView），便携包没有任何机制负责引导安装；「解压即用」在缺运行时的机器上变成碰运气能用，坏口碑风险大于覆盖收益（2026-08-26 对照 anywhere-labs/dsh-desktop 时补记，ADR diag-masking-and-recovery-page 同批）。
 
 ## Consequences
 
