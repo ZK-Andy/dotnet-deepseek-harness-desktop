@@ -9,4 +9,4 @@
 5. **评审**：三重审核 dsh-find-simplifications → dsh-code-review → dsh-archive-agent-notes，逐轮收口、收口独立成 `refactor(review)` 提交。触发条件（任一）：重大变更——触及安全面 / IPC 帧契约 / 发版链路 / 跨模块行为；或用户指令的批量形态——对指定提交范围做事后审核。
 6. **提交**：逻辑单元分粒度提交，conventional commits 格式。
 7. **推送 + 观察 CI**：main 推送触发 ci.yml，绿了才算完；涉及打包/workflow 链路的按步骤 3 加跑实跑验证。
-8. **收尾（每个功能批次完成即执行，不积压到会话结束）**：按 [session-close](session-close.md) 检查单过一遍本批次相关项（提交对账 / 交接条目 / 待办速览）；ADR 保持与 shipped 现实一致的 implemented 表述。
+8. **收尾（每个功能批次完成即执行，不积压到会话结束；前置门 = 触发了步骤 5 的批次必须评审通过且修复已收口[CI 绿]，未触发的走简化路径直接收尾）**：按 [session-close](session-close.md) 检查单过一遍本批次相关项（提交对账 / 交接条目 / 待办速览）；ADR 保持与 shipped 现实一致的 implemented 表述。
