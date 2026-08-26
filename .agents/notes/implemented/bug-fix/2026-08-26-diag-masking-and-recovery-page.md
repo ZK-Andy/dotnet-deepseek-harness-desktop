@@ -32,6 +32,7 @@ Status: implemented
 
 ## Related
 
+- [AOT JSON 源生成收敛](2026-08-26-aot-json-source-generation.md)：恢复页 payload 的 JSON 序列化机制现归 AppJsonContext 源生成通道。
 - [托盘与关闭最小化](../architecture/2026-08-24-shell-tray-hide-to-tray.md)：关窗闸门与退出顺序契约的出处。
 - [shell 可观测性与诊断](../architecture/2026-08-24-shell-observability-diagnostics.md)：HostLog 单点出口与诊断 zip 白名单的前置决策。
 - [companion invoke 帧契约](2026-08-24-companion-invoke-frame-contract.md)：恢复页按钮消费 invoke 帧的解析约定来源。

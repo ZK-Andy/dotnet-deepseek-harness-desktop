@@ -22,7 +22,7 @@ public static class RecoveryPageBuilder
 		var payload = JsonSerializer.Serialize(new Payload(reason, stderrTail), AppJsonContext.Default.Payload);
 
 		return new StringBuilder("document.documentElement.innerHTML=")
-			.Append(JsonSerializer.Serialize(Skeleton, AppJsonContext.Default.String))
+			.Append(AppJsonContext.JsString(Skeleton))
 			.Append(";var D=")
 			.Append(payload)
 			.Append(';')

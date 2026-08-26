@@ -9,11 +9,13 @@ namespace DeepSeek.Harness.Desktop.Services;
 internal sealed record ErrorFrame(string Error);
 
 /// <summary>
-/// 宿主唯一的 JSON 序列化通道：源生成上下文（NativeAOT 安全）。反射式序列化在
-/// <c>PublishAot</c> 下不可用（IL2026/IL3050），手拼字符串已由本通道取代——新增帧一律
-/// 定义 internal record 并在此加一行 <c>[JsonSerializable]</c> 注册，漏注册编译期即失败。
-/// 键名 = 属性名经 CamelCase 策略推导；改属性名即改线协议，须对照 companion 消费侧。
-/// 解析方向不走本上下文（桥接回包有再序列化怪癖），一律 <c>JsonDocument</c>。
+/// 宿主帧/持久化文档的 JSON 序列化通道：源生成上下文（NativeAOT 安全）。反射式序列化在
+/// <c>PublishAot</c> 下不可用（IL2026/IL3050）——新增帧一律定义 internal record 并在此加一行
+/// <c>[JsonSerializable]</c> 注册，漏注册编译期即失败。键名 = 属性名经 CamelCase 策略推导；
+/// 改属性名即改线协议，须对照 companion 消费侧。
+/// 范围例外：profile 清单等常量字段模板（DesktopProfileBootstrap 手拼，缩进排版须与上游
+/// initProfile 逐字对齐）与 Utf8JsonWriter DOM 合并面（MarketInstallHelper）不经本通道；
+/// 解析方向一律 <c>JsonDocument</c>（桥接回包有再序列化怪癖）。
 /// </summary>
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
@@ -31,8 +33,13 @@ internal sealed record ErrorFrame(string Error);
 internal partial class AppJsonContext : JsonSerializerContext
 {
     /// <summary>JS 字符串字面量（默认编码器全量转义，<c>&lt;</c> 与非 ASCII 均 \u 形态）：
-    /// 横幅与恢复页脚本嵌值共用；<paramref name="value"/> 不得为 null。</summary>
-    internal static string JsString(string value) => JsonSerializer.Serialize(value, Default.String);
+    /// 横幅与恢复页脚本嵌值共用。</summary>
+    internal static string JsString(string value)
+    {
+        // null 经序列化会输出裸 null 字面量，在 JS 字面量位置是静默陷阱——fail loud
+        ArgumentNullException.ThrowIfNull(value);
+        return JsonSerializer.Serialize(value, Default.String);
+    }
 
     /// <summary>序列化统一错误帧。</summary>
     internal static string Error(string message) =>

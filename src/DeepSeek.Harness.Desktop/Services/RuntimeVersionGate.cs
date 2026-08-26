@@ -59,7 +59,7 @@ public static class RuntimeVersionGate
                "var b=document.createElement('div');" +
                "b.id=id;" +
                "b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 16px 8px 40px;background:#3a1d1d;color:#ffe6e6;font:13px/1.5 system-ui,sans-serif;border-bottom:1px solid #5a2a2a';" +
-               "b.textContent=" + JsString(text) + ";" +
+               "b.textContent=" + AppJsonContext.JsString(text) + ";" +
                "var x=document.createElement('button');" +
                "x.textContent='知道了';" +
                "x.style.cssText='flex:none;padding:2px 10px;background:#a13a3a;color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:12px';" +
@@ -68,9 +68,6 @@ public static class RuntimeVersionGate
                "(document.body||document.documentElement).appendChild(b);" +
                "})();";
     }
-
-    /// <summary>JS 字符串字面量：统一走 <see cref="AppJsonContext.JsString"/>（源生成，AOT 安全）。</summary>
-    private static string JsString(string value) => AppJsonContext.JsString(value);
 
     /// <summary>
     /// 只读探测 dsh 版本：bundled 给定时执行 <c>node bin.js --version</c>，否则 PATH <c>dsh --version</c>。

@@ -47,7 +47,7 @@ public static class DesktopProfileBootstrap
         if (!File.Exists(manifestPath))
         {
             // 形态对齐上游 initProfile：private 工作区清单 + 有序 bundles 列表。
-            // 手拼 JSON（字段全为自有常量，无转义面）：AOT 下避免反射序列化（FileReadyPersistence 同款取舍）
+            // 手拼 JSON（字段全为自有常量，无转义面；缩进排版须与上游模板逐字对齐，紧凑源生成给不了）
             var bundles = string.Join(", ", InitialBundles.Select(b => "\"" + b + "\""));
             var json =
                 "{\n" +

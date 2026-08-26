@@ -40,7 +40,8 @@ public sealed record UpdateState(UpdateStatus Status, string? Version = null, st
     public string ToJson() =>
         JsonSerializer.Serialize(
             new UpdateStateFrame(Status.ToString().ToLowerInvariant(), Version, Message, Current),
-            AppJsonContext.Default.UpdateStateFrame);}
+            AppJsonContext.Default.UpdateStateFrame);
+}
 
 /// <summary><see cref="UpdateState"/> 的页面推送帧（键序 = 声明序，companion 消费契约）：
 /// <c>status</c> 由状态枚举手动小写——全小写 <c>uptodate</c> 是插件侧 switch 契约，不可改用
