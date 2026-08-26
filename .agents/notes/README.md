@@ -14,7 +14,9 @@
 - class（封闭集合）：`feature` / `bug-fix` / `simplification` / `architecture`（交付源码）/ `process`（工具流程）/ `testing`。刻意无 `refactor`（与 `simplification` 重叠：判别词"可观察行为是否变化"）。
 - 日期 = 首次提出日，迁移不改。
 
-## 格式（模板骨架见 `templates/adr-*.md`）
+## 格式
+
+模板骨架：[templates/adr-proposed.md](../../templates/adr-proposed.md) · [templates/adr-implemented.md](../../templates/adr-implemented.md)。
 
 - 头三行：`# Agent Note: <标题>` + `Status: <proposed|implemented|rejected — 理由>` + 空行；状态必须与所在目录一致。
 - 骨架：`## Problem` → `## Decision`（implemented，现在时）/ `## Proposal`（proposed）→ **`## Alternatives considered`（强制**）→ `## Consequences`。
