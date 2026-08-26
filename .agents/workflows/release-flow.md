@@ -20,3 +20,6 @@
 - 供应链政策拒绝时按壳内逻辑重试一次并留痕（v0.2.1 教训）。
 - 插件内容变更 → 闭包缓存签名与 CI 缓存 key 必须覆盖（v0.2.0 陈旧 tgz 教训）。
 - preflight 的资产矩阵/体积下限在 `scripts/release-preflight.sh`；瘦身使正常包逼近 50MB 下限时须同 PR 调整该值。
+- 同名 tag 重打不会让已装客户端重新自更新（feed 按版本号判定）——宁跳版本号也不重打已发布的 tag（v0.3.4 三次重打被迫出 v0.3.5 的教训）。
+- 改 `plugins/dsh-desktop-companion` 必须 bump version，否则版本感知升级静默不触发。
+- preflight 附带钉版漂移注解（warn-only 不阻断）：出现 warning 即顺手拍板一次 bump（freshness 巡检的发版时刻第二触点）。
