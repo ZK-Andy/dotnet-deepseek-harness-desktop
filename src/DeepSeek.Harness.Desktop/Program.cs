@@ -35,7 +35,8 @@ public static class Program
                 var result = DiagnosticsExporter.ExportWithFallback(
                     HarnessRuntimeHost.ResolveDshHome(),
                     Services.Update.AppVersion.Current());
-                Console.WriteLine($"[host] 诊断包已导出：{result.ZipPath}");
+                // CLI 形态下 stdout 可见；经 HostLog 双写让桌面形态的同一动作也落 host.log
+                Services.HostLog.Write($"[host] 诊断包已导出：{result.ZipPath}");
                 return 0;
             }
             catch (Exception ex)
@@ -61,7 +62,7 @@ public static class Program
             {
                 Environment.SetEnvironmentVariable(DevEnvironment.HomeOverrideEnv, devHome);
                 devAutoIsolated = true;
-                Console.WriteLine($"[host] 开发运行时：DSH_HOME 隔离到 {devHome}；ApplicationId 带 .dev 后缀，可与正式版并存");
+                Services.HostLog.Write($"[host] 开发运行时：DSH_HOME 隔离到 {devHome}；ApplicationId 带 .dev 后缀，可与正式版并存");
             }
         }
 
@@ -152,14 +153,14 @@ public static class Program
             Services.HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
         }
         var webUrl = host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
-        Console.WriteLine($"[host] runtime = {host.RuntimeDescription}");
+        Services.HostLog.Write($"[host] runtime = {host.RuntimeDescription}");
         if (webUrl is not null)
         {
-            Console.WriteLine($"[host] dsh web = {webUrl}");
+            Services.HostLog.Write($"[host] dsh web = {webUrl}");
         }
         else
         {
-            Console.WriteLine($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', host.StderrTail.TakeLast(8))}");
+            Services.HostLog.Write($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', host.StderrTail.TakeLast(8))}");
         }
 
         // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：托盘「退出」与自更新安装路径
@@ -187,15 +188,15 @@ public static class Program
             var updatePkgKind = Services.Update.UpdatePlatform.DetectCurrentPackageKind();
             updateMachine = new Services.Update.UpdateStateMachine(
                 currentVersion: Services.Update.AppVersion.Current(),
-                check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions).FetchLatestAsync(UpdateRid(), updatePkgKind, ct),
-                download: (meta, ct) => new Services.Update.InstallerDownloader(updateHttp).DownloadAsync(
+                check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions, Services.HostLog.Write).FetchLatestAsync(UpdateRid(), updatePkgKind, ct),
+                download: (meta, ct) => new Services.Update.InstallerDownloader(updateHttp, Services.HostLog.Write).DownloadAsync(
                     meta, updatesDir, TimeSpan.FromMinutes(updateOptions.DownloadTimeoutMinutes), ct),
                 install: async (assetPath, _, ct) =>
                 {
                     // 授权通过（LaunchAsync 观察窗口内未取消）后：主动关闭窗口让进程退出，
                     // 安装脚本的等待环随即放行 rpm/dpkg 并拉起新版。缺这步脚本会死等本进程。
-                    await Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, ct);
-                    Console.WriteLine("[update] 授权通过，关闭应用以继续安装…");
+                    await Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, ct, log: Services.HostLog.Write);
+                    Services.HostLog.Write("[update] 授权通过，关闭应用以继续安装…");
                     // 安装路径与托盘退出共用闸门：先批准，Close 才不会被 hide-to-tray 拦截转成隐藏
                     closeGate.ApproveExit();
                     try
@@ -204,7 +205,7 @@ public static class Program
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[update] 窗口关闭失败：{ex.Message}");
+                        Services.HostLog.Write($"[update] 窗口关闭失败：{ex.Message}");
                     }
 
                     // 兜底：8 秒内仍未退出（Close 事件丢失等）则强制退出，保证安装流程放行
@@ -220,11 +221,11 @@ public static class Program
                         + (state.Message is null ? "" : $"：{state.Message}"));
                     PushUpdateState(updateWindow, state);
                 });
-            Console.WriteLine($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}");
+            Services.HostLog.Write($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}，feed 超时 {updateOptions.FeedTimeoutSeconds}s 下载超时 {updateOptions.DownloadTimeoutMinutes}m");
         }
         else
         {
-            Console.WriteLine($"[host] 自更新：dev 运行时不装载（DSH_DESKTOP_UPDATE_FORCE=1 可显式开启）");
+            Services.HostLog.Write("[host] 自更新：dev 运行时不装载（DSH_DESKTOP_UPDATE_FORCE=1 可显式开启）");
         }
 
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 trayReady）
@@ -275,10 +276,10 @@ public static class Program
                 }
                 else
                 {
-                    Console.WriteLine($"[host] icon 缺失：{iconPath}");
+                    Services.HostLog.Write($"[host] icon 缺失：{iconPath}");
                 }
 
-                Console.WriteLine($"[host] Ryn opts: Url={(webUrl is not null ? webUrl.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(iconPath) ? iconPath : "missing")}");
+                Services.HostLog.Write($"[host] Ryn opts: Url={(webUrl is not null ? webUrl.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(iconPath) ? iconPath : "missing")}");
                 // WebView 调试器默认关闭（正式打包无调试窗口）；开发期设 DSH_DEVTOOLS=1 开启。
                 opts.DevTools = Environment.GetEnvironmentVariable("DSH_DEVTOOLS") == "1";
             })
@@ -355,6 +356,8 @@ public static class Program
                             {
                                 await Task.Delay(300);
                                 trayWindow.SetMaximized(true);
+                                // 兜底拍留痕：预置拍已打日志，此拍若不落痕，「两拍只走了一拍」无从判别
+                                Services.HostLog.Write("[tray] 唤回：显示后兜底确认已发");
                             }
                         }
                         finally
@@ -506,7 +509,7 @@ public static class Program
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[update] start 失败：{ex.Message}");
+                    Services.HostLog.Write($"[update] start 失败：{ex.Message}");
                 }
             });
         }
@@ -768,17 +771,17 @@ public static class Program
             });
         }
 
-        Console.WriteLine("[host] Ryn Run 开始（阻塞直到窗口关闭）");
+        Services.HostLog.Write("[host] Ryn Run 开始（阻塞直到窗口关闭）");
         try
         {
             app.Run();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[host] Ryn Run 异常：{ex}");
+            Services.HostLog.Write($"[host] Ryn Run 异常：{ex}");
         }
 
-        Console.WriteLine("[host] Ryn Run 结束");
+        Services.HostLog.Write("[host] Ryn Run 结束");
         supervisorCts.Cancel();
         try
         {
@@ -874,6 +877,8 @@ public static class Program
             {
                 // 原生查询 IRynWindow.IsMaximized（Ryn 0.30.3 起暴露，本仓自 0.30.4 消费）
                 Volatile.Write(ref maximizedAtHide, window.IsMaximized ? 1 : 0);
+                // 隐藏即采样的留痕+主线程活性证据：唤回行为异常的排查需要知道「隐藏时看到什么」
+                Services.HostLog.Write($"[tray] 窗口隐藏到托盘（隐藏前最大化采样={Volatile.Read(ref maximizedAtHide)}）");
             }
             catch (Exception ex)
             {
@@ -885,6 +890,7 @@ public static class Program
             try
             {
                 await window.HideAsync();
+                Services.HostLog.Write("[tray] 窗口已隐藏");
             }
             catch (Exception ex)
             {

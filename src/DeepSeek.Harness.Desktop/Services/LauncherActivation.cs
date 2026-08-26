@@ -248,8 +248,12 @@ public sealed class PrimaryListener : IDisposable
                 var buffer = new byte[256];
                 var read = await client.ReceiveAsync(buffer, cts.Token).ConfigureAwait(false);
                 var command = System.Text.Encoding.UTF8.GetString(buffer, 0, read).Trim();
+                // 到达性留痕：昨晚实机「launcher 唤起无响应但无任何日志」——连接到达与否
+                // 必须可判（区别于「到达但处理卡死」）
+                _log?.Invoke($"[host] 单实例请求：{command}");
                 if (command != LauncherActivation.ShowCommand)
                 {
+                    _log?.Invoke($"[host] 单实例请求忽略：{command}");
                     return;
                 }
 
@@ -260,6 +264,7 @@ public sealed class PrimaryListener : IDisposable
             // 应答已先行发出（ack=请求受理而非执行结果）；回调 await 到完成，
             // 失败由本方法 catch 记日志——异步段异常不再逃逸
             await _onShowRequested().ConfigureAwait(false);
+            _log?.Invoke("[host] 单实例请求处理完成");
         }
         catch (Exception ex)
         {

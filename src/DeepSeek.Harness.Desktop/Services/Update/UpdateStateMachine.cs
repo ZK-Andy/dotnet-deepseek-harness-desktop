@@ -243,8 +243,9 @@ public sealed class UpdateStateMachine
         }
         catch (Exception ex)
         {
-            // 宿主推送回调（窗口未就绪/已销毁等）失败不拖垮状态机；与订阅者同等待遇
-            Console.WriteLine($"[update] 状态推送回调失败：{ex.Message}");
+            // 宿主推送回调（窗口未就绪/已销毁等）失败不拖垮状态机；与订阅者同等待遇。
+            // 落盘收口：桌面形态 stdout 不可见（v0.2.1 实证），此类异常面必须进 host.log 才能排查
+            Services.HostLog.Write($"[update] 状态推送回调失败：{ex.Message}");
         }
 
         foreach (var listener in _listeners)
@@ -256,7 +257,7 @@ public sealed class UpdateStateMachine
             catch (Exception ex)
             {
                 // 单个订阅者（如 UI 推送在窗口未就绪时）失败不拖垮状态机
-                Console.WriteLine($"[update] 状态回调失败：{ex.Message}");
+                Services.HostLog.Write($"[update] 状态回调失败：{ex.Message}");
             }
         }
     }

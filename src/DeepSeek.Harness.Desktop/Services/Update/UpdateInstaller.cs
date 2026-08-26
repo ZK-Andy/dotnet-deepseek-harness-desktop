@@ -20,12 +20,15 @@ public static class UpdateInstaller
     /// </summary>
     /// <param name="assetPath">已校验的安装包本地路径。</param>
     /// <param name="workDir">脚本等辅助文件的落盘目录（updates 目录）。</param>
-    public static async Task LaunchAsync(string assetPath, string workDir, CancellationToken cancellationToken)
+    /// <param name="log">可选日志注入（宿主接 HostLog）：安装派生的授权观察结果进 host.log——安装
+    /// 成败结论状态机 Error 态已打，但「授权窗口是否通过/安装进程是否展开」的中间过程只有这里能留痕。</param>
+    public static async Task LaunchAsync(string assetPath, string workDir, CancellationToken cancellationToken, Action<string>? log = null)
     {
         var exePath = Environment.ProcessPath
             ?? throw new InvalidOperationException("无法定位当前可执行文件路径");
         if (OperatingSystem.IsLinux())
         {
+            log?.Invoke($"[update] 安装：派生 pkexec（包 {Path.GetFileName(assetPath)}，观察窗口 {LaunchObserveWindow.TotalSeconds:0}s）");
             using var p = LaunchLinux(assetPath, workDir, exePath);
             using var observe = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             observe.CancelAfter(LaunchObserveWindow);
@@ -36,6 +39,7 @@ public static class UpdateInstaller
             catch (OperationCanceledException)
             {
                 // 观察窗口内未退出 = 授权通过、脚本在等本进程退出：安装已展开
+                log?.Invoke("[update] 安装：授权通过，安装已展开（观察窗口内未退出）");
                 return;
             }
 
@@ -44,11 +48,13 @@ public static class UpdateInstaller
                 throw new InvalidOperationException($"授权被取消或失败（pkexec exit {p.ExitCode}）");
             }
 
+            log?.Invoke($"[update] 安装：pkexec 快速退出（exit {p.ExitCode}）");
             return;
         }
 
         if (OperatingSystem.IsWindows())
         {
+            log?.Invoke($"[update] 安装：Inno Setup 安装器已派生（{Path.GetFileName(assetPath)}）");
             LaunchWindows(assetPath);
             return;
         }

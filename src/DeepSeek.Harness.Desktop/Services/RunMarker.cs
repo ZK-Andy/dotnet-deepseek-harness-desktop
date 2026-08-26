@@ -78,7 +78,7 @@ public static class RunMarker
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
             // 清理失败不影响退出路径：下轮启动会按「非受控退出」处理并自愈
-            Console.WriteLine($"[host] run-marker 清理失败：{ex.Message}");
+            Services.HostLog.Write($"[host] run-marker 清理失败：{ex.Message}");
             return false;
         }
     }

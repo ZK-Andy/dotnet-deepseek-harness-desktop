@@ -6,9 +6,14 @@ namespace DeepSeek.Harness.Desktop.Services.Update;
 public sealed class InstallerDownloader
 {
     private readonly HttpClient _http;
+    private readonly Action<string>? _log;
 
-    /// <summary>创建下载器。HttpClient 由外部持有复用连接池。</summary>
-    public InstallerDownloader(HttpClient http) => _http = http;
+    /// <summary>创建下载器。HttpClient 由外部持有复用连接池；<paramref name="log"/> 可选注入（宿主接 HostLog）。</summary>
+    public InstallerDownloader(HttpClient http, Action<string>? log = null)
+    {
+        _http = http;
+        _log = log;
+    }
 
     /// <summary>
     /// 下载资产到目标目录：先写 <c>&lt;name&gt;.part</c>，完成后改名为最终文件名并校验 SHA-256。
@@ -27,6 +32,8 @@ public sealed class InstallerDownloader
             ?? throw new InvalidOperationException("另一实例正在下载更新，请稍候后再试");
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(timeout);
+        var startedAt = Environment.TickCount64;
+        _log?.Invoke($"[update] 下载开始：{meta.AssetName}（目标目录 {destDir}，超时 {timeout.TotalMinutes:0}m）");
         try
         {
             await using (var target = File.Create(partPath))
@@ -55,10 +62,12 @@ public sealed class InstallerDownloader
         {
             // 校验/超时/HTTP 错误的半成品一律清除，避免残留 .part 误导后续重试（重复删除无害）
             File.Delete(partPath);
+            _log?.Invoke($"[update] 下载失败：{meta.AssetName}（{Environment.TickCount64 - startedAt}ms）已清除半成品");
             throw;
         }
 
         File.Move(partPath, destPath, overwrite: true);
+        _log?.Invoke($"[update] 下载完成：{meta.AssetName} {new FileInfo(destPath).Length:N0} 字节（{Environment.TickCount64 - startedAt}ms）");
         return destPath;
     }
 
@@ -78,6 +87,8 @@ public sealed class InstallerDownloader
             File.Delete(filePath);
             throw new InvalidDataException($"SHA-256 不匹配：{assetName} 期望 {expected} 实际 {actual}");
         }
+
+        _log?.Invoke($"[update] SHA-256 校验通过：{assetName}");
     }
 
     /// <summary>解析 SHA256SUMS 文本（格式 <c>&lt;hex&gt;  &lt;name&gt;</c>），返回目标文件的哈希。</summary>

@@ -83,6 +83,11 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
             // 坏载荷按未知事件处理：解析为 null 后走忽略分支
         }
 
+        // 事件到达性留痕（无论解析结果）：实机「托盘操作全无响应且无日志」证明到达阶段是
+        // 排查盲区——先分清「事件到没到」再谈解析。载荷截断防长串刷爆 host.log。
+        var payloadLog = payload.Data is null ? "(null)" : (payload.Data.Length <= 120 ? payload.Data : payload.Data[..120] + "…");
+        _log?.Invoke($"[tray] 事件到达：{payload.Event ?? "(null)"} 载荷={payloadLog}");
+
         var action = TrayMenuActions.TryResolve(payload.Event, payload.Data);
         switch (action)
         {
@@ -90,6 +95,7 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
                 _ = ShowWindowSafeAsync();
                 break;
             case TrayAction.CheckUpdate:
+                _log?.Invoke("[tray] 检查更新：已受理（后台进行）");
                 if (_updateMachine is { } machine)
                 {
                     _ = Task.Run(async () =>
@@ -98,6 +104,10 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
                         {
                             var result = await machine.CheckAsync(cancellationToken);
                             var message = TrayCheckFeedback.Message(result);
+                            _log?.Invoke(
+                                message is not null
+                                    ? $"[tray] 检查更新完成：{result.Status} {result.Version ?? ""}（通知：{message}）"
+                                    : $"[tray] 检查更新完成：{result.Status}（中间态，不通知）");
                             if (message is not null)
                             {
                                 _notify?.Invoke(TrayCheckFeedback.Title, message);
@@ -112,6 +122,10 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
                             _notify?.Invoke(TrayCheckFeedback.Title, "检查更新失败：" + ex.Message);
                         }
                     });
+                }
+                else
+                {
+                    _log?.Invoke("[tray] 检查更新：自更新栈未装载（dev 门禁），无动作");
                 }
 
                 break;
@@ -132,6 +146,8 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
                 break;
             default:
                 // 非托盘事件 / 未知条目 / 坏载荷：忽略。Web 层可能出现任意未来事件名，非错误。
+                // 但忽略必须有痕——事件到达性排查的最后一环（否则「到了被忽略」与「没到」无法区分）
+                _log?.Invoke($"[tray] 事件忽略：{payload.Event ?? "(null)"} 载荷={payloadLog}（非托盘事件/未知条目/坏载荷）");
                 return ValueTask.FromResult("null");
         }
 

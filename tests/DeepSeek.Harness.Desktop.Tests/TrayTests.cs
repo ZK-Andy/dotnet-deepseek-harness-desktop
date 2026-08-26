@@ -198,6 +198,45 @@ public class DesktopTrayCommandRouterTests
         Assert.Empty(calls);
         Assert.Equal("null", frame);
     }
+
+    [Fact]
+    public async Task TrayEvent_Arrival_AlwaysLogged()
+    {
+        // 事件到达性留痕契约（本轮日志收口）：任何托盘事件都必须在日志里留到达痕，
+        // 「事件到没到」从此与「到了被忽略/处理卡死」可区分
+        var logs = new List<string>();
+        var (router, _) = MakeRouter(new CloseGate(), logs: logs);
+
+        await Route(router, """{"event":"tray.menuItemClicked","data":"unknown-item"}""");
+
+        Assert.Contains(logs, l => l.Contains("事件到达") && l.Contains("tray.menuItemClicked"));
+    }
+
+    [Fact]
+    public async Task IgnoredEvent_ArrivalAndIgnore_BothLogged()
+    {
+        // 到达 + 忽略双痕：未知条目不再静默——忽略原因可见（排查盲区最后一环）
+        var logs = new List<string>();
+        var (router, _) = MakeRouter(new CloseGate(), logs: logs);
+
+        await Route(router, """{"event":"tray.menuItemClicked","data":"bogus-item"}""");
+
+        Assert.Contains(logs, l => l.Contains("事件到达"));
+        Assert.Contains(logs, l => l.Contains("事件忽略") && l.Contains("bogus-item"));
+    }
+
+    [Fact]
+    public async Task CheckUpdate_AcceptedAndStackStatus_Logged()
+    {
+        // 检查更新的受理与装载状态都要有痕：无状态机时打「栈未装载」，有栈时打「已受理」
+        var logs = new List<string>();
+        var (router, _) = MakeRouter(new CloseGate(), logs: logs);
+
+        await Route(router, """{"event":"tray.menuItemClicked","data":"check-update"}""");
+
+        Assert.Contains(logs, l => l.Contains("检查更新") && l.Contains("已受理"));
+        Assert.Contains(logs, l => l.Contains("自更新栈未装载"));
+    }
 }
 
 /// <summary>托盘「检查更新」通知文案映射：结束态给结论，中间态不打扰。</summary>

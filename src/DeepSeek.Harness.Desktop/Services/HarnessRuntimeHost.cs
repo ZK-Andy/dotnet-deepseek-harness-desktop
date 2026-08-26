@@ -83,7 +83,7 @@ public sealed class HarnessRuntimeHost : IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // DSH_HOME 暂不可读：回退 OS 分配端口（fail loud 由下方端口占位回退兜底）
-            Console.WriteLine($"[host] 读取上次端口失败（将回退 OS 分配）：{ex.Message}");
+            Services.HostLog.Write($"[host] 读取上次端口失败（将回退 OS 分配）：{ex.Message}");
             return null;
         }
     }
@@ -105,7 +105,8 @@ public sealed class HarnessRuntimeHost : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Console.WriteLine($"[host] 写端口状态失败（下次冷启动将换端口）：{ex.Message}");
+            // 写失败仅导致下次冷启动换端口→新会话，不阻断本次运行，故不 fail loud
+            Services.HostLog.Write($"[host] 写端口状态失败（下次冷启动将换端口）：{ex.Message}");
         }
     }
 
