@@ -142,6 +142,8 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
             try
             {
                 await _showWindow();
+                // 成功路径留痕：托盘事件到达性排查此前只有失败分支可查（host.log 盲点）
+                _log?.Invoke("[tray] 托盘菜单显示主窗：已执行");
             }
             catch (Exception ex)
             {

@@ -112,7 +112,8 @@ public class DesktopTrayCommandRouterTests
 {
     private static (DesktopTrayCommandRouter Router, List<string> Calls) MakeRouter(
         CloseGate gate,
-        UpdateStateMachine? machine = null)
+        UpdateStateMachine? machine = null,
+        List<string>? logs = null)
     {
         var calls = new List<string>();
         var router = new DesktopTrayCommandRouter(
@@ -124,7 +125,7 @@ public class DesktopTrayCommandRouterTests
             },
             closeGate: gate,
             updateMachine: machine,
-            log: null);
+            log: logs is null ? null : logs.Add);
         return (router, calls);
     }
 
@@ -158,6 +159,18 @@ public class DesktopTrayCommandRouterTests
         await Route(router, """{"event":"tray.clicked"}""");
 
         Assert.Equal(new[] { "show" }, calls);
+    }
+
+    [Fact]
+    public async Task ShowMainWindow_Success_Logged()
+    {
+        // 成功路径留痕契约：托盘事件到达性排查此前只有失败分支可查
+        var logs = new List<string>();
+        var (router, _) = MakeRouter(new CloseGate(), logs: logs);
+
+        await Route(router, """{"event":"tray.clicked"}""");
+
+        Assert.Contains(logs, l => l.Contains("显示主窗"));
     }
 
     [Fact]
