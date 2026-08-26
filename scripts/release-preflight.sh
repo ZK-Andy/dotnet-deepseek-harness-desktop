@@ -11,6 +11,8 @@ set -euo pipefail
 
 DIR="${1:?usage: release-preflight.sh <assets-dir>}"
 [[ -d "$DIR" ]] || { echo "error: 资产目录不存在: $DIR" >&2; exit 1; }
+# 仓库根必须在 cd 进资产目录**之前**解析（其后相对路径全部失效）
+PREFLIGHT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
 
 # 体积下限 MB：deb 实测 ~90M+、dmg/exe ~100M+；50M 为保守线，误杀风险随瘦身同调
@@ -77,4 +79,10 @@ if [[ ${#errors[@]} -gt 0 ]]; then
   for e in "${errors[@]}"; do echo "  ✗ $e" >&2; done
   exit 1
 fi
+# 上游钉版漂移注解（warn-only，ADR freshness-pin-patrol）：发版时刻的第二触点——
+# 即使没人看巡检 issue，漂移也会在当事人必然在场的这个时刻浮出到 run log。
+# 注解模式自身恒 exit 0，此处再兜 `|| true`：preflight 是阻断闸门，任何探测抖动不得误伤发布。
+echo "== 上游钉版漂移注解（warn-only）=="
+bash "$PREFLIGHT_ROOT/scripts/check-pin-freshness.sh" --annotate || true
+
 echo "== 发布 preflight 通过：矩阵完备、体积达线、校验和一致 =="
