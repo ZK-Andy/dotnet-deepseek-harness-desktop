@@ -24,7 +24,7 @@ Status: implemented
 
 - 二次启动不再产生第二份运行时/dsh 子进程/托盘图标；端口漂移与 marker 误报的多实例诱因随之消解（孤儿残留另见 child-process-reaping 笔记）。
 - 主实例崩溃遗留 socket 文件时：`bind` 对残留文件会 EADDRINUSE——connect 探活失败（对端不存在）则删除重建（自愈路径有集成测试钉住）。残留文件清不掉（目录权限等）时降级为无监听主实例照常启动——仲裁是增强能力，绝不挡启动、绝不把二启陪葬成零实例（有回归测试钉住）。
-- 激活显示不做最大化预置/补正（几何修复归 tray-recall-maximize 线），但会消费隐藏期样本：后续托盘召回只依据最新一次隐藏的采样。
+- 激活显示不做最大化预置/兜底确认（几何修复归 [tray-recall-maximize](../bug-fix/2026-08-24-tray-recall-maximize-and-check-feedback.md) 线），但会消费隐藏期样本：后续托盘召回只依据最新一次隐藏的采样。
 
 ## Related
 
