@@ -24,14 +24,17 @@ public sealed class HarnessRuntimeHost : IDisposable
     internal const string DesktopProfileName = "desktop";
 
     private readonly (string NodeExe, string DshEntry)? _bundled;
+    private readonly Action<string>? _log;
     private int? _port;
     private Process? _process;
 
     /// <summary>创建运行时宿主。</summary>
     /// <param name="bundled">捆绑运行时 (node 可执行, dsh bin.js)；null 表示用 PATH 的 dsh。</param>
-    public HarnessRuntimeHost((string NodeExe, string DshEntry)? bundled = null)
+    /// <param name="log">日志回调（可选）：端口漂移等运行时决策留痕 host.log（缺省 null 安全）。</param>
+    public HarnessRuntimeHost((string NodeExe, string DshEntry)? bundled = null, Action<string>? log = null)
     {
         _bundled = bundled;
+        _log = log;
     }
 
     /// <summary>本次采用的运行时描述（日志/恢复屏用）。</summary>
@@ -179,6 +182,12 @@ public sealed class HarnessRuntimeHost : IDisposable
         {
             // 固定端口被占（kill 后未及时释放 / 其他进程占用）：回退 OS 分配
             url = await StartCoreAsync(null, timeout, ct);
+            if (url is not null)
+            {
+                // 漂移告警（ADR child-process-reaping-port-drift）：观测位不是修复位——
+                // origin 变化意味着上一会话选中态不保留，日志给出人可判读的残留信号
+                _log?.Invoke($"[host] 首选端口 {preferred} 被占（疑似残留实例或孤儿 dsh），本次漂移至 {url.Port}；上一会话选中态将不保留");
+            }
         }
 
         if (url is not null)

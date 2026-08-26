@@ -65,6 +65,52 @@ public static class Program
             }
         }
 
+        // 单实例仲裁（ADR single-instance-launcher-activation）：Wayland 下 GTK 按 ApplicationId
+        // 的互斥不生效（v0.3.7 实机：launcher 二启产生完整新实例），自建 UDS 仲裁先于一切
+        // GTK/运行时初始化执行。二启通知主实例显示主窗后立即退出，绝不重复拉起运行时。
+        // activationAccessor 延迟接线：主实例回调发生在 Build 之后（窗口代理就绪前调用被缓冲）。
+        CurrentWindowAccessor? activationAccessor = null;
+        PrimaryListener? instanceListener = null;
+        var instanceSocketPath = OperatingSystem.IsWindows()
+            ? null // Windows 无验证环境不启用互斥，行为维持现状（ADR 平台边界）
+            : LauncherActivation.SocketPath(
+                Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") is { Length: > 0 } xdgRuntimeDir
+                    ? xdgRuntimeDir
+                    : Path.GetTempPath(),
+                "deepseek-harness-desktop",
+                isDev);
+        if (instanceSocketPath is not null)
+        {
+            if (!LauncherActivation.TryBindPrimary(
+                    instanceSocketPath,
+                    onShowRequested: () =>
+                    {
+                        var accessor = activationAccessor;
+                        if (accessor is null)
+                        {
+                            return;
+                        }
+
+                        try
+                        {
+                            _ = accessor.Current.ShowAsync();
+                            Services.HostLog.Write("[host] launcher 激活：已请求显示主窗");
+                        }
+                        catch (Exception ex)
+                        {
+                            Services.HostLog.Write($"[host] launcher 激活显示主窗失败：{ex.Message}");
+                        }
+                    },
+                    Services.HostLog.Write,
+                    out instanceListener))
+            {
+                var notified = LauncherActivation.NotifyPrimary(instanceSocketPath, TimeSpan.FromSeconds(2));
+                Services.HostLog.Write(
+                    $"[host] 已有主实例在运行（launcher 二次启动）：通知显示主窗{(notified ? "成功" : "未达（主实例可能正忙）")}，本次启动退出");
+                return 0;
+            }
+        }
+
         // 桌面专属 profile 自举（ADR shared-home-desktop-profile）：上游对自定义 profile 名不自动初始化，
         // 缺清单直接拒启；必须在 spawn 前确保 desktop profile 就绪（幂等，已存在则零写入）。
         try
@@ -79,7 +125,7 @@ public static class Program
             Services.HostLog.Write($"[host] profiles/desktop 初始化失败（dsh 可能拒启，详见后续降级链路）：{ex.Message}");
         }
 
-        using var host = new HarnessRuntimeHost(bundledClosure);
+        using var host = new HarnessRuntimeHost(bundledClosure, Services.HostLog.Write);
 
         // 崩溃取证 marker（ADR shell-observability-diagnostics）：遗留即判定上轮非受控退出；
         // 正常退出路径在 Main 尾部按 token 清除
@@ -181,6 +227,10 @@ public static class Program
         // 托盘就绪标志：先于服务注册声明（closeToTray 路由的 available 委托引用），
         // 托盘初始化后赋值；初始化失败保持 false（关窗直退、偏好开关呈不可用）。
         var trayReady = false;
+        // 有序退出编排（ADR child-process-reaping-port-drift）：托盘退出不再裸调窗口 Close——
+        // GTK loop 对隐藏态窗口的 close 可能不退出主循环（v0.3.7 实机滞留实证），运行时回收
+        // 必须先于 Close 确定性执行。注册期早于 supervisorCts/marker 声明，故经持有器延迟接线。
+        Action? orderlyQuit = null;
         // 页面健康监视器：先于服务注册声明（诊断路由的快照委托引用），监督器接线处赋值
         Services.PageHealthMonitor? healthMonitor = null;
 
@@ -304,7 +354,20 @@ public static class Program
 
                     return new Services.Tray.DesktopTrayCommandRouter(
                         RecallAsync,
-                        trayWindow.Close,
+                        closeWindow: () =>
+                        {
+                            // 编排已接线（supervisorCts 声明后）走确定性退出；未接线的窗口期
+                            // （理论上不存在——退出需用户交互）退回裸 Close 保底
+                            var quit = orderlyQuit;
+                            if (quit is not null)
+                            {
+                                quit();
+                            }
+                            else
+                            {
+                                trayWindow.Close();
+                            }
+                        },
                         closeGate,
                         updateMachine,
                         Services.HostLog.Write,
@@ -316,6 +379,7 @@ public static class Program
 
         var windowAccessor = app.Services.GetRequiredService<CurrentWindowAccessor>();
         updateWindow = windowAccessor;
+        activationAccessor = windowAccessor;
 
         // 托盘就绪化（批次三）：装菜单并显示。失败只降级记日志——无托盘环境是合法运行环境；
         // 但下方 hide-to-tray 拦截必须与托盘同 gate：没有召回通道还拦截关窗等于把窗口藏死。
@@ -379,6 +443,34 @@ public static class Program
             log: Services.HostLog.Write,
             onNavigated: () => startupNavigationSettled.TrySetResult());
         var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
+
+        // 有序退出编排接线（ADR child-process-reaping-port-drift）：运行时回收先于关窗，
+        // 不依赖 GTK loop 对隐藏态窗口 close 的行为；8s 看门狗把静默滞留变成确定性终结。
+        // 正常路径 Run 返回后 Main 尾部重复 Cancel/Stop/Release 均幂等，双路径收敛。
+        var quitWindow = app.Services.GetRequiredService<IRynWindow>();
+        orderlyQuit = () =>
+        {
+            Services.HostLog.Write("[tray] 有序退出：回收运行时后关闭窗口");
+            supervisorCts.Cancel();
+            host.Stop();
+            RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), marker.Token);
+            instanceListener?.Dispose();
+            quitWindow.Close();
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(8));
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                Services.HostLog.Write("[tray] 退出看门狗触发：主循环未返回，强制结束");
+                Environment.Exit(0);
+            });
+        };
 
         // 页面健康观测阶段 1（ADR page-health-monitor）：宿主只读探针轮询，不注入不依赖
         // companion——「dsh 在跑但页面空白」类事故（历史三起全靠人肉发现）从此有自动留痕。
