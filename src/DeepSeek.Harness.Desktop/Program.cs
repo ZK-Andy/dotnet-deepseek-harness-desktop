@@ -228,10 +228,11 @@ public static class Program
 
         // hide-to-tray 唤回的最大化保持（ADR tray-recall-maximize-and-check-feedback）：
         // 上游 ShowAsync 不保留最大化（0.3.2 实机复验仍复现）。Ryn 0.30.4 起暴露原生
-        // IRynWindow.IsMaximized（MAXIMIZE 事件镜像 + 启动期原生同步）。两段动作：
-        // ①Linux 隐藏态预置——ShowAsync 前对未映射窗口发出 maximize，map 即最大化，
-        // 消除「先默认尺寸再最大化」的首唤闪变；②唤回后补正兜底——300ms 后确认仍非
-        // 最大化才补一次 ToggleMaximize（预置已发则跳过，防镜像滞后时二次 toggle 反向还原）。
+        // IRynWindow.IsMaximized 作隐藏前采样（MAXIMIZE 事件镜像 + 启动期原生同步）；
+        // Ryn 0.30.5 起动作面统一为幂等 SetMaximized(bool)，调用点不再读镜像（该镜像
+        // 在 Fedora Wayland 实证不可信）。两拍动作：①Linux 隐藏态预置——ShowAsync 前
+        // 对未映射窗口设最大化，map 即最大化，消除「先默认尺寸再最大化」的首唤闪变；
+        // ②唤回后兜底确认——显示 300ms 后再设一次，幂等保证预置已生效时为原生 no-op。
         // 样本本体声明在文件最前（launcher 激活回调共用消费语义）。
         // 托盘就绪标志：先于服务注册声明（closeToTray 路由的 available 委托引用），
         // 托盘初始化后赋值；初始化失败保持 false（关窗直退、偏好开关呈不可用）。
@@ -327,32 +328,35 @@ public static class Program
                             // （v0.3.6 实机反馈）。Win/mac 无此实证，维持唤回后补正不动。
                             // 已预置则跳过补正：事件镜像可能滞后于真实状态，二次 toggle 会把已
                             // 最大化的窗口还原。toggle 内部读原生真值再翻转，预置不会误伤已最大化态。
-                            var presetFired = false;
-                            try
+                            // Linux 隐藏态预置：对未映射窗口显式设最大化（幂等、不读事件
+                            // 镜像——该机实证镜像不可信，旧镜像门控让预置永不触发=首唤闪变
+                            // 复发）。GTK 把未映射窗口的 maximize 记为初始态，map 时直接以
+                            // 最大化呈现，消除「先恢复默认尺寸、补正后再最大化」的两段式闪变。
+                            if (OperatingSystem.IsLinux())
                             {
-                                if (OperatingSystem.IsLinux() && Services.Tray.TrayRecallMaximize.NeedsMaximize(
-                                        sample, trayWindow.IsMaximized))
+                                try
                                 {
-                                    trayWindow.ToggleMaximize();
-                                    presetFired = true;
-                                    Services.HostLog.Write("[tray] 唤回：隐藏态已预置最大化");
+                                    if (Services.Tray.TrayRecallMaximize.ShouldEnsure(sample))
+                                    {
+                                        trayWindow.SetMaximized(true);
+                                        Services.HostLog.Write("[tray] 唤回：隐藏态已预置最大化");
+                                    }
                                 }
-                            }
-                            catch (Exception ex)
-                            {
-                                // deferred 代理在窗口未就绪时可能抛出：放弃预置，退回唤回后补正兜底
-                                Services.HostLog.Write($"[tray] 隐藏态预置最大化失败：{ex.Message}");
+                                catch (Exception ex)
+                                {
+                                    // deferred 代理在窗口未就绪时可能抛出：放弃预置，兜底确认仍在
+                                    Services.HostLog.Write($"[tray] 隐藏态预置最大化失败：{ex.Message}");
+                                }
                             }
 
                             await trayWindow.ShowAsync().AsTask();
-                            // 延迟一拍再读原生状态：给 WM 的 unmap/remap 与可能迟到的 MAXIMIZE
-                            // 事件留窗口，避免与其状态重放竞态（native 查询本身无需等页面几何
-                            // 落地；亚秒级等待不接监督器取消令牌）。
-                            await Task.Delay(300);
-                            if (!presetFired && Services.Tray.TrayRecallMaximize.NeedsMaximize(
-                                    sample, trayWindow.IsMaximized))
+                            // 兜底确认（Win/mac 与预置失败路径）：显示后显式设最大化。目标态幂等
+                            // ——预置已生效时这里是原生层 no-op，镜像滞后也不再有任何分支守卫负担；
+                            // 延迟一拍沿用既有节奏（亚秒级等待不接监督器取消令牌）。
+                            if (Services.Tray.TrayRecallMaximize.ShouldEnsure(sample))
                             {
-                                trayWindow.ToggleMaximize();
+                                await Task.Delay(300);
+                                trayWindow.SetMaximized(true);
                             }
                         }
                         finally

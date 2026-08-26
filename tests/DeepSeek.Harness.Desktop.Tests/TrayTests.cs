@@ -240,17 +240,15 @@ public class TrayCheckFeedbackTests
     }
 }
 
-/// <summary>托盘唤回的最大化动作判据（隐藏态预置与唤回后补正共用）：未知不动作、已最大化不动作，其余才发出。</summary>
+/// <summary>托盘唤回的最大化动作判据：仅隐藏前采样为最大化才发出；未知与非最大化绝不动作。</summary>
 public class TrayRecallMaximizeTests
 {
     [Theory]
-    [InlineData(1, false, true)]    // 隐藏前最大化、当前非最大化 → 发出（预置与补正两用）
-    [InlineData(1, true, false)]    // 当前已最大化（镜像同步或上游 show 保几何）→ 不动
-    [InlineData(0, false, false)]   // 隐藏前非最大化 → 不动
-    [InlineData(-1, false, false)]  // 采样未知 → 绝不动（行为退回修复前）
-    [InlineData(-1, true, false)]
-    public void NeedsMaximize_MatchesContract(int maximizedAtHide, bool isNowMaximized, bool expected)
+    [InlineData(1, true)]   // 隐藏前最大化 → 预置/兜底发出 SetMaximized(true)
+    [InlineData(0, false)]  // 隐藏前非最大化 → 不动
+    [InlineData(-1, false)] // 采样未知 → 绝不动（行为退回修复前）
+    public void ShouldEnsure_MatchesContract(int maximizedAtHide, bool expected)
     {
-        Assert.Equal(expected, TrayRecallMaximize.NeedsMaximize(maximizedAtHide, isNowMaximized));
+        Assert.Equal(expected, TrayRecallMaximize.ShouldEnsure(maximizedAtHide));
     }
 }
