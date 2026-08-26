@@ -65,27 +65,37 @@ public static class Program
             }
         }
 
+        // hide-to-tray 唤回的最大化保持样本（ADR tray-recall-maximize-and-check-feedback）：
+        // 隐藏前采样（1=最大化 / 0=非 / -1=未知），唤回路径按判据消费后在 finally 无条件清零。
+        // 声明置于最前：launcher 激活回调与托盘召回共用同一份样本语义，激活唤起同样消费，
+        // 防残留样本让下一次托盘点击把用户手动还原的窗口误最大化。
+        var maximizedAtHide = -1;
+
         // 单实例仲裁（ADR single-instance-launcher-activation）：Wayland 下 GTK 按 ApplicationId
         // 的互斥不生效（v0.3.7 实机：launcher 二启产生完整新实例），自建 UDS 仲裁先于一切
         // GTK/运行时初始化执行。二启通知主实例显示主窗后立即退出，绝不重复拉起运行时。
-        // activationAccessor 延迟接线：主实例回调发生在 Build 之后（窗口代理就绪前调用被缓冲）。
-        CurrentWindowAccessor? activationAccessor = null;
+        // 回调经 updateWindow 延迟代理（Build 后赋值）；窗口代理就绪前 Current 抛
+        // InvalidOperationException，由回调 catch 记日志后放弃——激活请求丢失可接受，
+        // 首启本就会自动开窗。updateWindow 与自更新栈共用同一延迟句柄，
+        // 声明必须先于本回调（作用域捕获）。
+        CurrentWindowAccessor? updateWindow = null;
         PrimaryListener? instanceListener = null;
         var instanceSocketPath = OperatingSystem.IsWindows()
             ? null // Windows 无验证环境不启用互斥，行为维持现状（ADR 平台边界）
             : LauncherActivation.SocketPath(
                 Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") is { Length: > 0 } xdgRuntimeDir
                     ? xdgRuntimeDir
-                    : Path.GetTempPath(),
+                    : // 缺失回退：多用户机器上的跨用户同名碰撞由残留自愈/无监听降级路径兜底
+                    Path.GetTempPath(),
                 "deepseek-harness-desktop",
                 isDev);
         if (instanceSocketPath is not null)
         {
             if (!LauncherActivation.TryBindPrimary(
                     instanceSocketPath,
-                    onShowRequested: () =>
+                    onShowRequested: async () =>
                     {
-                        var accessor = activationAccessor;
+                        var accessor = updateWindow;
                         if (accessor is null)
                         {
                             return;
@@ -93,8 +103,9 @@ public static class Program
 
                         try
                         {
-                            _ = accessor.Current.ShowAsync();
-                            Services.HostLog.Write("[host] launcher 激活：已请求显示主窗");
+                            await accessor.Current.ShowAsync();
+                            Volatile.Write(ref maximizedAtHide, -1);
+                            Services.HostLog.Write("[host] launcher 激活：显示主窗完成");
                         }
                         catch (Exception ex)
                         {
@@ -162,7 +173,6 @@ public static class Program
             isDev,
             Environment.GetEnvironmentVariable(Services.Update.UpdateOptions.ForceDevEnv));
         Services.Update.UpdateStateMachine? updateMachine = null;
-        CurrentWindowAccessor? updateWindow = null;
         var readyNotified = false;
         if (updateEnabled)
         {
@@ -222,8 +232,7 @@ public static class Program
         // ①Linux 隐藏态预置——ShowAsync 前对未映射窗口发出 maximize，map 即最大化，
         // 消除「先默认尺寸再最大化」的首唤闪变；②唤回后补正兜底——300ms 后确认仍非
         // 最大化才补一次 ToggleMaximize（预置已发则跳过，防镜像滞后时二次 toggle 反向还原）。
-        // -1=未知（采样异常，唤回不动作，行为退回修复前）；样本在唤回末尾一次性消费。
-        var maximizedAtHide = -1;
+        // 样本本体声明在文件最前（launcher 激活回调共用消费语义）。
         // 托盘就绪标志：先于服务注册声明（closeToTray 路由的 available 委托引用），
         // 托盘初始化后赋值；初始化失败保持 false（关窗直退、偏好开关呈不可用）。
         var trayReady = false;
@@ -356,17 +365,9 @@ public static class Program
                         RecallAsync,
                         closeWindow: () =>
                         {
-                            // 编排已接线（supervisorCts 声明后）走确定性退出；未接线的窗口期
-                            // （理论上不存在——退出需用户交互）退回裸 Close 保底
-                            var quit = orderlyQuit;
-                            if (quit is not null)
-                            {
-                                quit();
-                            }
-                            else
-                            {
-                                trayWindow.Close();
-                            }
+                            // 编排在 supervisorCts 声明后接线，而托盘退出必经托盘菜单的用户交互、
+                            // 必然晚于接线，故此处不可能为 null
+                            orderlyQuit!();
                         },
                         closeGate,
                         updateMachine,
@@ -379,7 +380,6 @@ public static class Program
 
         var windowAccessor = app.Services.GetRequiredService<CurrentWindowAccessor>();
         updateWindow = windowAccessor;
-        activationAccessor = windowAccessor;
 
         // 托盘就绪化（批次三）：装菜单并显示。失败只降级记日志——无托盘环境是合法运行环境；
         // 但下方 hide-to-tray 拦截必须与托盘同 gate：没有召回通道还拦截关窗等于把窗口藏死。
@@ -456,18 +456,15 @@ public static class Program
             RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), marker.Token);
             instanceListener?.Dispose();
             quitWindow.Close();
+            // 8s 看门狗（无令牌，退出即终态）：主循环届时仍未返回则强制终结。Exit 不展开栈，
+            // 上方已显式完成的 Cancel/Stop/Release/unlink 不会被二次执行，无双重释放面；
+            // Exit 前再补一次 Stop（幂等）——封 supervisor 恢复分支 spawn-after-cancel 竞态下
+            // 刚被拉起的子进程（StartCoreAsync 的取消检查点之外的残余窗口）。
             _ = Task.Run(async () =>
             {
-                try
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(8));
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-
+                await Task.Delay(TimeSpan.FromSeconds(8));
                 Services.HostLog.Write("[tray] 退出看门狗触发：主循环未返回，强制结束");
+                host.Stop();
                 Environment.Exit(0);
             });
         };
@@ -792,6 +789,9 @@ public static class Program
 
         host.Stop();
         RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), marker.Token);
+        // 非 orderly 退出路径（用户直接关窗使 Run 返回）也要释放单实例锁地址：
+        // orderly 路径已 Dispose 过，幂等守卫保证此处安全
+        instanceListener?.Dispose();
         return 0;
 
         /// <summary>当前平台的更新资产 RID（与 release 资产命名后缀对应）。</summary>

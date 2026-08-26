@@ -26,3 +26,7 @@ dev 判定满足其一即触发（首版仅看环境变量，实测裸跑 `dotne
 - 代价/风险：dev 首启为空白环境，需重配模型或自行拷贝 `dsh/.credentials.yaml`；任务栏多一个 `.dev` 条目；`.cache/dev-home` 不入 git（已在 .gitignore 覆盖范围内）。
 - 附带修复：自更新状态推送在窗口未创建时抛异常拖垮启动检查——`CurrentWindowAccessor.Current` 是抛异常而非返回 null；推送代码补 try/catch，状态机 Transition 对单个订阅者失败隔离。
 - 验证：`dotnet test` 87→96→98/98（DevEnvironmentTests 覆盖双触发条件与两种 home 推导）；三门禁全绿、0 警告。实机「正式版开着 + 裸跑 dotnet run 两窗并存」待用户验收。
+
+## Related
+
+- [单实例 launcher 激活](../architecture/2026-08-26-single-instance-launcher-activation.md)：`.dev` 身份后缀规则的第二个消费者——UDS 锁地址同源隔离，开发实例与正式版各持一把锁。

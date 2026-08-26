@@ -233,6 +233,13 @@ public sealed class HarnessRuntimeHost : IDisposable
 
     private async Task<Uri?> StartCoreAsync(int? port, TimeSpan timeout, CancellationToken ct = default)
     {
+        // 退出编排已取消：绝不 spawn 新子进程——否则孤儿 dsh 会越过 Stop 存活到壳死后，
+        // 复现冷启动端口漂移（ADR child-process-reaping-port-drift）。取消是终态，按「起不来」返回。
+        if (ct.IsCancellationRequested)
+        {
+            return null;
+        }
+
         var home = ResolveDshHome();
         Directory.CreateDirectory(home);
 
@@ -276,6 +283,14 @@ public sealed class HarnessRuntimeHost : IDisposable
 
         _process = Process.Start(psi)
             ?? throw new InvalidOperationException("无法启动 dsh 进程。");
+        if (ct.IsCancellationRequested)
+        {
+            // 取消落在上方检查点与 spawn 之间的窄窗：立即整树回收再返回，
+            // 绝不让刚起的进程成为无人认领的孤儿（监督器此刻已在收摊，不会再 Stop 它）。
+            Stop();
+            return null;
+        }
+
         _process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is null)

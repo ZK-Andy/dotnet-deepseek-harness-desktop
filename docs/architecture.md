@@ -30,6 +30,11 @@
 * `Services/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`，占位回退 `0`。
 * `Services/HarnessUrlParser`：单行解析 `dsh web: http://127.0.0.1:<port>`。
 
+## 单实例与退出
+
+* `Services/LauncherActivation`：UDS 单实例仲裁（`$XDG_RUNTIME_DIR` 锁地址，dev 隔离同源）——首实例 `bind/listen` 持锁，launcher 二启发 `show` 命令请主实例显示主窗后退出；残留 socket 探活自愈，清理失败降级无监听主实例（绝不挡启动）。Windows 不启用。
+* 托盘「退出」走有序编排：取消监督器 → `host.Stop()` 整树回收 dsh → marker Release → 关窗 → 8s 看门狗强制终结；端口被占回退 OS 分配时写漂移告警。
+
 ## 崩溃监督
 
 * `Services/RuntimeSupervisor`：`WaitForExitAsync` + `CancellationToken` 循环；退出→`showRecovery`（`RecoveryScript` 覆写文档为“重连中”）→`host.RestartAsync(60s)`→`navigate(newUrl)`。仅重启子进程，不重启桌面进程；`supervisorCts` 随 `app.Run()` 结束取消。

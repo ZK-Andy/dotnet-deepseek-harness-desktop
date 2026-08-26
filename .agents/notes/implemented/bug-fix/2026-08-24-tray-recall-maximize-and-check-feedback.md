@@ -38,3 +38,4 @@ v0.3.1 实机复验两项体验缺陷：①**X 隐藏→托盘唤回后窗口丢
 - [运行时依赖升级与 arm64 复发](../process/2026-08-25-runtime-deps-upgrade-and-arm64-resume.md)：Ryn 三包 bump 至 0.30.4 与本决策的落地批次。
 - [shell 首启加固](2026-08-24-shell-firstboot-hardening.md)：同日托盘顺序契约的前置修复。
 - [companion invoke 帧契约](2026-08-24-companion-invoke-frame-contract.md)：同轮实机复验的另一缺陷面（0.0.10 勘误）。
+- [单实例 launcher 激活](../architecture/2026-08-26-single-instance-launcher-activation.md)：launcher 激活唤起是采样链之外的独立显示入口（消费样本但不做预置/补正），勿纳入本线回归清单。

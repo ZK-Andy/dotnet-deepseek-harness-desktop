@@ -13,7 +13,7 @@ Status: implemented
 1. **日志主体收口**：RuntimeSupervisor 的 log 回调从 Console 换成 `HostLog.Write`，恢复分支追加 dsh 子进程 stderr 尾部（8 行）落盘——子进程死前最后一句话不再丢失；自更新状态机经 `onTransition` 单点把每次状态变化写入 host.log；HostLog 增加简单尺寸轮转（超 5 MB 滚动为 `host.log.old`，保留一代）防无限增长。
 2. **一键导出诊断 zip**：新命令 `desktop.diagnostics.export`（`DesktopDiagnosticsCommandRouter`，走既有 `desktop` 能力面），companion 设置页「导出诊断信息」按钮触发（点击即隐私确认——内容白名单仅 logs/port/state.txt，显式排除 credentials/sessions/profiles/storages/updates/pnpm 目录）；zip 落用户文档目录（跨平台稳定可见），返回绝对路径给页面展示。
 3. **无 UI 兜底 CLI**：`DeepSeek.Harness.Desktop --export-diagnostics` 在一切启动逻辑之前执行导出并打印路径后退出——不 spawn dsh、不开窗、不做 dev 隔离，覆盖闪退场景。
-4. **active-run 崩溃取证 marker**：启动时原子写 `<home>/logs/run-marker.json`（owner token + pid + 时间戳，临时文件 rename 发布）；已存在的 marker 若是符号链接/重解析点一律删除重建（不穿链接写）；正常退出仅当 token 匹配才清除（owner 幂等）；下次启动发现遗留 marker 即判定上轮非受控退出——记日志 + 横幅提示引导导出诊断。已知取舍：dev 与正式版并存时共享同一 home 的两实例共用单一 marker，误报窗口接受（预览期实例数少，ADR 记录在案）。
+4. **active-run 崩溃取证 marker**：启动时原子写 `<home>/logs/run-marker.json`（owner token + pid + 时间戳，临时文件 rename 发布）；已存在的 marker 若是符号链接/重解析点一律删除重建（不穿链接写）；正常退出仅当 token 匹配才清除（owner 幂等）；下次启动发现遗留 marker 即判定上轮非受控退出——记日志 + 横幅提示引导导出诊断。已知取舍：dev 与正式版并存时共享同一 home 的两实例共用单一 marker，误报窗口接受（预览期实例数少，ADR 记录在案）。多实例覆盖诱因已由单实例仲裁结构性消除（见 [单实例 launcher 激活](2026-08-26-single-instance-launcher-activation.md)），marker 单文件语义与判定不变。
 
 ## Alternatives considered
 

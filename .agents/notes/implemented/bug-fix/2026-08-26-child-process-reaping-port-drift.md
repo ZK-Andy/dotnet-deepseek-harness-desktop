@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-1. **托盘退出升级为确定性有序退出编排**：退出路由不再裸调 `trayWindow.Close()`，改走编排委托——`ApproveExit` → 取消监督器令牌 → `host.Stop()`（整树击杀 dsh，先于关窗执行，运行时回收不再依赖 GTK loop 行为）→ marker Release → `Close()` → **8s 退出看门狗**（主循环届时仍未返回则记日志并 `Environment.Exit(0)`，把静默滞留变成确定性终结）。编排委托经持有器延迟接线（注册期早于 supervisorCts 声明），恢复页退出路由维持原序不扩批。
+1. **托盘退出升级为确定性有序退出编排**：退出路由不再裸调 `trayWindow.Close()`，改走编排委托——`ApproveExit` → 取消监督器令牌 → `host.Stop()`（整树击杀 dsh，先于关窗执行，运行时回收不再依赖 GTK loop 行为）→ marker Release → `Close()` → **8s 退出看门狗**（主循环届时仍未返回则记日志并 `Environment.Exit(0)`，把静默滞留变成确定性终结）。编排委托经持有器延迟接线（注册期早于 supervisorCts 声明），恢复页退出路由维持原序不扩批。监督器的崩溃重启受取消令牌双检查护航（StartAsync 入口与 spawn 点各一道）：取消后绝不再 spawn 新子进程，看门狗 Exit 路径同样没有孤儿可漏。
 2. **端口漂移显式告警**：`HarnessRuntimeHost.StartAsync` 首选端口绑定失败回退 OS 分配成功时，写 host.log warning——点明疑似残留实例/孤儿占用、本次 origin 将变化、上一会话选中态不保留。运行时宿主新增可选日志依赖（缺省 null 安全）。
 3. **自更新 `Environment.Exit(0)` 兜底路径维持现状**：该路径由 pkexec 脚本接管进程接力，强退前补 Stop 的收益与脚本时序耦合，留待实机复现孤儿后再议。
 

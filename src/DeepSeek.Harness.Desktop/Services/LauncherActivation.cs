@@ -10,7 +10,8 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// </summary>
 /// <remarks>
 /// 平台边界：Linux/macOS 启用；Windows 无验证环境不启用（调用方按 OS 分支放行）。
-/// 崩溃残留的 socket 文件由「connect 探活失败即删除重建」自愈路径处理。
+/// 崩溃残留的 socket 文件由「connect 探活失败即删除重建」自愈路径处理；残留文件清不掉时
+/// 降级为无监听主实例照常启动——仲裁是增强能力，绝不挡启动、绝不造成零实例。
 /// </remarks>
 public static class LauncherActivation
 {
@@ -25,12 +26,13 @@ public static class LauncherActivation
     public static string SocketPath(string runtimeDir, string appName, bool isDev) =>
         Path.Combine(runtimeDir, $"{appName}{(isDev ? ".dev" : string.Empty)}.sock");
 
-    /// <summary>尝试以主实例身份持有锁地址。true=主实例（监听可能因环境异常降级为空转，
-    /// 见 <paramref name="log"/>）；false=地址被占且探活可达——存在存活的主实例，调用方应走
-    /// <see cref="NotifyPrimary"/> 后退出。</summary>
+    /// <summary>尝试以主实例身份持有锁地址。true=主实例——锁地址持有成功并监听；
+    /// 系统级 socket 异常或残留文件清理失败时降级为无监听空转（仲裁是增强能力，绝不挡启动，
+    /// 降级原因见 <paramref name="log"/>）。false=地址被占且探活可达——存在存活的主实例，
+    /// 调用方应走 <see cref="NotifyPrimary"/> 后退出。</summary>
     public static bool TryBindPrimary(
         string path,
-        Action onShowRequested,
+        Func<Task> onShowRequested,
         Action<string>? log,
         out PrimaryListener? listener)
     {
@@ -75,7 +77,12 @@ public static class LauncherActivation
             using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
             var endpoint = new UnixDomainSocketEndPoint(path);
             using var cts = new CancellationTokenSource(timeout);
-            socket.ConnectAsync(endpoint, cts.Token).AsTask().Wait(timeout);
+            if (!socket.ConnectAsync(endpoint, cts.Token).AsTask().Wait(timeout))
+            {
+                // 连接超时：显式中止挂起连接再走释放，防孤儿连接任务与 cts 释放竞态
+                cts.Cancel();
+                return false;
+            }
 
             var payload = System.Text.Encoding.UTF8.GetBytes(ShowCommand + "\n");
             socket.Send(payload);
@@ -87,6 +94,8 @@ public static class LauncherActivation
         }
         catch (Exception)
         {
+            // 吞掉连接/发送/接收全程的任何失败：协议契约是「任何失败都返回 false」，
+            // 调用方无论成败都退出（绝不重复拉起运行时），故无需区分失败形态
             return false;
         }
     }
@@ -109,8 +118,10 @@ public static class LauncherActivation
             }
             catch (Exception ex)
             {
-                log?.Invoke($"[host] 单实例残留锁清理失败：{ex.Message}");
-                return null;
+                // 清不掉就无法持锁：抛给外层按「监听不可用」降级为无监听主实例——绝不挡启动，
+                // 也绝不冒充「有存活主实例」让二启陪葬成零实例（return null 语义只留给真有主）
+                log?.Invoke($"[host] 单实例残留锁清理失败，将降级为无监听主实例：{ex.Message}");
+                throw;
             }
         }
 
@@ -155,6 +166,8 @@ public static class LauncherActivation
         }
         catch (Exception)
         {
+            // 探活把一切失败（ENOENT/ECONNREFUSED/权限拒绝…）统一视为「对端不在」：
+            // 这是残留文件判定的唯一依据，失败形态无需区分
             return false;
         }
     }
@@ -162,16 +175,17 @@ public static class LauncherActivation
 
 /// <summary>主实例侧的监听句柄：accept 循环读一行命令，<see cref="LauncherActivation.ShowCommand"/>
 /// 则回 <see cref="LauncherActivation.AckResponse"/> 并触发显示主窗回调；其余输入静默丢弃不断链。
-/// Dispose 取消循环并 unlink 锁文件。</summary>
+/// Dispose 取消循环并 unlink 锁文件；幂等，重复调用安全。</summary>
 public sealed class PrimaryListener : IDisposable
 {
     private readonly Socket _socket;
     private readonly string _path;
-    private readonly Action _onShowRequested;
+    private readonly Func<Task> _onShowRequested;
     private readonly Action<string>? _log;
     private readonly CancellationTokenSource _cts = new();
+    private int _disposed;
 
-    internal PrimaryListener(Socket socket, string path, Action onShowRequested, Action<string>? log)
+    internal PrimaryListener(Socket socket, string path, Func<Task> onShowRequested, Action<string>? log)
     {
         _socket = socket;
         _path = path;
@@ -202,9 +216,24 @@ public sealed class PrimaryListener : IDisposable
             {
                 return;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 _log?.Invoke($"[host] 单实例监听异常，继续：{ex.Message}");
+                // 退避一拍再续：持久性故障（如 fd 耗尽）下避免热旋刷爆 host.log
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                // 取消竞态下 Dispose 会把挂起的 accept 转成杂散异常（ObjectDisposedException 等）：
+                // 收摊阶段静默退出，不打扰日志
+                return;
             }
         }
     }
@@ -228,7 +257,9 @@ public sealed class PrimaryListener : IDisposable
                 await client.SendAsync(ack, cts.Token).ConfigureAwait(false);
             }
 
-            _onShowRequested();
+            // 应答已先行发出（ack=请求受理而非执行结果）；回调 await 到完成，
+            // 失败由本方法 catch 记日志——异步段异常不再逃逸
+            await _onShowRequested().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -239,6 +270,11 @@ public sealed class PrimaryListener : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         _cts.Cancel();
         _socket.Dispose();
         try

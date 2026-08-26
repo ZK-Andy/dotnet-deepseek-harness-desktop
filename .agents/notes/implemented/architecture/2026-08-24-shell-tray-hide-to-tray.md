@@ -25,10 +25,11 @@ Status: implemented
 - 托盘菜单点击依赖页面存活（中继链路）：dsh 重启恢复期与首屏加载完成前的点击会被丢弃；隐藏态页面仍存活故 hide-to-tray 主场景不受影响。Linux 上游声明 tray 为 menu-only（无图标单击事件）——「显示主窗」在 Linux 经菜单触发。
 - 关闭窗口从「退出应用」变为「隐藏到托盘」，属用户可见行为变更：user-guide 双语与 FAQ 同步改写；真正退出的路径 = 托盘菜单「退出」。
 - companion 中继代码入包必须 version bump（0.0.6→0.0.7），否则已装用户升级后静默无中继。
-- **实机验收清单（发版前必须逐项过）**：①Linux AppIndicator 图标可见（GNOME 无 AppIndicator 扩展的环境托盘不可见，属已知风险）；②X 隐藏 → 托盘菜单「显示主窗」召回；③X 隐藏后从启动器再次拉起的行为记录——GTK 单实例互斥下 saucer 是否 activate-present 未验证，Ryn 不暴露二启拦截面，若实测不能召回则立项「第二实例→ShowMainWindow 接线」（需上游扩展点或平台原生 hack）；④Windows/macOS 图标点击显示主窗。搁浅兜底：极端搁浅只能 kill 进程，RunMarker 会在下次启动给出非受控退出横幅留痕。
-- 退出路径的顺序契约（先 ApproveExit 再 Close）由记序 fake 回归测试钉住；返回帧 "{}"/"null" 双态沿用 openExternal 约定并在路由 XML doc 注明。
+- **实机验收清单（发版前必须逐项过）**：①Linux AppIndicator 图标可见（GNOME 无 AppIndicator 扩展的环境托盘不可见，属已知风险）；②X 隐藏 → 托盘菜单「显示主窗」召回；③X 隐藏后从启动器再次拉起——已决：Wayland 下 GTK 单实例互斥不生效（v0.3.7 实机取证），「第二实例→ShowMainWindow 接线」已由壳内 UDS 单实例仲裁落地（见 [单实例 launcher 激活](2026-08-26-single-instance-launcher-activation.md)）；④Windows/macOS 图标点击显示主窗。搁浅兜底：托盘退出已升级为有序编排 + 8s 看门狗确定性终结（见 [子进程收割与端口漂移](../bug-fix/2026-08-26-child-process-reaping-port-drift.md)）；kill 进程兜底保留给看门狗也失效的极端面，RunMarker 会在下次启动给出非受控退出横幅留痕。
+- 退出路径的顺序契约（先 ApproveExit 再 Close）由记序 fake 回归测试钉住；两锚点之间现编入取消监督器/运行时回收/marker Release 中间步（所有权在 [子进程收割与端口漂移](../bug-fix/2026-08-26-child-process-reaping-port-drift.md)）。返回帧 "{}"/"null" 双态沿用 openExternal 约定并在路由 XML doc 注明。
 
 ## Related
 
 - [批次三前三项](2026-08-24-shell-convenience-autostart-ready-notify.md)：同一台账批次；该轮以「需真实桌面实测」为由挂账本两项。
 - [companion 更新设置页](../feature/2026-08-22-companion-update-settings-section.md)：「检查更新」菜单项复用其状态机与设置页状态帧链路。
+- [单实例 launcher 激活](2026-08-26-single-instance-launcher-activation.md)与[子进程收割与端口漂移](../bug-fix/2026-08-26-child-process-reaping-port-drift.md)：验收③的落地与退出编排的现状所有者。

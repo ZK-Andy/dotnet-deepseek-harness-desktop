@@ -24,7 +24,7 @@ v0.3.5 自更新实机事故：升级拉起后桌面端反复显示恢复屏（�
 
 - 桌面端与 web 会话可长期共存：各自 origin 独立演化，互顶下线消失。
 - 存量升级首次启动做 legacy 回读；旧 home 根文件此后成为死数据（诊断包仍收录以便核对）。
-- 同 profile 内多开第二实例仍走既有的「占用即回退 OS 分配」兜底，行为不变。
+- 同 profile 内多开第二实例：多开本身已被单实例仲裁结构性阻止（见 Related）；「占用即回退 OS 分配」兜底保留给孤儿残留场景，回退成功时伴随 host.log 漂移告警（origin 变化与会话选中态后果提示），见 [子进程收割与端口漂移](2026-08-26-child-process-reaping-port-drift.md)。
 - 测试 255/255（+3：迁移回读、写入不回流、旧文件损坏容错）；布局契约测试反转为新规格。
 
 ## Related
@@ -32,3 +32,4 @@ v0.3.5 自更新实机事故：升级拉起后桌面端反复显示恢复屏（�
 - [持久化 Web 端口跨启动](2026-08-21-persist-web-port-across-launches.md)：端口记忆机制的出处。
 - [共享 home 与 desktop profile](../architecture/2026-08-23-shared-home-desktop-profile.md)：共享 home 形态——本修复补上了它此前未暴露的端口争抢面。
 - [自更新二代实例环境加固](2026-08-22-self-update-relaunch-env-hardening.md)：同一拉起链路上的前次加固。
+- [子进程收割与端口漂移](2026-08-26-child-process-reaping-port-drift.md)：回退兜底的现状触发面与漂移告警所有者。

@@ -9,7 +9,7 @@ Status: implemented
 ## Decision
 
 1. **壳内自建单实例仲裁，不依赖 GTK 互斥**：新增 `Services/LauncherActivation`——首实例对 Unix domain socket `bind` 成功即为主实例并进入 accept 监听；`bind` 撞地址（EADDRINUSE）即为二次启动，向既有 socket 发送一行 `show` 命令、收到 `ok` 应答（2s 超时）后以 0 退出，无论通知成败都绝不重复拉起运行时。
-2. **主实例收到 `show` 即显示主窗**：回调经 `CurrentWindowAccessor` 的 deferred 代理走 `ShowAsync`（与托盘「显示主窗」同构，异常吞掉记日志——激活是增强能力，绝不拖垮任一实例）。
+2. **主实例收到 `show` 即显示主窗**：回调经 `CurrentWindowAccessor` 的 deferred 代理走 `ShowAsync`，await 到完成才记成功（与托盘「显示主窗」同一形态），失败吞掉记日志——激活是增强能力，绝不拖垮任一实例；唤起同时消费最大化样本，防止下一次托盘召回按旧样本误最大化。
 3. **锁地址随 dev 隔离**：socket 路径取 `$XDG_RUNTIME_DIR`（缺失回退 `/tmp`）+ 应用名 + `.dev` 后缀规则与 `DevEnvironment.ApplicationIdFor` 同源，开发实例与正式版互不顶牛；主实例退出时 unlink socket。
 4. **平台边界**：Linux/macOS 启用（UDS 两平台皆原生）；Windows 本轮不启用（无验证环境，行为维持现状），代码显式分支并记录——与「Win/mac 无实证不盲扩」的项目纪律一致。
 
@@ -23,10 +23,11 @@ Status: implemented
 ## Consequences
 
 - 二次启动不再产生第二份运行时/dsh 子进程/托盘图标；端口漂移与 marker 误报的多实例诱因随之消解（孤儿残留另见 child-process-reaping 笔记）。
-- 主实例崩溃遗留 socket 文件时：`bind` 对残留文件会 EADDRINUSE——connect 探活失败（对端不存在）则删除重建（自愈路径有集成测试钉住）。
-- 激活显示不携带最大化保持（样本属本实例会话态）——首唤几何问题归 tray-recall-maximize 线，不在本批范围。
+- 主实例崩溃遗留 socket 文件时：`bind` 对残留文件会 EADDRINUSE——connect 探活失败（对端不存在）则删除重建（自愈路径有集成测试钉住）。残留文件清不掉（目录权限等）时降级为无监听主实例照常启动——仲裁是增强能力，绝不挡启动、绝不把二启陪葬成零实例（有回归测试钉住）。
+- 激活显示不做最大化预置/补正（几何修复归 tray-recall-maximize 线），但会消费隐藏期样本：后续托盘召回只依据最新一次隐藏的采样。
 
 ## Related
 
 - [子进程收割与端口漂移](../bug-fix/2026-08-26-child-process-reaping-port-drift.md)：同批姊妹决策——多实例消解后仍存的孤儿残留与漂移告警。
-- [共享 home + desktop profile](2026-08-23-shared-home-desktop-profile.md)：DSH_HOME 解析与 dev 隔离的出处。
+- [共享 home + desktop profile](2026-08-23-shared-home-desktop-profile.md)：DSH_HOME 解析的出处。
+- [开发运行时隔离](../process/2026-08-22-dev-runtime-isolation.md)：`.dev` 身份后缀规则的所有者，本组件锁地址同源复用。

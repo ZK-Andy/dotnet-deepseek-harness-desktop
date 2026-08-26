@@ -11,6 +11,18 @@ namespace DeepSeek.Harness.Desktop.Tests;
 public class HarnessRuntimeHostTests
 {
     [Fact]
+    public async Task StartAsync_CancelledToken_ReturnsNull_WithoutSpawning()
+    {
+        // 取消是终态：入口检查先于 spawn，监督器恢复分支撞上退出时绝不留下无人认领的 dsh 孤儿。
+        // 不存在的 node 路径保证「真去 spawn」必然抛 Win32Exception——断言 Null 即钉住入口检查存在。
+        using var host = new HarnessRuntimeHost(("/nonexistent/dsh-node", "/nonexistent/dsh.js"));
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.Null(await host.StartAsync(TimeSpan.FromSeconds(5), cts.Token));
+    }
+
+    [Fact]
     public void BuildDshWebArgs_IncludesNoOpen_SoShellDoesNotHandOffToOsBrowser()
     {
         // rc.8+ 的 dsh web 默认 openBrowser=true，会把 URL 交给 OS 默认浏览器；
