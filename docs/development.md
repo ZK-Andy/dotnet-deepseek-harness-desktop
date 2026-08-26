@@ -5,7 +5,7 @@
 ## 环境
 
 * `.NET 10 SDK`（`global.json` 10.0.x，`TargetFramework net10.0`，`PublishAot true` 但 `publish -p:PublishAot=false --self-contained`）。
-* `Linux: WebKitGTK 6`（`libwebkitgtk-6.0-4` / `libwebkitgtk-6.0.so.4`），`Node 24.19.0`（仅打包脚本下载），`pnpm 11`，`dpkg-deb/rpmbuild`（仅 `package-linux.sh` 全量，`CI` 提供）。
+* `Linux: WebKitGTK 6`（`libwebkitgtk-6.0-4` / `libwebkitgtk-6.0.so.4`），`Node 24.20.0`（仅打包脚本下载），`pnpm 11`，`dpkg-deb/rpmbuild`（仅 `package-linux.sh` 全量，`CI` 提供）。
 * 沙箱 `/home` 只读：`dotnet` 需 `DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget`。
 
 ## 目录与配置

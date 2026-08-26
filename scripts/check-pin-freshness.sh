@@ -57,7 +57,7 @@ if [[ "$MODE" == selftest ]]; then
 	done
 	if [[ "$fail" == 0 ]]; then
 		# --print 正典提取（离线夹具）
-		for kv in dsh:0.1.1-rc.2 node:24.19.0 market:1.31.1; do
+		for kv in dsh:0.1.1-rc.2 node:24.20.0 market:1.31.1; do
 			k=${kv%%:*}; expected=${kv##*:}
 			out=$(PIN_SH=$ROOT/scripts/testdata/freshness/clean/bundle-runtime-ci.sh DATA_DIR= bash "$SELF" --print "$k" 2>/dev/null)
 			if [[ "$out" == "$expected" ]]; then

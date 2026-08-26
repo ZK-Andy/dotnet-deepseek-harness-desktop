@@ -9,7 +9,7 @@
 set -euo pipefail
 
 PLATFORM="${1:-linux-x64}"
-NODE_VERSION="${NODE_VERSION:-24.19.0}"
+NODE_VERSION="${NODE_VERSION:-24.20.0}"
 DSH_VERSION="${DSH_VERSION:-0.1.1-rc.2}"
 # 随包插件市场版本（market 正典单点）：闭包签名含此维度——market 版本变化而
 # dsh/node/companion 未变时，旧闭包缓存必须失效（v0.3.8 教训：meta 签名缺此
