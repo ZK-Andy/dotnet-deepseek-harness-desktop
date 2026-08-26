@@ -52,13 +52,9 @@ public class RecoveryCommandRouterTests
 	{
 		var calls = new List<string>();
 		var router = new Services.RecoveryCommandRouter(
-			approveExit: () =>
-			{
-				calls.Add("approve");
-				gate.ApproveExit();
-			},
 			closeWindow: () => calls.Add(gate.ShouldCancelClose ? "close:locked" : "close:released"),
-			closeGate: gate);
+			closeGate: gate,
+			log: _ => calls.Add("log"));
 		return (router, calls);
 	}
 
@@ -74,7 +70,8 @@ public class RecoveryCommandRouterTests
 			null!,
 			CancellationToken.None);
 
-		Assert.Equal(new[] { "approve", "close:released" }, calls);
+		// close 时闸门已放行 = 批准确实先于 Close 发生（托盘同款取证手法）
+		Assert.Equal(new[] { "close:released", "log" }, calls);
 		Assert.False(gate.ShouldCancelClose);
 		Assert.Equal("{}", frame);
 	}

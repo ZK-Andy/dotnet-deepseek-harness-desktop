@@ -63,15 +63,15 @@ public class PageHealthTrackerTests
 	}
 
 	[Fact]
-	public void ProbeCount_CountsEverySample_IncludingUnknown()
+	public void ProbeCount_CountsValidProbesOnly_UnknownExcluded()
 	{
 		var t = new PageHealthTracker();
 
-		t.Record(PageHealth.Unknown);
+		t.Record(PageHealth.Unknown); // 窗口未就绪期异常轮询不计入有效探针
 		t.Record(PageHealth.Alive);
 		t.Record(PageHealth.Unknown);
 
-		Assert.Equal(3, t.ProbeCount);
+		Assert.Equal(1, t.ProbeCount);
 	}
 
 	[Theory]

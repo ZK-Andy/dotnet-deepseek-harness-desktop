@@ -227,7 +227,6 @@ public static class Program
                 // 恢复页退出（desktop.recovery.exit）：先批准关窗闸门再 Close——hide-to-tray 拦截下
                 // 未批准的 Close 会吞成隐藏；顺序契约与托盘退出同款（ADR diag-masking-and-recovery-page）
                 services.AddSingleton<ICommandRouter>(sp => new Services.RecoveryCommandRouter(
-                    approveExit: () => closeGate.ApproveExit(),
                     closeWindow: () => sp.GetRequiredService<IRynWindow>().Close(),
                     closeGate,
                     Services.HostLog.Write));
@@ -259,42 +258,48 @@ public static class Program
                     var trayWindow = sp.GetRequiredService<IRynWindow>();
                     async Task RecallAsync()
                     {
-                        // Linux 隐藏态预置：GTK 对未映射窗口的 maximize 记为初始态，map 时直接以
-                        // 最大化呈现——消除「先恢复默认尺寸、补正后再最大化」的首唤两段式闪变
-                        // （v0.3.6 实机反馈）。Win/mac 无此实证，维持唤回后补正不动。
-                        // 已预置则跳过补正：事件镜像可能滞后于真实状态，二次 toggle 会把已
-                        // 最大化的窗口还原。toggle 内部读原生真值再翻转，预置不会误伤已最大化态。
-                        var presetFired = false;
+                        // 样本入口即取本地快照，finally 无条件消费——若下方任一 await 抛出，
+                        // 残留样本会让下一次托盘点击把用户手动还原的窗口误最大化。
+                        var sample = Volatile.Read(ref maximizedAtHide);
                         try
                         {
-                            if (OperatingSystem.IsLinux() && Services.Tray.TrayRecallMaximize.NeedsMaximize(
-                                    Volatile.Read(ref maximizedAtHide), trayWindow.IsMaximized))
+                            // Linux 隐藏态预置：GTK 对未映射窗口的 maximize 记为初始态，map 时直接以
+                            // 最大化呈现——消除「先恢复默认尺寸、补正后再最大化」的首唤两段式闪变
+                            // （v0.3.6 实机反馈）。Win/mac 无此实证，维持唤回后补正不动。
+                            // 已预置则跳过补正：事件镜像可能滞后于真实状态，二次 toggle 会把已
+                            // 最大化的窗口还原。toggle 内部读原生真值再翻转，预置不会误伤已最大化态。
+                            var presetFired = false;
+                            try
+                            {
+                                if (OperatingSystem.IsLinux() && Services.Tray.TrayRecallMaximize.NeedsMaximize(
+                                        sample, trayWindow.IsMaximized))
+                                {
+                                    trayWindow.ToggleMaximize();
+                                    presetFired = true;
+                                    Services.HostLog.Write("[tray] 唤回：隐藏态已预置最大化");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // deferred 代理在窗口未就绪时可能抛出：放弃预置，退回唤回后补正兜底
+                                Services.HostLog.Write($"[tray] 隐藏态预置最大化失败：{ex.Message}");
+                            }
+
+                            await trayWindow.ShowAsync().AsTask();
+                            // 延迟一拍再读原生状态：给 WM 的 unmap/remap 与可能迟到的 MAXIMIZE
+                            // 事件留窗口，避免与其状态重放竞态（native 查询本身无需等页面几何
+                            // 落地；亚秒级等待不接监督器取消令牌）。
+                            await Task.Delay(300);
+                            if (!presetFired && Services.Tray.TrayRecallMaximize.NeedsMaximize(
+                                    sample, trayWindow.IsMaximized))
                             {
                                 trayWindow.ToggleMaximize();
-                                presetFired = true;
-                                Services.HostLog.Write("[tray] 唤回：隐藏态已预置最大化");
                             }
                         }
-                        catch (Exception ex)
+                        finally
                         {
-                            // deferred 代理在窗口未就绪时可能抛出：放弃预置，退回唤回后补正兜底
-                            Services.HostLog.Write($"[tray] 隐藏态预置最大化失败：{ex.Message}");
+                            Volatile.Write(ref maximizedAtHide, -1);
                         }
-
-                        await trayWindow.ShowAsync().AsTask();
-                        // 延迟一拍再读原生状态：给 WM 的 unmap/remap 与可能迟到的 MAXIMIZE
-                        // 事件留窗口，避免与其状态重放竞态（native 查询本身无需等页面几何
-                        // 落地；亚秒级等待不接监督器取消令牌）。
-                        await Task.Delay(300);
-                        if (!presetFired && Services.Tray.TrayRecallMaximize.NeedsMaximize(
-                                Volatile.Read(ref maximizedAtHide), trayWindow.IsMaximized))
-                        {
-                            trayWindow.ToggleMaximize();
-                        }
-
-                        // 样本一次性消费：它只描述本次 hide→recall 周期。残留样本会让下一次
-                        // 托盘点击（窗口可见时）把用户手动还原的窗口误最大化。
-                        Volatile.Write(ref maximizedAtHide, -1);
                     }
 
                     return new Services.Tray.DesktopTrayCommandRouter(

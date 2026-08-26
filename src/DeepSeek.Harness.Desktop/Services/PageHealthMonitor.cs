@@ -33,9 +33,16 @@ public sealed class PageHealthTracker(int deadThreshold = 3)
 	/// <summary>累计探针次数（诊断快照用）。</summary>
 	public int ProbeCount { get; private set; }
 
-	/// <summary>记录一次探针；发生状态迁移时返回人读描述，否则返回 null。</summary>
+	/// <summary>记录一次探针；发生状态迁移时返回人读描述，否则返回 null。
+	/// Unknown 不计入 <see cref="ProbeCount"/>——「probes」语义是有效探针数，窗口未就绪期的
+	/// 异常轮询不应让诊断快照里的计数虚高。</summary>
 	public string? Record(PageHealth sample)
 	{
+		if (sample == PageHealth.Unknown)
+		{
+			return null;
+		}
+
 		ProbeCount++;
 		switch (sample)
 		{

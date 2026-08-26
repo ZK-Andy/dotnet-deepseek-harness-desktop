@@ -13,6 +13,9 @@ permissions:
   contents: read
   issues: write
 
+env:
+  ISSUE_TITLE: "[freshness] 上游钉版漂移待拍板"
+
 concurrency:
   group: freshness-${{ github.ref }}
   cancel-in-progress: true
@@ -45,7 +48,7 @@ jobs:
         if: steps.patrol.outputs.code == '1'
         env:
           GH_TOKEN: ${{ github.token }}
-          TITLE: '[freshness] 上游钉版漂移待拍板'
+          TITLE: ${{ env.ISSUE_TITLE }}
         run: |
           existing=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')
           if [[ -n "$existing" ]]; then
@@ -59,7 +62,7 @@ jobs:
         if: steps.patrol.outputs.code == '0'
         env:
           GH_TOKEN: ${{ github.token }}
-          TITLE: '[freshness] 上游钉版漂移待拍板'
+          TITLE: ${{ env.ISSUE_TITLE }}
         run: |
           for n in $(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[].number'); do
             gh issue close "$n" --comment "本轮巡检无漂移，钉版已追平，自动关闭。"
