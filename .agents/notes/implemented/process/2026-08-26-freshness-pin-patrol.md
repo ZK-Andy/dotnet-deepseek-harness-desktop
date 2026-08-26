@@ -21,7 +21,7 @@ Status: implemented
 - **构建时浮动 latest**（已否决）：破坏可重复构建（同 tag 重跑产出不同闭包）；绕过人工判断的惊喜升级（dsh 预览质量，rc 间破坏性变更真实存在）；与 pnpm `minimumReleaseAge` 供应链政策打架（太新被拦、构建时灵时不灵）。
 - **Dependabot/renovate 自动 PR**（落败）：机器人解析不了我们的钉法——版本在 shell 默认值/env/C# 常量而非 package.json 清单；且自动 bump 违背「bump 是决策」原则。
 - **只做 preflight 注解不做定时巡检**（落败）：发版频率低且不定，漂移可能在两次发版间沉默数月；巡检保证恒定感知节奏。
-- **本轮顺手把钉版收敛成单一生成源**（暂不）：收益真实但改动横跨打包链与缓存 key，风险大于 A 线本职；内部一致性核对先兜住半 bump 风险，收敛留待后续单独拍板。
+- **本轮顺手把钉版收敛成单一生成源**（暂缓后已单独落地）：收益真实但改动横跨打包链与缓存 key，风险大于 A 线本职故未随本批；后续已单独实施——workflow env 手抄取消、`--print` 从脚本默认值解析，见 [pin-source-convergence](2026-08-26-pin-source-convergence.md)。
 
 ## Consequences
 

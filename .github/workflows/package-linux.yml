@@ -43,12 +43,16 @@ jobs:
       DOTNET_NOLOGO: '1'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       ARCH: ${{ matrix.arch }}
-      DSH_VERSION: '0.1.1-rc.2'
-      NODE_VERSION: '24.19.0'
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: 解析钉版正典（bundle-runtime-ci.sh 单一来源，ADR pin-source-convergence）
+        id: pins
+        shell: bash
+        run: |
+          echo "dsh=$(bash scripts/check-pin-freshness.sh --print dsh)" >> "$GITHUB_OUTPUT"
+          echo "node=$(bash scripts/check-pin-freshness.sh --print node)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -89,7 +93,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: resources/runtime
-          key: dsh-closure-${{ matrix.rid }}-${{ env.DSH_VERSION }}-${{ env.NODE_VERSION }}-v1-plug-${{ hashFiles('plugins/**', 'scripts/bundle-runtime-ci.sh') }}
+          key: dsh-closure-${{ matrix.rid }}-${{ steps.pins.outputs.dsh }}-${{ steps.pins.outputs.node }}-v1-plug-${{ hashFiles('plugins/**', 'scripts/bundle-runtime-ci.sh') }}
           restore-keys: dsh-closure-${{ matrix.rid }}-
 
       - name: 生成捆绑运行时（下载 Node + pnpm 安装 dsh 闭包，pilot-harness 整树方案）

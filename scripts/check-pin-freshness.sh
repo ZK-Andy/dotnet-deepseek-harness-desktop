@@ -18,12 +18,14 @@ set -euo pipefail
 
 MODE=report
 OUTPUT=
+PRINT_KEY=
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--annotate) MODE=annotate; shift ;;
 	--output) OUTPUT=${2:?--output 需要文件参数}; shift 2 ;;
 	--self-test) MODE=selftest; shift ;;
-	*) echo "未知参数: $1（可用 --annotate/--output/--self-test）" >&2; exit 64 ;;
+	--print) MODE=print; PRINT_KEY=${2:?--print 需要 dsh|node|market}; shift 2 ;;
+	*) echo "未知参数: $1（可用 --annotate/--output/--self-test/--print）" >&2; exit 64 ;;
 	esac
 done
 
@@ -53,7 +55,20 @@ if [[ "$MODE" == selftest ]]; then
 			echo "  ✗ $scene → exit $code，期望 $expected"; fail=1
 		fi
 	done
-	if [[ "$fail" == 0 ]]; then echo "== freshness 自测 3 例通过 =="; else echo "== freshness 自测失败 ==" >&2; fi
+	if [[ "$fail" == 0 ]]; then
+		# --print 正典提取（离线夹具）
+		for kv in dsh:0.1.1-rc.2 node:24.19.0 market:1.29.2; do
+			k=${kv%%:*}; expected=${kv##*:}
+			out=$(PIN_SH=$ROOT/scripts/testdata/freshness/clean/bundle-runtime-ci.sh DATA_DIR= bash "$SELF" --print "$k" 2>/dev/null)
+			if [[ "$out" == "$expected" ]]; then
+				echo "  ok: print $k → $out"
+			else
+				echo "  ✗ print $k → '$out'，期望 '$expected'"; fail=1
+			fi
+		done
+	fi
+
+	if [[ "$fail" == 0 ]]; then echo "== freshness 自测通过 =="; else echo "== freshness 自测失败 ==" >&2; fi
 	exit "$fail"
 fi
 
@@ -81,6 +96,23 @@ extract_default() { # 从 bundle-runtime-ci.sh 提取 KEY="${KEY:-默认值}" �
 	line=${line#*:-}
 	printf '%s' "${line%%\}*}"
 }
+
+# ---------- --print：正典钉版提取（workflow pins 步骤消费；纯解析不联网） ----------
+if [[ "$MODE" == print ]]; then
+	case "$PRINT_KEY" in
+	node) value=$(extract_default NODE_VERSION) ;;
+	dsh) value=$(extract_default DSH_VERSION) ;;
+	market) value=$(grep -ho 'dshmarket@[0-9][0-9.]*' "$PIN_SH" 2>/dev/null | head -1 | sed 's/^dshmarket@//') ;;
+	*) echo "未知键: $PRINT_KEY（可用 dsh|node|market）" >&2; exit 64 ;;
+	esac
+	if [[ -z "${value:-}" ]]; then
+		echo "error: 无法从 $PIN_SH 提取 $PRINT_KEY 钉版" >&2
+		exit 3
+	fi
+
+	echo "$value"
+	exit 0
+fi
 
 declare -a DSH_COPIES NODE_COPIES MARKET_COPIES
 add_copy() { eval "$1+=(\"\$2:\$3\")"; }
