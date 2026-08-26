@@ -39,9 +39,8 @@ public sealed class FileReadyPersistence(string dir) : UpdateStateMachine.IPersi
     public async Task SetAsync(UpdateStateMachine.ReadyRecord record, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(dir);
-        // 手拼 JSON（值经 JsonEncodedText 转义）：AOT 下避免反射序列化
-        var json = "{\"version\":\"" + System.Text.Json.JsonEncodedText.Encode(record.Version)
-            + "\",\"assetPath\":\"" + System.Text.Json.JsonEncodedText.Encode(record.AssetPath) + "\"}";
+        // 经 AppJsonContext 源生成（AOT 安全）；键名 version/assetPath 与 GetAsync 读方及历史文件互认
+        var json = JsonSerializer.Serialize(record, AppJsonContext.Default.ReadyRecord);
         await File.WriteAllTextAsync(_path, json, cancellationToken).ConfigureAwait(false);
     }
 

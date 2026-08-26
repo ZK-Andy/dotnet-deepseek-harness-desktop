@@ -19,10 +19,10 @@ public static class RecoveryPageBuilder
 	/// <param name="stderrTail">子进程 stderr 尾部行（supervisor 已在重启前留证）。</param>
 	public static string BuildScript(string reason, IReadOnlyList<string> stderrTail)
 	{
-		var payload = JsonSerializer.Serialize(new Payload(reason, stderrTail));
+		var payload = JsonSerializer.Serialize(new Payload(reason, stderrTail), AppJsonContext.Default.Payload);
 
 		return new StringBuilder("document.documentElement.innerHTML=")
-			.Append(JsonSerializer.Serialize(Skeleton))
+			.Append(JsonSerializer.Serialize(Skeleton, AppJsonContext.Default.String))
 			.Append(";var D=")
 			.Append(payload)
 			.Append(';')
@@ -30,7 +30,10 @@ public static class RecoveryPageBuilder
 			.ToString();
 	}
 
-	private sealed record Payload(string Reason, IReadOnlyList<string> Tail);
+	/// <summary>恢复页动态数据帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>
+	/// <param name="Reason">人读失败原因。</param>
+	/// <param name="Tail">子进程 stderr 尾部行。</param>
+	internal sealed record Payload(string Reason, IReadOnlyList<string> Tail);
 
 	private const string Skeleton =
 		"<!doctype html><html><head><meta charset=\"utf-8\"><title>DeepSeek Harness Desktop</title><style>" +

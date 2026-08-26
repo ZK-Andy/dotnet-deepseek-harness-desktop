@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace DeepSeek.Harness.Desktop.Services.Update;
 
@@ -34,26 +35,22 @@ public enum UpdateStatus
 /// <param name="Current">当前壳版本（Transition 统一补齐；供更新页显示「当前版本/已是最新」）。</param>
 public sealed record UpdateState(UpdateStatus Status, string? Version = null, string? Message = null, string? Current = null)
 {
-    /// <summary>序列化为页面推送用的紧凑 JSON（手写避免 AOT 反射序列化）。三个动态字段统一转义，
-    /// 不依赖「上游已把版本号校验为数字段」的隐式约定。</summary>
-    public string ToJson()
-    {
-        var json = $"{{\"status\":\"{Status.ToString().ToLowerInvariant()}\",\"version\":{Quote(Version)}";
-        if (Message is not null)
-        {
-            json += $",\"message\":{Quote(Message)}";
-        }
+    /// <summary>序列化为页面推送用的紧凑 JSON（经 <see cref="AppJsonContext"/> 源生成，AOT 安全）。
+    /// 三个动态字段统一转义，不依赖「上游已把版本号校验为数字段」的隐式约定。</summary>
+    public string ToJson() =>
+        JsonSerializer.Serialize(
+            new UpdateStateFrame(Status.ToString().ToLowerInvariant(), Version, Message, Current),
+            AppJsonContext.Default.UpdateStateFrame);}
 
-        if (Current is not null)
-        {
-            json += $",\"current\":{Quote(Current)}";
-        }
-
-        return json + "}";
-    }
-
-    private static string Quote(string? value)
-    {
-        return value is null ? "null" : $"\"{JsonEncodedText.Encode(value)}\"";
-    }
-}
+/// <summary><see cref="UpdateState"/> 的页面推送帧（键序 = 声明序，companion 消费契约）：
+/// <c>status</c> 由状态枚举手动小写——全小写 <c>uptodate</c> 是插件侧 switch 契约，不可改用
+/// 枚举命名策略；<c>version</c> 恒在场（缺省 null 字面量），<c>message</c>/<c>current</c> 仅非空出现。</summary>
+/// <param name="Status">已小写的状态串。</param>
+/// <param name="Version">目标版本号；无则 null。</param>
+/// <param name="Message">error 态失败原因；null 时整键省略。</param>
+/// <param name="Current">当前壳版本；null 时整键省略。</param>
+internal sealed record UpdateStateFrame(
+    string Status,
+    string? Version,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Message,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Current);

@@ -27,6 +27,6 @@ public static class UpdateBanner
                "})();";
     }
 
-    private static string JsString(string value) =>
-        "\"" + System.Text.Json.JsonEncodedText.Encode(value).ToString() + "\"";
+    /// <summary>JS 字符串字面量：统一走 <see cref="AppJsonContext.JsString"/>（源生成，AOT 安全）。</summary>
+    private static string JsString(string value) => AppJsonContext.JsString(value);
 }

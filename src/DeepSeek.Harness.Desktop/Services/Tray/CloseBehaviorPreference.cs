@@ -69,7 +69,12 @@ public sealed class CloseBehaviorPreference
         }
 
         var tmp = filePath + ".tmp";
-        File.WriteAllText(tmp, $"{{\"hideToTrayOnClose\":{(hideOnClose ? "true" : "false")}}}");
+        // 经 AppJsonContext 源生成（AOT 安全）；Load 读方只认 hideToTrayOnClose 键
+        File.WriteAllText(tmp, JsonSerializer.Serialize(new PreferencesFile(hideOnClose), AppJsonContext.Default.PreferencesFile));
         File.Move(tmp, filePath, overwrite: true);
     }
+
+    /// <summary>desktop-preferences.json 落盘帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>
+    /// <param name="HideToTrayOnClose">关闭按钮是否隐藏到托盘。</param>
+    internal sealed record PreferencesFile(bool HideToTrayOnClose);
 }

@@ -140,6 +140,25 @@ public class RunMarkerTests
         }
     }
 
+    [Fact]
+    public void Acquire_MarkerFile_HasParseableContractKeys()
+    {
+        var home = NewDir();
+        try
+        {
+            var result = RunMarker.Acquire(home);
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(RunMarker.MarkerPath(home)));
+            var root = doc.RootElement;
+            Assert.Equal(result.Token, root.GetProperty("token").GetString());
+            Assert.Equal(Environment.ProcessId, root.GetProperty("pid").GetInt32());
+            Assert.True(DateTimeOffset.TryParse(root.GetProperty("startedAt").GetString(), out _));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
     private static string NewDir()
     {
         var dir = Path.Combine(Path.GetTempPath(), "dsh-marker-" + Guid.NewGuid().ToString("N"));

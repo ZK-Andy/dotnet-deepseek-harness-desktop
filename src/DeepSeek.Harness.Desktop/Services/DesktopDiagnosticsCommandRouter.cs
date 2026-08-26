@@ -55,15 +55,18 @@ public sealed class DesktopDiagnosticsCommandRouter : ICommandRouter
                 ? DiagnosticsExporter.ExportWithFallback(home, version, _log, _healthSnapshot)
                 : DiagnosticsExporter.Export(home, _outputDirectory, version, _healthSnapshot);
             _log?.Invoke($"[host] 诊断包已导出：{result.ZipPath}（{result.Included.Count} 项）");
-            return ValueTask.FromResult($"{{\"path\":{Quote(result.ZipPath)}}}");
+            return ValueTask.FromResult(
+                JsonSerializer.Serialize(new PathFrame(result.ZipPath), AppJsonContext.Default.PathFrame));
         }
         catch (Exception ex)
         {
             // 导出失败不抛 IPC 异常：页面按 error 展示原因，与更新路由同款帧形态
             _log?.Invoke($"[host] 诊断包导出失败：{ex.Message}");
-            return ValueTask.FromResult($"{{\"error\":\"{JsonEncodedText.Encode(ex.Message)}\"}}");
+            return ValueTask.FromResult(AppJsonContext.Error(ex.Message));
         }
     }
 
-    private static string Quote(string value) => $"\"{JsonEncodedText.Encode(value)}\"";
+    /// <summary>导出成功帧 <c>{"path":"..."}</c>；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>
+    /// <param name="Path">zip 落盘绝对路径（页面展示「已保存至」）。</param>
+    internal sealed record PathFrame(string Path);
 }

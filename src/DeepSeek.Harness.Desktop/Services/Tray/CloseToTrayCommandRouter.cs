@@ -53,12 +53,18 @@ public sealed class CloseToTrayCommandRouter : ICommandRouter
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _log?.Invoke($"[host] 关闭托盘偏好写入失败：{ex.Message}");
-            return ValueTask.FromResult($"{{\"error\":\"{JsonEncodedText.Encode(ex.Message)}\"}}");
+            return ValueTask.FromResult(AppJsonContext.Error(ex.Message));
         }
     }
 
+    /// <summary>状态帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。键序 = 声明序
+    /// （<c>enabled</c> 在前，CloseToTrayTests 精确串断言）。</summary>
+    /// <param name="Enabled">关闭按钮是否隐藏到托盘。</param>
+    /// <param name="Available">系统托盘是否就绪（无托盘环境客户端据此禁用开关）。</param>
+    internal sealed record StateFrame(bool Enabled, bool Available);
+
     private string Frame() =>
-        $"{{\"enabled\":{(_preference.HideOnClose ? "true" : "false")},\"available\":{(_available() ? "true" : "false")}}}";
+        JsonSerializer.Serialize(new StateFrame(_preference.HideOnClose, _available()), AppJsonContext.Default.CloseToTrayState);
 
     private static bool ParseEnabled(ReadOnlyMemory<byte> args)
     {

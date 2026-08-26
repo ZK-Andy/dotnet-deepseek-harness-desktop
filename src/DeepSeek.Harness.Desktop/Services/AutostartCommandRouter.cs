@@ -45,7 +45,7 @@ public sealed class AutostartCommandRouter : ICommandRouter
         catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException or IOException or UnauthorizedAccessException)
         {
             _log?.Invoke($"[host] 开机自启切换失败：{ex.Message}");
-            return ValueTask.FromResult($"{{\"error\":\"{JsonEncodedText.Encode(ex.Message)}\"}}");
+            return ValueTask.FromResult(AppJsonContext.Error(ex.Message));
         }
     }
 
@@ -56,5 +56,10 @@ public sealed class AutostartCommandRouter : ICommandRouter
                e.ValueKind == JsonValueKind.True;
     }
 
-    private static string Frame(bool enabled) => $"{{\"enabled\":{(enabled ? "true" : "false")}}}";
+    /// <summary>状态帧 <c>{"enabled":B}</c>；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>
+    /// <param name="Enabled">开机自启是否已启用。</param>
+    internal sealed record StateFrame(bool Enabled);
+
+    private static string Frame(bool enabled) =>
+        JsonSerializer.Serialize(new StateFrame(enabled), AppJsonContext.Default.AutostartState);
 }

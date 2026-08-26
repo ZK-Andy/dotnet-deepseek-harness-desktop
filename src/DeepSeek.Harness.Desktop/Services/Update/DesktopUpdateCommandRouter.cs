@@ -1,5 +1,3 @@
-using System.Text;
-using System.Text.Json;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Services.Update;
@@ -73,7 +71,7 @@ public sealed class DesktopUpdateCommandRouter : ICommandRouter
         catch (InvalidOperationException ex)
         {
             _log?.WriteLine($"[update] install 拒绝：{ex.Message}");
-            return $"{{\"error\":\"{JsonEncodedText.Encode(ex.Message)}\"}}";
+            return AppJsonContext.Error(ex.Message);
         }
     }
 }

@@ -39,9 +39,10 @@ public static class RunMarker
 
         var token = Guid.NewGuid().ToString("N");
         var temp = path + $".tmp-{token}";
-        // 手拼 JSON（字段自有常量，无转义面）：AOT 下避免反射序列化
-        var json = "{\"token\":\"" + token + "\",\"pid\":" + Environment.ProcessId
-                   + ",\"startedAt\":\"" + DateTimeOffset.Now.ToString("o") + "\"}";
+        // 经 AppJsonContext 源生成（AOT 安全）；Release 读方只认 token 键
+        var json = JsonSerializer.Serialize(
+            new MarkerFile(token, Environment.ProcessId, DateTimeOffset.Now),
+            AppJsonContext.Default.MarkerFile);
         File.WriteAllText(temp, json);
         File.Move(temp, path, overwrite: true);
         return new RunMarkerResult(previousUnclean, token);
@@ -102,10 +103,14 @@ public static class RunMarker
                "})();";
     }
 
-    /// <summary>JS 字符串字面量（值经 JsonEncodedText 转义）：AOT 下避免反射序列化。</summary>
-    private static string JsString(string value) =>
-        "\"" + System.Text.Json.JsonEncodedText.Encode(value).ToString() + "\"";
+    /// <summary>JS 字符串字面量：统一走 <see cref="AppJsonContext.JsString"/>（源生成，AOT 安全）。</summary>
+    private static string JsString(string value) => AppJsonContext.JsString(value);
 
+    /// <summary>run-marker.json 落盘帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>
+    /// <param name="Token">本轮 owner token（Release 清理凭据）。</param>
+    /// <param name="Pid">进程号（取证线索）。</param>
+    /// <param name="StartedAt">启动时刻（ISO 8601 round-trip 形态）。</param>
+    internal sealed record MarkerFile(string Token, int Pid, DateTimeOffset StartedAt);
 }
 
 /// <summary><see cref="RunMarker.Acquire"/> 的结果。</summary>

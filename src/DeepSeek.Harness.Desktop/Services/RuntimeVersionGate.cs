@@ -69,9 +69,8 @@ public static class RuntimeVersionGate
                "})();";
     }
 
-    /// <summary>JS 字符串字面量（值经 JsonEncodedText 转义）：AOT 下避免反射序列化（UpdateState.ToJson 同款）。</summary>
-    private static string JsString(string value) =>
-        "\"" + JsonEncodedText.Encode(value).ToString() + "\"";
+    /// <summary>JS 字符串字面量：统一走 <see cref="AppJsonContext.JsString"/>（源生成，AOT 安全）。</summary>
+    private static string JsString(string value) => AppJsonContext.JsString(value);
 
     /// <summary>
     /// 只读探测 dsh 版本：bundled 给定时执行 <c>node bin.js --version</c>，否则 PATH <c>dsh --version</c>。
