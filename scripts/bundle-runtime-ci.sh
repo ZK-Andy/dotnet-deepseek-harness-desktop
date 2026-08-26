@@ -11,6 +11,10 @@ set -euo pipefail
 PLATFORM="${1:-linux-x64}"
 NODE_VERSION="${NODE_VERSION:-24.19.0}"
 DSH_VERSION="${DSH_VERSION:-0.1.1-rc.2}"
+# 随包插件市场版本（market 正典单点）：闭包签名含此维度——market 版本变化而
+# dsh/node/companion 未变时，旧闭包缓存必须失效（v0.3.8 教训：meta 签名缺此
+# 维度，restore-key 回退捡回旧闭包，版本感知升级拿不到新 market）。
+MARKET_VERSION="${MARKET_VERSION:-1.31.1}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/resources/runtime"
 TMP="$(mktemp -d)"
@@ -46,6 +50,7 @@ if [[ -f "$META_FILE" ]] \
    && grep -q "\"nodeVersion\":\"$NODE_VERSION\"" "$META_FILE" \
    && grep -q "\"platform\":\"$PLATFORM\"" "$META_FILE" \
    && grep -q "\"companionSha256\":\"$COMPANION_SHA\"" "$META_FILE" \
+   && grep -q "\"market\":\"$MARKET_VERSION\"" "$META_FILE" \
    && [[ -f "$DEST/$NODE_DST" ]] \
    && [[ -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
   echo "== resources/runtime 闭包缓存命中（$PLATFORM，dsh $DSH_VERSION，companion $COMPANION_SHA）→ 跳过重建 =="
@@ -53,7 +58,7 @@ if [[ -f "$META_FILE" ]] \
   exit 0
 fi
 if [[ -f "$META_FILE" ]]; then
-  echo "  闭包存在但签名不匹配（$PLATFORM / dsh $DSH_VERSION / node $NODE_VERSION / companion $COMPANION_SHA），全量重建"
+  echo "  闭包存在但签名不匹配（$PLATFORM / dsh $DSH_VERSION / node $NODE_VERSION / companion $COMPANION_SHA / market $MARKET_VERSION），全量重建"
 fi
 
 echo "== [1/3] 下载 Node v${NODE_VERSION} ($PLATFORM)"
@@ -101,9 +106,9 @@ npm init -y >/dev/null 2>&1
   --allow-build=@google/genai --allow-build=@deepseek-ai/dsh-subprocess-local
 # 预装市场：与 dsh 同闭包，随包收入；另取官方已构建 tgz 供首启后后台 file:// 安装到 DSH_HOME（不阻塞 dsh web:）
 # 旧版 pnpm pack dshmarket 会误打 app 包（394B），已改为直接拉 registry 官方 tgz（已含 lib/client，无需 tsc 构建）
-"$PNPM_BIN" add "dshmarket@1.31.1" --prod --store-dir "$PNPM_STORE_DIR" --allow-build=esbuild
+"$PNPM_BIN" add "dshmarket@${MARKET_VERSION}" --prod --store-dir "$PNPM_STORE_DIR" --allow-build=esbuild
 echo "   拉取 dshmarket 官方 tgz（跳过本地 pack 的 tsc/prepare 坑）"
-if curl -fsSL "https://registry.npmjs.org/dshmarket/-/dshmarket-1.31.1.tgz" -o "$DEST/dshmarket.tgz" 2>/dev/null; then
+if curl -fsSL "https://registry.npmjs.org/dshmarket/-/dshmarket-${MARKET_VERSION}.tgz" -o "$DEST/dshmarket.tgz" 2>/dev/null; then
   echo "   dshmarket tgz 已随包：$DEST/dshmarket.tgz ($(du -h "$DEST/dshmarket.tgz" | cut -f1))"
   # 轻量校验：包内应为 dshmarket 而非 app（直接校验 package.json 的 name）
   if ! tar -xOzf "$DEST/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name": "dshmarket"'; then
@@ -116,7 +121,7 @@ if [[ ! -s "$DEST/dshmarket.tgz" ]]; then
   echo "   官方 tgz 拉取失败，改由本地 node_modules/dshmarket 目录 tar（免构建）"
   REAL_DIR="$(realpath "$TMP/app/node_modules/dshmarket" 2>/dev/null || echo "")"
   if [[ -z "$REAL_DIR" ]]; then
-    REAL_DIR="$(find "$TMP/app/node_modules/.pnpm" -type d -path "*dshmarket@1.31.1*/node_modules/dshmarket" -print -quit 2>/dev/null || echo "")"
+    REAL_DIR="$(find "$TMP/app/node_modules/.pnpm" -type d -path "*dshmarket@${MARKET_VERSION}*/node_modules/dshmarket" -print -quit 2>/dev/null || echo "")"
   fi
   if [[ -n "$REAL_DIR" && -d "$REAL_DIR" ]]; then
     # 官方 tgz 仅含 package.json/cordis.patch.yml/lib/client/README/LICENSE 等，不含 node_modules
@@ -270,6 +275,6 @@ du -sh "$DEST" | cut -f1
 echo "   入口校验：$DEST/$NODE_DST + $DEST/node_modules/@deepseek-ai/dsh/lib/bin.js"
 [[ -f "$DEST/$NODE_DST" && -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 入口缺失" >&2; exit 1; }
 # 成功构建后写闭包签名，供下次（CI 缓存恢复后）整步跳过
-printf '{"dshVersion":"%s","nodeVersion":"%s","platform":"%s","companionSha256":"%s"}\n' \
-  "$DSH_VERSION" "$NODE_VERSION" "$PLATFORM" "$(companion_sha)" > "$DEST/.bundle-meta.json"
+printf '{"dshVersion":"%s","nodeVersion":"%s","platform":"%s","companionSha256":"%s","market":"%s"}\n' \
+  "$DSH_VERSION" "$NODE_VERSION" "$PLATFORM" "$(companion_sha)" "$MARKET_VERSION" > "$DEST/.bundle-meta.json"
 echo "   已写闭包元数据：$DEST/.bundle-meta.json"

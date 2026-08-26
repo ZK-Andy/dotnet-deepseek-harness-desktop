@@ -102,7 +102,7 @@ if [[ "$MODE" == print ]]; then
 	case "$PRINT_KEY" in
 	node) value=$(extract_default NODE_VERSION) ;;
 	dsh) value=$(extract_default DSH_VERSION) ;;
-	market) value=$(grep -ho 'dshmarket@[0-9][0-9.]*' "$PIN_SH" 2>/dev/null | head -1 | sed 's/^dshmarket@//') ;;
+	market) value=$(extract_default MARKET_VERSION) ;;
 	*) echo "未知键: $PRINT_KEY（可用 dsh|node|market）" >&2; exit 64 ;;
 	esac
 	if [[ -z "${value:-}" ]]; then
@@ -149,11 +149,13 @@ done
 gate_pin=$(grep -o 'MinimumVersion = "[^"]*"' "$GATE_CS" 2>/dev/null | cut -d'"' -f2 || true)
 [[ -n "$gate_pin" ]] && add_copy DSH_COPIES "RuntimeVersionGate.MinimumVersion" "$gate_pin"
 
+MARKET_COPIES=()
 while IFS= read -r m; do
 	MARKET_COPIES+=("bundle-runtime-ci.sh:$m")
 done < <({
 	grep -ho 'dshmarket@[0-9][0-9.]*' "$PIN_SH" | sed 's/^dshmarket@//' || true
 	grep -ho 'dshmarket-[0-9][0-9.]*\.tgz' "$PIN_SH" | sed 's/^dshmarket-//; s/\.tgz$//' || true
+	extract_default MARKET_VERSION
 } | sort -u)
 
 group_inconsistent() { # $1=组名数组引用名；不一致时打印明细并返回 0
