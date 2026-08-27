@@ -1,6 +1,7 @@
 # Agent Note: upgrade-bundled-dsh-rc2
 
 Status: implemented
+Archived: 2026-08-27
 
 ## Problem
 

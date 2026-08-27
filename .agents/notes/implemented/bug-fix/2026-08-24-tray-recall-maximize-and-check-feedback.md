@@ -37,6 +37,6 @@ v0.3.1 实机复验两项体验缺陷：①**X 隐藏→托盘唤回后窗口丢
 ## Related
 
 - [托盘与关闭最小化](../architecture/2026-08-24-shell-tray-hide-to-tray.md)：hide-to-tray 与中继链路的出处。
-- [运行时依赖升级与 arm64 复发](../process/2026-08-25-runtime-deps-upgrade-and-arm64-resume.md)：Ryn 三包 bump 至 0.30.4 与本决策的落地批次（0.30.5 bump 同线延续）。
+- [运行时依赖升级与 arm64 复发](../../archived/process/2026-08-25-runtime-deps-upgrade-and-arm64-resume.md)：Ryn 三包 bump 至 0.30.4 与本决策的落地批次（0.30.5 bump 同线延续；已归档冻结）。
 - [shell 首启加固](2026-08-24-shell-firstboot-hardening.md)：同日托盘顺序契约的前置修复。
 - [单实例 launcher 激活](../architecture/2026-08-26-single-instance-launcher-activation.md)：launcher 激活唤起是采样链之外的独立显示入口（消费样本但不做预置/确认），勿纳入本线回归清单。

@@ -1,6 +1,7 @@
 # Agent Note: runtime-deps-upgrade-and-arm64-resume
 
 Status: implemented
+Archived: 2026-08-27
 
 ## Problem
 

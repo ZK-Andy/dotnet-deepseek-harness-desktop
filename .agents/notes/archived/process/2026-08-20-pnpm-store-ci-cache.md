@@ -1,6 +1,7 @@
 # Agent Note: pnpm-store-ci-cache
 
 Status: implemented
+Archived: 2026-08-27
 
 ## Problem
 

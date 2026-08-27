@@ -33,7 +33,7 @@ C# 胖后端 + 伴生插件瘦 UI：
 
 - 收益：ready 前完全静默零打扰；ready 持久化跨重启不丢「可安装」；状态机与 IO 全解耦可测（23 个新单测覆盖比较/挑选/校验/状态迁移/失败回退）；升级体验一键完成。
 - 代价/风险：Linux 每次升级弹一次 pkexec 授权框；SHA256SUMS 缺条目时 fail loud 拒装（宁可误报不装坏包）；`sidebar.footer.action` 为上游非契约表面，靠逐 release 钉死内置 dsh 兜底；插件升版由版本感知升级机制自动同步（bundled tgz 版本比对，见 2026-08-22-companion-plugin-version-aware-upgrade）；发布流水线已接 `-p:Version` 覆盖且输入留空回退 csproj、空值 fail loud。
-- 验证：`dotnet test` 64→102/102 全绿（含包类型检测/状态机/锁回归）；三部门禁全绿；0 警告。**实机验收 ✅（2026-08-22 用户 rpm 系统）**：低版本启动→自动下载 rpm→SHA256 校验→侧栏 ready 按钮→授权→rpm 重装 exit=0→应用自退→runuser 降权拉起新实例（带 DSH 隔离环境）→对账清除记录；取消授权路径 10s 内回退 ready。调试期沉淀的宿主三连坑（apply/require、capabilities 白名单、inject 声明）见 HANDOFF Gotchas 与 ADR desktop-shell-companion-plugin。
+- 验证：`dotnet test` 64→102/102 全绿（含包类型检测/状态机/锁回归）；三部门禁全绿；0 警告。**实机验收 ✅（2026-08-22 用户 rpm 系统）**：低版本启动→自动下载 rpm→SHA256 校验→侧栏 ready 按钮→授权→rpm 重装 exit=0→应用自退→runuser 降权拉起新实例（带 DSH 隔离环境）→对账清除记录；取消授权路径 10s 内回退 ready。调试期沉淀的宿主三连坑（apply/require、capabilities 白名单、inject 声明）见 docs/cookbook.md 与 ADR desktop-shell-companion-plugin。
 
 ## Related
 

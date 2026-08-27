@@ -30,7 +30,11 @@ python3 scripts/verify-cookbook.py
 echo "-> verify-doc-budgets.py"
 python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json
 
-# 6) 治理面快检（快；模板漂移在此拦截）
+# 6) HANDOFF 结构（快；HANDOFF/.plan 为 gitignore 本地文档，仅存在即校验，CI 无则跳过）
+echo "-> verify-handoff-structure.py"
+python3 scripts/verify-handoff-structure.py
+
+# 7) 治理面快检（快；模板漂移在此拦截）
 echo "-> verify-governance.py"
 python3 scripts/verify-governance.py
 

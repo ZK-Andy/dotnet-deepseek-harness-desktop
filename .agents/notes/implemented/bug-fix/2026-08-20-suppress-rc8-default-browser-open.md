@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-升级 `@deepseek-ai/dsh` 到 `0.1.0-rc.8`（见 `.agents/notes/implemented/process/2026-08-20-upgrade-bundled-dsh-rc8.md`）后，桌面壳出现双重开窗：壳按既有方式 spawn `dsh --profile web --port 0`、解析 `dsh web:` URL 渲染进内嵌 Ryn WebView；但 rc.8 的 `dsh-web-app` 新增 `openBrowser` 配置且**默认 `true`**（`lib/index.js` `openBrowser: z.boolean().default(true)`，`handoffBrowser = config.openBrowser && !launchedThroughSsh(ctx)`），服务就绪时会把同一 URL 交给 OS 默认浏览器（`openBrowser(webUrl)`，提示 `pass --no-open to disable`）。结果用户同时看到 dsh 自动弹出的浏览器页面 + 桌面窗口。
+升级 `@deepseek-ai/dsh` 到 `0.1.0-rc.8`（见 `.agents/notes/archived/process/2026-08-20-upgrade-bundled-dsh-rc8.md`）后，桌面壳出现双重开窗：壳按既有方式 spawn `dsh --profile web --port 0`、解析 `dsh web:` URL 渲染进内嵌 Ryn WebView；但 rc.8 的 `dsh-web-app` 新增 `openBrowser` 配置且**默认 `true`**（`lib/index.js` `openBrowser: z.boolean().default(true)`，`handoffBrowser = config.openBrowser && !launchedThroughSsh(ctx)`），服务就绪时会把同一 URL 交给 OS 默认浏览器（`openBrowser(webUrl)`，提示 `pass --no-open to disable`）。结果用户同时看到 dsh 自动弹出的浏览器页面 + 桌面窗口。
 
 ## Decision
 

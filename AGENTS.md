@@ -54,7 +54,8 @@ web 检索一律 anysearch 插件（唯一搜索后端，已 Provider 级接管�
 python3 scripts/verify-adr-format.py     # ADR 头/骨架/状态-目录一致性
 python3 scripts/verify-cookbook.py       # 踩坑记录格式/阶段标签封闭集（docs/cookbook.md）
 python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json # 字数预算
-python3 scripts/verify-md-links.py       # 相对链接/锚点（skills/ 排除）
+python3 scripts/verify-md-links.py       # 相对链接/锚点（skills/、archived/、.plan/ 排除）
+python3 scripts/verify-handoff-structure.py # HANDOFF 滚动窗/状态区/归档指针（HANDOFF 存在即校验）
 scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 ```
 

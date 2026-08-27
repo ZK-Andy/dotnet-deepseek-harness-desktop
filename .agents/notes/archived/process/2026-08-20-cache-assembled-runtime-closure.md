@@ -1,6 +1,7 @@
 # Agent Note: cache-assembled-runtime-closure
 
 Status: implemented
+Archived: 2026-08-27
 
 ## Problem
 

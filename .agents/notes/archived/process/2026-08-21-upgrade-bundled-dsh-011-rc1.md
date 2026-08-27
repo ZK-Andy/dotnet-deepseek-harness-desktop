@@ -1,6 +1,7 @@
 # Agent Note: upgrade-bundled-dsh-to-011-rc1
 
 Status: implemented
+Archived: 2026-08-27
 
 ## Problem
 
