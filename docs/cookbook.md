@@ -1,0 +1,64 @@
+# Cookbook — 实现阶段踩坑记录
+
+> 项目踩坑（implementation pitfalls）与调试判别经验的单一事实源。对应根 [AGENTS.md](../AGENTS.md) 文档纪律「procedure → cookbook」。
+> 每条带**阶段标签**（封闭集：`[脚本]/[打包]/[调试]/[环境]/[上游]/[产品]`），供检索/统计/沉淀。格式由 `scripts/verify-cookbook.py` 机器强制（含 `--self-test`），违约即 FAIL。
+> 条目格式：`- **[标签] 主题（yyyy-mm-dd 来源）**：正文…`。
+> 脚本级单点坑就近留脚本注释（fail loud 提醒）；ADR Consequences 承载决策代价——三者各司其职不重复。
+
+## 脚本
+
+- **[脚本] 跨平台 shell 语法坑（写脚本必读，2026-08-27 实机/评审沉淀）**：CI 三平台（ubuntu/macOS/Git Bash）语文差异——①**`sed -i` 的 GNU/BSD 语法不同**：GNU（Linux/Git Bash）`sed -i 's///'` 可用，macOS BSD sed 的 `-i` 需显式备份扩展名（`-i ''`）——跨平台脚本宁用 **`perl -i`**（三平台一致，`perl -i -ne 'print unless m{...}'` 无文件名时读 stdin 打 "used with no filenames" warning）；②**`xargs -r`（GNU 专属）在 BSD xargs 不存在**——空输入保护用 `[[ -s "$list" ]]` 守卫而非 `-r`；③**Windows Git Bash 命令行上限 32K**——批量文件处理必须显式 `-n 64` 级分批（`xargs` 自动分包按 ARG_MAX，win 下更大值会 `CreateProcess` 失败）；④`grep -rl` 零命中返回非零 + `set -euo pipefail` → 管道前命令补 `|| true`；⑤`grep -rlZ` 输出 NUL 分隔，`wc -l` 数出来恒 0 / `for` 循环吞整串——转 `tr '\0' '\n'` 再数或用 `grep -rl` 换行版。先例：`bundle-runtime-ci.sh` trim 剥注释（ADR strip-sourcemap-comments-in-closure）。
+- **[脚本] dev 门禁验证盲区（2026-08-24）**：「命令路由不存在即降级」的功能，沙箱只能验降级分支——成功分支需真机或 force 开关（如 `DSH_DESKTOP_UPDATE_FORCE=1`）走一遍，否则把优雅降级误当功能验证。
+- **[脚本] dsh 插件客户端三连坑（Self-Update 实机调试沉淀，2026-08-22）**：①factory 必须带 `require` 形参且返回带 `apply` 的 exports——缺 `apply` 整个 web boot 白屏、缺 `require` 内部功能静默跳过；②访问 `ctx.slots` 必须在 exports 声明 `inject:['slots']`（cordis 守卫："cannot get property without inject"）；③页面 invoke 的命令命名空间必须在壳侧 `ryn.json` 的 `capabilities` 声明（未声明 500 + Command failed，无任何插件侧报错）。三者共同点：拒绝都发生在插件无感位置——调试用 `window.__ddc.setupUpdateUI()` 手动句柄把装配过程炸出来（DevTools 开启晚于启动期日志，历史消息不保留）。
+- **[脚本] invoke 调用规范（2026-08-22）**：统一带第二参数 `{}`；命令处理返回 JSON 字符串帧。
+- **[脚本] `verify-md-links` 默认排除 `skills/` 路径（2026-08-20）**，上游技能内的路径引用不误报。
+- **[脚本] doc-budgets manifest 在 `scripts/`（2026-08-20）**：门禁命令 `python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json`。
+- **[脚本] 改写历史必须 `--force-with-lease`（2026-08-20）**；raw `--force` 禁止。当前尚未推送远程，历史仍可 amend。
+- **[脚本] 非平凡变更必须携带 ADR（2026-08-20）**；implemented 笔记禁用 `## Proposal`/`## Acceptance criteria`；ADR 头块真实约定为"标题/空行/Status"（verify-adr-format 已按此修正）。
+- **[脚本] Ryn 命令注册（2026-08-20）**：`Ryn.Ipc.Generator` 需在 csproj 显式 `PackageReference ... OutputItemType="Analyzer"`；（`966a26c` 已删 demo `AppCommands`/`GreetingService`，`Program.ConfigureServices` 仅留 `AddRynCommands()`）。
+- **[脚本] verify-md-links 已扩展排除（2026-08-23）**：`.dotnet-cache`/`bin`/`obj`/`node_modules`（NuGet 包 README 带仓库相对链接会误报）。
+
+## 打包
+
+- **[打包] 闭包缓存维度三连洞（v0.2.1/0.3.8/0.3.11，2026-08-27 根治）**：`bundle-runtime-ci.sh` 改裁剪行为时，**cache key 里的 `hashFiles('plugins/**','scripts/bundle-runtime-ci.sh')` 只保证精确 key miss——前缀式 `restore-keys: dsh-closure-<rid>-` 部分命中仍会捡回旧闭包**，而 `.bundle-meta.json` 原五维签名（dsh/node/platform/companion/market）不含裁剪维度 → 校验照过 → `exit 0` 跳过重建 → **trim 永不执行**（v0.3.8 「restore-key 回退捡旧闭包」同类洞第三次）。修复：meta 增 `trimPolicy` 第六维（`TRIM_POLICY` 正典单点，入库+校验各一处）。**今后任何修改 `trim_runtime_closure` 行为必须先 bump `TRIM_POLICY`，否则改动静默不生效**（脚本头注释 + ADR 双提醒）。
+- **[打包] Linux 自更新安装链四坑（2026-08-22）**：①包类型按包管理器检测（dpkg→deb/rpm→rpm），rpm 架构名 x86_64/aarch64 与 deb 不同；②pkexec 重置环境——GUI 变量、DSH 隔离变量、PATH/DOTNET_ROOT/HOME 必须显式透传（DOTNET_ROOT 缺失 apphost 报 ".NET location: Not found" 秒退）；③重启拉起必须 runuser 降权回原用户（pkexec 注入 PKEXEC_UID，getent passwd 解析用户名；root 直跑 GUI 秒退），新实例输出追加 install.log 可诊断；④授权通过后应用必须主动 Close() 自退（8s Exit 兜底）放行脚本等待环，取消授权则抛错回退 ready。
+- **[打包] Linux 打包要点（pilot-harness 模型，再做必读，2026-08-20）**：`asar:false` 等价——闭包**整树 `node_modules`**（`cp -a` 保留 `pnpm` symlink，入口 `node_modules/@deepseek-ai/dsh/lib/bin.js`，与 `pilot-harness apps/desktop/src/main.ts:59` 一致），`pnpm --allow-build` 原生绑定；`rpm AutoReqProv:no + Requires: libwebkitgtk-6.0.so.4 + %global _enable_debug_packages 0 / %define __os_install_post %{nil}`（禁假依赖与 `brp-strip` 误伤，`deb Depends: libwebkitgtk-6.0-4`）；自检只看日志 `dsh web:`（`60s`，`dsh` 常驻不以 `timeout` 退出码判）；`package-linux.sh` 在 `staging` 即校验 `RuntimeLocator` 入口；`CI` 预览 `7 天` + `Release` 时 `SHA256SUMS`（参照 `pilot-harness desktop.yml`）；**本地不产包**（沙箱无 `dpkg-deb/rpmbuild`，`resources/runtime` 旧 `dsh/` 会 `fail loud`）。旧 0.1.0–0.1.2 均为坏包已全删。
+- **[打包] 打包踩坑全链（0.1.3→0.1.9，2026-08-20）**：`npm→pnpm` 慢→`--allow-build` 缺 `.node`→`cp -r` 改名→`WebKitGTK6` 误 `4.1`→`lttng` 正则→`brp-strip` 误伤 `arm64`→`AutoReqProv` 假依赖→`setup-node cache:pnpm` 缺 `pnpm-lock.yaml`→`publish-release` 的 `data.tar.zst` 解压与 `*.rpm` 路径 `maxdepth 1`→`0.1.4` 同步 `market patch` 阻塞 `dsh web:`→`0.1.9` 仅 `dependencies` 有 `dshmarket` 但 `bundles` 无→`Ryn` 在 `Wayland` 下 `app_id` 未注册致 `shutting down` 立退。解法见上：整树 `cp -a`、`WebKitGTK6`、`AutoReqProv:no`、`_enable_debug_packages 0`、`setup-node` 去 `cache`、`find -type f` 递归、`market` 随闭包 `dshmarket.tgz` + 后台 `file:// add` + `bundles` 补写 + `ryn.json:identifier` 对齐 `StartupWMClass`。
+- **[打包] 图标与 Wayland（2026-08-20）**：`assets/icon.png` 定为 `hairyf` 同款 `512 12K`（自建深色 `27K` 已删），`hicolor 16..1024` 由 `magick` 重生成（`966a26c` 已删 `wwwroot/icon.png` 重复，单源 `assets/icon.png`），`csproj` 以 `icon.png` 进 `AppContext.BaseDirectory`，`Program.cs:IconPath` 与 `package-linux.sh` 的 `hicolor/pixmaps` 双落地；`Wayland` 下 `Ryn` 的 `app_id` 取 `ryn.json:identifier`（`io.github.ZK-Andy...`），`StartupWMClass` 同值，否则任务栏 `generic`（`X11` 可 `xprop`，`Wayland` 用 `busctl`/`gdbus`）。
+- **[打包] Windows 打包两连坑（v0.1.13→0.1.16，2026-08-21）**：① `Compress-Archive : \\d\\a 路径无效`——`Git Bash` 的 `/d/a/...` 需 `cygpath -w` 转 `D:\a\...`（`07c3359` 仅 `Zip` 回退未转，`24498ef` 重写 `create_zip` 链 `zip→7z→tar -a→powershell cygpath`）；② `pipefail` 下 `unzip -l | head -20` 以 `141 SIGPIPE` 失败——`set -euo pipefail` 时 `head` 提前关闭致前驱 `141`，`v0.1.15` 已 `zip` 成功 `1.5G` 仍 `failure`，`0d35474` 为所有 `| head` 加 `|| true`。`pre-commit` 的 `git diff --cached --check --quiet` 亦因有 `diff` 即返 `1` 误判，已改为仅 `--check`（`24498ef`）。
+- **[打包] 平台包标识（v0.1.16，2026-08-21 去 zip）**：`deb _linux-*/rpm _linux-*`（控制内 `Architecture` 仍 `amd64/arm64`，文件名仅作发布区分，与 `macos/windows` 一致）、`mac` 的 `dmg _macos-*`（`hdiutil create`，`.app` 内 `CFBundleIdentifier` 已正）、`win` 的 `-setup.exe _windows-*`（`Inno Setup` 优先/`NSIS`/`7z SFX` 回退，`{autopf}\DeepSeek Harness Desktop`，`OutputBaseFilename ...-setup.exe`）。**v0.1.18 起三平台都不再产独立 zip**（曾存 `_x64.zip` 无平台前缀致 mac/win 同名冲突，已全量 `_platform-` 前缀 + 去 zip）；`CI` 的 `upload-artifact` 与 `softprops/action-gh-release` 捕获 `*.deb/*.rpm/*.dmg/*.exe + SHA256SUMS`。
+- **[打包] macOS dmg / Windows exe 细节（2026-08-21）**：`dmg` 仅 `macos-latest` 有 `hdiutil`，`Linux` 上 `fail loud`（dmg 为唯一产物）；`exe` 安装器需 `iscc`（`C:\Program Files (x86)\Inno Setup 6\ISCC.exe`）或 `makensis`，无则 `fail loud`（不产 zip）；`assets/icon.png` 需 `magick` 转 `ico` 供 `SetupIconFile`，缺则忽略；`Info.plist` 的 `CFBundleIdentifier` 与 `ryn.json:identifier` 同源；真实 `codesign` 证书未配，仅 `SELF_SIGN=1` 免费自签（见 `docs/development.md`）。
+- **[打包] GitHub Actions 缓存 = 按分支/ref 作用域隔离（2026-08-21 实测）**：同一缓存键在「不同 ref」间不互通——`workflow_dispatch` 同分支二次 run 才命中（pnpm store / `resources/runtime` 闭包缓存均如此）；tag 发布流每个 tag 是独立 ref，**tag 首 run 仍全量（cache miss）**，只有同 tag 重跑或走默认分支共享才命中。做缓存优化时别期待跨 tag 复利。
+- **[打包] per-arch 瘦身边界（`trim_runtime_closure`，2026-08-21）**：只剪 node-pty 非当前平台 `prebuilds/*`（运行时按 `process.platform+arch` 选目录）+ `*.map` + `README/CHANGELOG *.md`；**不剪 `.ts`/`.d.ts`/LICENSE**（盲删 TRIM 的教训）。Linux 由 `dsh web:` 强自检把关；win/mac 无强自检，但删除项运行时不可达。
+
+## 调试
+
+- **[调试] DevTools 下 .map 404 刷屏的判别（2026-08-27 实机实证 + 已修）**：`DSH_DEVTOOLS=1` 打开控制台见 `Failed to load resource ... client.js.map / index-*.js.map / vendor-*.js.map (404)` + 聚合 `Source Map loading errors (x44)`——根因=交付物「JS 带 `//# sourceMappingURL=` 尾注释但 .map 文件不存在」（闭包裁剪删了 .map 没剥注释，上游构建产物自带注释）。已修：`trim_runtime_closure` 追加剥注释（ADR strip-sourcemap-comments-in-closure，提交 `fb41f1b`，**随下次发版生效**；v0.3.10 及更早 tag 包仍会报，属预期）。判别要点：凡见 `.js.map` 404 先查「注释是否指向不存在的文件」，不是 WebKit 玄学；companion 自身 client.js 无注释、不背锅（来源是上游 dsh-client-modules/-runtime 产物）。
+- **[调试] MCP stdio 连接失败端到端零诊断（2026-08-25 实验实证）**：坏实例（command 指向不存在路径）在真实捆绑运行时下 30 秒输出仅 `dsh web:` 一行，`~/.dsh` 全盘无任何失败痕迹，重连放弃亦无日志——「工具不出现即连接失败」是当前唯一信号。已落地缓解：壳侧 spawn 补全子进程 PATH `~/.local/bin`（`BuildEnrichedPath`，ADR gui-path-enrichment）+ FAQ 双语纪律条目；上游可见性修复走 deepseek-ai/deepseek-harness 的 **Discussions**（issues 已关闭，CONTRIBUTING 指定 bug 报告走 Discussions），**已发布 [discussions/4465](https://github.com/deepseek-ai/deepseek-harness/discussions/4465)**（双语同帖，跟进在此帖）。
+- **[调试] DesktopTrayCommandRouter 成功路径无日志（2026-08-24）**：ShowMainWindow 静默执行，host.log 无迹可查——排查托盘事件到达性时的盲点；补事件级日志是小改进候选（未做）。
+
+## 环境
+
+- **[环境] GUI 启动的应用 PATH 不含 `~/.local/bin`（2026-08-25）**：桌面壳 spawn 的 dsh 及其 MCP stdio 子进程解析不到用户级 node/codegraph/npx——stdio command 一律绝对路径或自包含启动器（codegraph 平台包 `bin/codegraph` 脚本 exec vendored node 绝对路径，`env -i PATH=/usr/bin:/bin` 实测可起）。
+- **[环境] WebKitGTK/Wayland 下 `window.outer*` 冻结在初始配置尺寸（2026-08-24 DevTools 实证）**：最大化后 `outerWidth/Height` 仍报壳启动时的 1200×800，页面级几何探测（对比 screen.avail）在此平台不可用；窗口态查询只能走原生（`saucer_window_maximized`），暴露面见上游 PR #75。另：`screen.avail* == screen.*`（不扣面板），别拿 avail 当工作区真值。
+- **[环境] DSH 技能真实宿主 = 官方仓库 `.agents/skills/`（2026-08-20）**，运行时不内置（用户级只有 4 个元技能）；拷贝进项目 `.agents/skills/` 随仓库走。
+- **[环境] `.agents/skills/` 内勿放 README.md（2026-08-20）**：（DSH 把发现根下的根级 `.md` 当"扁平技能"解析）。出处声明放 `.agents/AGENTS.md`。
+- **[环境] 沙箱 `/home` 只读是命名空间绑定（2026-08-20）**：（非物理只读）：写 `~/.gitconfig` 需提升权限，已提权完成。
+- **[环境] `HANDOFF.md` 与 `.plan/`（适配方案/经验总结/dsh.txt）为本地工作文档（2026-08-20）**，未加入 git 提交——工作区根=项目根后，`git status` 会显示它们为未跟踪。
+- **[环境] 沙箱 dotnet 缓存（2026-08-20）**：/home 与 /mnt/work 根只读 → `dotnet` 需 `DOTNET_CLI_HOME` + `NUGET_PACKAGES` 重定向到 `/.dotnet-cache/`（已 gitignore）；`dotnet run` 前需带这两个环境变量。
+- **[环境] Linux 运行依赖 WebKitGTK（2026-08-20）**；沙箱里 `RynApplication` 能起 + WebView 初始化，但渲染受 `/run/user/1000` 只读与无 GPU 影响（dconf/EGL/Vulkan 警告是环境问题）；生成的 `.saucer`（SQLite）已进 .gitignore。
+- **[环境] dsh 运行时要点（2026-08-20）**：`dsh --profile web --port 0` 在 stdout 打 `dsh web: http://127.0.0.1:<port>`（port 0=OS 分配）；需要**可写 `DSH_HOME`**（沙箱下用 `DSH_DESKTOP_DSH_HOME` 覆盖）+ `DEEPSEEK_API_KEY`（启动必需，可 placeholder）；Ryn 用 `opts.Url = <uri>` 加载远程 loopback URL（`wwwroot/index.html` 静态降级页仅 `dsh web:` 超时显示，不涉 Ryn IPC）。
+- **[环境] WebView 调试窗默认关闭（2026-08-20）**：DevTools 由环境变量 `DSH_DEVTOOLS=1` 开启（`966a26c` 已删 appsettings `Ryn` 死段，窗口宽度等为 `Program.cs` 常量）。已删除 demo `app.hello` IPC。
+
+## 上游
+
+- **[上游] DevTools 下 `/ipc/eval/` CORS 报错的判别（2026-08-27 实机实证，上游 bug 未修）**：`XMLHttpRequest cannot load http://localhost:7421/ipc/eval/{id}/{ok}/{nonce} due to access control checks` + `Origin ... is not allowed by Access-Control-Allow-Origin. Status code: 200`——根因=Ryn `LocalWebServer.HandleIpcEvalAsync` 响应漏带 CORS 头（对比 `/ipc/cmd/` 有写；`localhost:7421` 就是 Ryn 本地 IPC 服务，页面 origin `127.0.0.1:<web端口>` 与之跨源）。**功能实际无损**（宿主已拿到 eval 结果——`__ryn_send` 从不读响应，请求送达即算成功），纯 DevTools 噪音。宿主侧 `EvaluateJavaScriptAsync`（健康探针 10s/恢复页/横幅注入）是触发面。判别要点：Status 200 的 CORS 报错 + localhost 非页面源 = 上游通道问题，不是本应用故障；修法=给 Ryn 提 PR（待办已记，待用户拍板）。
+- **[上游] dsh 插件两类形态，bundles 资格不同（2026-08-25 实证）**：bundle 型自带 package.json `dsh.bundle` 声明 + 自带 `cordis.patch.yml`（anysearch/dshmarket/companion），`plugin add` 后 reconcile 自动进 bundles；纯库型（`@deepseek-ai/dsh-mcp-client` 两者皆无）只进 dependencies **不进 bundles**——误手工补进 bundles 会直接拒启 fail loud（`declares no dsh.bundle`），其实例行靠 profile patch 层 insert 提供。npm 版本陷阱：该包 latest=0.0.1-rc.1（旧线）、next=0.1.1-rc.2，接 rc.2 闭包必须装 next。
+- **[上游] cordis.patch.yml 补丁语义：`- insert:` 才是插入（2026-08-25 上游源码实证）**：条目形状 `{id, insert, name, ...overrides}`——带 `insert` 键追加行（无 id 追加到顶层）；裸条目是「按 id 定向覆盖」，目标不存在 warn+skip 即静默无效。见 `vendor/include/src/index.ts:77-103`。MCP client 每服务器一实例的接线全走这层。
+- **[上游] Ryn 桥接 invoke 回传的是已解析对象，不是字符串（2026-08-24 实机实证）**：`RynWebView.BuildBridgeScript` 对非空响应 `resolve(JSON.parse(responseText))`。companion 侧一律经 `parseFrame` 归一化（client.js），禁止直接 `JSON.parse(res)`——对象会被 String 化成 `"[object Object]"` 抛异常被吞。v0.3.0 自启开关永久禁用与导出误报失败皆源于此。
+- **[上游] 设置导航图标统一是宿主行为（2026-08-23 实证）**：dsh `ui-settings-general/SettingsRoot.tsx` 的 `navIcon(id)` 按 section id 白名单硬编码图标（models/agent-presets/plugins），其余一律回退同一齿轮；`settings.section` slot 契约（`SettingsSectionOwnerProps`）无 icon 字段，**插件无法声明自己的图标**。companion「桌面更新」与「通用设置」同为回退态属预期；要差异化只能上游 PR（描述符加 icon 或白名单加 id）。rc.2 前端连 models 等分支都没有（上游工作树更新）。
+
+## 产品
+
+- **[产品] GNOME AppIndicator 扩展的空菜单图标 = 死图标（2026-08-24 判读）**：单击路径被 `numMenuItems===0` 短路（连菜单都不弹）、右键 toggle 空菜单不可见、唯双击不查菜单直发 Activate。托盘行为怪异先验「菜单是否真装上」；扩展源码在本机 `/usr/share/gnome-shell/extensions/appindicatorsupport@*/` 可直接读，dbus-monitor 可抓 Activate。
+- **[产品] 手动刷新页面（暂不实现原生菜单）[用户决定 2026-08-20]**：开发期用 `DSH_DEVTOOLS=1` 的 inspector 刷新；dsh-market 自带"Restart when needed"可处理无法热载的变更；整 App 重启为最后手段。原因：Ryn 无内置 Reload API，且 Linux 原生菜单/全局快捷键支持有限。
