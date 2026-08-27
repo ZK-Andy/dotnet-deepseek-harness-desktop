@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Verify Agent Note (ADR) format: header block, skeleton, status-directory consistency.
+"""Verify Agent Note (ADR) format: header block, skeleton, status-directory consistency,
+plus file/date-name machine checks.
 
 Checks, for every .md under .agents/notes/ (excluding archived/ and .zh.md files):
   1. Line 1 is "# Agent Note: <title>"; the Status line follows the title
@@ -11,11 +12,20 @@ Checks, for every .md under .agents/notes/ (excluding archived/ and .zh.md files
      ## Proposal for proposed)
   4. implemented notes must NOT contain spec-speak headings
      (## Proposal / ## Plan / ## Migration plan / ## Acceptance criteria)
+  5. File/path naming (ADR naming rule, see proposed ADR
+     2026-08-27-adr-naming-and-script-pitfall-records.md):
+       - path is exactly <lifecycle>/<class>/<name>.md (top-level README exempt)
+       - lifecycle ∈ {proposed, implemented, rejected} — matches Status (reused)
+       - class ∈ {feature, bug-fix, simplification, architecture, process, testing}
+       - <name> = yyyy-mm-dd-<slug>.md where date is a real calendar day and
+         does not exceed today (a same-day note is allowed), and slug is kebab-case.
 
 Usage: python3 verify-adr-format.py [notes_root]
+       python3 verify-adr-format.py --self-test   # offline fixture self-check
 Exit code 0 = pass, 1 = violations found.
 """
 
+import datetime
 import re
 import sys
 from pathlib import Path
@@ -28,13 +38,51 @@ REQUIRED_ALL = ("## Problem", "## Alternatives considered")
 REQUIRED_IMPLEMENTED = ("## Decision", "## Consequences")
 REQUIRED_PROPOSED = ("## Proposal",)
 
+# --- ADR naming rule (machine-checked) ---
+CLASS_SET = ("feature", "bug-fix", "simplification", "architecture", "process", "testing")
+LIFECYCLE_SET = tuple(STATUS_BY_DIR)
+NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$")
+# A top-level README sits directly under notes root; everything else is 3 parts deep.
+TOP_LEVEL_EXEMPT = {"README.md"}
 
-def main() -> int:
-    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".agents/notes")
-    if not root.is_dir():
-        print(f"SKIP: {root} does not exist (no Agent Notes tree)")
-        return 0
 
+def _validate_name(rel: Path) -> list[str]:
+    """Verify the ADR file/path naming rule for a non-top-level note."""
+    errors: list[str] = []
+    parts = rel.parts
+    if len(parts) != 3:
+        errors.append(f"{rel}: path must be exactly <lifecycle>/<class>/<name>.md "
+                      "(3 segments; got {len(parts)})")
+        return errors
+
+    lifecycle, cls, name = parts
+    if lifecycle not in LIFECYCLE_SET:
+        errors.append(f"{rel}: lifecycle '{lifecycle}' not in {list(LIFECYCLE_SET)}")
+    if cls not in CLASS_SET:
+        errors.append(f"{rel}: class '{cls}' not in {list(CLASS_SET)}")
+
+    m = NAME_RE.match(name)
+    if m is None:
+        errors.append(f"{rel}: filename must be 'yyyy-mm-dd-<kebab-slug>.md' "
+                      "(lowercase, hyphen-separated words; no uppercase/underscore/other)")
+        return errors
+
+    date_str = m.group(1)
+    try:
+        note_date = datetime.date.fromisoformat(date_str)
+    except ValueError:
+        errors.append(f"{rel}: '{date_str}' is not a real calendar date")
+        return errors
+
+    if note_date > datetime.date.today():
+        errors.append(f"{rel}: date '{date_str}' is after today ({datetime.date.today()})")
+    if note_date.year < 1970:
+        errors.append(f"{rel}: date '{date_str}' is before the epoch (1970)")
+    return errors
+
+
+def _scan(root: Path) -> tuple[int, list[str]]:
+    """Return (checked_count, errors) for a real notes tree."""
     errors: list[str] = []
     checked = 0
     for note in sorted(root.rglob("*.md")):
@@ -42,10 +90,16 @@ def main() -> int:
         parts = rel.parts
         if "archived" in parts or note.name.endswith(".zh.md"):
             continue
+        if note.name in TOP_LEVEL_EXEMPT:
+            continue
         lifecycle = parts[0] if parts else ""
         if lifecycle not in STATUS_BY_DIR:
             continue
         checked += 1
+
+        # 5. file/path naming rule (independent of the content checks below)
+        errors.extend(_validate_name(rel))
+
         text = note.read_text(encoding="utf-8")
         lines = text.splitlines()
 
@@ -76,6 +130,94 @@ def main() -> int:
                 if not any(l.strip() == sec for l in lines):
                     errors.append(f"{rel}: missing required section '{sec}'")
 
+    return checked, errors
+
+
+def _self_test(root: Path) -> int:
+    """Offline fixture self-check: build a temp notes tree with conforming and
+    violating files, assert the validator flags exactly the expected ones."""
+    import tempfile
+
+    OK_BODY = (
+        "# Agent Note: sample\n\n"
+        "Status: {status}\n\n"
+        "## Problem\n\nbackground\n\n"
+        "## {decision_sec}\n\ndecision\n\n"
+        "## Alternatives considered\n\n- x\n\n"
+        "## Consequences\n\nconsequences\n"
+    )
+
+    def write_status(dirpath: Path, name: str, status: str):
+        body = OK_BODY.format(status=status, decision_sec="Decision")
+        (dirpath / name).write_text(body, encoding="utf-8")
+
+    cases = []  # (tmp_root, notes_root, expected_exit, description)
+    with tempfile.TemporaryDirectory() as td:
+        t = Path(td)
+
+        # case A: fully conforming tree → exit 0
+        conform = t / "conform"
+        (conform / "implemented" / "feature").mkdir(parents=True)
+        write_status(conform / "implemented" / "feature", "2026-08-27-naming-ok.md", "implemented")
+        cases.append((conform, 0, "conforming tree -> pass"))
+
+        # case B: bad class segment → exit 1
+        badclass = t / "badclass"
+        (badclass / "implemented" / "refactor").mkdir(parents=True)
+        write_status(badclass / "implemented" / "refactor", "2026-08-27-naming-ok.md", "implemented")
+        cases.append((badclass, 1, "invalid class 'refactor' -> fail"))
+
+        # case C: uppercase in slug → exit 1
+        badslug = t / "badslug"
+        (badslug / "implemented" / "feature").mkdir(parents=True)
+        write_status(badslug / "implemented" / "feature", "2026-08-27-Naming-Ok.md", "implemented")
+        cases.append((badslug, 1, "uppercase in filename -> fail"))
+
+        # case D: future date → exit 1
+        futuredate = t / "futuredate"
+        (futuredate / "implemented" / "feature").mkdir(parents=True)
+        future = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        write_status(futuredate / "implemented" / "feature", f"{future}-naming-ok.md", "implemented")
+        cases.append((futuredate, 1, "date after today -> fail"))
+
+        # case E: invalid calendar day → exit 1
+        baddate = t / "baddate"
+        (baddate / "implemented" / "feature").mkdir(parents=True)
+        write_status(baddate / "implemented" / "feature", "2026-02-31-naming-ok.md", "implemented")
+        cases.append((baddate, 1, "invalid calendar date -> fail"))
+
+        # case F: wrong segment count (class dir missing) → exit 1
+        badcount = t / "badcount"
+        (badcount / "implemented").mkdir(parents=True)
+        write_status(badcount / "implemented", "2026-08-27-naming-ok.md", "implemented")
+        cases.append((badcount, 1, "path not 3 segments -> fail"))
+
+        failed = 0
+        for notes_root, expected, desc in cases:
+            checked, errors = _scan(notes_root)
+            actual = 1 if errors else 0
+            if actual == expected:
+                print(f"  ok: {desc}")
+            else:
+                print(f"  ✗ {desc}: expected exit {expected}, got {actual} ({'; '.join(errors)})")
+                failed = 1
+        if failed == 0:
+            print("== verify-adr-format self-test passed ==")
+        else:
+            print("== verify-adr-format self-test failed ==", file=sys.stderr)
+        return failed
+
+
+def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "--self-test":
+        return _self_test(Path("."))
+
+    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".agents/notes")
+    if not root.is_dir():
+        print(f"SKIP: {root} does not exist (no Agent Notes tree)")
+        return 0
+
+    checked, errors = _scan(root)
     print(f"Checked {checked} Agent Notes")
     if errors:
         for e in errors:
