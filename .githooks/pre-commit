@@ -22,11 +22,15 @@ fi
 echo "-> verify-md-links.py"
 python3 scripts/verify-md-links.py
 
-# 4) doc-budgets（快）
+# 4) cookbook（踩坑记录格式与阶段标签封闭集）
+echo "-> verify-cookbook.py"
+python3 scripts/verify-cookbook.py
+
+# 5) doc-budgets（快）
 echo "-> verify-doc-budgets.py"
 python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json
 
-# 5) 治理面快检（快；模板漂移在此拦截）
+# 6) 治理面快检（快；模板漂移在此拦截）
 echo "-> verify-governance.py"
 python3 scripts/verify-governance.py
 

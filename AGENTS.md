@@ -52,6 +52,7 @@ web 检索一律 anysearch 插件（唯一搜索后端，已 Provider 级接管�
 
 ```sh
 python3 scripts/verify-adr-format.py     # ADR 头/骨架/状态-目录一致性
+python3 scripts/verify-cookbook.py       # 踩坑记录格式/阶段标签封闭集（docs/cookbook.md）
 python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json # 字数预算
 python3 scripts/verify-md-links.py       # 相对链接/锚点（skills/ 排除）
 scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
@@ -64,6 +65,7 @@ scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 | 本文件（AGENTS.md） | ≤ 800 词 |
 | .agents/AGENTS.md | ≤ 300 词 |
 | .agents/notes/README.md | ≤ 800 词 |
+| docs/cookbook.md | ≤ 2500 词 |
 
 超限：迁移到其他层（留一行链接）→ 精简 → 才允许提额度（PR 说明理由）。
 

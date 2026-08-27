@@ -17,6 +17,10 @@
 - implemented 笔记用现在时，**禁止** `## Proposal`/`## Plan`/`## Acceptance criteria`；强制 `## Alternatives considered`。
 - 双语暂不启用：正文中文单语（开启时恢复 `.zh.md` + 配对机制）。
 
+## Cookbook（踩坑记录）
+
+- 实现阶段踩坑与调试判别经验的单一事实源在 [`docs/cookbook.md`](../docs/cookbook.md)：每条带阶段标签（`[脚本]/[打包]/[调试]/[环境]/[上游]/[产品]` 封闭集），格式由 `scripts/verify-cookbook.py` 机器强制（违约即 FAIL），新增条目必须带标签与日期。
+
 ## 出处声明（MIT）
 
 - `.agents/skills/` 全部技能：© deepseek-ai，MIT License，来自 `deepseek-ai/deepseek-harness`（https://github.com/deepseek-ai/deepseek-harness）。2026-08-20 自本机上游克隆原样拷贝（逐字节一致）。
