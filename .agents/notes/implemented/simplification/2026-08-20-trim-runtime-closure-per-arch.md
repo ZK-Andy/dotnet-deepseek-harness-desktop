@@ -8,10 +8,11 @@ Status: implemented
 
 ## Decision
 
-**在 `bundle-runtime-ci.sh` 的 `[3/3]` 拷贝后、`[4/4]` 自检前，新增 `trim_runtime_closure()`，只剪三类无风险产物**：
+**在 `bundle-runtime-ci.sh` 的 `[3/3]` 拷贝后、`[4/4]` 自检前，新增 `trim_runtime_closure()`，剪无风险产物**：
 
 - **node-pty 非当前平台 `prebuilds/*` 目录**：node-pty 把所有平台 prebuild（`win32-x64/arm64`、`darwin-x64/arm64`、`linux-x64/arm64`）当普通文件随包；运行时按 `process.platform+arch` 只选当前平台目录，删其它平台目录绝对安全。映射：`linux-x64→linux-x64`、`linux-arm64→linux-arm64`、`win-x64→win32-x64`、`osx-x64→darwin-x64`、`osx-arm64→darwin-arm64`。
 - **`*.map` 源码映射**：仅调试用，运行时不被加载。
+- **`//# sourceMappingURL=` 尾注释（2026-08-27 追加）**：删 `.map` 后注释指向不存在的文件，DevTools 抓取刷 404；与 `.map` 删除配套剥除。见 [strip-sourcemap-comments-in-closure](../process/2026-08-27-strip-sourcemap-comments-in-closure.md)。
 - **`README/CHANGELOG/CONTRIBUTING/HISTORY *.md`**：纯文档。
 
 **明确不剪**：`.ts`/`.d.ts` 源码、LICENSE——正是历次盲删 TRIM 的高风险部分。裁剪在 `[4/4]` 自检前执行，**Linux 强自检（`dsh web:` 必须给出 URL）验证裁剪后闭包仍可启动**，失败即 `fail loud`。
