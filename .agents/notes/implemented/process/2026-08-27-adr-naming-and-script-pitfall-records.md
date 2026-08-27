@@ -1,6 +1,6 @@
 # Agent Note: ADR 命名规则机器化 + 实现阶段踩坑记录分层
 
-Status: proposed
+Status: implemented
 
 ## Problem
 
@@ -10,19 +10,19 @@ Status: proposed
 
 2. **实现阶段踩坑记录无分层结构**。踩坑散在三处：HANDOFF Gotchas（36 条，产品/环境/脚本判别经验，无阶段标签）、脚本内注释（单点坑，如 `bundle-runtime-ci.sh` trim 段）、ADR Consequences（决策代价）。「实现阶段的踩坑」（写脚本/写 C#/跨平台/门禁期碰壁）与「调试判别的坑」（运行时见报错的归因）混在同一 Gotchas 列表，检索、统计、沉淀节奏均无依据——根 AGENTS.md 文档纪律「procedure → cookbook」的对应结构未落地。
 
-## Proposal
+## Decision
 
 ### A. ADR 命名规则机器化（verify-adr-format.py 扩展）
 
-在现有内容校验基础上，对每个 notes 文件新增**文件名/路径校验**：
+在现有内容校验基础上，对每个 notes 文件新增**文件名/路径校验**，违约即 FAIL（独立于内容校验）：
 
-1. **路径段数**：`<lifecycle>/<class>/<name>.md` 三段（顶层 README 豁免）。
-2. **lifecycle 段** ∈ {proposed, implemented, rejected}——与 Status 行一致（已有逻辑复用）。
-3. **class 段** ∈ 封闭集 {feature, bug-fix, simplification, architecture, process, testing}——新增校验，违约即 FAIL。
+1. **路径段数**：`<lifecycle>/<class>/<name>.md` 三段（顶层 `README.md` 豁免）。
+2. **lifecycle 段** ∈ {proposed, implemented, rejected}——与 Status 行一致（复用既有逻辑）。
+3. **class 段** ∈ 封闭集 {feature, bug-fix, simplification, architecture, process, testing}——新增校验。
 4. **文件名 `<name>` = `yyyy-mm-dd-<slug>.md`**：
-   - 日期段：`\d{4}-\d{2}-\d{2}` 且为合法日历日（python `datetime.date` 可解析）;
-   - slug 段：kebab-case（`[a-z0-9]+(-[a-z0-9]+)*`），禁大写/下划线/中文/特殊字符;
-   - 禁「提升状态改名」（日期=首次提出日，迁移不改名——既有同文件改名应走 `git mv`，校验只查格式不查历史）。
+   - 日期段：`\d{4}-\d{2}-\d{2}` 且为合法日历日（python `datetime.date` 可解析）；
+   - slug 段：kebab-case（`[a-z0-9]+(-[a-z0-9]+)*`），禁大写/下划线/中文/特殊字符；
+   - 禁「提升状态改名」（日期=首次提出日，迁移不改名——校验只查格式不查历史，改名应走 `git mv`）。
 5. **日期合理性**：不晚于运行日 + 容忍（允许当天）；早于 1970 判 FAIL。
 
 ### B. 实现阶段踩坑记录分层（Gotchas 阶段标签化）
@@ -41,7 +41,7 @@ Status: proposed
 - `[上游]` 依赖方行为与等待项
 - `[产品]` 用户可见行为约定
 
-存量 36 条按语义补标签（一次性整理），新增条目强制带标签。脚本级单点坑继续就近留脚本注释（fail loud 提醒），ADR Consequences 继续承载决策代价——三者各司其职不重复。
+存量条目按语义补标签（一次性整理），新增条目强制带标签。脚本级单点坑继续就近留脚本注释（fail loud 提醒），ADR Consequences 继续承载决策代价——三者各司其职不重复。
 
 ### C. 归属边界
 
@@ -59,10 +59,16 @@ Status: proposed
 ## Consequences
 
 - 收益：命名违约即时 FAIL（新建即知）；踩坑记录可按阶段检索聚合（如「脚本坑汇总」供写脚本前扫一眼）；实现与调试两类坑不再互相淹没。
-- 代价/风险：存量 36 条补标签为一次性人工整理（低风险机械活）；class/命名规则收紧后，任何历史笔记若违约需先修命名再跑门禁（审计现状 57 篇全合规，预期零回填成本）。
-- 实施顺序：A（门禁扩展+自测）→ B（标签化整理）→ README/模板同步；A 需进入实现模式执行。
+- 代价/风险：存量条目标签化为一次性人工整理（低风险机械活）；class/命名规则收紧后，任何历史笔记若违约需先修命名再跑门禁（审计现状 57 篇全合规，零回填成本）。
+- 实施顺序：A（门禁扩展+自测）→ B（标签化整理）→ README/模板/.agents/AGENTS.md 同步；A 需进入实现模式执行。
+
+## Testing
+
+- `verify-adr-format.py --self-test`：6 用例（合规树 / 非法 class / 文件名大写 / 未来日期 / 非法日历日 / 路径段数不足）全部通过，违约样例正确 FAIL、合规样例 PASS。
+- `verify-adr-format.py`（真实树）：58 篇 Agent Notes 全部通过，零命名违规。
+- 门禁三脚本（verify-adr-format / verify-doc-budgets / verify-md-links）全绿；`.agents/AGENTS.md` 167/300、`.agents/notes/README.md` 191/800 字数预算均未超限。
 
 ## Related
 
-- [2026-08-25-docs-management-tiering](../process/2026-08-25-docs-management-tiering.md)：框架级治理仓的前置分析，本决策同属「流程纪律」，其上第 2 层候选。
+- [2026-08-25-docs-management-tiering](../../proposed/process/2026-08-25-docs-management-tiering.md)：框架级治理仓的前置分析，本决策同属「流程纪律」，其上第 2 层候选。
 - [2026-08-20-initial-ai-devops-adaptation](../../implemented/process/2026-08-20-initial-ai-devops-adaptation.md)：首批流程卡与门禁骨架，verify-adr-format 扩展是其后续演进。

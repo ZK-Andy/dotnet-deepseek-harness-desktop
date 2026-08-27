@@ -13,6 +13,7 @@
 - 路径：`.agents/notes/<lifecycle>/<class>/yyyy-mm-dd-<topic>.md`。
 - class 封闭集合：`feature` / `bug-fix` / `simplification` / `architecture` / `process` / `testing`。
 - 状态即目录：`proposed` → `implemented`（改 Status + 移目录）→ `archived`（冻结，只插 `Archived:` 行）。
+- 文件名 = `yyyy-mm-dd-<kebab-slug>.md`：slug 小写连字符，日期为合法日历日且不晚于今日——命名格式由 `verify-adr-format.py` 机器强制（违约即 FAIL），新建即校验。
 - implemented 笔记用现在时，**禁止** `## Proposal`/`## Plan`/`## Acceptance criteria`；强制 `## Alternatives considered`。
 - 双语暂不启用：正文中文单语（开启时恢复 `.zh.md` + 配对机制）。
 

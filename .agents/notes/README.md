@@ -12,7 +12,8 @@
 - 路径：`.agents/notes/<lifecycle>/<class>/yyyy-mm-dd-<topic-title>.md`
 - lifecycle（状态即目录，随状态迁移）：`proposed/` → `implemented/` → `archived/`；另有 `rejected/`。
 - class（封闭集合）：`feature` / `bug-fix` / `simplification` / `architecture`（交付源码）/ `process`（工具流程）/ `testing`。刻意无 `refactor`（与 `simplification` 重叠：判别词"可观察行为是否变化"）。
-- 日期 = 首次提出日，迁移不改。
+- 日期 = 首次提出日，迁移改名不改日期。
+- 文件名 = `yyyy-mm-dd-<kebab-slug>.md`：slug 小写连字符（`[a-z0-9]+(-[a-z0-9]+)*`），禁大写/下划线/中文；日期为合法日历日且不晚于今日。此命名格式由 `verify-adr-format.py` 机器强制（详见「门禁」），违约即 FAIL。
 
 ## 格式
 
@@ -31,7 +32,8 @@
 ## 门禁
 
 ```sh
-python3 scripts/verify-adr-format.py   # 在仓库根运行，校验头/骨架/状态-目录一致性
+python3 scripts/verify-adr-format.py               # 在仓库根运行，校验头/骨架/状态-目录一致性 + 文件名/路径命名规则
+python3 scripts/verify-adr-format.py --self-test   # 离线夹具自测（违约样例应 FAIL，合规样例应 PASS）
 ```
 
 双语暂不启用：当前正文中文单语。启用双语时恢复 `.zh.md` 镜像 + `.i18n.yaml` 配对机制（见体系方法论）。

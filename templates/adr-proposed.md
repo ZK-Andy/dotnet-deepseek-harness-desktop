@@ -6,7 +6,8 @@ English | [中文](<同名>.zh.md)
 
 > 放置路径：`.agents/notes/proposed/<class>/yyyy-mm-dd-<topic-title>.md`
 > class ∈ {feature, bug-fix, simplification, architecture, process, testing}
-> 日期 = 首次提出日。中英双语成对（.md + .zh.md），结构逐节对应。
+> 日期 = 首次提出日（迁移改名不改日期）。文件名 `yyyy-mm-dd-<kebab-slug>.md`：slug 小写连字符，禁大写/下划线/中文。中英双语成对（.md + .zh.md），结构逐节对应。
+> 命名格式由 `scripts/verify-adr-format.py`（含 `--self-test`）机器强制，新建即校验。
 
 ## Problem
 
