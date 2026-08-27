@@ -74,5 +74,5 @@ Status: implemented
 
 ## Related
 
-- [2026-08-25-docs-management-tiering](../../proposed/process/2026-08-25-docs-management-tiering.md)：框架级治理仓的前置分析，本决策同属「流程纪律」，其上第 2 层候选。
+- [2026-08-25-docs-management-tiering](../../implemented/process/2026-08-25-docs-management-tiering.md)：框架级治理仓的前置分析，本决策同属「流程纪律」，其上第 2 层候选；已随 HANDOFF 分层落地第 1/3 层。
 - [2026-08-20-initial-ai-devops-adaptation](../../implemented/process/2026-08-20-initial-ai-devops-adaptation.md)：首批流程卡与门禁骨架，verify-adr-format 扩展是其后续演进。
