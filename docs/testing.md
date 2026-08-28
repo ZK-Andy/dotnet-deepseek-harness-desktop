@@ -14,7 +14,7 @@
   * `BundledPluginCatalogTests`：清单装配判定（未装即装不读版本/落后即升带版本日志/同版与更高跳过）、副本缺失修复重装、spec 缺失与解析器异常单项隔离、registry 回退串放弃升级检查保留首装、待装顺序随清单、真实闭包布局端到端与空闭包回退。
   * `ExternalLinkPolicyTests`：站外/同源/非 http(s)/空 href/origin 边界的纯判定。
   * `ExternalLinkCommandRouterTests`：命令路由与打开器委托。
-  * `RynNavigationCallbacksTests`：导航层外部链接拦截（站外 http(s) Block+打开器/同源与非 http(s) 放行/打开器抛异常仍 Block/无 origin 保守拦截）与 `WebViewNavigated`「页面已到达」回调。
+  * `RynNavigationCallbacksTests`：导航层外部链接拦截（站外 http(s) Block+打开器/同源与非 http(s) 放行/宿主导航(IsUserInitiated=false)放行/打开器抛异常仍 Block+失败通知/无 origin 保守拦截）与 `WebViewNavigated`「页面已到达」回调 + origin 随到达刷新（端口漂移 B1）；`notifyLinkFail` 三态（失败/异常/成功）打开失败 toast 通知。
   * `UpdateVersionTests`：版本逐段比较（v 前缀/缺段补 0/预发布截断/**任一段非法 fail loud**）。
   * `UpdateStateMachineTests`：启动对账清 stale ready（相等/**旧版本**/损坏版本串）、持久化恢复 ready、无更新/旧版→up-to-date、新版下载→ready、下载失败→error 后可恢复、install 仅 ready/成功转 installing/失败回 ready、订阅与退订、**并发检查只跑一次**。
   * `ReleaseAssetTests`：按 RID 挑资产（deb/exe/dmg）、SHA256SUMS 双空格与 `*` 二进制格式解析、跨实例下载锁互斥、包类型检测回退。

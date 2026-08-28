@@ -54,7 +54,7 @@
 
 ## 外部链接接管
 
-* 宿主侧 `Services/RynNavigationCallbacks`（`Ryn.Callbacks`，Ryn 0.32.0）在导航边界统一裁决——`[RynCallback(WebViewNavigating)]`：**用户发起**（`IsUserInitiated`）的站外绝对 http(s) → `NavigationDecision.Block` + 经共享 `SystemBrowser` 开系统浏览器；同源 SPA 路由 / `ryn://` / `data:` / 非 http(s) / 宿主导航（崩溃恢复）放行。`[RynCallback(WebViewNavigated)]` 把当前 origin 刷新为实际到达 URL 的 origin、留痕并回调「页面已到达」信号（供启动横幅门控）。`ConfigureServices` 注册 `AddRynCallbacks()` + `AddRynNavigationCallbacks()`（源生成）。相较旧点击层 hack，**覆盖一切导航**（`window.location`/`window.open()`/`<form>` 等非点击路径），不再依赖前端注入捕获脚本（ADR `implemented/feature/2026-08-28-ryn-navigation-callbacks`）。
+* 宿主侧 `Services/RynNavigationCallbacks`（`Ryn.Callbacks`，Ryn 0.32.0）在导航边界统一裁决——`[RynCallback(WebViewNavigating)]`：**用户发起**（`IsUserInitiated`）的站外绝对 http(s) → `NavigationDecision.Block` + 经共享 `SystemBrowser` 开系统浏览器；同源 SPA 路由 / `ryn://` / `data:` / 非 http(s) / 宿主导航（崩溃恢复）放行。`[RynCallback(WebViewNavigated)]` 把当前 origin 刷新为实际到达 URL 的 origin、留痕并回调「页面已到达」信号（供启动横幅门控）。`ConfigureServices` 注册 `AddRynCallbacks()` + `AddRynNavigationCallbacks()`（源生成）。相较旧点击层 hack，**覆盖一切导航**（`window.location`/`window.open()`/`<form>` 等非点击路径），不再依赖前端注入捕获脚本。打开失败（`SystemBrowser` 返回 false/抛异常）时经 `EmitEvent("desktop.externalLinkOpenerFailed")` 推事件给页面，companion 渲染 toast（ADR `implemented/feature/2026-08-28-external-link-opener-failure-toast`；外部链接拦截本体见 `implemented/feature/2026-08-28-ryn-navigation-callbacks`）。
 * 宿主侧 `Services/ExternalLinkCommandRouter`（`ICommandRouter`）收 `app.openExternal` 命令，经 `ExternalLinkPolicy.IsExternalHttpLink` 复核后经 `SystemBrowser`（Linux `xdg-open` / 其余 `Process.Start(UseShellExecute)`）开系统浏览器——给已发布旧版 companion 与 Ryn 命令面保留的落地点。
 * companion `client.js` 不再注入 capture 点击监听（外链接管已迁宿主导航层）；`__ryn_externalLinkCatcher` / `__dshDesktopCompanionLinks` 双旗认领机制退役。
 
