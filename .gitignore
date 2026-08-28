@@ -25,3 +25,6 @@ resources/runtime/
 
 # CodeGraph 本地代码索引（开发侧工具，codegraph init 生成）
 /.codegraph/
+
+# ZCode 本地会话工作目录
+.zcode/

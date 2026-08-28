@@ -282,6 +282,22 @@
           ctx.effect(function () { return ctx.locale.register(NS, { zh: zh, en: en }) }, 'dsh-desktop-companion: dictionaries')
           var t = ctx.locale.bind(NS)
 
+          // 宿主 UI 语言桥接（desktop.companion.setLocale）：dsh locale runtime 在插件激活与
+          // 每次切换时把 <html lang> 指向当前 locale（zh-CN/en），监听该属性即拿到切换时刻——
+          // 宿主据此重建托盘菜单/选横幅文案。上报失败静默（旧宿主无此命令是合法形态）：
+          // locale 桥是增强能力，绝不影响安装/更新主链路。
+          ctx.effect(function () {
+            var report = function () {
+              var lang = (document.documentElement.getAttribute('lang') || '').toLowerCase()
+              if (!lang) return
+              try { window.__ryn.invoke('desktop.companion.setLocale', { locale: lang }).catch(function () {}) } catch (e) { /* __ryn 未就绪：下个 lang 变更再试 */ }
+            }
+            report()
+            var localeObserver = new MutationObserver(report)
+            localeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] })
+            return function () { localeObserver.disconnect() }
+          }, 'dsh-desktop-companion: locale bridge')
+
           var statusText = function (s) {
             switch (s && s.status) {
               case 'checking': return t('checking')

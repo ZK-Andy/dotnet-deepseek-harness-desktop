@@ -48,15 +48,20 @@ public static class RuntimeVersionGate
         Update.UpdateVersion.Compare(version, MinimumVersion) < 0;
 
     /// <summary>低于底线时的界面横幅注入脚本（纯函数可单测）：告知探测版本、底线与后果。</summary>
-    public static string BelowFloorBannerScript(string detectedVersion)
+    /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
+    public static string BelowFloorBannerScript(string detectedVersion, UiLocale? uiLocale = null)
     {
-        var text = "当前 dsh 运行时版本 " + detectedVersion +
-                   " 低于桌面支持的最低版本 " + MinimumVersion +
-                   "，可能出现数据或行为不兼容；请升级 dsh，或使用桌面自带的捆绑运行时。";
+        var english = uiLocale?.IsEnglish == true;
+        var text = english
+            ? $"Current dsh runtime version {detectedVersion} is below the minimum supported by this desktop ({MinimumVersion}); data or behavior may be incompatible. Upgrade dsh, or use the bundled runtime."
+            : "当前 dsh 运行时版本 " + detectedVersion +
+              " 低于桌面支持的最低版本 " + MinimumVersion +
+              "，可能出现数据或行为不兼容；请升级 dsh，或使用桌面自带的捆绑运行时。";
         return DesktopBanner.Build(
             "dsh-desktop-version-floor-banner",
             text,
-            new DesktopBanner.Palette("#3a1d1d", "#ffe6e6", "#5a2a2a", "#a13a3a"));
+            new DesktopBanner.Palette("#3a1d1d", "#ffe6e6", "#5a2a2a", "#a13a3a"),
+            uiLocale?.OkLabel ?? "知道了");
     }
 
     /// <summary>

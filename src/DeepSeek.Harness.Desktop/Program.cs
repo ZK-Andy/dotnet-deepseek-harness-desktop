@@ -79,6 +79,8 @@ public static class Program
         Action? updateExitReaper = null;
         // 自更新后台长任务（check 下载/install 兜底）的取消令牌来源同款延迟接线
         CancellationTokenSource? supervisorCtsRef = null;
+        // 宿主 UI 语言单点（ADR host-ui-locale）：companion 上报 dsh locale，托盘/横幅据此出双语
+        var uiLocale = new Services.UiLocale();
         PrimaryListener? instanceListener = null;
         var xdgRuntimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
         var instanceSocketPath = OperatingSystem.IsWindows()
@@ -308,6 +310,8 @@ public static class Program
                         Services.AppJsonContext.Default.ExternalLinkOpenerFailedFrame)));
                 // 外部链接 → 系统默认浏览器（宿主命令路由，见 implemented ADR open-external-links-in-system-browser）
                 services.AddSingleton<ICommandRouter>(new Services.ExternalLinkCommandRouter(log: Services.HostLog.Write));
+                // dsh 语言变更桥接（desktop.companion.setLocale，ADR host-ui-locale）
+                services.AddSingleton<ICommandRouter>(new Services.CompanionLocaleCommandRouter(uiLocale, log: Services.HostLog.Write));
                 // 诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）
                 services.AddSingleton<ICommandRouter>(new Services.DesktopDiagnosticsCommandRouter(
                     log: Services.HostLog.Write, healthSnapshot: () => healthMonitor?.Snapshot));
@@ -417,9 +421,22 @@ public static class Program
             {
                 var tray = app.Services.GetRequiredService<TrayService>();
                 tray.Show();
-                tray.SetMenu(Services.Tray.TrayMenuActions.BuildItems(includeUpdateItem: updateMachine is not null));
+                tray.SetMenu(Services.Tray.TrayMenuActions.BuildItems(includeUpdateItem: updateMachine is not null, uiLocale));
                 trayReady = true;
                 Services.HostLog.Write("[host] 系统托盘已注册");
+                // dsh 语言切换 → companion 上报 → locale 变化即重建菜单（ADR host-ui-locale）
+                uiLocale.Changed += () =>
+                {
+                    try
+                    {
+                        tray.SetMenu(Services.Tray.TrayMenuActions.BuildItems(includeUpdateItem: updateMachine is not null, uiLocale));
+                    }
+                    catch (Exception ex1)
+                    {
+                        // 菜单重建失败可容忍：保留旧菜单（文案为上一语言），托盘功能不受损
+                        Services.HostLog.Write($"[host] 托盘菜单重建失败（保留旧菜单）：{ex1.Message}");
+                    }
+                };
             }
             catch (Exception ex)
             {
@@ -538,7 +555,7 @@ public static class Program
                     readyNotified = true;
                     _ = ShowBannerWhenReady(
                         windowAccessor,
-                        Services.Update.UpdateBanner.ReadyScript(state.Version),
+                        Services.Update.UpdateBanner.ReadyScript(state.Version, uiLocale),
                         supervisorCts.Token);
                 }
             });
@@ -609,7 +626,7 @@ public static class Program
                 if (Services.RuntimeVersionGate.IsBelowFloor(detected))
                 {
                     Services.HostLog.Write($"[host] 警告：dsh {detected} 低于支持底线 {Services.RuntimeVersionGate.MinimumVersion}，已提示用户");
-                    await ShowBannerWhenReady(windowAccessor, Services.RuntimeVersionGate.BelowFloorBannerScript(detected), supervisorCts.Token);
+                    await ShowBannerWhenReady(windowAccessor, Services.RuntimeVersionGate.BelowFloorBannerScript(detected, uiLocale), supervisorCts.Token);
                 }
             }
             else
@@ -627,7 +644,7 @@ public static class Program
             // 上轮非受控退出：提示但不暗示应用故障（用户杀进程也属此类），引导导出诊断
             if (previousRunUnclean)
             {
-                await ShowBannerWhenReady(windowAccessor, RunMarker.UncleanBannerScript(), supervisorCts.Token);
+                await ShowBannerWhenReady(windowAccessor, RunMarker.UncleanBannerScript(uiLocale), supervisorCts.Token);
             }
         });
 

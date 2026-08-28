@@ -1,4 +1,5 @@
 using System.Text;
+using DeepSeek.Harness.Desktop.Services;
 using DeepSeek.Harness.Desktop.Services.Tray;
 using DeepSeek.Harness.Desktop.Services.Update;
 using Ryn.Ipc;
@@ -34,6 +35,30 @@ public class TrayMenuBuildTests
         Assert.DoesNotContain(items, i => i.Id == TrayMenuActions.CheckUpdateItemId);
         Assert.True(items[1].Separator);
         Assert.Equal(TrayMenuActions.QuitItemId, items[2].Id);
+    }
+
+    [Fact]
+    public void BuildItems_LocalizesEnglish_KeepsChineseDefault()
+    {
+        // 托盘双语（ADR host-ui-locale）：en 出英文，zh/缺省出中文（对齐 dsh 兜底方向）
+        var en = new UiLocale();
+        en.Set("en");
+        var english = TrayMenuActions.BuildItems(includeUpdateItem: true, en);
+        Assert.Equal("Show Main Window", english[0].Label);
+        Assert.Equal("Check for Updates", english[1].Label);
+        Assert.Equal("Quit", english[3].Label);
+
+        var zh = new UiLocale();
+        zh.Set("zh-CN");
+        var chinese = TrayMenuActions.BuildItems(includeUpdateItem: true, zh);
+        Assert.Equal("显示主窗", chinese[0].Label);
+        Assert.Equal("检查更新", chinese[1].Label);
+        Assert.Equal("退出", chinese[3].Label);
+
+        var other = new UiLocale();
+        other.Set("fr");
+        Assert.Equal("退出", TrayMenuActions.BuildItems(true, other)[3].Label);
+        Assert.Equal("退出", TrayMenuActions.BuildItems(true)[3].Label);
     }
 }
 

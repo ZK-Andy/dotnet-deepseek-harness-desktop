@@ -8,6 +8,18 @@ namespace DeepSeek.Harness.Desktop.Tests;
 public class UpdateBannerTests
 {
     [Fact]
+    public void ReadyScript_LocalizesEnglish()
+    {
+        // 宿主横幅双语（ADR host-ui-locale）：en 出英文文案，缺省中文
+        var en = new Services.UiLocale();
+        en.Set("en");
+        var script = UpdateBanner.ReadyScript("9.9.9", en);
+        Assert.Contains("is ready", script);
+        Assert.Contains("textContent=\"OK\"", script);
+        Assert.DoesNotContain("已就绪", script);
+    }
+
+    [Fact]
     public void ReadyScript_EmbedsVersion_GuardsDoubleInjection()
     {
         var script = UpdateBanner.ReadyScript("9.9.9");

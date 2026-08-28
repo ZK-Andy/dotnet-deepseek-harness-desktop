@@ -45,4 +45,17 @@ public class DesktopBannerTests
         Assert.Contains("color:#eeeeee", script);
         Assert.Contains("#333333", script);
     }
+
+    [Fact]
+    public void Build_OkLabel_LocalizedViaJsString()
+    {
+        // 按钮文案随宿主 locale（ADR host-ui-locale）：en 出 OK，缺省中文；经 JsString 管线（非 ASCII \u 转义）
+        var en = DesktopBanner.Build("dsh-desktop-test-banner", "文本", Palette, okLabel: "OK");
+        Assert.Contains("textContent=\"OK\"", en);
+
+        var zh = DesktopBanner.Build("dsh-desktop-test-banner", "文本", Palette);
+        Assert.DoesNotContain("textContent=\"OK\"", zh);
+        // 「知」= U+77E5：JsString 转义后的中文文案（编码器输出大写十六进制）
+        Assert.Contains("\\u77E5", zh);
+    }
 }

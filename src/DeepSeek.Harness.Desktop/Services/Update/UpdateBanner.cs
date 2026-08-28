@@ -7,12 +7,17 @@ namespace DeepSeek.Harness.Desktop.Services.Update;
 public static class UpdateBanner
 {
     /// <summary>生成 ready 横幅注入脚本（纯函数可单测）。</summary>
-    public static string ReadyScript(string version)
+    /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
+    public static string ReadyScript(string version, UiLocale? uiLocale = null)
     {
-        var text = "新版本 " + version + " 已就绪，可在 设置 → 桌面设置 中一键安装。";
+        var english = uiLocale?.IsEnglish == true;
+        var text = english
+            ? $"New version {version} is ready. Install it in Settings → Desktop Settings."
+            : "新版本 " + version + " 已就绪，可在 设置 → 桌面设置 中一键安装。";
         return DesktopBanner.Build(
             "dsh-desktop-update-ready-banner",
             text,
-            new DesktopBanner.Palette("#14251b", "#d9f2e3", "#1f3a2a", "#2f855a"));
+            new DesktopBanner.Palette("#14251b", "#d9f2e3", "#1f3a2a", "#2f855a"),
+            uiLocale?.OkLabel ?? "知道了");
     }
 }

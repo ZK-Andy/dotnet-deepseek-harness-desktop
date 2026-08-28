@@ -84,12 +84,17 @@ public static class RunMarker
     }
 
     /// <summary>非受控退出提示横幅脚本（纯函数可单测）：不暗示应用故障，引导导出诊断。</summary>
-    public static string UncleanBannerScript()
+    /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
+    public static string UncleanBannerScript(UiLocale? uiLocale = null)
     {
+        var english = uiLocale?.IsEnglish == true;
         return DesktopBanner.Build(
             "dsh-desktop-run-marker-banner",
-            "上次运行未正常退出（如手动结束进程）。若应用行为异常，请在设置页导出诊断信息。",
-            new DesktopBanner.Palette("#1b1b26", "#e6e6ea", "#2a2a3a", "#7c3aed"));
+            english
+                ? "The app did not exit cleanly last time (e.g. the process was killed). If it behaves oddly, export diagnostics in Settings."
+                : "上次运行未正常退出（如手动结束进程）。若应用行为异常，请在设置页导出诊断信息。",
+            new DesktopBanner.Palette("#1b1b26", "#e6e6ea", "#2a2a3a", "#7c3aed"),
+            uiLocale?.OkLabel ?? "知道了");
     }
 
     /// <summary>run-marker.json 落盘帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>

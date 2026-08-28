@@ -40,19 +40,22 @@ public static class TrayMenuActions
 
     /// <summary>构造托盘菜单：显示主窗 / 检查更新（可选）/ 分隔线 / 退出。</summary>
     /// <param name="includeUpdateItem">自更新栈是否装载（决定「检查更新」项是否出现）。</param>
-    public static List<TrayMenuItem> BuildItems(bool includeUpdateItem)
+    /// <param name="uiLocale">UI 语言单点（可选，缺省中文）——随 dsh 语言切换由 <c>UiLocale.Changed</c>
+    /// 订阅方重建菜单（ADR host-ui-locale）；非 <c>en*</c> 一律中文（对齐 dsh 字典兜底方向）。</param>
+    public static List<TrayMenuItem> BuildItems(bool includeUpdateItem, UiLocale? uiLocale = null)
     {
+        var english = uiLocale?.IsEnglish == true;
         var items = new List<TrayMenuItem>
         {
-            new() { Id = ShowItemId, Label = "显示主窗" },
+            new() { Id = ShowItemId, Label = english ? "Show Main Window" : "显示主窗" },
         };
         if (includeUpdateItem)
         {
-            items.Add(new() { Id = CheckUpdateItemId, Label = "检查更新" });
+            items.Add(new() { Id = CheckUpdateItemId, Label = english ? "Check for Updates" : "检查更新" });
         }
 
         items.Add(new() { Id = "", Label = "", Separator = true });
-        items.Add(new() { Id = QuitItemId, Label = "退出" });
+        items.Add(new() { Id = QuitItemId, Label = english ? "Quit" : "退出" });
         return items;
     }
 

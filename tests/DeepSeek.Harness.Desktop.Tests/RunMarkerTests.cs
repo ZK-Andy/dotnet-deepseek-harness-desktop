@@ -165,4 +165,16 @@ public class RunMarkerTests
         Directory.CreateDirectory(dir);
         return dir;
     }
+
+    [Fact]
+    public void UncleanBannerScript_LocalizesEnglish()
+    {
+        // 宿主横幅双语（ADR host-ui-locale）：en 出英文文案与 OK 按钮
+        var en = new UiLocale();
+        en.Set("en");
+        var script = RunMarker.UncleanBannerScript(en);
+        Assert.Contains("did not exit cleanly", script);
+        Assert.Contains("textContent=\"OK\"", script);
+        Assert.DoesNotContain("上次运行未正常退出", script);
+    }
 }

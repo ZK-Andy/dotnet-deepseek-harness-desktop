@@ -22,7 +22,8 @@ public static class DesktopBanner
     public sealed record Palette(string Background, string Foreground, string Border, string Button);
 
     /// <summary>生成横幅注入脚本（纯函数可单测）：幂等 id 守卫 + 运行时堆叠偏移。</summary>
-    public static string Build(string id, string text, Palette palette)
+    /// <param name="okLabel">确认按钮文案（宿主按注入时刻 locale 选择，ADR host-ui-locale）。</param>
+    public static string Build(string id, string text, Palette palette, string okLabel = "知道了")
     {
         var known = string.Join(",", KnownIds.Select(k => "'" + k + "'"));
         return "(function(){" +
@@ -36,7 +37,7 @@ public static class DesktopBanner
                "b.style.cssText='position:fixed;top:'+(n*44)+'px;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 16px 8px 40px;background:" + palette.Background + ";color:" + palette.Foreground + ";font:13px/1.5 system-ui,sans-serif;border-bottom:1px solid " + palette.Border + "';" +
                "b.textContent=" + AppJsonContext.JsString(text) + ";" +
                "var x=document.createElement('button');" +
-               "x.textContent='知道了';" +
+               "x.textContent=" + AppJsonContext.JsString(okLabel) + ";" +
                "x.style.cssText='flex:none;padding:2px 10px;background:" + palette.Button + ";color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:12px';" +
                "x.onclick=function(){b.remove()};" +
                "b.appendChild(x);" +
