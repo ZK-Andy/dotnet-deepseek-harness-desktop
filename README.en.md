@@ -25,8 +25,8 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-331%2F331-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-49.6%25-yellowgreen" alt="coverage"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-365%2F365-brightgreen" alt="tests"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-49.7%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
@@ -40,7 +40,7 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 - 🔄 **Crash self-heal & session return** — the shell supervises the runtime process: crash → recovery screen (cause / stderr tail + export diagnostics + exit) → auto-restart → same window back to a new URL; **the port stays stable** so the Web UI origin (and page-level session memory) survives — **return to your previous conversation after a crash or restart**.
 - ⬆️ **Self-update** — background check at launch plus a manual check under Settings → Desktop Settings; one-click install & restart when a new version is found (`SHA256`-verified packages; `macOS` guides manual update). See [Auto-Update](#auto-update) below.
 - 🧩 **Plugin market bundled + version-aware upgrades** — `dsh-market` ships with the package (`dshmarket.tgz`), quietly installed to the dedicated desktop profile (`~/.dsh/profiles/desktop`) on first launch; it auto-restarts to appear. Bundled plugins upgrade by version awareness — when the bundled copy is newer they upgrade automatically and never downgrade. `1200+` plugins are searchable and one-click installable.
-- 🖥️ **System tray** — closing the window minimizes to the tray by default (switchable in Settings), with a tray menu for show main window / check for updates / quit; quitting runs an orderly shutdown so the runtime child process is reaped cleanly.
+- 🖥️ **System tray** — closing the window minimizes to the tray by default (switchable in Settings), with a tray menu for show main window / check for updates / quit (zh/en following the dsh language); quitting runs an orderly shutdown so the runtime child process is reaped cleanly.
 - 🚀 **Single-instance activation** — clicking the launcher/icon again while the app is running raises the existing main window instead of spawning a duplicate instance.
 - 🔁 **Launch at login** — one-click toggle in Settings (XDG autostart on Linux / registry Run on Windows / LaunchAgents on macOS).
 - 🖼️ **Native icons / Wayland-ready** — icons ship into `hicolor`; `ryn.json:identifier` and `StartupWMClass` are both `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`, so the taskbar associates correctly.
@@ -97,7 +97,7 @@ scripts/bundle-runtime.sh
 # DSH_DESKTOP_RUNTIME_DIR=$PWD/resources/runtime
 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# tests (331/331)
+# tests (365/365)
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # webview devtools (default off)
@@ -110,7 +110,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program + Services/ (runtime supervision, self-update, system tray, single-instance activation, diagnostics)
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 331/331
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 365/365
 ├── resources/runtime/              # bundled Node + dsh closure + dshmarket.tgz (generated, gitignored)
 ├── scripts/                        # gates + bundle-runtime-ci.sh + package-linux.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
