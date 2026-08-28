@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-**宿主 = Ryn**（Yupmoh/Ryn，Tauri-for-C#，0.30）：net10.0 C# 后端 + 系统 WebView（WebView2/WKWebView/WebKitGTK），`Ryn.Ipc` 源码生成命令路由，`ryn.json` 能力沙箱 deny-by-default；csproj `PublishAot=true`（发布走 NativeAOT）。
+**宿主 = Ryn**（Yupmoh/Ryn，Tauri-for-C#；版本随 csproj 包引用，现为 0.32.0 带 `Ryn.Callbacks` 导航回调）：net10.0 C# 后端 + 系统 WebView（WebView2/WKWebView/WebKitGTK），`Ryn.Ipc` 源码生成命令路由，`ryn.json` 能力沙箱 deny-by-default；发布为 JIT（csproj `PublishAot=false`，见 2026-08-28-publish-aot-jit-alignment）。
 
 **完整运行时打包**（pilot-harness 思路）：`resources/runtime/` 内置 Node 二进制 + 钉版 `@deepseek-ai/dsh` 闭包（整树 node_modules）+ `dshmarket.tgz` + `dsh-desktop-companion.tgz`；`RuntimeLocator` 优先捆绑、缺失回退 PATH dsh（开发形态）。用户零外部环境依赖。
 

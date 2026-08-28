@@ -1,6 +1,7 @@
 # Agent Note: Drop dead HarnessRuntimeHost.WebUrl state
 
 Status: implemented
+Archived: 2026-08-28
 
 ## Problem
 

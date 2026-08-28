@@ -1,7 +1,7 @@
 # dotnet-deepseek-harness-desktop — 项目规则
 
 DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（NuGet 命名空间 `DeepSeek.Harness.Desktop`）。
-当前处于**通用适配（第一步）**：本文件与 `.agents/` 定义了与技术栈无关的 AI 协作骨架；`.NET` 项目初始化、README、CI 属第二步。
+本文件与 `.agents/` 定义 AI 协作骨架；产品面（.NET 桌面壳、打包、CI）见 `docs/` 与 README。
 
 ## 协作模式（AI + 人）
 
@@ -24,7 +24,7 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 - ADR 路径即元数据：`{lifecycle}/{class}/yyyy-mm-dd-<topic>.md`；`rejected` 仅当理由能防重蹈覆辙才保留；`archived` 永久冻结。
 - 相对 Markdown 链接 + 机器可校验；禁裸文件名引用。
 
-## 编码约定（第二步 .NET 落地后强制执行）
+## 编码约定
 
 - **fail loud**：缺失引用、误配置绝不静默跳过；最迟在最早可解析点失败。
 - 可调参数进配置模型（Config/appsettings），禁止硬编码；协议常量与安全不变量保持固定。
@@ -46,7 +46,7 @@ web 检索一律 anysearch 插件（唯一搜索后端，已 Provider 级接管�
 
 - 改写历史必须 `--force-with-lease=<branch>:<observed-oid>`；**raw `--force` 永远禁止**；改写后重新审计评审状态。
 - push 前最小证据：按 diff 面选最窄检查（先用 `scripts/change-scope.sh`）；禁止默认全量跑、禁止为掩盖未覆盖文件收窄覆盖率。
-- hooks 只做快检查，CI 拥有穷尽矩阵（CI 第二步接入）。
+- hooks 只做快检查，CI 拥有穷尽矩阵。
 
 ## 质量门（当前可执行）
 
@@ -56,6 +56,7 @@ python3 scripts/verify-cookbook.py       # 踩坑记录格式/阶段标签封闭
 python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json # 字数预算
 python3 scripts/verify-md-links.py       # 相对链接/锚点（skills/、archived/、.plan/ 排除）
 python3 scripts/verify-handoff-structure.py # HANDOFF 滚动窗/状态区/归档指针（HANDOFF 存在即校验）
+python3 scripts/verify-governance.py     # Issue/PR 模板治理字段（governance.yml 输入校验）
 scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 ```
 

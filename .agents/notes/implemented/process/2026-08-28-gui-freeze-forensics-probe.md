@@ -2,10 +2,6 @@
 
 Status: implemented
 
-> 放置路径：`.agents/notes/implemented/process/2026-08-28-gui-freeze-forensics-probe.md`
-> class = `process`（工具/流程，交付可执行取样脚本而非产品行为）。
-> `scripts/verify-adr-format.py`（含 `--self-test`）机器强制命名与头/骨架，新建即校验。
-
 ## Problem
 
 DeepSeek Harness 桌面壳（Ryn/saucer → WebKitGTK）在高强度负载（后台并行多个 subagent 并发向 dsh Web UI 倾倒内容）下，用户观察到「窗口能动、内容不动」的页面冻结。该现象具三个判据叠加：Linux Wayland/GNOME + 无 GPU（`/dev/dri` 缺失，`XDG_SESSION_TYPE=wayland`）。

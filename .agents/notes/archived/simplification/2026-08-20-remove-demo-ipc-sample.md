@@ -1,6 +1,7 @@
 # Agent Note: Remove demo IPC sample (GreetingService + wwwroot hello)
 
 Status: implemented
+Archived: 2026-08-28
 
 ## Problem
 

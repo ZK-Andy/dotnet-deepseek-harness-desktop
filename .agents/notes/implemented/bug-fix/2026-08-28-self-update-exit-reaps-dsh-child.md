@@ -2,10 +2,6 @@
 
 Status: implemented
 
-> 放置路径：`.agents/notes/implemented/bug-fix/2026-08-28-self-update-exit-reaps-dsh-child.md`
-> class = `bug-fix`（自更新/异常退出漏收割 dsh → 孤儿占端口 → 连续漂移）。
-> `scripts/verify-adr-format.py`（含 `--self-test`）机器强制命名与头/骨架，新建即校验。
-
 ## Problem
 
 v0.3.11 实机复现：自更新 0.3.6→0.3.11 后，宿主退出时其 dsh 子进程未被收割成孤儿，连续占住首选端口导致跨实例漂移链。host.log + install.log + `ss`/`ps` 进程快照三重实证：

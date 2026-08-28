@@ -1,6 +1,6 @@
 # Development
 
-> 本地开发与打包手册（`v0.1.12`）。
+> 本地开发与打包手册。版本单一事实源 = `src/DeepSeek.Harness.Desktop/DeepSeek.Harness.Desktop.csproj` 的 `<Version>`。
 
 ## 环境
 
@@ -12,9 +12,9 @@
 
 ```
 src/DeepSeek.Harness.Desktop/  Program.cs, Services/*, Commands/*, ryn.json, wwwroot/
-tests/DeepSeek.Harness.Desktop.Tests/  xunit 12
+tests/DeepSeek.Harness.Desktop.Tests/  xunit（35 个测试文件，清单见 testing.md）
 resources/runtime/  node + node_modules + dshmarket.tgz（gitignore）
-scripts/  bundle-runtime{-ci,}.sh, package-linux.sh, check-pin-freshness.sh, verify-*.py
+scripts/  bundle-runtime{-ci,}.sh, package-*.sh, check-pin-freshness.sh, release-preflight.sh, verify-*.py
 ```
 
 * `appsettings.json`：`DevTools:false`；`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
@@ -29,7 +29,7 @@ bash scripts/bundle-runtime-ci.sh linux-x64
 bash scripts/bundle-runtime.sh
 ```
 
-* 入口校验：`resources/runtime/node` + `node_modules/@deepseek-ai/dsh/lib/bin.js` + `dshmarket.tgz 497K`；`package-linux.sh --stage-only` 在错布局/假包时 `fail loud`。
+* 入口校验：`resources/runtime/node` + `node_modules/@deepseek-ai/dsh/lib/bin.js`；闭包签名 `.bundle-meta.json` 含 dsh/node/companion/market/trimPolicy/scriptSha256 六维，`restore-keys` 前缀命中捡回的旧闭包校验不过即全量重建。`package-linux.sh --stage-only` 在错布局/假包时 `fail loud`。
 
 ## 运行与调试
 
@@ -44,7 +44,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ```
 
 * `HarnessRuntimeHost` 抓 `dsh web:` 日志；`RuntimeSupervisor` 崩溃自动重启（端口复用保 `origin`）。
-* 市场：首启 `3s` 后台 `dsh plugin add file:…tgz`，`v0.1.12` 装完 `host.Stop()→Supervisor` 重启即现；`pnpm-workspace.yaml` 的 `allowBuilds` 6 项由壳自愈。
+* 随包插件：首启 `3s` 后台按 `BundledPluginCatalog` 清单单条 `dsh plugin add <spec…>` 装齐 `dshmarket + dsh-desktop-companion`（版本感知升级），装完 `host.Stop()→Supervisor` 重启即现；`pnpm-workspace.yaml` 的 `allowBuilds` 6 项由壳自愈。
 
 ## 测试与门禁
 
@@ -54,8 +54,11 @@ dotnet build dotnet-deepseek-harness-desktop.slnx -c Release
 dotnet test dotnet-deepseek-harness-desktop.slnx -c Release
 
 python3 scripts/verify-adr-format.py
+python3 scripts/verify-cookbook.py
 python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json
 python3 scripts/verify-md-links.py
+python3 scripts/verify-handoff-structure.py
+python3 scripts/verify-governance.py
 scripts/change-scope.sh origin/main HEAD
 ```
 
@@ -69,11 +72,11 @@ bash scripts/package-macos.sh --stage-only artifacts/publish-osx-arm64
 bash scripts/package-windows.sh --stage-only artifacts/publish-win-x64
 # 全量（需 dpkg-deb/rpmbuild；mac 需 hdiutil，win 需 Inno Setup/NSIS —— CI 走此路）
 dotnet publish src/DeepSeek.Harness.Desktop -c Release -r linux-x64 --self-contained true -o artifacts/publish-linux-x64
-VERSION=0.1.12 bash scripts/package-linux.sh artifacts/publish-linux-x64
-ARCH=arm64 VERSION=0.1.12 bash scripts/package-linux.sh artifacts/publish-linux-arm64
+VERSION=<csproj 版本> bash scripts/package-linux.sh artifacts/publish-linux-x64
+ARCH=arm64 VERSION=<csproj 版本> bash scripts/package-linux.sh artifacts/publish-linux-arm64
 bash scripts/package-macos.sh artifacts/publish-osx-arm64  # + osx-x64
 bash scripts/package-windows.sh artifacts/publish-win-x64
-# 产物：artifacts/linux-{x64,arm64}/*.deb + rpmbuild/RPMS/**/*.rpm, artifacts/osx-*/*.dmg, artifacts/win-x64/*.exe + SHA256SUMS（tag 触发）
+# 产物：artifacts/linux-{x64,arm64}/*.{deb,rpm}（rpm 已收敛顶层）, artifacts/osx-*/*.dmg, artifacts/win-x64/*.exe + SHA256SUMS.txt（tag 触发）
 ```
 
 ### 自签（仅内部/开发）

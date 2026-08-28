@@ -1,6 +1,7 @@
 # Agent Note: remove-trim-shrink
 
 Status: implemented
+Archived: 2026-08-28
 
 ## Problem
 
@@ -21,3 +22,7 @@ Status: implemented
 - 收益：去掉一个从未启用、可能埋潜伏运行时故障且误导性强的占位代码路径；`bundle-runtime-ci.sh` 更简单、行为更可预期（整树闭包原样打包）。
 - 代价：少了一个"顺手减几 MB"的选项；体积问题仍存在，留待独立专案（per-arch 去重 / 白名单裁剪 + 裁后完整功能回归），已移出沿用 `TRIM` 的待办。
 - 一致性：CI 与本地 `bundle-runtime.sh` 都产未裁剪整树闭包，无 CI/本地差异。
+
+## Related
+
+- [2026-08-20-trim-runtime-closure-per-arch](../../implemented/simplification/2026-08-20-trim-runtime-closure-per-arch.md)：本决定的「CI 产未裁剪闭包」现状已被其取代——CI 现执行白名单式 per-arch 裁剪 + strip-sourcemap 注释剥除；否决 `TRIM` 盲删的理由仍有效。

@@ -47,7 +47,7 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 
 ## Download and install
 
-Download the package for your platform from [Releases](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases) (with `SHA256SUMS`):
+Download the package for your platform from [Releases](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases) (with `SHA256SUMS.txt`):
 
 | Platform | Arch | Formats |
 |---|---|---|
@@ -65,7 +65,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 - New versions are checked once in the background at launch (no polling, no interruptions); you can also check manually under **Settings → Desktop Settings**.
 - When a new version is found, a download button appears at the bottom of the sidebar — click it to download, verify and **install & restart in one click** (one system authorization prompt on `Linux`).
-- Packages are strictly verified against `SHA256SUMS` before installation; a failed check refuses to install.
+- Packages are strictly verified against `SHA256SUMS.txt` before installation; a failed check refuses to install.
 - `macOS` does not support silent in-app updates yet — you will be guided to download the `dmg` manually.
 
 ## How it works

@@ -47,7 +47,7 @@
 
 ## 下载安装
 
-从 [Releases](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases) 下载对应平台安装包（附 `SHA256SUMS` 校验）：
+从 [Releases](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases) 下载对应平台安装包（附 `SHA256SUMS.txt` 校验）：
 
 | 平台 | 架构 | 包格式 |
 |---|---|---|
@@ -65,7 +65,7 @@
 
 - 启动时后台检查一次新版本（不轮询、不打扰）；也可在 **设置 → 桌面设置** 手动检查。
 - 发现新版本后，侧栏底部出现下载按钮——点击即下载校验、**一键安装并自动重启**（`Linux` 会弹一次系统授权）。
-- 安装包落地前经 `SHA256SUMS` 强校验，校验失败拒绝安装。
+- 安装包落地前经 `SHA256SUMS.txt` 强校验，校验失败拒绝安装。
 - `macOS` 暂不支持应用内静默更新——检测到新版本时会提示手动下载 `dmg`。
 
 ## 工作原理
