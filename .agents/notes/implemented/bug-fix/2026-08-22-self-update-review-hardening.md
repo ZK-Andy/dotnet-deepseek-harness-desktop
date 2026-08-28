@@ -14,7 +14,7 @@ Status: implemented
 - **SHA-256 强校验收口**：`InstallerDownloader` 用 `GetAsync+EnsureSuccessStatusCode`（`GetStreamAsync` 对 404/500 不抛，会把错误页当安装包写满 `.part`）；`ReleaseMeta.Sha256Url` 为 null（release 未附 SHA256SUMS.txt）时**拒绝安装**（宁可误报不装坏包，与条目缺失同立场）；任何失败路径（HTTP/校验/超时）统一删除 `.part` 半成品。
 - **状态机加固**：`Transition` 对 `_onTransition` 与订阅者同等待遇（try/catch + 日志）；`StartAsync` 对账改 `Compare <= 0` 清除（降级残留/损坏版本串经 `ShouldClearReady` 一并清除，`Compare` 解析失败视同残留）；`CheckAsync` 判空与占位移入同一临界区（`_checkGate`），并发调用只跑一次检查；`InstallAsync` 的裸 `catch` 改 `catch (Exception)`。
 - **安装器可测化**：`InstallCommandFor`/`BuildLinuxScript` 抽为纯函数（包命令、等待环、runuser 降权拉起链、变量透传均为可断言的脚本文本），`LaunchLinux` 只做落盘与 pkexec 启动。
-- **插件收敛**：外链取管注册前置 `window.__ryn` 判空（纯浏览器标签页不注册 capture，外链照常）；移除实机验收后的 `window.__ddc` 调试句柄与常驻 `console.info`（同 SPIKE 待遇），保留失败路径 `console.warn`。
+- **插件收敛**：外链接管（曾前置 `window.__ryn` 判空，纯浏览器标签页不注册 capture）已随 Ryn 0.32.0 迁至宿主导航层（见 [ryn-navigation-callbacks](../feature/2026-08-28-ryn-navigation-callbacks.md)），该捕获守卫随之退役；移除实机验收后的 `window.__ddc` 调试句柄与常驻 `console.info`（同 SPIKE 待遇），保留失败路径 `console.warn`。
 - **打包版本**：三平台 `确定打包版本` 步骤在输入留空时回退 csproj `<Version>`（`sed` 提取，版本单一来源），两处都空则 `echo ::error` + `exit 1`（前置 fail loud，杜绝 `-p:Version=` 空值触发 MSB4044）；`workflow_dispatch` 的 `version` 输入默认值由 `0.1.0` 改为留空（预览包不再内嵌与 csproj 脱节的旧版本号）；Linux 的 tag 一致性校验同步放宽为"留空或与 tag 一致均合法"。
 - **版本比较**：`UpdateVersion.ParseSegments` 逐段校验，任一段无法解析即抛 `ArgumentException`（混合形态如 `0.a.3` 不再静默补 0）。
 

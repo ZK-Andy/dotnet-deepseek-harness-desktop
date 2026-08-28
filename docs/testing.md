@@ -45,7 +45,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release
 * **沙箱冒烟**：`HarnessRuntimeHost` `StartAsync` 抓 `dsh web:`（`60s`），`RuntimeSupervisor` `kill` 子进程→自动重启+换 `URL`（回归断言重启 `URL` 相同以保 `origin`）。
 * **本机冒烟**：`dotnet run --project src/DeepSeek.Harness.Desktop` 起 `Ryn` 窗口加载 `dsh web:`（需 `DEEPSEEK_API_KEY` 与 `WebKitGTK`）。`DSH_DEVTOOLS=1` 开 `WebView` 调试。
 * **打包自检**：`bundle-runtime-ci.sh` 的 `60s` 常驻抓 `dsh web:`；`package-linux.sh --stage-only` 校验 `node + dsh/lib/bin.js + dshmarket.tgz 497K`。
-* **随包插件**：全新 `DSH_HOME` 首启 `3s` 后台单条 `dsh plugin add <spec…>` 装齐 `dshmarket + dsh-desktop-companion` → `exit 0` → `host.Stop()→Supervisor` 重启 → `bundles` 含两项，`Web UI` 出现市场、外链点击开系统浏览器（伴生已通过正式版实机验收：外链单标签、站内无影响）。
+* **随包插件**：全新 `DSH_HOME` 首启 `3s` 后台单条 `dsh plugin add <spec…>` 装齐 `dshmarket + dsh-desktop-companion` → `exit 0` → `host.Stop()→Supervisor` 重启 → `bundles` 含两项，`Web UI` 出现市场、外链点击开系统浏览器（外链接管已由宿主导航层 `RynNavigationCallbacks` 实现，见 [architecture.md](architecture.md)；可观察行为经正式版实机验收：外链单标签、站内无影响）。
 
 ## 行为级回归要求
 
