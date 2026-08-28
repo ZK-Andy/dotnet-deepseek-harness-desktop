@@ -140,6 +140,30 @@ public class OrphanDshReaperTests
     }
 
     [Fact]
+    public void Reap_PidOverflowsInt_ReturnsFalse()
+    {
+        // 超长数字串 int.Parse 抛 OverflowException：同样按损坏处理，不穿透 Reap（不挡启动）
+        var dir = NewDir();
+        try
+        {
+            var pidPath = Path.Combine(dir, ".dsh-pid");
+            File.WriteAllText(pidPath, "99999999999999999999");
+
+            var reaped = OrphanDshReaper.Reap(
+                pidPath,
+                readToken: _ => "token",
+                killTree: _ => { },
+                log: _ => { });
+
+            Assert.False(reaped);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Reap_KillThrows_ReturnsFalse()
     {
         // 杀失败（进程恰好退出/无权限）：记日志返回 false，不向上抛，不挡启动

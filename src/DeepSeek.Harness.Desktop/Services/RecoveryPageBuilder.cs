@@ -30,6 +30,13 @@ public static class RecoveryPageBuilder
 			.ToString();
 	}
 
+	/// <summary>轻量覆写脚本（纯函数可单测）：仅「运行时重启中」静态屏，无数据回填与按钮。
+	/// 用于随包插件安装后的短暂过渡——与崩溃恢复页共用注入通道，不再另养一份内嵌脚本。</summary>
+	public static string BuildRestartingScript()
+	{
+		return "document.documentElement.innerHTML=" + AppJsonContext.JsString(RestartingSkeleton) + ";";
+	}
+
 	/// <summary>恢复页动态数据帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>
 	/// <param name="Reason">人读失败原因。</param>
 	/// <param name="Tail">子进程 stderr 尾部行。</param>
@@ -64,4 +71,11 @@ public static class RecoveryPageBuilder
 		"this.disabled=false;};" +
 		"document.getElementById('ddc-exit').onclick=async function(){this.disabled=true;" +
 		"try{await window.__ryn.invoke('desktop.recovery.exit',{});}catch(e){}};";
+
+	private const string RestartingSkeleton =
+		"<!doctype html><html><head><meta charset=\"utf-8\"><style>" +
+		"body{font-family:system-ui,sans-serif;background:#0f0f13;color:#e6e6ea;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:12px;margin:0}" +
+		".spin{width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#7c3aed;border-radius:50%;animation:r 1s linear infinite}" +
+		"@keyframes r{to{transform:rotate(360deg)}}</style></head>" +
+		"<body><div class=\"spin\"></div><h2>DeepSeek Harness Desktop</h2><p>运行时重启中，正在重新连接…</p></body></html>";
 }

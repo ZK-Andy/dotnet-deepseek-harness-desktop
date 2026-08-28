@@ -34,6 +34,7 @@ ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
 PIN_SH=${PIN_SH:-$ROOT/scripts/bundle-runtime-ci.sh}
 WF_DIR=${WF_DIR:-$ROOT/.github/workflows}
 GATE_CS=${GATE_CS:-$ROOT/src/DeepSeek.Harness.Desktop/Services/RuntimeVersionGate.cs}
+CATALOG_CS=${CATALOG_CS:-$ROOT/src/DeepSeek.Harness.Desktop/Services/BundledPluginCatalog.cs}
 DATA_DIR=${DATA_DIR:-}
 
 # ---------- 自测入口 ----------
@@ -46,6 +47,7 @@ if [[ "$MODE" == selftest ]]; then
 		set +e
 		DATA_DIR=$dir/data PIN_SH=$dir/bundle-runtime-ci.sh \
 			WF_DIR=$dir/workflows GATE_CS=$dir/RuntimeVersionGate.cs \
+			CATALOG_CS=$dir/BundledPluginCatalog.cs \
 			bash "$SELF" --output "$TMPLOG" >/dev/null 2>&1
 		code=$?
 		set -e
@@ -155,6 +157,7 @@ while IFS= read -r m; do
 done < <({
 	grep -ho 'dshmarket@[0-9][0-9.]*' "$PIN_SH" | sed 's/^dshmarket@//' || true
 	grep -ho 'dshmarket-[0-9][0-9.]*\.tgz' "$PIN_SH" | sed 's/^dshmarket-//; s/\.tgz$//' || true
+	grep -ho 'dshmarket@[0-9][0-9.]*' "$CATALOG_CS" 2>/dev/null | sed 's/^dshmarket@//' || true
 	extract_default MARKET_VERSION
 } | sort -u)
 

@@ -54,6 +54,19 @@ public sealed class HarnessRuntimeHost : IDisposable
     internal static string ResolvePidFilePath() =>
         Path.Combine(ResolveDshHome(), "profiles", DesktopProfileName, PidFileName);
 
+    /// <summary>把 pnpm store/cache 重定向到 <paramref name="home"/> 下并预建目录（dsh spawn 与随包插件安装两条链共用的单点）。</summary>
+    /// <remarks>
+    /// 桌面环境可能 /home 只读：不重定向时 dsh-market 等插件安装走 pnpm 会因 store 写入失败（EROFS）而失败；
+    /// 预建目录兼容旧 pnpm 的 store 仍被读取时不因 EROFS 失败。
+    /// </remarks>
+    internal static void ApplyPnpmWriteDirs(ProcessStartInfo psi, string home)
+    {
+        psi.Environment["pnpm_config_store_dir"] = Path.Combine(home, ".pnpm-store");
+        psi.Environment["pnpm_config_cache_dir"] = Path.Combine(home, ".pnpm-cache");
+        Directory.CreateDirectory(Path.Combine(home, ".pnpm-store"));
+        Directory.CreateDirectory(Path.Combine(home, ".pnpm-cache"));
+    }
+
     /// <summary>记录本次 spawn 的 dsh PID + 孤儿清扫 token（尽力而为：写失败仅导致下次冷启动清扫落空，端口漂移告警兜底）。</summary>
     internal static void PersistSpawn(int pid, string token)
     {
@@ -88,13 +101,14 @@ public sealed class HarnessRuntimeHost : IDisposable
     /// （存量升级零感知）；两处均缺失/损坏/不可读 → null（回退 OS 分配）。</summary>
     internal static int? TryLoadPersistedPort()
     {
-        var port = TryReadPortFile(ResolvePortFilePath());
-        if (port is null && !File.Exists(ResolvePortFilePath()))
+        var newPath = ResolvePortFilePath();
+        if (File.Exists(newPath))
         {
-            port = TryReadPortFile(ResolveLegacyPortFilePath());
+            // 新位置存在（含损坏/不可读）：不回读旧版——避免陈旧的 home 根端口记忆劫持当前 profile
+            return TryReadPortFile(newPath);
         }
 
-        return port;
+        return TryReadPortFile(ResolveLegacyPortFilePath());
     }
 
     private static int? TryReadPortFile(string path)
@@ -312,10 +326,7 @@ public sealed class HarnessRuntimeHost : IDisposable
 
         // 桌面环境可能 /home 只读：把 pnpm store/cache 重定向到可写的 DSH_HOME 下，
         // 否则 dsh-market 等插件安装走 pnpm 会因 store 写入失败（EROFS）而失败。
-        psi.Environment["pnpm_config_store_dir"] = Path.Combine(home, ".pnpm-store");
-        psi.Environment["pnpm_config_cache_dir"] = Path.Combine(home, ".pnpm-cache");
-        Directory.CreateDirectory(Path.Combine(home, ".pnpm-store"));
-        Directory.CreateDirectory(Path.Combine(home, ".pnpm-cache"));
+        ApplyPnpmWriteDirs(psi, home);
 
         // GUI 会话的 PATH 不含 ~/.local/bin：MCP stdio 等下游按命令名拉取外部进程时
         // 解析不到用户级命令（ADR gui-path-enrichment）。追加而非前置，不改系统优先级。

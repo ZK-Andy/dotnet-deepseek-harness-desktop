@@ -19,7 +19,8 @@ internal static class HostLog
     /// 诊断 zip 外发的 host.log 原文由此保证不含凭据形状内容（ADR diag-masking-and-recovery-page）。</summary>
     public static void Write(string home, string msg)
     {
-        msg = SecretMasker.Mask(msg) ?? msg;
+        // Mask 对非空入参恒非空（空串原样透传），此处结果必为具体文本
+        msg = SecretMasker.Mask(msg)!;
         Console.WriteLine(msg);
         try
         {

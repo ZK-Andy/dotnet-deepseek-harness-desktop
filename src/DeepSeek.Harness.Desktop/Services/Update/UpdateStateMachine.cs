@@ -230,7 +230,6 @@ public sealed class UpdateStateMachine
 
     private void Transition(UpdateState next)
     {
-        // Current 由状态机单点补齐：页面任何状态帧都带当前版本，更新页免二次查询
         // Current 由状态机单点补齐：页面任何状态帧都带当前版本，更新页免二次查询；
         // 状态存取与全部回调（推送/订阅者）统一发补齐后的帧，避免内外不一致
         var effective = next.Current is null && _currentVersion is not null

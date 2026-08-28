@@ -19,12 +19,12 @@ public sealed class ExternalLinkCommandRouter : ICommandRouter
     public const string CommandName = "app.openExternal";
 
     private readonly Func<string, bool> _opener;
-    private readonly TextWriter? _log;
+    private readonly Action<string>? _log;
 
     /// <summary>创建路由。</summary>
     /// <param name="opener">打开 URL 的委托；null 时默认用系统默认浏览器。</param>
-    /// <param name="log">日志输出（可选）。</param>
-    public ExternalLinkCommandRouter(Func<string, bool>? opener = null, TextWriter? log = null)
+    /// <param name="log">日志委托（可选；生产传 <see cref="HostLog"/>.Write，测试注入收集器）。</param>
+    public ExternalLinkCommandRouter(Func<string, bool>? opener = null, Action<string>? log = null)
     {
         _opener = opener ?? OpenWithDefaultBrowser;
         _log = log;
@@ -64,7 +64,7 @@ public sealed class ExternalLinkCommandRouter : ICommandRouter
         if (string.IsNullOrWhiteSpace(href) ||
             !ExternalLinkPolicy.IsExternalHttpLink(href, currentOrigin: null, out _))
         {
-            _log?.WriteLine($"[external-link] 拒绝打开的 URL：{(string.IsNullOrWhiteSpace(href) ? "(空)" : href)}");
+            _log?.Invoke($"[external-link] 拒绝打开的 URL：{(string.IsNullOrWhiteSpace(href) ? "(空)" : href)}");
             return ValueTask.FromResult("null");
         }
 
@@ -75,7 +75,7 @@ public sealed class ExternalLinkCommandRouter : ICommandRouter
         }
         catch (Exception ex)
         {
-            _log?.WriteLine($"[external-link] 打开失败 {href}：{ex.Message}");
+            _log?.Invoke($"[external-link] 打开失败 {href}：{ex.Message}");
         }
 
         // 成功与否都返回成功帧（避免 JS 抛 IPC 错误；失败已记日志）

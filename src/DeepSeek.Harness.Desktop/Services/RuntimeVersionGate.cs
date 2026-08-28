@@ -53,20 +53,10 @@ public static class RuntimeVersionGate
         var text = "当前 dsh 运行时版本 " + detectedVersion +
                    " 低于桌面支持的最低版本 " + MinimumVersion +
                    "，可能出现数据或行为不兼容；请升级 dsh，或使用桌面自带的捆绑运行时。";
-        return "(function(){" +
-               "var id='dsh-desktop-version-floor-banner';" +
-               "if(document.getElementById(id))return;" +
-               "var b=document.createElement('div');" +
-               "b.id=id;" +
-               "b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 16px 8px 40px;background:#3a1d1d;color:#ffe6e6;font:13px/1.5 system-ui,sans-serif;border-bottom:1px solid #5a2a2a';" +
-               "b.textContent=" + AppJsonContext.JsString(text) + ";" +
-               "var x=document.createElement('button');" +
-               "x.textContent='知道了';" +
-               "x.style.cssText='flex:none;padding:2px 10px;background:#a13a3a;color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:12px';" +
-               "x.onclick=function(){b.remove()};" +
-               "b.appendChild(x);" +
-               "(document.body||document.documentElement).appendChild(b);" +
-               "})();";
+        return DesktopBanner.Build(
+            "dsh-desktop-version-floor-banner",
+            text,
+            new DesktopBanner.Palette("#3a1d1d", "#ffe6e6", "#5a2a2a", "#a13a3a"));
     }
 
     /// <summary>

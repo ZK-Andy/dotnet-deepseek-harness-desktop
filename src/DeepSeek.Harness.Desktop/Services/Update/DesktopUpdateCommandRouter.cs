@@ -12,12 +12,12 @@ public sealed class DesktopUpdateCommandRouter : ICommandRouter
     public const string Prefix = "desktop.update.";
 
     private readonly UpdateStateMachine _machine;
-    private readonly TextWriter? _log;
+    private readonly Action<string>? _log;
 
     /// <summary>创建路由。</summary>
     /// <param name="machine">自更新状态机单例。</param>
     /// <param name="log">日志输出（可选）。</param>
-    public DesktopUpdateCommandRouter(UpdateStateMachine machine, TextWriter? log = null)
+    public DesktopUpdateCommandRouter(UpdateStateMachine machine, Action<string>? log = null)
     {
         _machine = machine;
         _log = log;
@@ -49,7 +49,7 @@ public sealed class DesktopUpdateCommandRouter : ICommandRouter
                     }
                     catch (Exception ex)
                     {
-                        _log?.WriteLine($"[update] check 失败：{ex.Message}");
+                        _log?.Invoke($"[update] check 失败：{ex.Message}");
                     }
                 }, cancellationToken);
                 return ValueTask.FromResult(_machine.State.ToJson());
@@ -70,7 +70,7 @@ public sealed class DesktopUpdateCommandRouter : ICommandRouter
         }
         catch (InvalidOperationException ex)
         {
-            _log?.WriteLine($"[update] install 拒绝：{ex.Message}");
+            _log?.Invoke($"[update] install 拒绝：{ex.Message}");
             return AppJsonContext.Error(ex.Message);
         }
     }

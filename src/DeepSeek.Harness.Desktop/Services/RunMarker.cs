@@ -86,21 +86,10 @@ public static class RunMarker
     /// <summary>非受控退出提示横幅脚本（纯函数可单测）：不暗示应用故障，引导导出诊断。</summary>
     public static string UncleanBannerScript()
     {
-        return "(function(){" +
-               "var id='dsh-desktop-run-marker-banner';" +
-               "if(document.getElementById(id))return;" +
-               "var b=document.createElement('div');" +
-               "b.id=id;" +
-               "b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 16px 8px 40px;background:#1b1b26;color:#e6e6ea;font:13px/1.5 system-ui,sans-serif;border-bottom:1px solid #2a2a3a';" +
-               "if(document.getElementById('dsh-desktop-version-floor-banner'))b.style.top='44px';" +
-               "b.textContent=" + AppJsonContext.JsString("上次运行未正常退出（如手动结束进程）。若应用行为异常，请在设置页导出诊断信息。") + ";" +
-               "var x=document.createElement('button');" +
-               "x.textContent='知道了';" +
-               "x.style.cssText='flex:none;padding:2px 10px;background:#7c3aed;color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:12px';" +
-               "x.onclick=function(){b.remove()};" +
-               "b.appendChild(x);" +
-               "(document.body||document.documentElement).appendChild(b);" +
-               "})();";
+        return DesktopBanner.Build(
+            "dsh-desktop-run-marker-banner",
+            "上次运行未正常退出（如手动结束进程）。若应用行为异常，请在设置页导出诊断信息。",
+            new DesktopBanner.Palette("#1b1b26", "#e6e6ea", "#2a2a3a", "#7c3aed"));
     }
 
     /// <summary>run-marker.json 落盘帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>

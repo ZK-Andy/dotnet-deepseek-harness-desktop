@@ -1,4 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
@@ -17,23 +19,14 @@ public static class MarketInstallHelper
                 return false;
             }
 
-            var json = File.ReadAllText(profilePkg);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            if (!root.TryGetProperty("dependencies", out var deps))
-            {
-                return false;
-            }
-
-            if (!deps.TryGetProperty(packageName, out _))
-            {
-                return false;
-            }
-
-            return BundlesContain(root, packageName);
+            var root = JsonNode.Parse(File.ReadAllText(profilePkg));
+            return root?["dependencies"] is JsonObject deps &&
+                deps.ContainsKey(packageName) &&
+                BundlesContain(root, packageName);
         }
-        catch
+        catch (Exception ex) when (ex is JsonException or IOException or InvalidOperationException)
         {
+            // 检测失败按「未安装」处理（fail-safe，不阻断启动链）：文件损坏/不可读/结构意外
             return false;
         }
     }
@@ -48,57 +41,20 @@ public static class MarketInstallHelper
                 return;
             }
 
-            var json = await File.ReadAllTextAsync(profilePkg);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            if (!root.TryGetProperty("dependencies", out var deps) ||
-                !deps.TryGetProperty("app", out var appVal))
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(profilePkg));
+            if (root?["dependencies"]?["app"] is not JsonValue app ||
+                !app.TryGetValue<string>(out var appSpec) ||
+                !appSpec.Contains("dshmarket.tgz", StringComparison.Ordinal))
             {
                 return;
             }
 
-            var appSpec = appVal.GetString() ?? string.Empty;
-            if (!appSpec.Contains("dshmarket.tgz", StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            using var ms = new MemoryStream();
-            using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
-            {
-                writer.WriteStartObject();
-                foreach (var prop in root.EnumerateObject())
-                {
-                    if (prop.Name == "dependencies")
-                    {
-                        writer.WritePropertyName("dependencies");
-                        writer.WriteStartObject();
-                        foreach (var dep in prop.Value.EnumerateObject())
-                        {
-                            if (dep.Name == "app" && dep.Value.GetString()?.Contains("dshmarket.tgz") == true)
-                            {
-                                continue;
-                            }
-
-                            dep.WriteTo(writer);
-                        }
-
-                        writer.WriteEndObject();
-                    }
-                    else
-                    {
-                        prop.WriteTo(writer);
-                    }
-                }
-
-                writer.WriteEndObject();
-            }
-
-            var newJson = System.Text.Encoding.UTF8.GetString(ms.ToArray()) + "\n";
-            await File.WriteAllTextAsync(profilePkg, newJson);
+            root["dependencies"]!.AsObject().Remove("app");
+            await WriteProfilePkgAsync(profilePkg, root);
         }
-        catch
+        catch (Exception ex) when (ex is JsonException or IOException or InvalidOperationException)
         {
+            // 假依赖清理是尽力而为（fail-safe，不阻断启动链）：文件损坏/不可读/结构意外按「不清」处理
         }
     }
 
@@ -152,8 +108,9 @@ public static class MarketInstallHelper
                 File.WriteAllText(workspacePath, text);
             }
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // workspace 修正是尽力而为（fail-safe，不阻断启动链）：文件不可读/不可写按「不修」处理
         }
     }
 
@@ -171,8 +128,9 @@ public static class MarketInstallHelper
                     return tgz;
                 }
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // tgz 状态探测失败（恰被清理/无权限）：按「tgz 不可用」继续走目录/配置回退
             }
         }
 
@@ -182,7 +140,7 @@ public static class MarketInstallHelper
             return dir;
         }
 
-        return "dshmarket@1.15.0";
+        return BundledPluginCatalog.MarketRegistryFallback;
     }
 
     /// <summary>解析桌面伴生插件的安装 <c>spec</c>：随包 <c>tgz</c>（&gt;1K 防假包）→ 闭包内目录；无 registry 回退。</summary>
@@ -200,8 +158,9 @@ public static class MarketInstallHelper
                     return tgz;
                 }
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // tgz 状态探测失败（恰被清理/无权限）：按「tgz 不可用」继续走目录回退
             }
         }
 
@@ -216,6 +175,8 @@ public static class MarketInstallHelper
 
     /// <summary>确保 <c>dsh.profile.bundles</c> 含 <paramref name="packageName"/>，缺则追加并写回。</summary>
     /// <returns>是否发生写回。</returns>
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "JsonArray.Add 的元素恒为 string（包名，基元类型），无非基元序列化的裁剪风险")]
+    [UnconditionalSuppressMessage("Aot", "IL3050", Justification = "同上：JsonValue.Create(string) 为基元类型，无运行时代码生成")]
     public static async Task<bool> EnsureBundlesContainsAsync(string profilePkg, string packageName)
     {
         try
@@ -225,106 +186,67 @@ public static class MarketInstallHelper
                 return false;
             }
 
-            var json = await File.ReadAllTextAsync(profilePkg);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            if (BundlesContain(root, packageName))
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(profilePkg));
+            if (root is null)
             {
                 return false;
             }
 
-            using var ms = new MemoryStream();
-            using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
+            var profile = root["dsh"]?["profile"];
+            switch (profile?["bundles"])
             {
-                writer.WriteStartObject();
-                foreach (var prop in root.EnumerateObject())
-                {
-                    if (prop.Name == "dsh")
+                case JsonArray bundles:
+                    if (bundles.Any(BundleEntryEquals(packageName)))
                     {
-                        writer.WritePropertyName("dsh");
-                        writer.WriteStartObject();
-                        foreach (var dshProp in prop.Value.EnumerateObject())
-                        {
-                            if (dshProp.Name == "profile")
-                            {
-                                writer.WritePropertyName("profile");
-                                writer.WriteStartObject();
-                                foreach (var profProp in dshProp.Value.EnumerateObject())
-                                {
-                                    if (profProp.Name == "bundles")
-                                    {
-                                        writer.WritePropertyName("bundles");
-                                        writer.WriteStartArray();
-                                        foreach (var b in profProp.Value.EnumerateArray())
-                                        {
-                                            b.WriteTo(writer);
-                                        }
-
-                                        writer.WriteStringValue(packageName);
-                                        writer.WriteEndArray();
-                                    }
-                                    else
-                                    {
-                                        profProp.WriteTo(writer);
-                                    }
-                                }
-
-                                if (!dshProp.Value.TryGetProperty("bundles", out _))
-                                {
-                                    writer.WritePropertyName("bundles");
-                                    writer.WriteStartArray();
-                                    writer.WriteStringValue(packageName);
-                                    writer.WriteEndArray();
-                                }
-
-                                writer.WriteEndObject();
-                            }
-                            else
-                            {
-                                dshProp.WriteTo(writer);
-                            }
-                        }
-
-                        writer.WriteEndObject();
+                        return false;
                     }
-                    else
-                    {
-                        prop.WriteTo(writer);
-                    }
-                }
 
-                writer.WriteEndObject();
+                    bundles.Add(packageName);
+                    break;
+                case not null:
+                    // bundles 结构意外（非数组）：按损坏处理，不写回
+                    return false;
+                case null when profile is not null:
+                    profile["bundles"] = new JsonArray(packageName);
+                    break;
+                // dsh/profile 缺失：不改结构，原样回写（保持既有语义：返回 true）
             }
 
-            var newJson = System.Text.Encoding.UTF8.GetString(ms.ToArray()) + "\n";
-            await File.WriteAllTextAsync(profilePkg, newJson);
+            await WriteProfilePkgAsync(profilePkg, root);
             return true;
         }
-        catch
+        catch (Exception ex) when (ex is JsonException or IOException or InvalidOperationException)
         {
+            // bundles 补写是尽力而为（fail-safe，不阻断启动链）：文件损坏/不可读/结构意外按「未补」处理
             return false;
         }
     }
 
-    /// <summary><c>dsh.profile.bundles</c> 是否已含 <paramref name="packageName"/>；结构缺失视为不含。</summary>
-    private static bool BundlesContain(JsonElement root, string packageName)
+    /// <summary>按缩进 JSON + 尾部换行写回 profile <c>package.json</c>（与 dsh 自身写盘格式一致）。</summary>
+    private static async Task WriteProfilePkgAsync(string profilePkg, JsonNode root)
     {
-        if (!root.TryGetProperty("dsh", out var dsh) ||
-            !dsh.TryGetProperty("profile", out var profile) ||
-            !profile.TryGetProperty("bundles", out var bundles) ||
-            bundles.ValueKind != JsonValueKind.Array)
+        using var ms = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
+        {
+            root.WriteTo(writer);
+        }
+
+        var newJson = System.Text.Encoding.UTF8.GetString(ms.ToArray()) + "\n";
+        await File.WriteAllTextAsync(profilePkg, newJson);
+    }
+
+    /// <summary>构造 bundles 数组条目与包名的等值谓词（非字符串条目视为不等）。</summary>
+    private static Func<JsonNode?, bool> BundleEntryEquals(string packageName) =>
+        b => b is JsonValue v && v.TryGetValue<string>(out var s) && s == packageName;
+
+    /// <summary><c>dsh.profile.bundles</c> 是否已含 <paramref name="packageName"/>；结构缺失视为不含。</summary>
+    private static bool BundlesContain(JsonNode root, string packageName)
+    {
+        if (root["dsh"]?["profile"]?["bundles"] is not JsonArray bundles)
         {
             return false;
         }
 
-        foreach (var b in bundles.EnumerateArray())
-        {
-            if (b.GetString() == packageName)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return bundles.Any(BundleEntryEquals(packageName));
     }
 }

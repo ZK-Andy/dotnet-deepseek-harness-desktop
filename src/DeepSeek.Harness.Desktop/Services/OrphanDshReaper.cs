@@ -43,7 +43,7 @@ public static class OrphanDshReaper
 
             return (int.Parse(lines[0].Trim()), lines[1].Trim());
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or OverflowException)
         {
             // 记录损坏不可读：按无可清扫处理（fail-safe——清扫是增强，绝不挡启动）
             Services.HostLog.Write($"[host] 读 dsh PID 记录失败（跳过清扫）：{ex.Message}");

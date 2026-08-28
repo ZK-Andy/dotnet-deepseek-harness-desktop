@@ -18,7 +18,7 @@ internal sealed record ExternalLinkOpenerFailedFrame(string Url);
 /// <c>[JsonSerializable]</c> 注册，漏注册编译期即失败。键名 = 属性名经 CamelCase 策略推导；
 /// 改属性名即改线协议，须对照 companion 消费侧。
 /// 范围例外：profile 清单等常量字段模板（DesktopProfileBootstrap 手拼，缩进排版须与上游
-/// initProfile 逐字对齐）与 Utf8JsonWriter DOM 合并面（MarketInstallHelper）不经本通道；
+/// initProfile 逐字对齐）与 JsonNode DOM 合并面（MarketInstallHelper）不经本通道；
 /// 解析方向一律 <c>JsonDocument</c>（桥接回包有再序列化怪癖）。
 /// </summary>
 [JsonSourceGenerationOptions(

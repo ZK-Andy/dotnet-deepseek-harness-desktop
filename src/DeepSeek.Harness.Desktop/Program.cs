@@ -11,14 +11,6 @@ namespace DeepSeek.Harness.Desktop;
 /// <summary>DeepSeek Harness Desktop 入口：Ryn 桌面壳 + 托管 dsh 运行时 + 崩溃监督。</summary>
 public static class Program
 {
-    // 恢复屏：一行 JS，覆写当前 WebView 文档为"重连中"（dsh 崩溃时展示；恢复后 NavigateAsync 整页回真实 UI）
-    private const string RecoveryScript =
-        "document.documentElement.innerHTML='<!doctype html><html><head><meta charset=utf-8><style>" +
-        "body{font-family:system-ui,sans-serif;background:#0f0f13;color:#e6e6ea;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:12px}" +
-        ".spin{width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#7c3aed;border-radius:50%;animation:r 1s linear infinite}" +
-        "@keyframes r{to{transform:rotate(360deg)}}</style></head>" +
-        "<body><div class=spin></div><h2>DeepSeek Harness Desktop</h2><p>运行时重启中，正在重新连接…</p></body></html>';";
-
     /// <summary>
     /// 壳启动流程：托管 dsh web（OS 分配端口）→ 解析 `dsh web:` URL → Ryn WebView 加载；
     /// 后台监督 dsh 子进程——崩溃只重启子进程并导航新 URL（不重启桌面进程）；dsh 起不来时降级加载本地 wwwroot。
@@ -309,7 +301,7 @@ public static class Program
                         new Services.ExternalLinkOpenerFailedFrame(url),
                         Services.AppJsonContext.Default.ExternalLinkOpenerFailedFrame)));
                 // 外部链接 → 系统默认浏览器（宿主命令路由，见 implemented ADR open-external-links-in-system-browser）
-                services.AddSingleton<ICommandRouter, Services.ExternalLinkCommandRouter>();
+                services.AddSingleton<ICommandRouter>(new Services.ExternalLinkCommandRouter(log: Services.HostLog.Write));
                 // 诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）
                 services.AddSingleton<ICommandRouter>(new Services.DesktopDiagnosticsCommandRouter(
                     log: Services.HostLog.Write, healthSnapshot: () => healthMonitor?.Snapshot));
@@ -328,7 +320,7 @@ public static class Program
                 // 自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）
                 if (updateMachine is not null)
                 {
-                    services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine));
+                    services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine, log: Services.HostLog.Write));
                 }
                 // 托盘（批次三，ADR shell-tray-hide-to-tray）：图标+菜单；点击语义经 companion 中继
                 // 回 desktop.tray.event 在宿主解析——EmitEvent 是插件内部属性，AOT 下反射不可用
@@ -704,16 +696,13 @@ public static class Program
                         }
 
                         psi.Environment["DSH_HOME"] = dshHome;
-                        psi.Environment["pnpm_config_store_dir"] = Path.Combine(dshHome, ".pnpm-store");
-                        psi.Environment["pnpm_config_cache_dir"] = Path.Combine(dshHome, ".pnpm-cache");
                         if (relaxPolicy)
                         {
                             psi.Environment["pnpm_config_minimum_release_age"] = "0";
                         }
 
-                        // 兼容旧 pnpm 的 store 仍被读取时不因 EROFS 失败（现 DSH_HOME 已可写，但保留注入）
-                        Directory.CreateDirectory(Path.Combine(dshHome, ".pnpm-store"));
-                        Directory.CreateDirectory(Path.Combine(dshHome, ".pnpm-cache"));
+                        // pnpm store/cache 重定向 + 预建目录（EROFS 兜底）与 dsh spawn 共用单点
+                        HarnessRuntimeHost.ApplyPnpmWriteDirs(psi, dshHome);
                         using var p = System.Diagnostics.Process.Start(psi);
                         if (p is null)
                         {
@@ -759,10 +748,12 @@ public static class Program
                         HostLog.Write("[host] 随包插件已后台安装，重启运行时以加载");
                         try
                         {
-                            await windowAccessor.Current.EvaluateJavaScriptAsync(RecoveryScript);
+                            await windowAccessor.Current.EvaluateJavaScriptAsync(Services.RecoveryPageBuilder.BuildRestartingScript());
                         }
-                        catch
+                        catch (Exception ex1)
                         {
+                            // 恢复覆写失败可忽略：WebView 可能尚未就绪，紧接着的运行时重启会重新导航
+                            HostLog.Write($"[host] 恢复覆写注入失败（忽略，重启后由新 URL 覆盖）：{ex1.Message}");
                         }
 
                         // 仅刷新 WebView 不会让服务端重载 package.json，交由 RuntimeSupervisor 重启 dsh 进程并导航新 URL
@@ -788,8 +779,10 @@ public static class Program
                                     await windowAccessor.Current.NavigateAsync(webUrl);
                                 }
                             }
-                            catch
+                            catch (Exception ex3)
                             {
+                                // 备用重启也失败：无法自动恢复，留痕交监督器/用户诊断（fail loud 于观测）
+                                HostLog.Write($"[host] 随包插件安装后重启失败（运行时可能停在旧包状态）：{ex3.Message}");
                             }
                         }
                     }

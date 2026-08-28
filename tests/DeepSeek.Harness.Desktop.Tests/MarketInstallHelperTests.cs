@@ -116,6 +116,22 @@ public class MarketInstallHelperTests
     }
 
     [Fact]
+    public async Task CleanupBogusApp_WriteFormat_IndentedWithTrailingNewline()
+    {
+        // 写盘格式钉子：缩进 JSON + 尾部换行（与 dsh 自身写盘形态一致，防序列化实现更换后漂移）
+        var json = """{"dependencies":{"app":"file:/tmp/dshmarket.tgz","keep":"1.0.0"}}""";
+        var p = WriteTempFile(json);
+        try
+        {
+            await MarketInstallHelper.CleanupBogusAppDependencyAsync(p);
+            var after = File.ReadAllText(p);
+            Assert.EndsWith("\n", after);
+            Assert.Contains("\n  \"dependencies\"", after);
+        }
+        finally { File.Delete(p); }
+    }
+
+    [Fact]
     public void EnsureWorkspaceAllowBuilds_ReplacesPlaceholderAndAddsEsbuild()
     {
         var dir = Path.Combine(Path.GetTempPath(), "ws-" + Guid.NewGuid().ToString("N"));
@@ -178,7 +194,7 @@ public class MarketInstallHelperTests
         Directory.CreateDirectory(dir);
         try
         {
-            Assert.Equal("dshmarket@1.15.0", MarketInstallHelper.ResolveMarketSpec(dir));
+            Assert.Equal(BundledPluginCatalog.MarketRegistryFallback, MarketInstallHelper.ResolveMarketSpec(dir));
         }
         finally { Directory.Delete(dir, true); }
     }
