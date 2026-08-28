@@ -34,6 +34,24 @@ jobs:
               - '*.slnx'
               - '.github/workflows/ci.yml'
 
+  # 文档/ADR/插件改动面（含 plugins/ 下 JS 插件、docs/、手写文档）无需 dotnet，
+  # 但必须跑文档门禁（verify-*）。独立 job 无条件触发——修复「改动在 plugins/
+  # 或 docs/ 下不命中 code filter、连 verify-* 都不跑」的门禁盲区。
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 文档门禁
+        run: |
+          python3 scripts/verify-adr-format.py
+          python3 scripts/verify-cookbook.py
+          python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json
+          python3 scripts/verify-md-links.py
+          python3 scripts/verify-handoff-structure.py
+          python3 scripts/verify-governance.py
+
   build-test:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -45,14 +63,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: 文档门禁
-        run: |
-          python3 scripts/verify-adr-format.py
-          python3 scripts/verify-cookbook.py
-          python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json
-          python3 scripts/verify-md-links.py
-          python3 scripts/verify-handoff-structure.py
-          python3 scripts/verify-governance.py
       - name: build
         run: dotnet build dotnet-deepseek-harness-desktop.slnx -c Debug
       - name: test with coverage
