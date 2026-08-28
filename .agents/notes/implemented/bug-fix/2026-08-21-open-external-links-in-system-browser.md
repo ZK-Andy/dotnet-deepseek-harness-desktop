@@ -27,3 +27,7 @@ Status: implemented
 - 收益：桌面端点击外部链接（AnySearch 结果、普通 URL 等）在系统默认浏览器打开；SPA 内部导航、非 http(s) scheme 不受影响；逻辑全在宿主、可单测。
 - 代价/风险：`UseShellExecute=true` 依赖系统默认浏览器/`xdg-open`，无默认浏览器时 `Process.Start` 抛异常——已 catch 并记日志（fail loud，不静默）。注入脚本与前端自身对链接的处理可能在 capture 阶段优先（职责归宿主，符合预期）。
 - 验证：`dotnet build` 0 警告 0 错误；`dotnet test 56/56`（新增 `ExternalLinkPolicyTests` + `ExternalLinkCommandRouterTests`）；门禁 `verify-adr-format` / `verify-doc-budgets` / `verify-md-links` 全绿。真实桌面点击需重启应用验（沙箱渲染受限未复跑）。
+
+## Superseded by
+
+- [ryn-navigation-callbacks](../feature/2026-08-28-ryn-navigation-callbacks.md)：Ryn 0.32.0 起把外部链接处理从本文的点击层注入脚本迁到宿主导航层（`Ryn.Callbacks` 的 `WebViewNavigating/Navigated`）。本文保留的 `ExternalLinkPolicy`/`ExternalLinkCommandRouter`（`app.openExternal`）两个组件仍存活——导航层拦截后经共享 `SystemBrowser` 打开，router 保留给已发布旧版 companion 与 Ryn 命令面。本文记录的反编译实证（Ryn 0.30 不暴露导航事件）是导航回调方案成立的关键约束背景（Ryn <0.32 无法在导航边界拦截）。

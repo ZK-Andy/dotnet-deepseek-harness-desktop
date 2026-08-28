@@ -41,7 +41,7 @@
 
 ## 随包插件后台安装
 
-* 随包插件清单：`dshmarket`（市场，registry 有上游）与 `dsh-desktop-companion`（桌面伴生：外部链接接管等壳集成，仅随包分发）——成员登记于 `Services/BundledPluginCatalog`，清单是唯一扩展点。
+* 随包插件清单：`dshmarket`（市场，registry 有上游）与 `dsh-desktop-companion`（桌面伴生：更新/诊断/设置 UI 与托盘事件中继，仅随包分发）——成员登记于 `Services/BundledPluginCatalog`，清单是唯一扩展点。
 * `Program.cs` 后台任务（`Task.Delay 3s`，不阻塞首启窗口）：
   0. 检测到 `DSH_DESKTOP_RUNTIME_DIR`（开发运行时覆盖，打包产品永不设置）即整体跳过——开发运行的默认 `DSH_HOME` 与已装正式版共享，防止把工作区 `file:` 依赖写进共享 profile。
   1. `BundledPluginCatalog.AssemblePending` 清单逐项组装待装清单：未装即装；已装则 `PluginVersionCheck` 比对随包 tgz 内 `package/package.json` 的 version 与 profile `node_modules` 副本 version，闭包更新即入列（改清单内插件必须 bump version，否则不触发；spec 缺失、解析器异常或脏版本串按单插件记日志跳过；见 ADR `implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog`）。
@@ -54,8 +54,9 @@
 
 ## 外部链接接管
 
-* `plugins/dsh-desktop-companion` 客户端半在 dsh web boot 时注册 capture 阶段点击监听：顶层帧的 http(s) 且 `target="_blank"` 或跨源链接 → `preventDefault` → `window.__ryn.invoke('app.openExternal', {url})`；同源与非 http(s) 放行。监听随每次页面加载重建，SPA 重渲染天然存活。与仍带旧注入脚本的已发布壳共存：双旗认领（`__ryn_externalLinkCatcher` / `__dshDesktopCompanionLinks`）保证每文档恰好一个处理器，待无在发版本携带注入脚本后移除。
-* 宿主侧 `Services/ExternalLinkCommandRouter`（`ICommandRouter`）收命令，经 `ExternalLinkPolicy.IsExternalHttpLink` 复核后 `Process.Start(UseShellExecute)` 开系统浏览器。
+* 宿主侧 `Services/RynNavigationCallbacks`（`Ryn.Callbacks`，Ryn 0.32.0）在导航边界统一裁决——`[RynCallback(WebViewNavigating)]`：**用户发起**（`IsUserInitiated`）的站外绝对 http(s) → `NavigationDecision.Block` + 经共享 `SystemBrowser` 开系统浏览器；同源 SPA 路由 / `ryn://` / `data:` / 非 http(s) / 宿主导航（崩溃恢复）放行。`[RynCallback(WebViewNavigated)]` 把当前 origin 刷新为实际到达 URL 的 origin、留痕并回调「页面已到达」信号（供启动横幅门控）。`ConfigureServices` 注册 `AddRynCallbacks()` + `AddRynNavigationCallbacks()`（源生成）。相较旧点击层 hack，**覆盖一切导航**（`window.location`/`window.open()`/`<form>` 等非点击路径），不再依赖前端注入捕获脚本（ADR `implemented/feature/2026-08-28-ryn-navigation-callbacks`）。
+* 宿主侧 `Services/ExternalLinkCommandRouter`（`ICommandRouter`）收 `app.openExternal` 命令，经 `ExternalLinkPolicy.IsExternalHttpLink` 复核后经 `SystemBrowser`（Linux `xdg-open` / 其余 `Process.Start(UseShellExecute)`）开系统浏览器——给已发布旧版 companion 与 Ryn 命令面保留的落地点。
+* companion `client.js` 不再注入 capture 点击监听（外链接管已迁宿主导航层）；`__ryn_externalLinkCatcher` / `__dshDesktopCompanionLinks` 双旗认领机制退役。
 
 ## 自更新
 

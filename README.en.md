@@ -25,8 +25,8 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-308%2F308-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-49.5%25-yellowgreen" alt="coverage"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-322%2F322-brightgreen" alt="tests"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-49.2%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
@@ -97,7 +97,7 @@ scripts/bundle-runtime.sh
 # DSH_DESKTOP_RUNTIME_DIR=$PWD/resources/runtime
 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# tests (308/308)
+# tests (322/322)
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # webview devtools (default off)
@@ -110,7 +110,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program + Services/ (runtime supervision, self-update, system tray, single-instance activation, diagnostics)
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 308/308
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 322/322
 ├── resources/runtime/              # bundled Node + dsh closure + dshmarket.tgz (generated, gitignored)
 ├── scripts/                        # gates + bundle-runtime-ci.sh + package-linux.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md

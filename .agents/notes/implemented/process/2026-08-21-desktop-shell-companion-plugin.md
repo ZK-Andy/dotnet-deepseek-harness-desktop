@@ -30,3 +30,7 @@ Status: implemented
 - 收益：删除壳侧 ~75 行重试/补跑代码；监听随 SPA boot 注册、天然存活于重渲染与崩溃重启后的新文档；此后每个「桌面壳要碰 web 页面」的需求有干净扩展点（overlay pill / settings 区块均为宿主声明过的 slot）。
 - 代价/风险：插件安装检测对 dshmarket 只查存在性不比版本（该事实已被 `2026-08-25-bundled-plugin-version-aware-catalog` 的清单化取代：随包全清单逐项版本感知）；client 侧 JS 无自动化测试（薄监听 + 判定逻辑留在 C# 缓解）；dsh web 未启动时插件不生效（可接受——接管对象本就是 dsh 页面）；`shell.overlay`/boot manifest 为上游非契约表面，靠逐 release 钉死内置 dsh 版本兜底；客户端半的 `apply` 契约是 web boot 的硬门槛（见 Decision），任何后续手改 client.js 都不得让 factory 返回无 `apply` 的对象。
 - 验证：沙箱端到端通过（`plugin add` 双 spec 一条命令装两包 → bundles 双入 → boot manifest 出现 companion 行 → `/plugins/dsh-desktop-companion/client.js` 伺服字节与源码一致）；`dotnet test` 59→64/64；三部门禁全绿。**实机验收 ✅**（2026-08-22 用户正式版 v0.1.20）：外链点击开系统浏览器且仅一签、站内导航正常、SPIKE 标记可见（验收后已删）。
+
+## Superseded by
+
+- [ryn-navigation-callbacks](../feature/2026-08-28-ryn-navigation-callbacks.md)：companion 本文所述的「外部链接 capture 拦截 + `__dshDesktopCompanionLinks`/`__ryn_externalLinkCatcher` 双旗守卫」已随 Ryn 0.32.0 迁到宿主导航层（`Ryn.Callbacks` 的 `WebViewNavigating`），companion `client.js` 不再注入 capture 点击监听。本文的 apply 契约、插件发布链路、`ExternalLinkPolicy`/`ExternalLinkCommandRouter` 仍有效；双旗守卫机制已退役。
