@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Ryn.Ipc;
@@ -6,15 +5,17 @@ using Ryn.Ipc;
 namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
-/// 宿主命令路由：处理 <c>app.openExternal</c>，把 WebView 注入脚本上报的外部 URL 交给系统默认浏览器打开。
+/// 宿主命令路由：处理 <c>app.openExternal</c>，把外部 URL 交给系统默认浏览器打开。
 /// </summary>
 /// <remarks>
 /// 由 <see cref="RynCommandDispatcher"/> 按前缀收集分发（注册为 <see cref="ICommandRouter"/> 单例）。
-/// 打开动作通过 <see cref="Opener"/> 委托注入，默认 <c>Process.Start(UseShellExecute=true)</c>；测试注入假开器避免真的弹浏览器。
+/// 打开动作通过 <see cref="Opener"/> 委托注入，默认 <see cref="SystemBrowser"/>；测试注入假开器避免真的弹浏览器。
+/// 触发源：Ryn 0.32.0 起由导航层拦截（<see cref="RynNavigationCallbacks"/>）在 <c>WebViewNavigating</c>
+/// 里经本命令把站外 URL 交给系统浏览器；历史/已发布 companion 的注入脚本也经 <c>app.openExternal</c> 触达本路由。
 /// </remarks>
 public sealed class ExternalLinkCommandRouter : ICommandRouter
 {
-    /// <summary>本路由响应的命令名（注入脚本用 <c>window.__ryn.invoke('app.openExternal', {{ url }})</c> 触发）。</summary>
+    /// <summary>本路由响应的命令名（注入脚本用 <c>window.__ryn.invoke('app.openExternal', {{ url }})</c> 触发；导航层亦经此落系统浏览器）。</summary>
     public const string CommandName = "app.openExternal";
 
     private readonly Func<string, bool> _opener;
@@ -82,41 +83,8 @@ public sealed class ExternalLinkCommandRouter : ICommandRouter
     }
 
     /// <summary>
-    /// 默认打开器：Linux 走 <c>xdg-open</c> 并重定向子进程输出（浏览器自身的后台报错
-    /// 不回灌应用终端）；其余平台 <c>Process.Start(UseShellExecute=true)</c> 交系统默认处理。
+    /// 默认打开器：委托给 <see cref="SystemBrowser"/>（Linux 走 <c>xdg-open</c> 并重定向子进程输出，
+    /// 浏览器自身后台报错不回灌应用终端；其余平台 <c>Process.Start(UseShellExecute=true)</c>）。
     /// </summary>
-    private static bool OpenWithDefaultBrowser(string url)
-    {
-        var psi = new ProcessStartInfo();
-        if (OperatingSystem.IsLinux())
-        {
-            psi.FileName = "xdg-open";
-            psi.ArgumentList.Add(url);
-            psi.UseShellExecute = false;
-            psi.RedirectStandardOutput = true;
-            psi.RedirectStandardError = true;
-        }
-        else
-        {
-            psi.FileName = url;
-            psi.UseShellExecute = true;
-        }
-
-        using var p = Process.Start(psi);
-        if (p is null)
-        {
-            return false;
-        }
-
-        if (OperatingSystem.IsLinux())
-        {
-            // 必须持续排空重定向缓冲区，否则子进程写满管道会阻塞；内容刻意丢弃
-            p.OutputDataReceived += (_, _) => { };
-            p.ErrorDataReceived += (_, _) => { };
-            p.BeginOutputReadLine();
-            p.BeginErrorReadLine();
-        }
-
-        return !p.HasExited;
-    }
+    private static bool OpenWithDefaultBrowser(string url) => SystemBrowser.Open(url);
 }

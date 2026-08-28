@@ -11,7 +11,6 @@ public sealed class RuntimeSupervisor
     private readonly Func<ValueTask> _showRecovery;
     private readonly Func<Uri, ValueTask> _navigate;
     private readonly Action<string>? _log;
-    private readonly Action? _onNavigated;
 
     /// <summary>创建监督器。</summary>
     /// <param name="host">运行时宿主。</param>
@@ -19,22 +18,18 @@ public sealed class RuntimeSupervisor
     /// <param name="showRecovery">展示恢复屏（如 WebView 显示"重启中"页）。</param>
     /// <param name="navigate">导航 WebView 到新 URL。</param>
     /// <param name="log">日志回调（可选）。</param>
-    /// <param name="onNavigated">导航成功完成后的回调（可选）：启动期横幅以此判定页面不再会被
-    /// 重启导航覆写——只等「安装尘埃落定」会在切换日首启与导航竞速，注入的横幅随旧页面被清掉。</param>
     public RuntimeSupervisor(
         HarnessRuntimeHost host,
         TimeSpan restartTimeout,
         Func<ValueTask> showRecovery,
         Func<Uri, ValueTask> navigate,
-        Action<string>? log = null,
-        Action? onNavigated = null)
+        Action<string>? log = null)
     {
         _host = host;
         _restartTimeout = restartTimeout;
         _showRecovery = showRecovery;
         _navigate = navigate;
         _log = log;
-        _onNavigated = onNavigated;
     }
 
     /// <summary>循环监督直到 <paramref name="ct"/> 取消。</summary>
@@ -64,7 +59,6 @@ public sealed class RuntimeSupervisor
                 {
                     _log?.Invoke($"[supervisor] 重启成功 → {url}");
                     await _navigate(url);
-                    _onNavigated?.Invoke();
                 }
                 else
                 {

@@ -12,9 +12,6 @@
  * apply fails the entry — and one failed entry aborts the whole web boot.
  *
  * Features:
- * - External-link takeover: mirrors the retired host-side injected catcher
- *   exactly (top frame only, http(s) + _blank/cross-origin → preventDefault →
- *   window.__ryn.invoke('app.openExternal', { url })).
  * - Self-update button in the sidebar footer (beside Settings): renders ONLY
  *   while the host reports status=ready; hover expands「更新 vX.Y.Z」;
  *   click installs+restarts via desktop.update.install.
@@ -38,40 +35,6 @@
        */
       function apply(ctx) {
         var TAG = '[dsh-desktop-companion]'
-
-        // External-link takeover (the feature proper).
-        try {
-          // Transitional coexistence: released shells (≤ the version that still
-          // ships the injected catcher) may register their own capture listener
-          // guarded by window.__ryn_externalLinkCatcher. Whichever of the two
-          // claims first wins and sets BOTH flags, so the latecomer's own guard
-          // makes it bail — exactly one handler per document either way.
-          // Remove this flag dance once no released shell injects the catcher.
-          // 无 __ryn 桥（纯浏览器标签页）时不注册 capture：拦截后 invoke 无处可去、
-          // 外链变死链，与「keep page fully functional」的目标相悖
-          if (window.top === window.self && window.__ryn && !window.__ryn_externalLinkCatcher && !window.__dshDesktopCompanionLinks) {
-            window.__ryn_externalLinkCatcher = true
-            window.__dshDesktopCompanionLinks = true
-            var ryn = window.__ryn
-            var isExternal = function (a, origin) {
-              var href = a.getAttribute('href')
-              if (!href) return false
-              var u
-              try { u = new URL(href, origin) } catch (e) { return false }
-              if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
-              if (a.target === '_blank') return true
-              return u.origin !== origin
-            }
-            var onClick = function (e) {
-              var a = e.target && e.target.closest ? e.target.closest('a[href]') : null
-              if (!a) return
-              if (!isExternal(a, window.location.origin)) return
-              e.preventDefault()
-              ryn.invoke('app.openExternal', { url: a.href }).catch(function () {})
-            }
-            document.addEventListener('click', onClick, true)
-          }
-        } catch (e) { /* no __ryn bridge (plain browser tab): keep page fully functional */ }
 
         // 托盘事件中继（批次三，ADR shell-tray-hide-to-tray）：Ryn 托盘插件把点击事件发到
         // Web 层（window.__ryn.on）；页面是常驻层（隐藏到托盘后仍存活），在此把白名单事件

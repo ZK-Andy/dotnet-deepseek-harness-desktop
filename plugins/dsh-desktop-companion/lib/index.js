@@ -1,10 +1,12 @@
 /**
  * dsh-desktop-companion host half.
  *
- * Current features live entirely in the client half (external-link takeover,
- * see client/client.js); the host half exists so the profile layer stack has
- * a real entry and gains a place to mount privileged routes later
- * (self-update: release check / download state surfaced to the shell).
+ * Features live mostly in the client half (self-update UI / settings section /
+ * tray relay, see client/client.js); external-link takeover moved to the host
+ * navigation layer in Ryn 0.32.0 (Services/RynNavigationCallbacks), so this host
+ * half exists so the profile layer stack has a real entry and gains a place to
+ * mount privileged routes later (self-update: release check / download state
+ * surfaced to the shell).
  */
 
 /** Stable Cordis plugin name. */

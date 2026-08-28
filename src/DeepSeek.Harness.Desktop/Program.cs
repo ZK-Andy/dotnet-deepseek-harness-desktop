@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using DeepSeek.Harness.Desktop.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Ryn.Callbacks;
 using Ryn.Core;
 using Ryn.Ipc;
 using Ryn.Plugins.Tray;
@@ -286,7 +287,18 @@ public static class Program
             .ConfigureServices(services =>
             {
                 services.AddRynCommands();
-                // 外部链接 → 系统默认浏览器（宿主命令路由，见 proposed bug-fix ADR）
+                // 宿主导航回调（Ryn 0.32.0 Ryn.Callbacks）：在导航边界统一拦截外部链接，
+                // 并给崩溃恢复/横幅门控提供「页面已到达」信号（ADR ryn-navigation-callbacks）。
+                services.AddRynCallbacks();
+                services.AddRynNavigationCallbacks();
+                // 覆盖源生成的 handler 无参注册：导航回调依赖（openExternal 打开器 / 日志 /
+                // 当前页面 origin）在 ConfigureServices 时已知，经工厂注入；onNavigated 之后经
+                // SetOnNavigated 绑定（startupNavigationSettled 在其后声明）。
+                services.AddSingleton(sp => new Services.RynNavigationCallbacks(
+                    opener: null,
+                    log: Services.HostLog.Write,
+                    currentOrigin: webUrl?.GetLeftPart(UriPartial.Authority)));
+                // 外部链接 → 系统默认浏览器（宿主命令路由，见 implemented ADR open-external-links-in-system-browser）
                 services.AddSingleton<ICommandRouter, Services.ExternalLinkCommandRouter>();
                 // 诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）
                 services.AddSingleton<ICommandRouter>(new Services.DesktopDiagnosticsCommandRouter(
@@ -445,9 +457,14 @@ public static class Program
                 return ValueTask.CompletedTask;
             },
             navigate: url => windowAccessor.Current.NavigateAsync(url),
-            log: Services.HostLog.Write,
-            onNavigated: () => startupNavigationSettled.TrySetResult());
+            log: Services.HostLog.Write);
         var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
+
+        // 「导航已到达」信号（ADR ryn-navigation-callbacks）：由 RynNavigationCallbacks 的
+        // WebViewNavigated 回调在内容实际提交后触发，取代 RuntimeSupervisor.onNavigated 的
+        // 「NavigateAsync 返回即触发」——恢复/横幅门控据此拿到真正的「页面已到达」。
+        app.Services.GetRequiredService<Services.RynNavigationCallbacks>().SetOnNavigated(
+            () => startupNavigationSettled.TrySetResult());
 
         // 有序退出编排接线（ADR child-process-reaping-port-drift）：运行时回收先于关窗，
         // 不依赖 GTK loop 对隐藏态窗口 close 的行为；8s 看门狗把静默滞留变成确定性终结。
