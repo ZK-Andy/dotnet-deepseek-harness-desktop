@@ -8,6 +8,10 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// <param name="Error">人读失败原因（异常消息经默认编码器转义）。</param>
 internal sealed record ErrorFrame(string Error);
 
+/// <summary>外部链接打开失败帧：宿主推给页面（companion 渲染 toast，R2 N2）。</summary>
+/// <param name="Url">未能打开的站外 URL（用户可据此手动复制）。</param>
+internal sealed record ExternalLinkOpenerFailedFrame(string Url);
+
 /// <summary>
 /// 宿主帧/持久化文档的 JSON 序列化通道：源生成上下文（NativeAOT 安全）。反射式序列化在
 /// <c>PublishAot</c> 下不可用（IL2026/IL3050）——新增帧一律定义 internal record 并在此加一行
@@ -30,6 +34,7 @@ internal sealed record ErrorFrame(string Error);
 [JsonSerializable(typeof(Update.UpdateStateFrame))]
 [JsonSerializable(typeof(Update.UpdateStateMachine.ReadyRecord))]
 [JsonSerializable(typeof(RecoveryPageBuilder.Payload))]
+[JsonSerializable(typeof(ExternalLinkOpenerFailedFrame))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
     /// <summary>JS 字符串字面量（默认编码器全量转义，<c>&lt;</c> 与非 ASCII 均 \u 形态）：

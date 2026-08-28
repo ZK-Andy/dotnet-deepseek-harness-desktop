@@ -24,6 +24,7 @@ public sealed class RynNavigationCallbacks
 {
     private readonly Func<string, bool> _opener;
     private readonly Action<string>? _log;
+    private readonly Action<string>? _notifyLinkFail;
     // 当前页面 origin（如 http://127.0.0.1:41449），供同源判定。随每次 WebViewNavigated 刷新为
     // 实际到达的 origin——崩溃恢复可能把端口漂移（ADR child-process-reaping-port-drift），冻结首启
     // origin 会让漂移后的同源 SPA 路由被误判为外部。初始值由构造注入（首启 webUrl 的 Authority）。
@@ -34,14 +35,18 @@ public sealed class RynNavigationCallbacks
     /// <param name="opener">打开外部 URL 的委托；null 时默认用系统默认浏览器（见 <see cref="SystemBrowser"/>）。</param>
     /// <param name="log">日志输出（可选）。</param>
     /// <param name="currentOrigin">当前页面 origin（如 <c>http://127.0.0.1:41449</c>）初始值；供同源判定。null 时 <see cref="ExternalLinkPolicy"/> 保守地把一切绝对 http(s) 视为外部。</param>
+    /// <param name="notifyLinkFail">外部链接打开失败通知（可选）：携带失败的 URL。由 Program.cs 接
+    /// <c>IRynWebView.EmitEvent</c> 推给页面经 companion 渲染 toast（R2 N2）。委托注入保持本类可单测。</param>
     public RynNavigationCallbacks(
         Func<string, bool>? opener = null,
         Action<string>? log = null,
-        string? currentOrigin = null)
+        string? currentOrigin = null,
+        Action<string>? notifyLinkFail = null)
     {
         _opener = opener ?? SystemBrowser.Open;
         _log = log;
         _currentOrigin = currentOrigin;
+        _notifyLinkFail = notifyLinkFail;
     }
 
     /// <summary>
@@ -72,16 +77,24 @@ public sealed class RynNavigationCallbacks
         }
 
         _log?.Invoke($"[nav] 拦截外部导航 → 系统浏览器：{url}");
+        bool opened = false;
         try
         {
-            _opener(url.ToString());
+            opened = _opener(url.ToString());
         }
         catch (Exception ex)
         {
             _log?.Invoke($"[nav] 打开外部链接失败 {url}：{ex.Message}");
         }
 
-        // 打开成功与否都 Block，避免 WebView 被用户带到外部站；失败已记日志（fail loud 不静默）
+        // 打开失败（返回 false 或抛异常）时通知页面给用户可见提示（R2 N2）——fail loud 对用户侧
+        // 也生效，而非只对日志 loud。站外链接本就不该把 WebView 导航走（Block），但要让人知道失败。
+        if (!opened)
+        {
+            _notifyLinkFail?.Invoke(url.ToString());
+        }
+
+        // 打开成功与否都 Block，避免 WebView 被用户带到外部站；失败已记日志 + 页面 toast
         return NavigationDecision.Block;
     }
 

@@ -150,4 +150,55 @@ public class RynNavigationCallbacksTests
         Assert.Equal(NavigationDecision.Allow, decision);
         Assert.Empty(opened);
     }
+
+    /// <summary>opener 返回 false（非抛异常）→ 打开失败通知触发（R2 N2 toast）。</summary>
+    [Fact]
+    public void Navigating_OpenerReturnsFalse_NotifiesLinkFail()
+    {
+        var notified = new List<string>();
+        var handler = new RynNavigationCallbacks(
+            opener: _ => false,
+            log: null,
+            currentOrigin: "http://127.0.0.1:41449",
+            notifyLinkFail: url => notified.Add(url));
+
+        var decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
+
+        Assert.Equal(NavigationDecision.Block, decision);
+        Assert.Single(notified);
+        Assert.Equal("https://x.example/", notified[0]);
+    }
+
+    /// <summary>opener 抛异常 → 打开失败通知触发（R2 N2 toast），不向调用方外抛。</summary>
+    [Fact]
+    public void Navigating_OpenerThrows_NotifiesLinkFail()
+    {
+        var notified = new List<string>();
+        var handler = new RynNavigationCallbacks(
+            opener: _ => throw new InvalidOperationException("no browser"),
+            log: null,
+            currentOrigin: "http://127.0.0.1:41449",
+            notifyLinkFail: url => notified.Add(url));
+
+        var decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
+
+        Assert.Equal(NavigationDecision.Block, decision);
+        Assert.Single(notified);
+    }
+
+    /// <summary>opener 成功 → 不触发打开失败通知（正常路径零打扰）。</summary>
+    [Fact]
+    public void Navigating_OpenerSucceeds_DoesNotNotifyLinkFail()
+    {
+        var notified = new List<string>();
+        var handler = new RynNavigationCallbacks(
+            opener: _ => true,
+            log: null,
+            currentOrigin: "http://127.0.0.1:41449",
+            notifyLinkFail: url => notified.Add(url));
+
+        handler.OnWebViewNavigating(Navigating("https://x.example/"));
+
+        Assert.Empty(notified);
+    }
 }

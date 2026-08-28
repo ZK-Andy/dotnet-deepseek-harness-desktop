@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop-companion",
-  "description": "DeepSeek Harness Desktop 的桌面伴生插件：外部链接接管系统浏览器等壳集成能力。Desktop shell companion for dotnet-deepseek-harness-desktop.",
-  "version": "0.0.15",
+  "description": "DeepSeek Harness Desktop 的桌面伴生插件：更新/诊断/桌面设置 UI、托盘事件中继与外部链接失败提示等壳集成能力。Desktop shell companion for dotnet-deepseek-harness-desktop.",
+  "version": "0.0.16",
   "type": "module",
   "main": "lib/index.js",
   "license": "MIT",

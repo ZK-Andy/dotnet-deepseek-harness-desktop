@@ -229,6 +229,9 @@
             diagSavedPrefix: '\u5df2\u4fdd\u5b58\u81f3\uff1a',
             diagFail: '\u5bfc\u51fa\u5931\u8d25',
             diagFailSep: '\uff1a',
+            // 外部链接打开失败 toast（宿主导航层推 desktop.externalLinkOpenerFailed）
+            linkFailTitle: '\u6253\u5f00\u5916\u90e8\u94fe\u63a5\u5931\u8d25',
+            linkFailBody: '\u7cfb\u7edf\u672a\u80fd\u6253\u5f00\u8be5\u94fe\u63a5\uff0c\u8bf7\u590d\u5236\u5730\u5740\u5230\u6d4f\u89c8\u5668',
           }
           var en = {
             label: 'Desktop Settings',
@@ -270,6 +273,9 @@
             diagSavedPrefix: 'Saved to: ',
             diagFail: 'Export failed',
             diagFailSep: ': ',
+            // External-link open failure toast (host navigation layer pushes desktop.externalLinkOpenerFailed)
+            linkFailTitle: 'Failed to open external link',
+            linkFailBody: 'The link could not be opened. Copy the address into your browser.',
           }
           // 注册双字典并绑定翻译函数：t() 读调用时刻的 active locale。
           // ctx.effect 使注册随本插件 fiber 卸载而撤销（dshmarket 同款）。
@@ -520,6 +526,46 @@
         } catch (e) {
           console.warn(TAG, 'update UI setup error', e)
         }
+
+        // 外部链接打开失败 toast（R2 N2）：宿主导航层拦截站外链接、经系统浏览器打开失败时，
+        // 推 desktop.externalLinkOpenerFailed 事件（见 Services/RynNavigationCallbacks）。页面侧
+        // 用纯 DOM 渲染一个短暂 toast（不经 dsh slot 树——它是页面级浮动层；文案经 locale 随语言切换）。
+        try {
+          if (window.__ryn && window.__ryn.on && !window.__dshDesktopCompanionLinkFailToast) {
+            window.__dshDesktopCompanionLinkFailToast = true
+            var toastT = ctx.locale.bind('desktop-companion')
+            var toastTimer = null
+            var toastStyle = document.getElementById('dsh-desktop-companion-linkfail-css')
+            if (!toastStyle) {
+              toastStyle = document.createElement('style')
+              toastStyle.id = 'dsh-desktop-companion-linkfail-css'
+              toastStyle.textContent =
+                '#ddc-linkfail-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);' +
+                'max-width:640px;padding:10px 16px;border-radius:10px;background:#22222e;border:1px solid #3a3a4a;' +
+                'color:#e6e6ea;font:13px/1.5 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);' +
+                'opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:2147483646}' +
+                '#ddc-linkfail-toast.ddc-linkfail-show{opacity:1;transform:translateX(-50%) translateY(0)}'
+              document.head.appendChild(toastStyle)
+            }
+            window.__ryn.on('desktop.externalLinkOpenerFailed', function (data) {
+              try {
+                var url = data && data.url ? String(data.url) : ''
+                var box = document.getElementById('ddc-linkfail-toast')
+                if (!box) {
+                  box = document.createElement('div')
+                  box.id = 'ddc-linkfail-toast'
+                  box.setAttribute('role', 'alert')
+                  document.body.appendChild(box)
+                }
+                // 有 url 显示标题+地址，无 url 退化显示正文提示（默认编码器转义，textContent 零注入）
+                box.textContent = url ? toastT('linkFailTitle') + '\uff1a' + url : toastT('linkFailBody')
+                box.classList.add('ddc-linkfail-show')
+                if (toastTimer) clearTimeout(toastTimer)
+                toastTimer = setTimeout(function () { box.classList.remove('ddc-linkfail-show') }, 5000)
+              } catch (e2) { console.warn(TAG, 'link fail toast error', e2) }
+            })
+          }
+        } catch (e) { /* no __ryn bridge: nothing to toast */ }
       }
 
       // inject 声明本插件要访问的宿主服务：不声明时访问 ctx.slots / ctx.locale 会被

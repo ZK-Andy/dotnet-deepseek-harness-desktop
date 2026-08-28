@@ -297,7 +297,13 @@ public static class Program
                 services.AddSingleton(sp => new Services.RynNavigationCallbacks(
                     opener: null,
                     log: Services.HostLog.Write,
-                    currentOrigin: webUrl?.GetLeftPart(UriPartial.Authority)));
+                    currentOrigin: webUrl?.GetLeftPart(UriPartial.Authority),
+                    // 外部链接打开失败 → 推事件给页面，companion 渲染 toast（R2 N2）。EmitEvent 走
+                    // deferred IRynWebView（窗口就绪后转发），在导航回调触发时页面必然已加载。
+                    notifyLinkFail: url => sp.GetRequiredService<IRynWebView>().EmitEvent(
+                        "desktop.externalLinkOpenerFailed",
+                        new Services.ExternalLinkOpenerFailedFrame(url),
+                        Services.AppJsonContext.Default.ExternalLinkOpenerFailedFrame)));
                 // 外部链接 → 系统默认浏览器（宿主命令路由，见 implemented ADR open-external-links-in-system-browser）
                 services.AddSingleton<ICommandRouter, Services.ExternalLinkCommandRouter>();
                 // 诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）
