@@ -81,6 +81,10 @@ public static class Program
         // 首启本就会自动开窗。updateWindow 与自更新栈共用同一延迟句柄，
         // 声明必须先于本回调（作用域捕获）。
         CurrentWindowAccessor? updateWindow = null;
+        // 自更新兜底退出收割器（ADR self-update-exit-reaps-dsh-child）：install 委托（195 行）调用
+        // StartExitFallback 时引用不到后声明的 supervisorCts（446 行），故经持有器延迟接线——
+        // 与 251 行 orderlyQuit 同款模式；在 supervisorCts 声明后赋值为「cancel 监督器 + 整树击杀 dsh + 释放 marker」。
+        Action? updateExitReaper = null;
         PrimaryListener? instanceListener = null;
         var instanceSocketPath = OperatingSystem.IsWindows()
             ? null // Windows 无验证环境不启用互斥，行为维持现状（ADR 平台边界）
@@ -497,6 +501,18 @@ public static class Program
             });
         };
 
+        // 自更新兜底退出收割器接线（ADR self-update-exit-reaps-dsh-child）：复用 orderlyQuit 的
+        // 回收三件套（cancel 监督器 / 整树击杀 dsh / 释放 marker），不带关窗与看门狗——
+        // 自更新路径由 pkexec 脚本接管进程接力，关窗已由 install 委托直退，此处只保证 dsh 不泄漏。
+        // 与 orderlyQuit 同款「先回收再退」；StartExitFallback 触发时 supervisorCts/host/marker 均已就绪。
+        updateExitReaper = () =>
+        {
+            Services.HostLog.Write("[update] 兜底回收：cancel 监督器 + 整树击杀 dsh + 释放 marker");
+            supervisorCts.Cancel();
+            host.Stop();
+            RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), marker.Token);
+        };
+
         // 页面健康观测阶段 1（ADR page-health-monitor）：宿主只读探针轮询，不注入不依赖
         // companion——「dsh 在跑但页面空白」类事故（历史三起全靠人肉发现）从此有自动留痕。
         // 只记录迁移 + 快照进诊断包，绝不自动恢复：误报引发的重启循环比白屏更伤可用性，
@@ -843,8 +859,12 @@ public static class Program
             return "unknown";
         }
 
-        /// <summary>安装授权通过后的兜底退出：窗口 Close 未生效时强制结束进程，放行安装脚本。</summary>
-        static void StartExitFallback(CancellationToken ct)
+        /// <summary>安装授权通过后的兜底退出：窗口 Close 未生效时强制结束进程，放行安装脚本。
+        /// 改掉裸 <c>Environment.Exit(0)</c>——GTK 主循环滞留时它会绕过 Main 尾部的 <c>host.Stop()</c>，
+        /// dsh 子进程成孤儿占住首选端口（ADR self-update-exit-reaps-dsh-child，v0.3.11 实机复现）。
+        /// 兜底强退前先经 <see cref="updateExitReaper"/> 确定性收割（cancel 监督器 + 整树击杀 dsh + 释放 marker），
+        /// reaper 未接线时回退直杀 dsh，仍不泄漏。与托盘有序退出编排同款三件套，<c>host.Stop()</c> 幂等无双重收割面。</summary>
+        void StartExitFallback(CancellationToken ct)
         {
             Task.Run(async () =>
             {
@@ -855,6 +875,16 @@ public static class Program
                 catch (OperationCanceledException)
                 {
                     return;
+                }
+
+                Services.HostLog.Write("[update] 退出兜底触发：回收 dsh 后强退");
+                if (updateExitReaper is not null)
+                {
+                    updateExitReaper();
+                }
+                else
+                {
+                    host.Stop();
                 }
 
                 Environment.Exit(0);
