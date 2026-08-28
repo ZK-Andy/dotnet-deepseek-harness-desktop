@@ -11,6 +11,10 @@ internal static class HostLog
     /// <summary>单文件滚动阈值；超过即把当前日志滚为 .old（覆盖上一代）。</summary>
     internal const long MaxBytes = 5 * 1024 * 1024;
 
+    /// <summary>进程内写锁：supervisor/IPC/后台安装/更新任务多线程并发追加，无锁时 File.AppendAllText
+    /// 撞锁的 IOException 兜底只进 stdout（桌面形态不可见）——事故高发期恰好丢日志。</summary>
+    private static readonly object FileGate = new();
+
     /// <summary>写一条诊断日志（时间戳前缀；目录不存在则创建；超限先滚动）。</summary>
     public static void Write(string msg) => Write(HarnessRuntimeHost.ResolveDshHome(), msg);
 
@@ -25,10 +29,13 @@ internal static class HostLog
         try
         {
             var dir = Path.Combine(home, "logs");
-            Directory.CreateDirectory(dir);
             var path = Path.Combine(dir, "host.log");
-            RotateIfNeeded(path);
-            File.AppendAllText(path, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {msg}\n");
+            lock (FileGate)
+            {
+                Directory.CreateDirectory(dir);
+                RotateIfNeeded(path);
+                File.AppendAllText(path, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {msg}\n");
+            }
         }
         catch (Exception logEx)
         {

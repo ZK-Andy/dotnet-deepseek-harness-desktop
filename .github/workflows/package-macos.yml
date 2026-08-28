@@ -24,8 +24,8 @@ concurrency:
 
 jobs:
   build-macos:
-    # 参照 Ryn 的 release.yml：每个 RID 在原生 OS 上构建 NativeAOT；
-    # 本项目 PublishAot=false 可交叉编，故两档均用 macos-latest 单 runner 矩阵内切 rid，
+    # 参照 Ryn 的 release.yml：每个 RID 在原生 OS 上构建；
+    # 本项目发布为 JIT（csproj PublishAot=false）可交叉编，故两档均用 macos-latest 单 runner 矩阵内切 rid，
     # 避免占 2 台 mac（原 x64 用 macos-13 已排队 9m+，现 ARM via Rosetta 交叉编）
     strategy:
       matrix:
@@ -89,7 +89,7 @@ jobs:
           echo "VERSION=$V" >> "$GITHUB_ENV"
           echo "打包版本: $V (ref=${{ github.ref }} event=${{ github.event_name }}) arch=${{ matrix.arch }} rid=${{ matrix.rid }}"
       - name: dotnet publish
-        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} -p:PublishAot=false --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-${{ matrix.rid }}
+        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-${{ matrix.rid }}
       - name: 打 macOS 包（dmg，文件名含 macos 标识；不再产独立 zip）
         run: bash scripts/package-macos.sh artifacts/publish-${{ matrix.rid }}
       - name: 校验最终 dmg 内容（挂载断言布局与随包插件一致性，批次一）

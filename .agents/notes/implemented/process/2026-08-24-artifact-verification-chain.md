@@ -11,7 +11,7 @@ Status: implemented
 1. **闭包图静态校验**（`scripts/verify-closure-graph.mjs`）：从 `node_modules/@deepseek-ai/` 直装入口出发，沿生产依赖面（dependencies + 非 optional peerDependencies）BFS，凡一方传递依赖在闭包中不可解析即 fail loud；接入 `bundle-runtime-ci.sh` 裁剪后、自检前。解析模型对齐 Node 运行时——每个包先 realpath 再从**引用方真实路径**逐级向上找 node_modules（pnpm 布局下依赖住 `.pnpm` 虚拟存储，顶层提升目录只有直装入口，按「只查顶层」建模会把健康闭包误报成全图缺件——本地实测踩到并修正）。只遍历一方边：第三方闭包完整性由 pnpm lockfile 与既有 `dsh web:` 自检把关。
 2. **Linux 安装冒烟**（`scripts/smoke-install-linux.sh`）：deb 在 runner 原生安装（apt 解依赖）、rpm 在 fedora 容器内安装（dnf 解依赖），随后启动已安装的二进制，90s 内捕获 `[host] dsh web:` 行判 PASS——该行打印于窗口创建之前，无需 display 即可验证「包装得上、依赖齐、运行时定位成功、dsh 起得来」。两架构 matrix 各自原生执行；进程探活用 `kill -0 <pid>` 而非 pgrep（安装后入口是小写符号链接，按大写二进制名 pgrep 会立即误判进程已死）。
 3. **包内容布局断言**（`scripts/verify-package-layout.sh`）：对包内容根断言 node 可执行、dsh 入口存在、两个随包 tgz 存在且过名称/体积关、**tgz 与源闭包逐字节一致**（cmp）。macOS 在 workflow 挂载最终 dmg 后对 `.app/Contents/Resources` 断言（`--rt runtime`：.app 布局下 runtime 直接位于 Resources 下，与 win/linux 的 `resources/runtime` 嵌套不同，参数化而非靠文件系统大小写折叠碰巧命中）；Windows 在打包脚本内对 staging 断言（staging 即 Inno [Files] 唯一内容源）；Linux 由安装冒烟覆盖更深层。
-4. **release preflight 总检位**（`scripts/release-preflight.sh`）：release.yml 在合并 SHA256SUMS 之后、生成正文之前执行——资产矩阵完备（deb×2/rpm×2/dmg×2/exe×1/SUMS×1 命名模式精确匹配 + 矩阵外产物报错）、单资产体积下限 50MB、SHA256SUMS 全量复核，任一失败终止发布。
+4. **release preflight 总检位**（`scripts/release-preflight.sh`）：release.yml 在合并 SHA256SUMS 之后、生成正文之前执行——资产矩阵完备（deb×2/rpm×2/dmg×2/exe×1/SUMS×1 命名模式精确匹配 + 矩阵外产物报错）、单资产体积下限 50MB、SHA256SUMS 全量复核，任一失败终止发布。意外资产扫描为递归语义（globstar），与 release.yml 的 `**/*.ext` glob 同源——嵌套目录（如 rpmbuild 残留）里的同名产物同样算意外；Linux 包 rpm 由 package-linux.sh 以 mv 收敛到顶层，源头不留双份。
 
 ## Alternatives considered
 

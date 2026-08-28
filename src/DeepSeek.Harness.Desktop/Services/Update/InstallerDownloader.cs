@@ -91,6 +91,21 @@ public sealed class InstallerDownloader
         _log?.Invoke($"[update] SHA-256 校验通过：{assetName}");
     }
 
+    /// <summary>从 release 直接取目标资产的期望哈希（安装时点复验用）。</summary>
+    /// <remarks>
+    /// 自更新链路的完整性锚点：本进程与 ready 记录均在用户空间，任何落盘哈希都可被同权限
+    /// 改写，唯有 release 侧值经 HTTPS 直达仓库不可篡改。URL 与下载校验同源构造（repository
+    /// 出自 root-owned 安装目录的 appsettings）。离线时抛出拒装——装包本需授权弹窗，联网复核
+    /// 是安装的前置条件而非额外负担（ADR self-update-pkexec-toctou）。
+    /// </remarks>
+    public async Task<string> FetchSha256Async(string repository, string version, string assetName, CancellationToken cancellationToken)
+    {
+        var url = $"https://github.com/{repository}/releases/download/{Uri.EscapeDataString(version)}/SHA256SUMS.txt";
+        var sums = await _http.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+        return ParseSha256(sums, assetName)
+            ?? throw new InvalidOperationException($"安装时复核失败：SHA256SUMS 中无 {assetName} 条目（{version}）");
+    }
+
     /// <summary>解析 SHA256SUMS 文本（格式 <c>&lt;hex&gt;  &lt;name&gt;</c>），返回目标文件的哈希。</summary>
     public static string? ParseSha256(string sumsContent, string assetName)
     {

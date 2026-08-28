@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
@@ -25,6 +26,30 @@ public static class LauncherActivation
     /// dev 与正式版各持一把锁，互不顶牛。</summary>
     public static string SocketPath(string runtimeDir, string appName, bool isDev) =>
         Path.Combine(runtimeDir, $"{appName}{(isDev ? ".dev" : string.Empty)}.sock");
+
+    /// <summary>XDG_RUNTIME_DIR 缺失回退到共享临时目录时的 socket 名后缀（<c>-&lt;uid&gt;</c>）。
+    /// 临时目录跨用户可预测，无 uid 隔离时他用户可抢先把同名 socket 建好并监听，令本机启动
+    /// 误判「已有主实例」而直接退出（零实例 DoS）；掺入 uid 后各用户锁地址互不相交。</summary>
+    public static string FallbackUidSuffix()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return string.Empty; // Windows 不启用 socket 仲裁（平台边界）
+        }
+
+        try
+        {
+            return $"-{getuid()}";
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            // libc 不可得（非主流 Unix 形态）：退化为固定后缀，仅损失跨用户隔离，不挡启动
+            return "-unknown";
+        }
+    }
+
+    [DllImport("libc", SetLastError = false)]
+    private static extern uint getuid();
 
     /// <summary>尝试以主实例身份持有锁地址。true=主实例——锁地址持有成功并监听；
     /// 系统级 socket 异常或残留文件清理失败时降级为无监听空转（仲裁是增强能力，绝不挡启动，

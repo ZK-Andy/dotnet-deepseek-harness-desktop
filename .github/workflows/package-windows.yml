@@ -80,7 +80,7 @@ jobs:
           echo "VERSION=$V" >> "$GITHUB_ENV"
           echo "打包版本: $V (ref=${{ github.ref }} event=${{ github.event_name }})"
       - name: dotnet publish
-        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r win-x64 -p:PublishAot=false --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-win-x64
+        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r win-x64 --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-win-x64
       - name: 打 Windows 包（安装器 exe，文件名含 windows 标识；不再产独立 zip）
         shell: bash
         run: bash scripts/package-windows.sh artifacts/publish-win-x64

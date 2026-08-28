@@ -77,15 +77,16 @@ public static class Program
         // StartExitFallback 时引用不到后声明的 supervisorCts（446 行），故经持有器延迟接线——
         // 与 251 行 orderlyQuit 同款模式；在 supervisorCts 声明后赋值为「cancel 监督器 + 整树击杀 dsh + 释放 marker」。
         Action? updateExitReaper = null;
+        // 自更新后台长任务（check 下载/install 兜底）的取消令牌来源同款延迟接线
+        CancellationTokenSource? supervisorCtsRef = null;
         PrimaryListener? instanceListener = null;
+        var xdgRuntimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
         var instanceSocketPath = OperatingSystem.IsWindows()
             ? null // Windows 无验证环境不启用互斥，行为维持现状（ADR 平台边界）
             : LauncherActivation.SocketPath(
-                Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") is { Length: > 0 } xdgRuntimeDir
-                    ? xdgRuntimeDir
-                    : // 缺失回退：多用户机器上的跨用户同名碰撞由残留自愈/无监听降级路径兜底
-                    Path.GetTempPath(),
-                "deepseek-harness-desktop",
+                xdgRuntimeDir is { Length: > 0 } ? xdgRuntimeDir : Path.GetTempPath(),
+                "deepseek-harness-desktop" +
+                (xdgRuntimeDir is { Length: > 0 } ? string.Empty : LauncherActivation.FallbackUidSuffix()),
                 isDev);
         if (instanceSocketPath is not null)
         {
@@ -188,11 +189,16 @@ public static class Program
                 check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions, Services.HostLog.Write).FetchLatestAsync(UpdateRid(), updatePkgKind, ct),
                 download: (meta, ct) => new Services.Update.InstallerDownloader(updateHttp, Services.HostLog.Write).DownloadAsync(
                     meta, updatesDir, TimeSpan.FromMinutes(updateOptions.DownloadTimeoutMinutes), ct),
-                install: async (assetPath, _, ct) =>
+                install: async (assetPath, version, ct) =>
                 {
+                    // 安装时点自 release SHA256SUMS 复取期望哈希（HTTPS 直达仓库，用户空间改写不了）：
+                    // root 侧装前复验对照它——落盘的任何哈希都可被同权限改写，唯有 release 侧值是锚点。
+                    // 离线时此处抛出拒装（状态机回 ready），不无复核安装。
+                    var expectedSha = await new Services.Update.InstallerDownloader(updateHttp, Services.HostLog.Write)
+                        .FetchSha256Async(updateOptions.Repository, version, Path.GetFileName(assetPath), ct);
                     // 授权通过（LaunchAsync 观察窗口内未取消）后：主动关闭窗口让进程退出，
                     // 安装脚本的等待环随即放行 rpm/dpkg 并拉起新版。缺这步脚本会死等本进程。
-                    await Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, ct, log: Services.HostLog.Write);
+                    await Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, expectedSha, ct, log: Services.HostLog.Write);
                     Services.HostLog.Write("[update] 授权通过，关闭应用以继续安装…");
                     // 安装路径与托盘退出共用闸门：先批准，Close 才不会被 hide-to-tray 拦截转成隐藏
                     closeGate.ApproveExit();
@@ -320,10 +326,10 @@ public static class Program
                 // 自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）
                 if (updateMachine is not null)
                 {
-                    services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine, log: Services.HostLog.Write));
+                    services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine, log: Services.HostLog.Write, backgroundToken: () => supervisorCtsRef?.Token ?? CancellationToken.None));
                 }
                 // 托盘（批次三，ADR shell-tray-hide-to-tray）：图标+菜单；点击语义经 companion 中继
-                // 回 desktop.tray.event 在宿主解析——EmitEvent 是插件内部属性，AOT 下反射不可用
+                // 回 desktop.tray.event 在宿主解析——EmitEvent 是 Ryn 插件内部属性，不在源生成通道
                 if (trayAvailable)
                 {
                     services.AddRynTray(o =>
@@ -440,6 +446,7 @@ public static class Program
         }
 
         using var supervisorCts = new CancellationTokenSource();
+        supervisorCtsRef = supervisorCts; // 自更新后台任务 token 持有器接线（见顶部声明）
         // 启动期横幅导航门控（ADR shell-firstboot-hardening）：安装任务触发监督器重启后页面会被
         // NavigateAsync 整体替换，横幅必须等这次导航落地再注入，否则与导航竞速被清掉
         // （v0.3.0 实机：18:30:01 注入 vs 18:30:03 导航，旧 home 横幅陪葬）。
@@ -475,15 +482,21 @@ public static class Program
         orderlyQuit = () =>
         {
             Services.HostLog.Write("[tray] 有序退出：回收运行时后关闭窗口");
-            supervisorCts.Cancel();
-            host.Stop();
-            RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), marker.Token);
-            instanceListener?.Dispose();
-            quitWindow.Close();
-            // 8s 看门狗（无令牌，退出即终态）：主循环届时仍未返回则强制终结。Exit 不展开栈，
-            // 上方已显式完成的 Cancel/Stop/Release/unlink 不会被二次执行，无双重释放面；
-            // Exit 前再补一次 Stop（幂等）——封 supervisor 恢复分支 spawn-after-cancel 竞态下
-            // 刚被拉起的子进程（StartCoreAsync 的取消检查点之外的残余窗口）。
+            Services.ExitOrchestration.OrderlyQuit(
+                () => supervisorCts.Cancel(),
+                host.Stop,
+                () => RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), marker.Token),
+                () => instanceListener?.Dispose(),
+                quitWindow.Close,
+                StartQuitWatchdog);
+        };
+
+        /// <summary>8s 退出看门狗（无令牌，退出即终态）：主循环届时仍未返回则强制终结。Exit 不展开栈，
+        /// 已显式完成的 Cancel/Stop/Release/unlink 不会被二次执行，无双重释放面；
+        /// Exit 前再补一次 Stop（幂等）——封 supervisor 恢复分支 spawn-after-cancel 竞态下
+        /// 刚被拉起的子进程（StartCoreAsync 的取消检查点之外的残余窗口）。</summary>
+        void StartQuitWatchdog()
+        {
             _ = Task.Run(async () =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(8));
@@ -491,18 +504,19 @@ public static class Program
                 host.Stop();
                 Environment.Exit(0);
             });
-        };
+        }
 
-        // 自更新兜底退出收割器接线（ADR self-update-exit-reaps-dsh-child）：复用 orderlyQuit 的
-        // 回收三件套（cancel 监督器 / 整树击杀 dsh / 释放 marker），不带关窗与看门狗——
+        // 自更新兜底退出收割器接线（ADR self-update-exit-reaps-dsh-child）：经回收三件套单点
+        // （ExitOrchestration.ReapRuntime），不带关窗与看门狗——
         // 自更新路径由 pkexec 脚本接管进程接力，关窗已由 install 委托直退，此处只保证 dsh 不泄漏。
         // 与 orderlyQuit 同款「先回收再退」；StartExitFallback 触发时 supervisorCts/host/marker 均已就绪。
         updateExitReaper = () =>
         {
             Services.HostLog.Write("[update] 兜底回收：cancel 监督器 + 整树击杀 dsh + 释放 marker");
-            supervisorCts.Cancel();
-            host.Stop();
-            RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), marker.Token);
+            Services.ExitOrchestration.ReapRuntime(
+                () => supervisorCts.Cancel(),
+                host.Stop,
+                () => RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), marker.Token));
         };
 
         // 页面健康观测阶段 1（ADR page-health-monitor）：宿主只读探针轮询，不注入不依赖
@@ -717,6 +731,8 @@ public static class Program
 
                     var (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: false);
                     HostLog.Write($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
+                    // 依赖 pnpm 输出文案含政策键名（大小写不敏感）：pnpm 改文案会静默失效（该次重试不触发），
+                    // 属可接受的降级——重试是自愈增强，失败仍走上方 fail loud 日志
                     if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
                     {
                         HostLog.Write("[host] lockfile 被 minimumReleaseAge 政策拒绝；放宽该政策重试一次（仅本次安装生效）");

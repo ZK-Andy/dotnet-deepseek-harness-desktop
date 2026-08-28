@@ -6,7 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <PublishAot>true</PublishAot>
+    <!-- 发布产物为 JIT：三条打包流水线均显式 JIT publish（macOS 交叉编需关 AOT），
+         此处声明 false 使本地 publish 与发运一致。AOT 兼容（源生成 JSON）保留为裕度，
+         周期验证可临时 -p:PublishAot=true。 -->
+    <PublishAot>false</PublishAot>
     <!-- 自更新比较基准；发布时 CI 以 -p:Version=$(tag 去前缀) 覆盖 -->
     <Version>0.3.11</Version>
   </PropertyGroup>

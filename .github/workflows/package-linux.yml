@@ -121,8 +121,8 @@ jobs:
           echo "VERSION=$V" >> "$GITHUB_ENV"
           echo "打包版本: $V (ref=${{ github.ref }} event=${{ github.event_name }}) arch=${{ matrix.arch }} rid=${{ matrix.rid }}"
 
-      - name: dotnet publish（自包含，关 AOT，对齐 pilot-harness 打包前 build）
-        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} -p:PublishAot=false --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-${{ matrix.rid }}
+      - name: dotnet publish（自包含 JIT，对齐 pilot-harness 打包前 build）
+        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-${{ matrix.rid }}
 
       - name: 打 Linux 安装包（deb + rpm，参照 pilot-harness electron-builder 的 linux 产物）
         run: bash scripts/package-linux.sh artifacts/publish-${{ matrix.rid }}
@@ -132,8 +132,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "== deb control =="; dpkg-deb -I "artifacts/${{ matrix.rid }}/"*.deb 2>&1 | head -40 || true
-          echo "== rpm Requires（应仅含 libwebkitgtk-6.0.so.4，无 aarch64/musl/perl）=="; rpm -qp --requires artifacts/${{ matrix.rid }}/*.rpm 2>&1 | head -60 || rpm -qp --requires artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm 2>&1 | head -60 || true
-          echo "== 产物清单 =="; ls -lh artifacts/${{ matrix.rid }}/*.deb artifacts/${{ matrix.rid }}/*.rpm artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm 2>&1 | head -40 || true
+          echo "== rpm Requires（应仅含 libwebkitgtk-6.0.so.4，无 aarch64/musl/perl）=="; rpm -qp --requires artifacts/${{ matrix.rid }}/*.rpm 2>&1 | head -60 || true
+          echo "== 产物清单 =="; ls -lh artifacts/${{ matrix.rid }}/*.deb artifacts/${{ matrix.rid }}/*.rpm 2>&1 | head -40 || true
 
       - name: 安装冒烟（装包→启动→等 dsh web URL 行，批次一）
         shell: bash
@@ -143,9 +143,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.arch }}-packages
+          # 只传顶层包：package-linux.sh 已把 rpm mv 到顶层，嵌套 rpmbuild 目录不留副本
+          # （否则顶层 + 嵌套同名 rpm 双份进 Release）
           path: |
             artifacts/${{ matrix.rid }}/*.deb
             artifacts/${{ matrix.rid }}/*.rpm
-            artifacts/${{ matrix.rid }}/rpmbuild/RPMS/**/*.rpm
           if-no-files-found: error
           retention-days: 7

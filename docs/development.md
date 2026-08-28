@@ -4,7 +4,7 @@
 
 ## 环境
 
-* `.NET 10 SDK`（`global.json` 10.0.x，`TargetFramework net10.0`，`PublishAot true` 但 `publish -p:PublishAot=false --self-contained`）。
+* `.NET 10 SDK`（`global.json` 10.0.x，`TargetFramework net10.0`，`PublishAot false`，发布即 JIT）
 * `Linux: WebKitGTK 6`（`libwebkitgtk-6.0-4` / `libwebkitgtk-6.0.so.4`），`Node 24.20.0`（仅打包脚本下载），`pnpm 11`，`dpkg-deb/rpmbuild`（仅 `package-linux.sh` 全量，`CI` 提供）。
 * 沙箱 `/home` 只读：`dotnet` 需 `DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget`。
 
@@ -68,7 +68,7 @@ ARCH=arm64 bash scripts/package-linux.sh --stage-only artifacts/publish-linux-ar
 bash scripts/package-macos.sh --stage-only artifacts/publish-osx-arm64
 bash scripts/package-windows.sh --stage-only artifacts/publish-win-x64
 # 全量（需 dpkg-deb/rpmbuild；mac 需 hdiutil，win 需 Inno Setup/NSIS —— CI 走此路）
-dotnet publish src/DeepSeek.Harness.Desktop -c Release -r linux-x64 -p:PublishAot=false --self-contained true -o artifacts/publish-linux-x64
+dotnet publish src/DeepSeek.Harness.Desktop -c Release -r linux-x64 --self-contained true -o artifacts/publish-linux-x64
 VERSION=0.1.12 bash scripts/package-linux.sh artifacts/publish-linux-x64
 ARCH=arm64 VERSION=0.1.12 bash scripts/package-linux.sh artifacts/publish-linux-arm64
 bash scripts/package-macos.sh artifacts/publish-osx-arm64  # + osx-x64

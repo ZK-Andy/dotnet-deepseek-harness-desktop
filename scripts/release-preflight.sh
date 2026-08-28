@@ -65,11 +65,15 @@ else
   errors+=("缺 SHA256SUMS.txt")
 fi
 
-# 意外资产：不在矩阵命中清单内的安装包形态出现即报错（打包漂移信号）
+# 意外资产：不在矩阵命中清单内的安装包形态出现即报错（打包漂移信号）。
+# 递归扫描（globstar），与 release.yml 的 **/*.ext glob 同语义——嵌套目录（如 rpmbuild
+# 残留）里的同名产物同样算意外，杜绝"顶层完备、深处藏副本"漏检。
+shopt -s globstar
 unexpected=()
-for f in *.deb *.rpm *.dmg *.exe; do
+for f in **/*.deb **/*.rpm **/*.dmg **/*.exe; do
   [[ " ${ALLOWED[*]} " == *" $f "* ]] || unexpected+=("$f")
 done
+shopt -u globstar
 if [[ ${#unexpected[@]} -gt 0 ]]; then
   errors+=("发现命名模式之外的产物（打包漂移？）：${unexpected[*]}")
 fi

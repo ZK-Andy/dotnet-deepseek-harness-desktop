@@ -13,7 +13,7 @@ Status: implemented
 - **范围**：`grep -rlZ --include='*.js' --include='*.mjs' --include='*.cjs' '^//# sourceMappingURL=' "$DEST/node_modules"` 先列出命中文件（避免全量触碰；.mjs/.cjs 由代码评审实测另有 355 个带悬空注释的 ESM/CJS 产物，如 openai/tanstack 生态），命中非空才执行。
 - **执行**：`xargs -0 -n 64 perl -i -ne 'print unless m{^//# sourceMappingURL=}'`。`perl -i` 比 sed 跨平台语法统一（macOS runner 是 BSD sed，`-i` 需显式扩展名）；`-n 64` 显式分批——Windows Git Bash 命令行上限 32K（实测单条路径 ~150B+前缀，200 一批会超），且空输入时 xargs 仍空跑一次 perl 打 stderr warning（`-i used with no filenames`），`[[ -s "$mlist" ]]` 守卫挡掉空列表。
 - **锚定一致**：grep 与 perl 均 `^` 行首锚定（评审建议对齐；实测 3950 全为行首、零缩进/零 `//@`/零 CRLF，无实际浪费，对齐仅为防御）。
-- **缓存失效由 meta 元数据保证（评审 Blocker 1 修复）**：cache key 虽含 `hashFiles('plugins/**', 'scripts/bundle-runtime-ci.sh')`，但三份 `package-*.yml` 都有前缀式 `restore-keys: dsh-closure-<rid>-`——精确 key miss 后 actions/cache 会部分命中恢复最近旧闭包；旧闭包 `.bundle-meta.json` 若不含裁剪维度，五维签名校验照过、脚本 `exit 0` 跳过重建，trim 永不执行（v0.3.8「restore-key 回退捡旧闭包」同类洞）。**修复**：meta 增加 `trimPolicy` 第六维（`TRIM_POLICY` 正典单点，入库 `printf` 与校验 `grep` 各一处），照 `MARKET_VERSION` 既有先例——裁剪行为变更必须 bump `TRIM_POLICY`，否则缓存不失效。本次定义为 `strip-sourcemap-2026-08`。
+- **缓存失效由 meta 元数据保证（评审 Blocker 1 修复）**：cache key 虽含 `hashFiles('plugins/**', 'scripts/bundle-runtime-ci.sh')`，但三份 `package-*.yml` 都有前缀式 `restore-keys: dsh-closure-<rid>-`——精确 key miss 后 actions/cache 会部分命中恢复最近旧闭包；旧闭包 `.bundle-meta.json` 若不含裁剪维度，签名校验照过、脚本 `exit 0` 跳过重建，trim 永不执行（v0.3.8「restore-key 回退捡旧闭包」同类洞）。**修复**：meta 增加 `trimPolicy` 维度（`TRIM_POLICY` 正典单点，入库 `printf` 与校验 `grep` 各一处），照 `MARKET_VERSION` 既有先例——本次定义为 `strip-sourcemap-2026-08`。另加 `scriptSha256` 维度（脚本自身 sha256 入库并参与命中校验），脚本任何改动即旧闭包校验失败强制全量重建——「裁剪行为变更必须 bump `TRIM_POLICY`」从注释纪律升级为机器兜底，手工漏 bump 不再能放过脚本变更。
 
 边界：`bundle-runtime.sh`（本地/手动构建路径）未同步此逻辑——其产物保留注释与 .map 原样，本地开发调试不受影响；只有 CI 打包闭包剥注释。`.map` 文件仍删除（体积收益保留）；`client.js.map` 的 40 条 404 中 companion 自身（`plugins/dsh-desktop-companion/client/client.js`）本无注释、不受影响——其来源是上游 `@deepseek-ai/dsh-client-modules`/`dsh-client-runtime` 等构建产物自带的注释，一并覆盖。
 
@@ -28,7 +28,7 @@ Status: implemented
 ## Consequences
 
 - 调试期（`DSH_DEVTOOLS=1`）控制台不再被 `.map` 404 刷屏。
-- `TRIM_POLICY` 维度为闭包缓存新增失效触点：未来任何裁剪行为变更必须 bump 该常量（脚本头注释与本文档双提醒），否则会踩 v0.3.8 同类洞。
+- `trimPolicy` 与 `scriptSha256` 维度为闭包缓存新增失效触点：脚本（含裁剪逻辑）任何改动都会令旧闭包校验失败强制重建；`TRIM_POLICY` bump 仅在需要区分「同脚本内策略语义」时仍有意义。
 - 回退线路 `bundle-runtime.sh`（本地/手动构建）未同步此逻辑时不会复发——其产物不剥注释也不删 .map，本就自洽。
 
 ### Testing

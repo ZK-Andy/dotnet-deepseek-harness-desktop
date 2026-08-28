@@ -33,16 +33,20 @@ public sealed record ReleaseMeta(string Version, string AssetName, string AssetU
         }
 
         const string downloadSegment = "/releases/download/";
+        // href 为站内绝对路径（/owner/repo/releases/download/...）；只认本仓库段——
+        // repository 参数同时充当防御校验（页面被替换/缓存串仓时不拿他仓资产当更新装）
+        var repoSegment = "/" + repository.Trim('/');
         string? asset = null;
         string? sha = null;
         foreach (var raw in hrefs)
         {
-            if (!raw.Contains(downloadSegment, StringComparison.Ordinal))
+            if (!raw.Contains(downloadSegment, StringComparison.Ordinal) ||
+                !raw.StartsWith(repoSegment + "/", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            // 页面 href 是相对路径（/owner/repo/releases/download/...），归一化为绝对 URL
+            // 归一化为绝对 URL（与 expanded_assets 页同主机，见 ReleaseMetaClient.ExpandedAssetsUrl）
             var href = raw.StartsWith("/", StringComparison.Ordinal) ? $"https://github.com{raw}" : raw;
             if (asset is null && href.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
             {

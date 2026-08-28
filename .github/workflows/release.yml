@@ -3,7 +3,7 @@ name: release
 # 统一发布：tag v*（自动）触发，聚合三平台产物 + 生成结构化双语正文 + 合并 SHA256SUMS + 创建单个 Release。
 # 单一 owner —— 修复旧方案（linux/macos/windows 各自 publish-release 都开 generate_release_notes
 # 并行写正文，导致 body 重复 N 次）的重复与竞争。
-# tag 命名保持 v0.1.x；含 rc/beta/alpha 的 tag 标 prerelease。
+# tag 命名保持 v0.1.x；后缀含 rc/beta/alpha（如 v1.2.0-rc.1、v1.2.0rc1）的 tag 标 prerelease。
 #
 # 竞态防护：本 workflow 与三个 package workflow 因同一 tag 并行触发，先「等待三平台产物就绪」
 # （按 workflow_run.head_sha 关联到本次 tag 构建轮询），避免产物未上传就下载空包。
@@ -109,8 +109,10 @@ jobs:
           body: ${{ steps.notes.outputs.body }}
           generate_release_notes: false
           draft: false
-          prerelease: ${{ contains(github.ref_name, 'rc.') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
-          make_latest: true
+          # 预发布判定用正则（rc/beta/alpha 不带点号的 v1.2.3rc1 形态也命中）；
+          # make_latest 仅对稳定版置 true——prerelease 抢 Latest 会误导普通用户的「检查更新」
+          prerelease: ${{ matches(github.ref_name, '[._-](rc|beta|alpha)([.0-9]*)?$') }}
+          make_latest: ${{ !matches(github.ref_name, '[._-](rc|beta|alpha)([.0-9]*)?$') }}
           files: |
             release-assets/**/*.deb
             release-assets/**/*.rpm

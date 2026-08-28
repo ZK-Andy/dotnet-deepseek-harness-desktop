@@ -13,8 +13,9 @@ internal sealed record ErrorFrame(string Error);
 internal sealed record ExternalLinkOpenerFailedFrame(string Url);
 
 /// <summary>
-/// 宿主帧/持久化文档的 JSON 序列化通道：源生成上下文（NativeAOT 安全）。反射式序列化在
-/// <c>PublishAot</c> 下不可用（IL2026/IL3050）——新增帧一律定义 internal record 并在此加一行
+/// 宿主帧/持久化文档的 JSON 序列化通道：源生成上下文（AOT 兼容裕度）。发布产物为 JIT
+/// （csproj <c>PublishAot=false</c>），源生成保留使 AOT
+/// 随时可开——新增帧一律定义 internal record 并在此加一行
 /// <c>[JsonSerializable]</c> 注册，漏注册编译期即失败。键名 = 属性名经 CamelCase 策略推导；
 /// 改属性名即改线协议，须对照 companion 消费侧。
 /// 范围例外：profile 清单等常量字段模板（DesktopProfileBootstrap 手拼，缩进排版须与上游

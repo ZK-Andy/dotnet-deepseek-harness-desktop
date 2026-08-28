@@ -19,17 +19,17 @@ public static class UpdateInstaller
     /// <see cref="InvalidOperationException"/>；仍在运行则正常返回（安装已展开）。
     /// </summary>
     /// <param name="assetPath">已校验的安装包本地路径。</param>
-    /// <param name="workDir">脚本等辅助文件的落盘目录（updates 目录）。</param>
+    /// <param name="workDir">日志等辅助文件的落盘目录（updates 目录）。</param>
     /// <param name="log">可选日志注入（宿主接 HostLog）：安装派生的授权观察结果进 host.log——安装
     /// 成败结论状态机 Error 态已打，但「授权窗口是否通过/安装进程是否展开」的中间过程只有这里能留痕。</param>
-    public static async Task LaunchAsync(string assetPath, string workDir, CancellationToken cancellationToken, Action<string>? log = null)
+    public static async Task LaunchAsync(string assetPath, string workDir, string expectedSha256, CancellationToken cancellationToken, Action<string>? log = null)
     {
         var exePath = Environment.ProcessPath
             ?? throw new InvalidOperationException("无法定位当前可执行文件路径");
         if (OperatingSystem.IsLinux())
         {
             log?.Invoke($"[update] 安装：派生 pkexec（包 {Path.GetFileName(assetPath)}，观察窗口 {LaunchObserveWindow.TotalSeconds:0}s）");
-            using var p = LaunchLinux(assetPath, workDir, exePath);
+            using var p = await LaunchLinuxAsync(assetPath, workDir, exePath, expectedSha256).ConfigureAwait(false);
             using var observe = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             observe.CancelAfter(LaunchObserveWindow);
             try
@@ -75,22 +75,37 @@ public static class UpdateInstaller
     }
 
     /// <summary>
-    /// 生成 Linux 安装脚本内容（纯字符串，可单测）：等本进程退出 → 装包 → 把新版**降权回原用户**
-    /// 拉起。环境透传由 <paramref name="relayEnv"/> 决定——只透传生成时非空的变量（空值写入会以
-    /// 「空串覆盖」污染二代实例的 glib/libsoup 路径解析）；二代实例先切到主目录再拉起（不继承
-    /// pkexec 脚本的工作目录），并优先经 <c>systemd-run --user --scope</c> 并入用户会话，使后续
+    /// 生成 Linux 安装脚本内容（纯字符串，可单测）：等本进程退出 → **root 侧复验包哈希** → 装包 →
+    /// 把新版**降权回原用户**拉起。环境透传由 <paramref name="relayEnv"/> 决定——只透传生成时非空的变量
+    /// （空值写入会以「空串覆盖」污染二代实例的 glib/libsoup 路径解析）；二代实例先切到主目录再拉起
+    /// （不继承 pkexec 脚本的工作目录），并优先经 <c>systemd-run --user --scope</c> 并入用户会话，使后续
     /// 自更新的 pkexec 能按活动会话弹授权（无用户总线/无 systemd-run 时原样降权）。
     /// </summary>
-    public static string BuildLinuxScript(string installCommand, string logPath, int processId, string exePath, IReadOnlyDictionary<string, string> relayEnv)
+    /// <remarks>
+    /// TOCTOU 防线（ADR self-update-pkexec-toctou）：脚本本身经 <c>pkexec sh -c</c>
+    /// 内联传递（root 不读用户可写文件，授权 argv 不可被用户级进程替换）；包内容以
+    /// <paramref name="assetSha256"/>（调用方安装时点自 release SHA256SUMS 经 HTTPS 重取冻结）
+    /// 在 root 上下文复验后才 <c>dpkg/rpm</c>；脚本首行收紧 PATH（用户可写目录不参与 root 命令解析）；
+    /// 日志路径在 exec 重向前拒绝符号链接。
+    /// </remarks>
+    public static string BuildLinuxScript(string installCommand, string logPath, int processId, string exePath, IReadOnlyDictionary<string, string> relayEnv, string assetPath, string assetSha256)
     {
         var pairs = string.Join(" ", relayEnv.Select(kv => $"{kv.Key}='{EscapeSingle(kv.Value)}'"));
         var home = relayEnv.TryGetValue("HOME", out var h) && h.Length > 0 ? h : "/";
         return $"""
             #!/bin/sh
+            # root 侧命令解析固定系统路径：pkexec env 透传的 PATH 来自用户会话（含 ~/.local/bin
+            # 等用户可写目录），不收紧则同名假 sha256sum/dpkg 可架空复验甚至直接拿 root 执行
+            PATH='/usr/sbin:/usr/bin:/sbin:/bin'
+            export PATH
+            # 日志 symlink 守卫必须先于 exec 重定向——重定向此刻即以 root 打开目标文件
+            if [ -L '{EscapeSingle(logPath)}' ]; then echo "install.log is a symlink; abort" >&2; exit 1; fi
             exec >> '{EscapeSingle(logPath)}' 2>&1
             echo "== install start $(date) pid={processId}"
             echo "DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
             while kill -0 {processId} 2>/dev/null; do sleep 0.3; done
+            echo "verify package hash"
+            if ! echo '{assetSha256}  {EscapeSingle(assetPath)}' | sha256sum -c --status -; then echo "package hash mismatch; abort"; exit 1; fi
             echo "app exited; running: {installCommand}"
             {installCommand}
             echo "install exit=$?"
@@ -112,8 +127,12 @@ public static class UpdateInstaller
             """;
     }
 
-    private static Process LaunchLinux(string assetPath, string workDir, string exePath)
+    private static Task<Process> LaunchLinuxAsync(string assetPath, string workDir, string exePath, string expectedSha256)
     {
+        Directory.CreateDirectory(workDir);
+        // expectedSha256 由调用方在安装时点自 release SHA256SUMS 重取冻结（与下载校验同源、
+        // 经 HTTPS 直达仓库）：本进程与 ready 记录均在用户空间，任何落盘哈希都可被同权限改写，
+        // 唯有 release 侧值不可——root 侧复验对照它（TOCTOU 防线，见 BuildLinuxScript remarks）
         var installCmd = InstallCommandFor(assetPath);
         var logPath = Path.Combine(workDir, "install.log");
         // pkexec 会重置环境：显式透传 GUI 会话变量（否则拉起的新版窗口起不来）、开发隔离
@@ -139,15 +158,8 @@ public static class UpdateInstaller
             }
         }
 
-        var script = BuildLinuxScript(installCmd, logPath, Environment.ProcessId, exePath, relayEnv);
-        Directory.CreateDirectory(workDir);
-        var scriptPath = Path.Combine(workDir, "install.sh");
-        File.WriteAllText(scriptPath, script + Environment.NewLine);
-        if (OperatingSystem.IsLinux())
-        {
-            File.SetUnixFileMode(scriptPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        }
-
+        var script = BuildLinuxScript(installCmd, logPath, Environment.ProcessId, exePath, relayEnv, assetPath, expectedSha256);
+        // 脚本经 argv 内联传递（sh -c），root 不读用户可写文件——install.sh 落盘形态已废弃
         var psi = new ProcessStartInfo
         {
             FileName = "pkexec",
@@ -160,8 +172,9 @@ public static class UpdateInstaller
         }
 
         psi.ArgumentList.Add("/bin/sh");
-        psi.ArgumentList.Add(scriptPath);
-        return Process.Start(psi) ?? throw new InvalidOperationException("pkexec 启动失败");
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add(script);
+        return Task.FromResult(Process.Start(psi) ?? throw new InvalidOperationException("pkexec 启动失败"));
     }
 
     private static void LaunchWindows(string assetPath)

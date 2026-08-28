@@ -46,6 +46,8 @@ public static class SystemBrowser
             p.BeginErrorReadLine();
         }
 
+        // 返回值语义弱（刚 spawn 的 xdg-open 必然未退出，恒 true 居多）：真实失败由浏览器
+        // 自身后台报错不回灌；调用方（ExternalLinkCommandRouter/导航回调）对 false/异常已有 toast 兜底
         return !p.HasExited;
     }
 }

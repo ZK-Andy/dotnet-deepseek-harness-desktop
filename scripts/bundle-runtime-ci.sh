@@ -19,6 +19,8 @@ MARKET_VERSION="${MARKET_VERSION:-1.31.1}"
 # meta 签名含此维度，restore-key 前缀命中捡回的旧闭包因 trimPolicy 不匹配而强制全量重建
 # （v0.3.8 同类洞的同步根治：cache key 的 hashFiles 只保证精确 key miss，前缀命中仍可绕过；
 # 维度入库后校验必拦。照 MARKET_VERSION 先例：显式常量、入库、校验对照）。
+# 另有 meta scriptSha256 维度（本脚本自身 sha）：脚本任何改动即旧闭包失效，机器兜底，
+# 本注释要求的 bump 漏做也不再放过脚本变更。
 TRIM_POLICY="${TRIM_POLICY:-strip-sourcemap-2026-08}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/resources/runtime"
@@ -49,6 +51,9 @@ companion_sha() {
     | xargs -0 sha256sum 2>/dev/null | sha256sum | cut -d' ' -f1
 }
 COMPANION_SHA="$(companion_sha)"
+# 脚本自身 sha 入库（trimSha256 承诺的落地）：脚本任何改动（含裁剪/组装逻辑）都会让
+# restore-key 前缀命中捡回的旧闭包校验失败 → 必全量重建——不再依赖手工 bump TRIM_POLICY。
+SCRIPT_SHA="$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)"
 META_FILE="$DEST/.bundle-meta.json"
 if [[ -f "$META_FILE" ]] \
    && grep -q "\"dshVersion\":\"$DSH_VERSION\"" "$META_FILE" \
@@ -57,6 +62,7 @@ if [[ -f "$META_FILE" ]] \
    && grep -q "\"companionSha256\":\"$COMPANION_SHA\"" "$META_FILE" \
    && grep -q "\"market\":\"$MARKET_VERSION\"" "$META_FILE" \
    && grep -q "\"trimPolicy\":\"$TRIM_POLICY\"" "$META_FILE" \
+   && grep -q "\"scriptSha256\":\"$SCRIPT_SHA\"" "$META_FILE" \
    && [[ -f "$DEST/$NODE_DST" ]] \
    && [[ -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
   echo "== resources/runtime 闭包缓存命中（$PLATFORM，dsh $DSH_VERSION，companion $COMPANION_SHA）→ 跳过重建 =="
@@ -227,8 +233,8 @@ trim_runtime_closure() {
   # 剥 sourceMappingURL 尾注释（ADR strip-sourcemap-comments-in-closure）：上游构建产物普遍带
   # `//# sourceMappingURL=xxx.js.map` 尾注释，但 .map 已在上行删掉——注释还留着就会让 DevTools
   # 按不存在的映射去抓而刷 404（实测：index/vendor/dsh-client-* 的 .map 各档案 404 噪声）。
-  # 只删行首锚定的注释行，运行时零语义影响；缓存失效交由 meta 的 trimSha256 维度保证
-  # （见下方元数据段：本脚本自身 sha 入库，脚本改动即旧闭包校验失败 → 必全量重建，restore-key
+  # 只删行首锚定的注释行，运行时零语义影响；缓存失效由 meta 的 scriptSha256 维度保证
+  # （本脚本自身 sha 入库并参与命中校验，脚本改动即旧闭包校验失败 → 必全量重建，restore-key
   # 前缀命中无法绕过——v0.3.8「restore-key 回退捡旧闭包」教训的同类洞的根治）。
   # perl -i 比 GNU/BSD sed 语法统一（macos runner 是 BSD sed），临时文件列表喂 xargs 且
   # -n 64 显式分批：win Git Bash 命令行上限 32K（实测单条路径 ~150B+前缀，200 一批会超），
@@ -298,6 +304,6 @@ du -sh "$DEST" | cut -f1
 echo "   入口校验：$DEST/$NODE_DST + $DEST/node_modules/@deepseek-ai/dsh/lib/bin.js"
 [[ -f "$DEST/$NODE_DST" && -f "$DEST/node_modules/@deepseek-ai/dsh/lib/bin.js" ]] || { echo "error: 入口缺失" >&2; exit 1; }
 # 成功构建后写闭包签名，供下次（CI 缓存恢复后）整步跳过
-printf '{"dshVersion":"%s","nodeVersion":"%s","platform":"%s","companionSha256":"%s","market":"%s","trimPolicy":"%s"}\n' \
-  "$DSH_VERSION" "$NODE_VERSION" "$PLATFORM" "$(companion_sha)" "$MARKET_VERSION" "$TRIM_POLICY" > "$DEST/.bundle-meta.json"
+printf '{"dshVersion":"%s","nodeVersion":"%s","platform":"%s","companionSha256":"%s","market":"%s","trimPolicy":"%s","scriptSha256":"%s"}\n' \
+  "$DSH_VERSION" "$NODE_VERSION" "$PLATFORM" "$(companion_sha)" "$MARKET_VERSION" "$TRIM_POLICY" "$SCRIPT_SHA" > "$DEST/.bundle-meta.json"
 echo "   已写闭包元数据：$DEST/.bundle-meta.json"

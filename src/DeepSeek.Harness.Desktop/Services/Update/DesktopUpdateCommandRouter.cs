@@ -13,14 +13,19 @@ public sealed class DesktopUpdateCommandRouter : ICommandRouter
 
     private readonly UpdateStateMachine _machine;
     private readonly Action<string>? _log;
+    private readonly Func<CancellationToken>? _backgroundToken;
 
     /// <summary>创建路由。</summary>
     /// <param name="machine">自更新状态机单例。</param>
-    /// <param name="log">日志输出（可选）。</param>
-    public DesktopUpdateCommandRouter(UpdateStateMachine machine, Action<string>? log = null)
+    /// <param name="log">日志委托（可选；生产传 HostLog.Write，测试注入收集器）。</param>
+    /// <param name="backgroundToken">后台长任务（check 下载 / install 兜底强退）的取消令牌来源；
+    /// 未提供时按不可取消处理。生产传宿主监督器 token：check/install 是分钟级任务，不能挂
+    /// IPC 请求作用域 token——请求帧返回后分发器若取消请求 token，后台任务会被连坐取消。</param>
+    public DesktopUpdateCommandRouter(UpdateStateMachine machine, Action<string>? log = null, Func<CancellationToken>? backgroundToken = null)
     {
         _machine = machine;
         _log = log;
+        _backgroundToken = backgroundToken;
     }
 
     /// <inheritdoc />
@@ -40,21 +45,24 @@ public sealed class DesktopUpdateCommandRouter : ICommandRouter
             case "desktop.update.getState":
                 return ValueTask.FromResult(_machine.State.ToJson());
             case "desktop.update.check":
+            {
                 // 检查可能耗时（下载分钟级），立即回当前态，后续靠事件推送
+                var backgroundCt = _backgroundToken?.Invoke() ?? CancellationToken.None;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        await _machine.CheckAsync(cancellationToken).ConfigureAwait(false);
+                        await _machine.CheckAsync(backgroundCt).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
                         _log?.Invoke($"[update] check 失败：{ex.Message}");
                     }
-                }, cancellationToken);
+                }, backgroundCt);
                 return ValueTask.FromResult(_machine.State.ToJson());
+            }
             case "desktop.update.install":
-                return RouteInstallAsync(cancellationToken);
+                return RouteInstallAsync(_backgroundToken?.Invoke() ?? CancellationToken.None);
             default:
                 throw new RynCommandNotFoundException(command);
         }

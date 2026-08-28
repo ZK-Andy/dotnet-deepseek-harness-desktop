@@ -194,18 +194,17 @@ for f in "$OUT/rpmbuild/RPMS"/*/*.rpm; do
     fi
   fi
 done
-# 将 rpm 移到 $OUT 顶层以便统一产物清单与 CI 上传（保留原 rpmbuild 目录结构亦可）
+# 将 rpm 移到 $OUT 顶层以便统一产物清单与 CI 上传（mv 而非 cp：源头不留副本，
+# 否则 rpmbuild 嵌套目录与顶层同名 rpm 双份进 Release——上传/发布 glob 会各取一份）
 mkdir -p "$OUT"
 for f in "$OUT"/rpmbuild/RPMS/*/*.rpm; do
   [[ -f "$f" ]] || continue
-  cp -n "$f" "$OUT/" 2>/dev/null || true
+  mv -f "$f" "$OUT/"
 done
 
 echo "== 产物:"
 ls -lh "$OUT"/*.deb "$OUT"/*.rpm 2>&1 | grep -E "^-|deepseek" || true
-ls -lh "$OUT"/rpmbuild/RPMS/**/*.rpm 2>&1 | grep -E "^-|deepseek" || true
 echo "== deb 校验（如可用）:"
 dpkg-deb -I "$OUT/${APP}_${VERSION}_linux-${ARCH}.deb" 2>&1 | head -20 || true
 echo "== rpm 校验（如可用）:"
 rpm -qp --requires "$OUT"/*.rpm 2>&1 | head -30 || true
-rpm -qp --requires "$OUT"/rpmbuild/RPMS/*/*.rpm 2>&1 | head -30 || true

@@ -23,7 +23,40 @@ public class UpdateInstallerTests
         logPath: "/home/zk/.local/share/updates/install.log",
         processId: 4242,
         exePath: "/opt/DeepSeek Harness Desktop/DeepSeek.Harness.Desktop",
-        relayEnv: env);
+        relayEnv: env,
+        assetPath: "/home/zk/.local/share/updates/app_0.3.12_linux-amd64.deb",
+        assetSha256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
+
+    [Fact]
+    public void BuildLinuxScript_VerifiesPackageHashAsRoot_BeforeInstall()
+    {
+        // TOCTOU 防线：装包前 root 侧按授权时刻冻结的哈希复验包内容，防下载校验后被换包
+        var script = Build(FullEnv);
+        var verifyAt = script.IndexOf("sha256sum -c --status", StringComparison.Ordinal);
+        var installAt = script.IndexOf("dpkg -i", StringComparison.Ordinal);
+        Assert.True(verifyAt >= 0, "缺 root 侧哈希复验");
+        Assert.True(installAt > verifyAt, "复验必须先于装包");
+        Assert.Contains("abcdef0123456789", script);
+        Assert.Contains("package hash mismatch", script);
+    }
+
+    [Fact]
+    public void BuildLinuxScript_RefusesSymlinkLog()
+    {
+        // root 只向用户可写目录追加日志；symlink 重定向必须在装包前拒绝
+        var script = Build(FullEnv);
+        var guardAt = script.IndexOf("is a symlink", StringComparison.Ordinal);
+        Assert.True(guardAt >= 0, "缺 symlink 守卫");
+        Assert.True(script.IndexOf("dpkg -i", StringComparison.Ordinal) > guardAt, "symlink 守卫必须先于装包");
+    }
+
+    [Fact]
+    public void BuildLinuxScript_InlineWithoutInstallShFile()
+    {
+        // 脚本经 sh -c 内联（root 不读用户可写文件），不再出现 install.sh 落盘路径
+        var script = Build(FullEnv);
+        Assert.DoesNotContain("install.sh", script);
+    }
 
     [Theory]
     [InlineData("/tmp/app_0.1.21_linux-amd64.deb", "dpkg -i '/tmp/app_0.1.21_linux-amd64.deb'")]
@@ -98,7 +131,9 @@ public class UpdateInstallerTests
             logPath: "/x/l'og/install.log",
             processId: 1,
             exePath: "/opt/d'sh",
-            relayEnv: env);
+            relayEnv: env,
+            assetPath: "/x/a'pp.deb",
+            assetSha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
         Assert.Contains("nohup '/opt/d'\\''sh' >> '/x/l'\\''og/install.log' 2>&1 &", script);
         Assert.Contains("HOME='/ho'\\''me'", script);

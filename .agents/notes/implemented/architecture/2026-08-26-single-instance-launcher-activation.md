@@ -10,7 +10,7 @@ Status: implemented
 
 1. **壳内自建单实例仲裁，不依赖 GTK 互斥**：新增 `Services/LauncherActivation`——首实例对 Unix domain socket `bind` 成功即为主实例并进入 accept 监听；`bind` 撞地址（EADDRINUSE）即为二次启动，向既有 socket 发送一行 `show` 命令、收到 `ok` 应答（2s 超时）后以 0 退出，无论通知成败都绝不重复拉起运行时。
 2. **主实例收到 `show` 即显示主窗**：回调经 `CurrentWindowAccessor` 的 deferred 代理走 `ShowAsync`，await 到完成才记成功（与托盘「显示主窗」同一形态），失败吞掉记日志——激活是增强能力，绝不拖垮任一实例；唤起同时消费最大化样本，防止下一次托盘召回按旧样本误最大化。
-3. **锁地址随 dev 隔离**：socket 路径取 `$XDG_RUNTIME_DIR`（缺失回退 `/tmp`）+ 应用名 + `.dev` 后缀规则与 `DevEnvironment.ApplicationIdFor` 同源，开发实例与正式版互不顶牛；主实例退出时 unlink socket。
+3. **锁地址随 dev 隔离**：socket 路径取 `$XDG_RUNTIME_DIR`（缺失回退 `/tmp`，且 socket 名掺 `-<uid>` 后缀——跨用户可预测的固定名会让他用户抢占制零实例 DoS，`LauncherActivation.FallbackUidSuffix`）+ 应用名 + `.dev` 后缀规则与 `DevEnvironment.ApplicationIdFor` 同源，开发实例与正式版互不顶牛；主实例退出时 unlink socket。
 4. **平台边界**：Linux/macOS 启用（UDS 两平台皆原生）；Windows 本轮不启用（无验证环境，行为维持现状），代码显式分支并记录——与「Win/mac 无实证不盲扩」的项目纪律一致。
 
 ## Alternatives considered

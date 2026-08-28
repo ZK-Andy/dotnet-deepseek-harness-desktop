@@ -20,6 +20,22 @@ public class LauncherActivationTests
     }
 
     [Fact]
+    public void FallbackUidSuffix_IsPerUser_NonEmpty()
+    {
+        // 临时目录回退的跨用户隔离：Linux/macOS 带 uid 数字后缀，同用户两次调用稳定；
+        // Windows 不启用 socket 仲裁（平台边界），恒空串
+        var suffix = LauncherActivation.FallbackUidSuffix();
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Empty(suffix);
+            return;
+        }
+
+        Assert.NotEmpty(suffix);
+        Assert.Equal(suffix, LauncherActivation.FallbackUidSuffix());
+    }
+
+    [Fact]
     public async Task PrimaryThenNotify_SecondaryGetsAck_AndCallbackFires()
     {
         var path = NewSocketPath();

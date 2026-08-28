@@ -28,6 +28,9 @@ public sealed class HarnessRuntimeHost : IDisposable
     private int? _port;
     private Process? _process;
 
+    /// <summary>Start/Stop/Restart 生命周期串行化门（防并发双 spawn/_process 覆盖互踩）。</summary>
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+
     /// <summary>创建运行时宿主。</summary>
     /// <param name="bundled">捆绑运行时 (node 可执行, dsh bin.js)；null 表示用 PATH 的 dsh。</param>
     /// <param name="log">日志回调（可选）：端口漂移等运行时决策留痕 host.log（缺省 null 安全）。</param>
@@ -214,12 +217,39 @@ public sealed class HarnessRuntimeHost : IDisposable
     /// <summary>启动 dsh web（OS 分配端口），等待 `dsh web:` URL 或超时。</summary>
     /// <param name="timeout">等待 URL 的时限。</param>
     /// <param name="ct">取消令牌。</param>
-    /// <returns>dsh web UI 的 URL；未在时限内给出则为 null。</returns>
+    /// <returns>dsh web UI 的 URL；未在时限内给出、或启动在生命周期门等待期即被取消则为 null
+    /// （门内 spawn 后的取消仍会抛 <see cref="OperationCanceledException"/>，由消费方按退出处理）。</returns>
     /// <remarks>端口需跨 App 冷启动保持稳定：origin 不变 → dsh Web 端"当前会话"localStorage（dsh.sessions.current，按 origin 隔离）
     /// 仍命中 → 恢复上一会话。进程内崩溃重启复用 <paramref name="ct"/> 前记忆的 <c>_port</c>；冷启动从磁盘加载上次端口并回写。</remarks>
     public async Task<Uri?> StartAsync(TimeSpan timeout, CancellationToken ct = default)
     {
-        Stop();
+        // 生命周期串行化门：随包插件安装任务与崩溃监督器的重启可并发进入，无门时
+        // 双 spawn / _process 覆盖会把前一个 dsh 失管成孤儿（与 orderlyQuit 看门狗封堵的
+        // spawn-after-cancel 竞态同族）。
+        try
+        {
+            await _lifecycleGate.WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // 取消是终态：入口检查先于 spawn，监督器恢复分支撞上退出时绝不留下无人认领的 dsh 孤儿
+            return null;
+        }
+
+        try
+        {
+            StopCore();
+            return await StartInnerAsync(timeout, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
+    /// <summary>StartAsync 的门内主体（Stop 之后的部分）：冷启动清扫 + spawn + 端口记忆。</summary>
+    private async Task<Uri?> StartInnerAsync(TimeSpan timeout, CancellationToken ct)
+    {
         // 冷启动（_port 未初始化）时清扫上次宿主异常死亡遗留的孤儿 dsh（ADR self-update-exit-reaps-dsh-child
         // 缺口 B）。仅冷启动做：进程内崩溃恢复（RestartAsync）时 _port 已设、PID 记录已被本次 spawn
         // 覆盖为新 token，重复清扫反而可能误评。token 复验不匹配/读不到一律不杀（零误杀）。
@@ -350,7 +380,8 @@ public sealed class HarnessRuntimeHost : IDisposable
         {
             // 取消落在上方检查点与 spawn 之间的窄窗：立即整树回收再返回，
             // 绝不让刚起的进程成为无人认领的孤儿（监督器此刻已在收摊，不会再 Stop 它）。
-            Stop();
+            // 门内语境：必须调 StopCore——公共 Stop 会因本方法已持有生命周期门而 3s 超时跳过。
+            StopCore();
             return null;
         }
 
@@ -400,13 +431,14 @@ public sealed class HarnessRuntimeHost : IDisposable
         }
     }
 
-    /// <summary>重启 dsh 子进程（先 Stop 再 StartAsync），返回新 URL。崩溃恢复用。</summary>
+    /// <summary>重启 dsh 子进程，返回新 URL。崩溃恢复用。</summary>
     /// <param name="timeout">等待新 URL 的时限。</param>
     /// <param name="ct">取消令牌。</param>
-    public async Task<Uri?> RestartAsync(TimeSpan timeout, CancellationToken ct = default)
+    /// <remarks>与 <see cref="StartAsync"/> 同一串行化主体——Start 本就先 StopCore，此前的显式
+    /// 双 Stop 是冗余；本方法保留为崩溃恢复路径的语义命名。</remarks>
+    public Task<Uri?> RestartAsync(TimeSpan timeout, CancellationToken ct = default)
     {
-        Stop();
-        return await StartAsync(timeout, ct);
+        return StartAsync(timeout, ct);
     }
 
     /// <summary>当 dsh 子进程退出时完成（用于崩溃监督；子进程不存在时立即完成）。</summary>
@@ -423,8 +455,29 @@ public sealed class HarnessRuntimeHost : IDisposable
         return tcs.Task;
     }
 
-    /// <summary>停止并回收 dsh 子进程（整棵进程树）。</summary>
+    /// <summary>停止并回收 dsh 子进程（整棵进程树）。经生命周期串行化门——门被 spawn 长时间
+    /// 占用时记录并跳过，绝不无限阻塞退出路径；此窗口的残留 dsh 由冷启动孤儿清扫兜底
+    /// （监督器已被 cancel，不会再有新的 spawn 与它竞争）。</summary>
     public void Stop()
+    {
+        if (!_lifecycleGate.Wait(TimeSpan.FromSeconds(3)))
+        {
+            _log?.Invoke("[host] Stop：生命周期门被占用（spawn 进行中？）跳过本次回收，残留交冷启动孤儿清扫兜底");
+            return;
+        }
+
+        try
+        {
+            StopCore();
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
+    /// <summary>门内的实际回收：kill 进程树 + 等 3s，未退透留痕（冷启动孤儿清扫兜底残留）。</summary>
+    private void StopCore()
     {
         if (_process is { HasExited: false } p)
         {
@@ -437,7 +490,11 @@ public sealed class HarnessRuntimeHost : IDisposable
                 // 进程恰好已退出
             }
 
-            p.WaitForExit(3000);
+            if (!p.WaitForExit(3000))
+            {
+                // 观测位不是修复位：kill 已发出但未确认死亡，残留由冷启动孤儿清扫兜底
+                _log?.Invoke($"[host] dsh（pid {p.Id}）kill 后 3s 未确认退出，残留交冷启动孤儿清扫兜底");
+            }
         }
 
         _process = null;
