@@ -179,6 +179,11 @@
           if (!document.getElementById(style.id)) document.head.append(style)
 
           function UpdateButton(props) {
+            // t 来自 slot 声明的 locale: NS——renderer 自动注入 props.t 并按 revision 跟随，
+            // 切语言时由 SlotOutlet 重渲染本组件、t 随之读到新语言。无 t（独立渲染/测试）时
+            // 退化显示 key（fail loud 而非空白）。
+            var p = props || {}
+            var th = p.t || function (k) { return k }
             var pair = reactMod.useState(null)
             var state = pair[0]
             var setState = pair[1]
@@ -192,7 +197,7 @@
               }).catch(function (e3) { console.warn(TAG, 'getState failed', e3 && e3.message) })
               return function () { document.removeEventListener('dsh-desktop-update', onEvt) }
             }, [])
-            var wide = !(props && props.wide === false)
+            var wide = !(p.wide === false)
             var installing = !!state && state.status === 'installing'
             if (!state || (state.status !== 'ready' && !installing)) return null
             var cls = 'ddc-upd' + (wide ? '' : ' ddc-rail')
@@ -200,8 +205,8 @@
               className: cls,
               type: 'button',
               disabled: installing,
-              title: state.version ? '\u66f4\u65b0 ' + state.version : '\u66f4\u65b0',
-              'aria-label': state.version ? '\u5b89\u88c5\u5e76\u91cd\u542f ' + state.version : '\u5b89\u88c5\u5e76\u91cd\u542f',
+              title: state.version ? th('updateTitle') + ' ' + state.version : th('updateTitle'),
+              'aria-label': state.version ? th('installPrefix') + ' ' + state.version : th('installPrefix'),
               onClick: function () {
                 window.__ryn.invoke('desktop.update.install', {}).catch(function () {})
               },
@@ -211,22 +216,27 @@
                 : h('svg', { width: 14, height: 14, viewBox: '0 0 14 14', fill: 'none', 'aria-hidden': true },
                     h('path', { d: 'M7 11V3M3.5 7.63128L7 11L10.5 7.63128', stroke: 'currentColor' })),
               ), h('span', { className: 'ddc-lb' },
-                installing ? '\u5b89\u88c5\u4e2d\u2026' : ('\u66f4\u65b0 ' + (state.version || ''))))
+                installing ? th('installingNow') : (th('updateTitle') + ' ' + (state.version || ''))))
           }
 
-          var STR = {
+          // 客户端文案本地化：随 dsh 语言切换（中⇄英）。dsh 的语言表不是配置文件，
+          // 而是纯 JS 字典 + 运行时注册（@deepseek-ai/dsh-client-locale 的 ctx.locale）。
+          // zh 为中文基线（原 STR 对象逐项迁移），en 为对应英文；key 用扁平字符串，
+          // 模板占位为 {name} 格式（与 dsh t() 的 translate 运行时一致，本插件文案暂不使用
+          // 占位符）。注册走 untyped 重载（命名空间不进 @deepseek-ai/dsh-client-ui-slots 的
+          // LocaleNamespaceMap 明文合并表）。
+          var NS = 'desktop-companion'
+          var zh = {
             label: '\u684c\u9762\u8bbe\u7f6e',
             cur: '\u5f53\u524d\u7248\u672c',
             idle: '\u5c1a\u672a\u68c0\u67e5\u66f4\u65b0',
             checking: '\u6b63\u5728\u68c0\u67e5\u66f4\u65b0\u2026',
             dl: '\u6b63\u5728\u4e0b\u8f7d',
             readySuffix: '\u5c31\u7eea\uff0c\u53ef\u5b89\u88c5',
-            installBtn: '\u7acb\u5373\u5b89\u88c5\u5e76\u91cd\u542f',
             installing: '\u6b63\u5728\u5b89\u88c5\uff0c\u5e94\u7528\u5373\u5c06\u91cd\u542f\u2026',
             uptodate: '\u5df2\u662f\u6700\u65b0\u7248\u672c',
             errPrefix: '\u68c0\u67e5\u5931\u8d25\uff1a',
             unknown: '\u672a\u77e5\u539f\u56e0',
-            checkBtn: '\u68c0\u67e5\u66f4\u65b0',
             unavail: '\u684c\u9762\u81ea\u66f4\u65b0\u5728\u5f53\u524d\u8fd0\u884c\u65f6\u4e0d\u53ef\u7528\uff08\u5f00\u53d1\u8fd0\u884c\u65f6\u53ef\u8bbe DSH_DESKTOP_UPDATE_FORCE=1 \u5f00\u542f\uff09',
             // opencode settings-v2 同款行的文案
             checkTitle: '检查更新',
@@ -238,26 +248,85 @@
             actInstalling: '安装中…',
             diagTitle: '导出诊断信息',
             diagBtn: '导出',
+            autostart: '\u5f00\u673a\u81ea\u542f',
             autostartDesc: '登录后自动启动 DeepSeek Harness 桌面端',
             closeTitle: '关闭时最小化到托盘',
             closeDesc: '勾选后点击关闭按钮会隐藏到系统托盘，取消则直接退出应用。',
             closeUnavailable: '当前运行环境无系统托盘，开关不可用。',
+            // 组标题（原散落在各 Section 的 '.ddc-gtitle' 字面量）
+            updGroup: '\u66f4\u65b0',
+            diagGroup: '\u8bca\u65ad',
+            desktopGroup: '\u684c\u9762',
+            // 更新按钮 hover/aria（原 UpdateButton 的 title/aria-label 字面量）
+            updateTitle: '\u66f4\u65b0',
+            installPrefix: '\u5b89\u88c5\u5e76\u91cd\u542f',
+            installingNow: '\u5b89\u88c5\u4e2d\u2026',
+            // 诊断导出（原 DIAG 对象）
+            diagHint: '\u4ec5\u5305\u542b\u65e5\u5fd7\u4e0e\u8fd0\u884c\u72b6\u6001\uff0c\u4e0d\u542b\u4f1a\u8bdd\u4e0e\u51ed\u636e',
+            diagSavedPrefix: '\u5df2\u4fdd\u5b58\u81f3\uff1a',
+            diagFail: '\u5bfc\u51fa\u5931\u8d25',
+            diagFailSep: '\uff1a',
           }
+          var en = {
+            label: 'Desktop Settings',
+            cur: 'Current version',
+            idle: 'Not checked for updates yet',
+            checking: 'Checking for updates\u2026',
+            dl: 'Downloading',
+            readySuffix: 'ready, installable',
+            installing: 'Installing, the app will restart shortly\u2026',
+            uptodate: 'Already up to date',
+            errPrefix: 'Check failed: ',
+            unknown: 'Unknown reason',
+            unavail: 'Desktop self-update is unavailable in this runtime (set DSH_DESKTOP_UPDATE_FORCE=1 to enable in dev)',
+            // opencode settings-v2 同款行的文案
+            checkTitle: 'Check for updates',
+            checkDesc: 'Check whether a new version is available',
+            actCheck: 'Check now',
+            actChecking: 'Checking\u2026',
+            actDownloading: 'Downloading\u2026',
+            actInstall: 'Install and restart',
+            actInstalling: 'Installing\u2026',
+            diagTitle: 'Export diagnostics',
+            diagBtn: 'Export',
+            autostart: 'Launch at sign-in',
+            autostartDesc: 'Launch DeepSeek Harness Desktop after sign-in',
+            closeTitle: 'Minimize to tray on close',
+            closeDesc: 'When checked, closing the window hides it to the tray; otherwise the app quits.',
+            closeUnavailable: 'No system tray in this environment; the switch is unavailable.',
+            // 组标题
+            updGroup: 'Update',
+            diagGroup: 'Diagnostics',
+            desktopGroup: 'Desktop',
+            // 更新按钮 hover/aria
+            updateTitle: 'Update',
+            installPrefix: 'Install and restart',
+            installingNow: 'Installing\u2026',
+            // 诊断导出
+            diagHint: 'Contains only logs and runtime state, no sessions or credentials',
+            diagSavedPrefix: 'Saved to: ',
+            diagFail: 'Export failed',
+            diagFailSep: ': ',
+          }
+          // 注册双字典并绑定翻译函数：t() 读调用时刻的 active locale。
+          // ctx.effect 使注册随本插件 fiber 卸载而撤销（dshmarket 同款）。
+          ctx.effect(function () { return ctx.locale.register(NS, { zh: zh, en: en }) }, 'dsh-desktop-companion: dictionaries')
+          var t = ctx.locale.bind(NS)
 
           var statusText = function (s) {
             switch (s && s.status) {
-              case 'checking': return STR.checking
-              case 'downloading': return STR.dl + (s.version ? ' ' + s.version : '') + '\u2026'
-              case 'ready': return (s.version ? s.version + ' ' : '') + STR.readySuffix
-              case 'installing': return STR.installing
-              case 'uptodate': return STR.uptodate
-              default: return STR.idle
+              case 'checking': return t('checking')
+              case 'downloading': return t('dl') + (s.version ? ' ' + s.version : '') + '\u2026'
+              case 'ready': return (s.version ? s.version + ' ' : '') + t('readySuffix')
+              case 'installing': return t('installing')
+              case 'uptodate': return t('uptodate')
+              default: return t('idle')
             }
           }
 
           // getState 兜底：宿主无自更新栈（dev 门禁）时命令路由不存在，invoke 应以失败
           // 告终；再叠加 4s 超时——任何「既不成功也不失败」的异常路径都收敛到不可用提示，
-          // 设置页绝不留白。reason 仅进控制台，页面文案统一走 STR.unavail。
+          // 设置页绝不留白。reason 仅进控制台，页面文案统一走 t('unavail')。
           var queryState = function () {
             return new Promise(function (resolve, reject) {
               var settled = false
@@ -284,7 +353,9 @@
           }
 
           // 设置页区块：undefined=查询中不渲染，null=宿主无自更新栈（页内提示），对象=正常状态帧
-          function UpdateSection() {
+          function UpdateSection(props) {
+            var p = props || {}
+            var th = p.t || function (k) { return k }
             var pair = reactMod.useState(undefined)
             var state = pair[0]
             var setState = pair[1]
@@ -302,31 +373,31 @@
             if (state === undefined) return null
             if (state === null) {
               return h('div', { className: 'ddc-group' },
-                h('div', { className: 'ddc-gtitle' }, '更新'),
-                h('div', { className: 'ddc-desc' }, STR.unavail))
+                h('div', { className: 'ddc-gtitle' }, th('updGroup')),
+                h('div', { className: 'ddc-desc' }, th('unavail')))
             }
             var busy = state.status === 'checking' || state.status === 'downloading' || state.status === 'installing'
             // 按钮标签随状态机切换（opencode updater-action 同款）：ready 即安装入口，不再单设主按钮
             var actionLabel =
-              state.status === 'checking' ? STR.actChecking :
-              state.status === 'downloading' ? STR.actDownloading :
-              state.status === 'ready' ? STR.actInstall :
-              state.status === 'installing' ? STR.actInstalling : STR.actCheck
+              state.status === 'checking' ? th('actChecking') :
+              state.status === 'downloading' ? th('actDownloading') :
+              state.status === 'ready' ? th('actInstall') :
+              state.status === 'installing' ? th('actInstalling') : th('actCheck')
             var statusLine = state.status === 'error'
-              ? h('span', { className: 'ddc-err' }, STR.errPrefix + (state.message || STR.unknown))
+              ? h('span', { className: 'ddc-err' }, th('errPrefix') + (state.message || th('unknown')))
               : statusText(state)
             return h('div', { className: 'ddc-group' },
-              h('div', { className: 'ddc-gtitle' }, '更新'),
+              h('div', { className: 'ddc-gtitle' }, th('updGroup')),
               h('div', { className: 'ddc-list' },
                 h('div', { className: 'ddc-row2' },
                   h('div', { className: 'ddc-copy' },
-                    h('div', { className: 'ddc-title' }, STR.cur),
+                    h('div', { className: 'ddc-title' }, th('cur')),
                     h('div', { className: 'ddc-desc' }, state.current || '—', ' · ', statusLine)),
                   h('div', { className: 'ddc-ctl' })),
                 h('div', { className: 'ddc-row2' },
                   h('div', { className: 'ddc-copy' },
-                    h('div', { className: 'ddc-title' }, STR.checkTitle),
-                    h('div', { className: 'ddc-desc' }, STR.checkDesc)),
+                    h('div', { className: 'ddc-title' }, th('checkTitle')),
+                    h('div', { className: 'ddc-desc' }, th('checkDesc'))),
                   h('div', { className: 'ddc-ctl' },
                     h('button', {
                       // 原生 save/discard 两态：ready=主按钮（安装入口），其余=描边幽灵
@@ -345,27 +416,23 @@
 
           // 设置页「诊断」区块（order 51）：一键导出诊断 zip。点击即隐私确认——
           // 包内容为白名单日志与运行状态，不含会话/凭据；宿主无此命令时失败转页内提示
-          var DIAG = {
-            btn: '\u5bfc\u51fa\u8bca\u65ad\u4fe1\u606f',
-            hint: '\u4ec5\u5305\u542b\u65e5\u5fd7\u4e0e\u8fd0\u884c\u72b6\u6001\uff0c\u4e0d\u542b\u4f1a\u8bdd\u4e0e\u51ed\u636e',
-            savedPrefix: '\u5df2\u4fdd\u5b58\u81f3\uff1a',
-            fail: '\u5bfc\u51fa\u5931\u8d25',
-          }
-          function DiagnosticsSection() {
+          function DiagnosticsSection(props) {
+            var p = props || {}
+            var th = p.t || function (k) { return k }
             var pair = reactMod.useState(null)
             var result = pair[0]
             var setResult = pair[1]
             return h('div', { className: 'ddc-group' },
-              h('div', { className: 'ddc-gtitle' }, '诊断'),
+              h('div', { className: 'ddc-gtitle' }, th('diagGroup')),
               h('div', { className: 'ddc-list' },
                 h('div', { className: 'ddc-row2' },
                   h('div', { className: 'ddc-copy' },
-                    h('div', { className: 'ddc-title' }, STR.diagTitle),
+                    h('div', { className: 'ddc-title' }, th('diagTitle')),
                     result === null
-                      ? h('div', { className: 'ddc-desc' }, DIAG.hint)
+                      ? h('div', { className: 'ddc-desc' }, th('diagHint'))
                       : typeof result === 'string'
-                        ? h('div', { className: 'ddc-desc' }, DIAG.savedPrefix + result)
-                        : h('div', { className: 'ddc-desc ddc-err' }, DIAG.fail + '：' + result.error)),
+                        ? h('div', { className: 'ddc-desc' }, th('diagSavedPrefix') + result)
+                        : h('div', { className: 'ddc-desc ddc-err' }, th('diagFail') + th('diagFailSep') + result.error)),
                   h('div', { className: 'ddc-ctl' },
                     h('button', {
                       className: 'ovn-btn ovn-btn--ghost',
@@ -375,57 +442,58 @@
                         window.__ryn.invoke('desktop.diagnostics.export', {}).then(function (res) {
                           var parsed = parseFrame(res)
                           if (parsed && parsed.path) setResult(parsed.path)
-                          else setResult({ error: (parsed && parsed.error) || DIAG.fail })
+                          else setResult({ error: (parsed && parsed.error) || th('diagFail') })
                         }, function () {
-                          setResult({ error: DIAG.fail })
+                          setResult({ error: th('diagFail') })
                         })
                       },
-                    }, STR.diagBtn)))))
+                    }, th('diagBtn'))))))
           }
 
           // 「桌面」区块：开机自启 + 关闭时最小化到托盘（均为 opencode 发行说明同款开关行）
-          var DESK = {
-            autostart: '\u5f00\u673a\u81ea\u542f',
-          }
-          function DesktopSection() {
+          function DesktopSection(props) {
+            var p = props || {}
+            var th = p.t || function (k) { return k }
             var asp = reactMod.useState(null)
             var enabled = asp[0]
             var setEnabled = asp[1]
             reactMod.useEffect(function () {
               window.__ryn.invoke('desktop.autostart.getState', {}).then(function (res) {
-                var p = parseFrame(res)
-                if (p && typeof p.enabled === 'boolean') setEnabled(p.enabled)
+                var p2 = parseFrame(res)
+                if (p2 && typeof p2.enabled === 'boolean') setEnabled(p2.enabled)
               }, function () { setEnabled(false) })
             }, [])
             var toggleAutostart = function (next) {
               setEnabled(null)
               window.__ryn.invoke('desktop.autostart.set', { enabled: next }).then(function (res) {
-                var p = parseFrame(res)
-                setEnabled(p && typeof p.enabled === 'boolean' ? p.enabled : next)
+                var p2 = parseFrame(res)
+                setEnabled(p2 && typeof p2.enabled === 'boolean' ? p2.enabled : next)
               }, function () { setEnabled(!next) })
             }
             return h('div', { className: 'ddc-group' },
-              h('div', { className: 'ddc-gtitle' }, '桌面'),
+              h('div', { className: 'ddc-gtitle' }, th('desktopGroup')),
               h('div', { className: 'ddc-list' },
                 h('div', { className: 'ddc-row2' },
                   h('div', { className: 'ddc-copy' },
-                    h('div', { className: 'ddc-title' }, DESK.autostart),
-                    h('div', { className: 'ddc-desc' }, STR.autostartDesc)),
+                    h('div', { className: 'ddc-title' }, th('autostart')),
+                    h('div', { className: 'ddc-desc' }, th('autostartDesc'))),
                   h('div', { className: 'ddc-ctl' },
                     Switch2({ checked: enabled, disabled: enabled === null, onChange: toggleAutostart }))),
-                CloseToTrayRow()))
+                CloseToTrayRow({ t: th })))
           }
 
           // 关闭时最小化到托盘：宿主持久化于 <DSH_HOME>/desktop-preferences.json（默认开启，
           // 与历史行为一致）。available=false 表示无系统托盘——隐藏无从谈起，开关禁用。
-          function CloseToTrayRow() {
+          function CloseToTrayRow(props) {
+            var p = props || {}
+            var th = p.t || function (k) { return k }
             var sp = reactMod.useState(null)
             var st = sp[0]
             var setSt = sp[1]
             reactMod.useEffect(function () {
               window.__ryn.invoke('desktop.closeToTray.getState', {}).then(function (res) {
-                var p = parseFrame(res)
-                if (p && typeof p.enabled === 'boolean') setSt({ enabled: p.enabled, available: !!p.available })
+                var p2 = parseFrame(res)
+                if (p2 && typeof p2.enabled === 'boolean') setSt({ enabled: p2.enabled, available: !!p2.available })
                 else setSt({ enabled: true, available: false })
               }, function () { setSt({ enabled: true, available: false }) })
             }, [])
@@ -433,18 +501,18 @@
               if (!st || !st.available) return
               setSt({ enabled: next, available: true })
               window.__ryn.invoke('desktop.closeToTray.set', { enabled: next }).then(function (res) {
-                var p = parseFrame(res)
-                if (p && typeof p.enabled === 'boolean') setSt({ enabled: p.enabled, available: !!p.available })
+                var p2 = parseFrame(res)
+                if (p2 && typeof p2.enabled === 'boolean') setSt({ enabled: p2.enabled, available: !!p2.available })
                 else setSt({ enabled: !next, available: true })
               }, function () { setSt({ enabled: !next, available: true }) })
             }
             var unavailable = !!st && !st.available
             var desc = unavailable
-              ? h('span', null, STR.closeDesc, h('br'), STR.closeUnavailable)
-              : STR.closeDesc
+              ? h('span', null, th('closeDesc'), h('br'), th('closeUnavailable'))
+              : th('closeDesc')
             return h('div', { className: 'ddc-row2' },
               h('div', { className: 'ddc-copy' },
-                h('div', { className: 'ddc-title' }, STR.closeTitle),
+                h('div', { className: 'ddc-title' }, th('closeTitle')),
                 h('div', { className: 'ddc-desc' }, desc)),
               h('div', { className: 'ddc-ctl' },
                 Switch2({
@@ -458,7 +526,8 @@
             return ctx.slots.register({
               name: 'sidebar.footer.action',
               id: 'dsh-desktop-companion-update',
-              label: function () { return '\u684c\u9762\u8bbe\u7f6e' },
+              label: function () { return t('label') },
+              locale: NS,
             }, function (props) {
               return h(UpdateButton, props)
             })
@@ -471,12 +540,13 @@
               name: 'settings.section',
               id: 'dsh-desktop-companion-update',
               order: 50,
-              label: function () { return STR.label },
+              label: function () { return t('label') },
+              locale: NS,
             }, function (props) {
               return h('div', { className: 'ddc-page' },
-                h(UpdateSection, props),
-                h(DiagnosticsSection, props),
-                h(DesktopSection, props))
+                h(UpdateSection, { t: props.t }),
+                h(DiagnosticsSection, { t: props.t }),
+                h(DesktopSection, { t: props.t }))
             })
           })
           return true
@@ -489,9 +559,10 @@
         }
       }
 
-      // inject 声明本插件要访问的宿主服务：不声明时访问 ctx.slots 会被
+      // inject 声明本插件要访问的宿主服务：不声明时访问 ctx.slots / ctx.locale 会被
       // cordis 以 "cannot get property without inject" 拒绝（dshmarket 同款）。
-      return { apply: apply, inject: ['slots'] }
+      // locale 用于客户端文案随 dsh 语言切换（中⇄英），见 dsh-client-locale 机制。
+      return { apply: apply, inject: ['slots', 'locale'] }
     },
   })
 })()
