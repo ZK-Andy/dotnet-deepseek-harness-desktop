@@ -45,6 +45,35 @@ public sealed class HarnessRuntimeHost : IDisposable
 
     private const string PortFileName = ".dsh-web-port";
 
+    /// <summary>dsh 子进程 PID 记忆文件名（落于当前 profile 目录）：宿主异常死亡时 dsh 成孤儿被
+    /// systemd 收养、继续占住首选端口（ADR self-update-exit-reaps-dsh-child，v0.3.11 实机
+    /// PPID=systemd --user 实证）。下次冷启动据此清扫残留——跨平台，不全靠 Linux 的 PDEATHSIG。</summary>
+    private const string PidFileName = ".dsh-pid";
+
+    /// <summary>上次 spawn 的 dsh PID 文件路径（按 profile 隔离，同端口文件）。</summary>
+    internal static string ResolvePidFilePath() =>
+        Path.Combine(ResolveDshHome(), "profiles", DesktopProfileName, PidFileName);
+
+    /// <summary>记录本次 spawn 的 dsh PID + 孤儿清扫 token（尽力而为：写失败仅导致下次冷启动清扫落空，端口漂移告警兜底）。</summary>
+    internal static void PersistSpawn(int pid, string token)
+    {
+        try
+        {
+            var path = ResolvePidFilePath();
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            File.WriteAllText(path, $"{pid}\n{token}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Services.HostLog.Write($"[host] 写 dsh PID 失败（下次冷启动清扫将落空）：{ex.Message}");
+        }
+    }
+
     /// <summary>端口状态文件路径（落于当前 profile 目录）。桌面端与 web 会话共享同一 DSH_HOME，
     /// home 根的全局端口记忆会让两类 dsh 实例互相抢占端口——v0.3.5 实机事故：自更新拉起后
     /// 与 web 会话在同一端口互顶，恢复屏循环直至用户重启电脑。按 profile 隔离后各记各的端口。</summary>
@@ -177,6 +206,19 @@ public sealed class HarnessRuntimeHost : IDisposable
     public async Task<Uri?> StartAsync(TimeSpan timeout, CancellationToken ct = default)
     {
         Stop();
+        // 冷启动（_port 未初始化）时清扫上次宿主异常死亡遗留的孤儿 dsh（ADR self-update-exit-reaps-dsh-child
+        // 缺口 B）。仅冷启动做：进程内崩溃恢复（RestartAsync）时 _port 已设、PID 记录已被本次 spawn
+        // 覆盖为新 token，重复清扫反而可能误评。token 复验不匹配/读不到一律不杀（零误杀）。
+        if (_port is null)
+        {
+            _log?.Invoke($"[host] 冷启动：清扫孤儿 dsh（{ResolvePidFilePath()}）");
+            OrphanDshReaper.Reap(
+                ResolvePidFilePath(),
+                OrphanDshReaper.ReadTokenLinux(),
+                OrphanDshReaper.KillTreeProcessTree(),
+                _log);
+        }
+
         var preferred = _port ?? TryLoadPersistedPort();
         Uri? url = await StartCoreAsync(preferred, timeout, ct);
         if (url is null && preferred is not null)
@@ -282,8 +324,17 @@ public sealed class HarnessRuntimeHost : IDisposable
             home,
             Path.PathSeparator);
 
+        // 孤儿清扫 token（ADR self-update-exit-reaps-dsh-child，缺口 B）：宿主异常死亡时 dsh 成
+        // systemd 收养孤儿占端口。给本次 spawn 的 dsh 注入唯一 token（经环境变量），并把 pid+token
+        // 落盘；下次冷启动清扫时靠 /proc/<pid>/environ 复验 token 才杀——PID 复用指向无关进程时
+        // 读不到本 token，绝不误杀。跨平台可测核心见 <see cref="OrphanDshReaper"/>。
+        var spawnToken = Guid.NewGuid().ToString("N");
+        psi.Environment["DSH_DESKTOP_SPAWN_TOKEN"] = spawnToken;
+
         _process = Process.Start(psi)
             ?? throw new InvalidOperationException("无法启动 dsh 进程。");
+        // spawn 成功立即落盘 pid+token：崩溃监督重启（RestartAsync）复用同一路径覆盖为新 token。
+        PersistSpawn(_process.Id, spawnToken);
         if (ct.IsCancellationRequested)
         {
             // 取消落在上方检查点与 spawn 之间的窄窗：立即整树回收再返回，
