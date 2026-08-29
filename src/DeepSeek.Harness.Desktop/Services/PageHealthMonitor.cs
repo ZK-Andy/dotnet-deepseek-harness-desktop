@@ -103,7 +103,7 @@ public sealed class PageHealthMonitor
 	private readonly CurrentWindowAccessor _window;
 	private readonly Action<string>? _log;
 	private readonly PageHealthTracker _tracker;
-	private readonly PageHealthRecovery? _recovery;
+	private readonly PageHealthRecovery _recovery;
 	private readonly Func<CancellationToken, ValueTask>? _reload;
 
 	/// <summary>最新健康快照（诊断包 state.txt 收录）；null=尚无有效探针。</summary>
@@ -113,8 +113,9 @@ public sealed class PageHealthMonitor
 	/// <param name="window">当前窗口访问器（读探针与导航共用）。</param>
 	/// <param name="log">日志输出（可选）。</param>
 	/// <param name="tracker">页面健康判定器（测试可注入；默认新实例）。</param>
-	/// <param name="recovery">有界恢复预算（测试可注入；null=纯观测）。</param>
-	/// <param name="reload">有界恢复的 reload 委托（null=纯观测，向后兼容阶段 1）。</param>
+	/// <param name="recovery">有界恢复预算（测试可注入；默认新实例）。</param>
+	/// <param name="reload">有界恢复的 reload 委托；null=纯观测（向后兼容阶段 1）。纯观测与否
+	/// 由 <paramref name="reload"/> 是否为 null 决定，预算对象与观测无关。</param>
 	public PageHealthMonitor(
 		CurrentWindowAccessor window,
 		Action<string>? log = null,
@@ -162,7 +163,6 @@ public sealed class PageHealthMonitor
 
 	private void Record(PageHealth sample, CancellationToken ct)
 	{
-		var previous = _tracker.Current;
 		var transition = _tracker.Record(sample);
 		if (sample != PageHealth.Unknown)
 		{
@@ -172,24 +172,25 @@ public sealed class PageHealthMonitor
 		if (transition is not null)
 		{
 			_log?.Invoke($"[health] {transition}（probes {_tracker.ProbeCount}）");
-			HandleTransition(previous, _tracker.Current, ct);
+			HandleTransition(_tracker.Current, ct);
 		}
 	}
 
-	private void HandleTransition(PageHealth previous, PageHealth current, CancellationToken ct)
+	/// <summary>Dead/Alive 迁移处的有界恢复裁决（internal 供接线级回归测试）。</summary>
+	internal void HandleTransition(PageHealth current, CancellationToken ct)
 	{
 		// Alive（含 Unknown→Alive 与 Dead→Alive 恢复）：复位有界恢复预算窗口——本次死区结束，
-		// 下次假活（新死区）可重新有界恢复。
+		// 下次假活（新死区）可重新有界恢复。无论是否配置 reload 都复位预算为无害幂等。
 		if (current == PageHealth.Alive)
 		{
-			_recovery?.MarkRecovered();
+			_recovery.MarkRecovered();
 			return;
 		}
 
-		// Dead 迁移：预算内触发一次有界 reload；耗尽转入观测-only（leave 自动恢复面）。
-		if (current != PageHealth.Dead || _reload is null || _recovery is null)
+		// Dead 迁移：未配置 reload 委托（纯观测）则无恢复动作。
+		if (current != PageHealth.Dead || _reload is null)
 		{
-			return; // 纯观测（未配置恢复）
+			return;
 		}
 
 		if (!_recovery.TryAllowRecovery())

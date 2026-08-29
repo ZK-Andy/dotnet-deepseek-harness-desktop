@@ -655,7 +655,14 @@ public static class Program
                     Services.RecoveryPageBuilder.BuildScript("运行时进程意外退出，正在自动重启", tail));
                 return ValueTask.CompletedTask;
             },
-            navigate: url => windowAccessor.Current.NavigateAsync(url),
+            // 崩溃恢复导航同步刷新 webUrl——健康监视器（有界恢复）靠它作为 reload 靶点；若
+            // 崩溃重启用新端口（ADDR child-process-reaping-port-drift 的端口漂移）而 webUrl
+            // 仍指向旧 URL，监视器的 reload 会打到已死的旧端口、甚至覆写刚恢复的导航。
+            navigate: url =>
+            {
+                webUrl = url;
+                return windowAccessor.Current.NavigateAsync(url);
+            },
             log: Services.HostLog.Write);
         // 引导期门控：宿主尚无 dsh 进程时 WaitForExitAsync 立即完成，监督器会空转进恢复循环
         // 并用恢复屏覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
@@ -730,8 +737,10 @@ public static class Program
         // 宿主只读探针轮询，不注入不依赖 companion——「dsh 在跑但页面空白」类事故（历史三起全靠
         // 人肉发现）从此有自动留痕；连续 Dead 达阈值后在预算内触发一次有界 reload，耗尽转观测-only，
         // 成功恢复复位预算（防误报引发无限重载循环，对齐参照 plugin_boot.rs 的有界刷新门控）。
-        // 首拍延迟 10s 避开启动空窗，探针异常按 Unknown 续跑。reload 委托捕获 webUrl（闭包变量），
-        // 引导完成后已指向 dsh web；webUrl 为空（引导未落定）时不触发恢复。
+        // 首拍延迟 10s 避开启动空窗，探针异常按 Unknown 续跑。reload 委托捕获 webUrl（闭包变量，
+        // 初始/引导完成/崩溃恢复导航三处都会刷新，见上文与 RuntimeSupervisor 的 navigate），
+        // 恒为当前 dsh web 靶点；webUrl 只有当引导未落定（dsh 未起）才为空，而该窗口页面是
+        // wwwroot 引导页（有内容 → Alive），不会进入 Dead 恢复分支——reload 委托的空态只是防御性兜底。
         healthMonitor = new Services.PageHealthMonitor(
             windowAccessor,
             Services.HostLog.Write,
