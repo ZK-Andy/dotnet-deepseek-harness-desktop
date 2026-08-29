@@ -62,6 +62,9 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
   if grep -qE "$PASS_RE" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$PASS_RE" "$LOG"; }; then
     grep -m1 -E "$PASS_RE" "$OUT" 2>/dev/null || grep -m1 -E "$PASS_RE" "$LOG"
     rc=0
+    # PASS 也打印壳输出尾部：壳何时/为何退出（如窗口创建即退出）需要证据在案
+    echo "--- 壳输出尾部（PASS 证据）---" >&2
+    tail -5 "$OUT" >&2 || true
     break
   fi
   if ! kill -0 "$SMOKE_PID" 2>/dev/null; then

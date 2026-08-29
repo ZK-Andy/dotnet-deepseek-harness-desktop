@@ -49,12 +49,21 @@ wait_url() { # $1=日志 $2=pid
 }
 
 smoke_deb() {
-  local deb="$1" log home pid rc
-  log="$(mktemp)"; home="$(mktemp -d)"
+  local deb="$1" log home pid rc apt_log
+  log="$(mktemp)"; home="$(mktemp -d)"; apt_log="$(mktemp)"
   echo "== [deb] 安装 $deb"
   sudo apt-get update -qq
-  # apt 直接吃绝对路径的 deb 并自动解 Depends（libwebkitgtk-6.0-4 / libadwaita-1-0 等）
-  sudo apt-get install -y "$deb" >/dev/null
+  # apt 直接吃绝对路径的 deb 并自动解 Depends（libwebkitgtk-6.0-4 / libadwaita-1-0 等）。
+  # DEBIAN_FRONTEND=noninteractive 防 debconf 交互挂死；stdout 留档（装包环节取证，
+  # 失败打尾部——与 rpm dnf 同款，曾有 >/dev/null 丢证据的盲区）
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$deb" >"$apt_log" 2>&1 || {
+    echo "error: [deb] apt 安装失败（Depends 解析或包损坏）。apt 输出尾部：" >&2
+    tail -30 "$apt_log" >&2
+    rm -rf "$home" "$log" "$apt_log"
+    return 1
+  }
+  tail -3 "$apt_log" >&2 || true
+  rm -f "$apt_log"
   echo "== [deb] 启动冒烟（等 dsh web URL 行或引导启动行）"
   set +e
   env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder \

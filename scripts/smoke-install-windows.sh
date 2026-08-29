@@ -45,11 +45,38 @@ cleanup() {
 trap cleanup EXIT
 
 echo "== 安装（静默，DIR=$WIN_DIR）"
-"$SETUP" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="$WIN_DIR"
-if [[ ! -f "$APP_EXE" ]]; then
-  echo "error: 安装后缺 $APP_NAME.exe（DIR=$INSTALL_DIR）" >&2
+# 安装环节取证：Inno 是 GUI 子系统，stdout 恒空——唯一诊断面是 /LOG 安装日志
+# （逐文件动作）。安装器后台运行 + 步级超时（首次实跑 88MB 闭包静默装曾 >7min
+# 无任何输出，用户终止——卡在哪一步只能靠 /LOG 回答）；超时即 dump 日志尾部 +
+# 进程表 fail loud，绝不静默挂死。
+WIN_LOG="$(cygpath -w "$HOME_DIR/install.log" 2>/dev/null || echo "$HOME_DIR/install.log")"
+INSTALL_WAIT="${INSTALL_WAIT_SECONDS:-300}"
+"$SETUP" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="$WIN_LOG" /DIR="$WIN_DIR" &
+setup_pid=$!
+install_done=0
+for _ in $(seq 1 "$INSTALL_WAIT"); do
+  if ! kill -0 "$setup_pid" 2>/dev/null; then install_done=1; break; fi
+  sleep 1
+done
+if [[ $install_done -eq 0 ]]; then
+  echo "error: [win] 安装器 ${INSTALL_WAIT}s 未退出（疑似卡住）。install.log 尾部：" >&2
+  tail -40 "$HOME_DIR/install.log" >&2 || true
+  echo "--- 进程表（setup/DeepSeek 相关）---" >&2
+  tasklist 2>/dev/null | grep -iE "setup|deepseek" >&2 || true
+  kill -9 "$setup_pid" 2>/dev/null || true
   exit 1
 fi
+set +e
+wait "$setup_pid"
+install_rc=$?
+set -e
+if [[ $install_rc -ne 0 || ! -f "$APP_EXE" ]]; then
+  echo "error: [win] 安装器退出码 $install_rc 或缺主程序。install.log 尾部：" >&2
+  tail -40 "$HOME_DIR/install.log" >&2 || true
+  exit 1
+fi
+echo "== 安装完成（install.log 尾部留痕）"
+tail -3 "$HOME_DIR/install.log" >&2
 echo "== 启动冒烟（等 dsh web URL 行或引导启动行，窗=${SMOKE_WAIT}s）"
 set +e
 env DSH_DESKTOP_DSH_HOME="$HOME_DIR" DEEPSEEK_API_KEY=placeholder \
@@ -61,6 +88,9 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
   if grep -qE "$PASS_RE" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$PASS_RE" "$LOG"; }; then
     grep -m1 -E "$PASS_RE" "$OUT" 2>/dev/null || grep -m1 -E "$PASS_RE" "$LOG"
     rc=0
+    # PASS 也打印壳输出尾部：壳何时/为何退出（如窗口创建即退出）需要证据在案
+    echo "--- 壳输出尾部（PASS 证据）---" >&2
+    tail -5 "$OUT" >&2 || true
     break
   fi
   if ! kill -0 "$pid" 2>/dev/null; then
