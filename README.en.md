@@ -90,9 +90,9 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 ```sh
 # prerequisites: .NET 10 SDK; on Linux: WebKitGTK
-# run — uses PATH dsh when available; otherwise the first-launch bootstrap
-# downloads the pinned Node and installs dsh from the registry (online-first)
-dotnet run --project src/DeepSeek.Harness.Desktop
+# run (dev environments must set DSH_DESKTOP_DEV=1 — isolated home + .dev app id;
+# without a PATH dsh the first-launch bootstrap runs, which needs network)
+DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 # tests (412/412)
 dotnet test dotnet-deepseek-harness-desktop.slnx

@@ -31,5 +31,7 @@ v0.2.0 发布暴露两个叠加缺陷，最终表现为「升级后设置页更�
 
 ## Related
 
+- [online-first 去捆绑运行时](../../proposed/architecture/2026-08-29-online-first-unbundled-runtime.md)（proposed）：**部分取代本篇**——闭包缓存签名面（Decision 第 1 条与 companionSha256/hashFiles 维度）随其批次二退役；minimumReleaseAge 定向重试与 host.log 落盘仍为现行行为。
+
 - `2026-08-22-companion-plugin-version-aware-upgrade`：比对逻辑本身行为正确（bundled==installed 不动），本次修的是 bundled 输入的新鲜度与 installed 缺失时的可达性。
 - `2026-08-22-self-update-relaunch-env-hardening`：同一安装链的上一轮加固（环境/会话归位）。

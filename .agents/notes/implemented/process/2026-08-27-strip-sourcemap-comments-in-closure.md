@@ -39,4 +39,7 @@ Status: implemented
 
 - [2026-08-20-trim-runtime-closure-per-arch](../simplification/2026-08-20-trim-runtime-closure-per-arch.md)：既有裁剪策略（本决定在其内追加一步）；已同步其「只剪三类」表述为含第四步。
 - [2026-08-23-bundle-closure-staleness-and-install-policy-retry](../bug-fix/2026-08-23-bundle-closure-staleness-and-install-policy-retry.md)：`hashFiles` cache-key 事实的权威出处（companionSha256 维度先例）；本决定沿用其机制语义并新增第六维。
+
+- [online-first 去捆绑运行时](../../proposed/architecture/2026-08-29-online-first-unbundled-runtime.md)（proposed）：**本篇宿主机器随其批次二退役**——正文机制仅对存量 tag 包（v0.3.12 及更早）有判别/复现价值，新包无闭包不再产生所述形态。
+
 - 上游待办（无关本仓交付物，记 HANDOFF 待办）：Ryn `LocalWebServer.HandleIpcEvalAsync` 缺 CORS 头（`/ipc/eval/` 响应不带 `Access-Control-Allow-Origin`），与本文档同一实机调试会话发现，拟提上游 PR。

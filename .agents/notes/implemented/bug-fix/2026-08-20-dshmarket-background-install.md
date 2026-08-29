@@ -31,3 +31,7 @@ Status: implemented
 - 收益：`0.1.11` 起 `dshmarket.tgz` 为真包（`497K`，`package/package.json name==dshmarket`），`staging --stage-only` 在假包/缺包时 `fail loud`；`allowBuilds` 自愈与 `app` 迁移使 `0.1.10` 存量 `profile` 在下次启动后台自动修复，无需用户手动 `dsh plugin add`；`bundles` 双保险确保市场可见。`0.1.12` 起安装后 `host.Stop()` 由 `RuntimeSupervisor` 重启并导航新 `URL`，首启后台安装即可即时出现市场，无需二次手动重启（`0.1.11` 仅 `Navigate` 需二次重启）。
 - 代价：`bundle-runtime-ci.sh` 依赖外网 `curl` 拉官方 `tgz`（离线回退为本地 `tar`，但官方包仍为首选）；`Program.cs` 新增 `System.Text.Json` 解析与工作区改写及重启逻辑，体积与复杂度微增。
 - 验证：`dotnet build/test 12/12`；`verify-adr-format/doc-budgets/md-links` 全绿；`bash scripts/bundle-runtime-ci.sh linux-x64` 产 `421M` 与 `dsh web: http://...` 自检 `OK`；`bash scripts/package-linux.sh --stage-only` 在正确 `tgz` 下通过、假包下 `fail loud`；`journalctl` 后台 `dsh plugin add exit=0` 且 `profiles/web/package.json bundles` 含 `dshmarket`，`v0.1.12` 额外验证 `host.Stop()→supervisor 重启→新 URL` 后市场可见。
+
+## Related
+
+- [online-first 去捆绑运行时](../../proposed/architecture/2026-08-29-online-first-unbundled-runtime.md)（proposed）：**tgz 供给面随其批次二退役**（`bundle-runtime-ci.sh` curl 官方包进闭包已删）；本篇的后台安装机制（allowBuilds 自愈 / app 迁移 / bundles 双保险 / 装后重启）仍为现行行为。

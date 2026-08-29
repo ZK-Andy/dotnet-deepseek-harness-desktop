@@ -34,3 +34,4 @@ Status: implemented
 ## Superseded by
 
 - [ryn-navigation-callbacks](../feature/2026-08-28-ryn-navigation-callbacks.md)：companion 本文所述的「外部链接 capture 拦截 + `__dshDesktopCompanionLinks`/`__ryn_externalLinkCatcher` 双旗守卫」已随 Ryn 0.32.0 迁到宿主导航层（`Ryn.Callbacks` 的 `WebViewNavigating`），companion `client.js` 不再注入 capture 点击监听。本文的 apply 契约、插件发布链路、`ExternalLinkPolicy`/`ExternalLinkCommandRouter` 仍有效；双旗守卫机制已退役。
+- [online-first 去捆绑运行时](../../proposed/architecture/2026-08-29-online-first-unbundled-runtime.md)（proposed）：本文描述的 tgz 供给链（`bundle-runtime-ci.sh` staging tar → 闭包内 `ResolveCompanionSpec`）随其批次二退役，改为 `build-companion-tgz.sh` 打包现打进安装器 `resources/plugins/`；apply 契约与版本感知升级机制不变。

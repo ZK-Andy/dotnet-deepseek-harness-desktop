@@ -48,7 +48,7 @@ Status: proposed
 
 1. **批次一 · 首启引导**：RuntimeBootstrap（检测/下载/安装状态机）+ Ryn 静态进度页 + 失败重试；此批闭包仍在，行为为「bundled 优先、缺失走引导」（✅ 2026-08-29 已落地）；
 2. **批次二 · 安装器与 CI 瘦身**：package-*.sh 停止捆绑闭包，删除清单逐项退役，preflight 同步；**必须先重构 `DevEnvironment.IsDevRuntime`**（吸收 [shared-home ADR 的在案挂账](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md)：其 dev 判定以「有无捆绑闭包」为信号之一，闭包消失 ⇒ 全部新装用户被判 dev → ApplicationId 带 .dev 后缀 + 随包插件安装被跳过。改为显式环境标记，不依赖闭包存在性探测）（✅ 2026-08-29 已落地：dev 判定改 `DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DEV=1` 显式标记；companion tgz 改由打包时现打进安装器 `resources/plugins/`（批次三的「安装器资源自带」提前落地，顺带修正 mac 资源非 exe 相对路径的潜伏布局 bug）；dshmarket 无本地来源时回退 `dshmarket@latest` registry 直装，钉版与巡检随之退役）；
-3. **批次三 · 插件面收口**：BundledPluginCatalog 收缩为 companion（dshmarket 条目随 registry 回退形态自然退役），companion tgz 供给已由批次二迁入安装器资源；
+3. **批次三 · 插件面收口**：BundledPluginCatalog 收缩为 companion（dshmarket 条目随 registry 回退形态自然退役），companion tgz 供给已由批次二迁入安装器资源；随条目同批退役其近死供给分支与守护测试——market 解析器的运行时目录 tgz/目录分支（唯一生成器 bundle-runtime-ci.sh 已删）、companion 的运行时目录 tgz/目录回退、测试 `RegistryFallbackSpec_WithoutNormalization_Skipped` / `ResolveCompanionSpec_UsesRuntimeTgz_WhenInstallerDirMissing` / `RealCatalog_ResolvesBothBundledPlugins_FromRuntimeLayout`，避免近死分支与负控钉子带进批次四成永久包袱；
 4. **批次四 · 文档与实机**：architecture/user-guide/README 双语同步，实机验收转交（首启下载全链、存量升级触发一次性下载、断网 fail loud 文案）。
 
 ### 对齐竞品踩坑的设计约束（dsh-tauri-desk 已付学费，2026-08-29 调研）
@@ -85,7 +85,7 @@ Status: proposed
 - **上游 breaking 变化直触达用户**：`@latest` 使上游缺陷无缓冲直达，靠 RuntimeVersionGate 底线（出问题立即抬）与自有回归观察兜底；
 - **首启体验新增失败面**：下载/安装/校验每步都可能失败，进度页状态机需完整错误呈现（对齐竞品 docs/testing/01-install/05 的失败场景清单）；步骤超时（StepTimeoutMinutes）已接线兜底网络停滞；
 - **SHA256 校验是防损坏而非信任锚**：摘要与文件同源同一 base url，`NodeDistBaseUrl`/`DshSpec` 可配置时校验无信任增量（能改配置的攻击者等权能改运行时目录）——本变更接受此边界，与自更新栈「release 侧复取哈希锚点」的强校验不同级；
-- **Node 钉版副本新增巡检盲区**：`RuntimeBootstrapOptions.NodeVersion`（appsettings）是与 bundle-runtime-ci.sh NODE_VERSION 并存的手工同步副本，check-pin-freshness.sh 未覆盖——批次二退役捆绑钉版前该漂移面存在（若批次二提前，先扩巡检副本集）；
+- **Node 钉版副本无巡检（显式接受）**：`RuntimeBootstrapOptions.NodeVersion`（appsettings）现为该版本号的唯一正典——巡检机器随批次二整体退役（原计划「先扩巡检副本集」作废：钉版面本身消失，无可巡检的副本集）。漂移影响面 = 新装下载的 Node 版本，由 `RuntimeVersionGate` 底线兜底；追平现役 LTS 属人工拍板。
 - **放弃的东西**：离线可用性（有意放弃）；闭包缓存带来的打包提速（由不再组装闭包直接取代）；随包种子的「逐字节等价」确定性（registry 安装天然等价）。
 
 ## Related

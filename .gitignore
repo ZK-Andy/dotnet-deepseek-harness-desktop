@@ -14,13 +14,14 @@ TestResults/
 # dotnet 首用/包的本地缓存（沙箱 /home 只读重定向）
 /.dotnet-cache/
 
-# 本地 pnpm store（scripts/bundle-runtime.sh 默认写到工作区；CI 由 actions/cache 缓存）
+# 本地工具缓存（pnpm store / npm cache / 引导实验产物等工作区态）
 /.cache/
 
 # Ryn 运行时生成的 saucer 会话缓存（SQLite 文件）
 /.saucer
 
-# 捆绑的 dsh 运行时（由 scripts/bundle-runtime.sh 生成，发布时组装）
+# dev/存量场景的运行时目录（闭包已退役：RuntimeLocator 仍按此路径探测，
+# 旧 checkout 残留或手工拼装会落这里，一律不入库）
 resources/runtime/
 
 # CodeGraph 本地代码索引（开发侧工具，codegraph init 生成）

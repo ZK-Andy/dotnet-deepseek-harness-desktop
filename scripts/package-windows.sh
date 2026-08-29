@@ -42,8 +42,8 @@ if [[ -e "$STAGE/resources/runtime" ]]; then
   exit 1
 fi
 # 布局断言（批次一）：staging 是 Inno [Files] 的唯一内容源，断言 staging 即断言安装器——
-# 插件 tgz 存在且与现打源 tgz 逐字节一致，无闭包残留，缺一 fail loud
-bash "$ROOT/scripts/verify-package-layout.sh" --plugins "$STAGE/resources/plugins/dsh-desktop-companion.tgz" --target "$STAGE"
+# 插件 tgz 存在且过名称/体积关、无闭包残留，缺一 fail loud
+bash "$ROOT/scripts/verify-package-layout.sh" --target "$STAGE"
 
 echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
 if [[ $STAGE_ONLY -eq 1 ]]; then

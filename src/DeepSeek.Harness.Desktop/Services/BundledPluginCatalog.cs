@@ -34,7 +34,8 @@ public static class BundledPluginCatalog
     /// 开启归化时改为入列 registry 归化条目（spec = 裸包名 → latest）；脏版本串 fail loud
     /// 记日志跳过该插件（升级与归化一并放弃）；spec 缺失（null）或解析器抛错按单插件跳过。
     /// spec 为 registry 串（online-first 无闭包形态的 <c>dshmarket@latest</c> 回退）时跳过版本
-    /// 比对——registry 串读不出本地版本，直接归化本地形态存量（版本跟随上游，@latest 即最新）。
+    /// 比对——registry 串读不出本地版本，直接归化本地形态存量（版本跟随上游，安装 spec
+    /// 恒为显式 @latest：裸名对既有依赖是 pnpm 幂等 no-op，显式 @latest 才强制改写）。
     /// <see cref="MarketInstallHelper.IsPathSpec"/> 为 false 的条目（归化/registry 回退串）
     /// 标记 <paramref name="pending"/> 第三元 <c>FromRegistry</c> = true，供消费点把
     /// registry 触碰条目与离线可靠的本地路径条目分组成 spawn 事务。

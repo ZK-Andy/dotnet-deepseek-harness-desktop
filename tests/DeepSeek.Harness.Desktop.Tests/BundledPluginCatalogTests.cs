@@ -107,7 +107,7 @@ public class BundledPluginCatalogTests
         var root = NewRoot();
         try
         {
-            // 闭包钉版固定 0.0.2；已装 0.0.2 视为同版、已装 0.0.3 高于闭包，均不得入列。
+            // 来源 spec 固定 0.0.2；已装 0.0.2 视为同版、已装 0.0.3 高于来源，均不得入列。
             var profile = NewProfile(root, "pkg-a");
             InstallCopy(profile, "pkg-a", installedVersion);
             var catalog = new[] { new BundledPluginCatalog.Entry("pkg-a", (_, _) => NewSpecDir(root, "pkg-a", "0.0.2")) };
@@ -231,7 +231,7 @@ public class BundledPluginCatalogTests
         var root = NewRoot();
         try
         {
-            // registry 形态已装 = 用户侧/registry 所有：即使闭包钉版远高于已装版本也不回拉
+            // registry 形态已装 = 用户侧/registry 所有：即使来源版本远高于已装也不回拉
             // （ADR bundled-plugin-registry-normalization——回拉会让市场的更新检查与自更新再次失效）。
             var profile = NewProfileWithSpecs(root, ("dshmarket", "^1.0.0"));
             InstallCopy(profile, "dshmarket", "1.0.0");
@@ -275,7 +275,7 @@ public class BundledPluginCatalogTests
         var root = NewRoot();
         try
         {
-            // 本地形态已装且闭包不比已装更新：归化为 registry 自管（spec = 裸包名 → latest）。
+            // 本地形态已装且来源不比已装更新：归化为 registry 自管（spec = 显式 @latest）。
             var profile = NewProfile(root, "dshmarket");
             InstallCopy(profile, "dshmarket", "0.0.2");
             var catalog = new[] { new BundledPluginCatalog.Entry("dshmarket", (_, _) => NewSpecDir(root, "dshmarket", "0.0.2"), NormalizeToRegistry: true) };
@@ -295,7 +295,7 @@ public class BundledPluginCatalogTests
         var root = NewRoot();
         try
         {
-            // 本地形态已装且闭包更高：先走随包 tgz 升级（离线路径），归化留给版本追平后的下次启动。
+            // 本地形态已装且来源更新：先走本地路径升级（离线路径），归化留给版本追平后的下次启动。
             var profile = NewProfile(root, "dshmarket");
             InstallCopy(profile, "dshmarket", "0.0.1");
             var bundledDir = NewSpecDir(root, "dshmarket", "0.0.2");
@@ -381,12 +381,12 @@ public class BundledPluginCatalogTests
     }
 
     [Fact]
-    public void RealCatalog_ResolvesBothBundledPlugins_FromClosureLayout()
+    public void RealCatalog_ResolvesBothBundledPlugins_FromRuntimeLayout()
     {
         var root = NewRoot();
         try
         {
-            // 真实清单 × 真实闭包布局：ResolveMarketSpec 要求 tgz >10K、ResolveCompanionSpec 要求 >1K。
+            // 真实清单 × 真实运行时目录布局：ResolveMarketSpec 要求 tgz >10K、ResolveCompanionSpec 要求 >1K。
             // 填充条目用随机 Base64——gzip 对高熵内容几乎不压缩，磁盘体积才真能过体积闸。
             TestTarGz.Write(
                 Path.Combine(root, "dshmarket.tgz"),

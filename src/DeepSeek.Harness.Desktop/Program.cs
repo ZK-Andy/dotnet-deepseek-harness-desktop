@@ -85,6 +85,13 @@ public static class Program
                 Services.HostLog.Write($"[host] 开发运行时：DSH_HOME 隔离到 {devHome}；ApplicationId 带 .dev 后缀，可与正式版并存");
             }
         }
+        else if (!isDev && bundledClosure is null &&
+                 DevEnvironment.DeriveDefaultDevHome(null, AppContext.BaseDirectory) is not null)
+        {
+            // dev 判定改显式标记后的唯一残留风险（R2 评审）：贡献者在仓库内跑却忘带
+            // DSH_DESKTOP_DEV=1 —— 判定按设计走打包产品语义，但值得一条 host.log 诊断指路
+            Services.HostLog.Write("[host] 疑似仓库内开发运行但未设 DSH_DESKTOP_DEV=1：按打包产品处理（共享真实 home，无 dev 隔离）");
+        }
 
         // hide-to-tray 唤回的最大化保持样本（ADR tray-recall-maximize-and-check-feedback）：
         // 隐藏前采样（1=最大化 / 0=非 / -1=未知），唤回路径按判据消费后在 finally 无条件清零。

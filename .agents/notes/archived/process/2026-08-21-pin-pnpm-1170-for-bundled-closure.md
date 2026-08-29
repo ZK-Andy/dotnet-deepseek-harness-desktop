@@ -1,6 +1,7 @@
 # Agent Note: pin-pnpm-1170-for-bundled-closure
 
 Status: implemented
+Archived: 2026-08-29
 
 ## Problem
 

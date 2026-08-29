@@ -20,10 +20,13 @@ APP_BIN="/usr/bin/deepseek-harness-desktop"
 # 等待启动日志出现 [host] dsh web = 的公共循环。进程探活用 kill -0 <pid>：
 # 安装后的入口是小写符号链接（/usr/bin/deepseek-harness-desktop），pgrep 按
 # 大写二进制名匹配会立刻误判「进程已死」。进程退出后再补扫一次日志，兜住
-# 「URL 已打出但进程随即退出」的窗口。等待窗 = 引导链（npm 装树分钟级）+ 启动，
-# 600×1s；SMOKE_TIMEOUT_SECONDS 可覆写（本地快速验证用）。
-SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-600}"
-APP_TIMEOUT="${SMOKE_TIMEOUT_SECONDS:-620}"
+# 「URL 已打出但进程随即退出」的窗口。
+# 等待窗与引导步超时强耦合：RuntimeBootstrapOptions.StepTimeoutMinutes（默认 10 分钟）
+# 是**每步**上限（Node 下载/解压/npm 装树各一），等待窗必须 ≥ 步数×步超时+启动余量
+# ——rpm 容器无 node 走全链（下载+装树 = 2 步），故默认 2×600+120=1320s。
+# 引导步数或 StepTimeoutMinutes 变化时必须同批重算。SMOKE_WAIT_SECONDS 可覆写。
+SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-1320}"
+APP_TIMEOUT=$((SMOKE_WAIT + 20))
 wait_url() { # $1=日志 $2=pid
   local log="$1" pid="$2"
   for _ in $(seq 1 "$SMOKE_WAIT"); do

@@ -1,6 +1,7 @@
 # Agent Note: freshness-pin-patrol
 
 Status: implemented
+Archived: 2026-08-29
 
 ## Problem
 

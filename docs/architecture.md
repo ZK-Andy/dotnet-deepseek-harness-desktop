@@ -44,12 +44,12 @@
 
 * 随包插件清单：`dshmarket`（市场，registry 有上游）与 `dsh-desktop-companion`（桌面伴生：更新/诊断/设置 UI 与托盘事件中继，仅随包分发）——成员登记于 `Services/BundledPluginCatalog`，清单是唯一扩展点。
 * `Program.cs` 后台任务（`Task.Delay 3s`，不阻塞首启窗口）：
-  0. 检测到 `DSH_DESKTOP_RUNTIME_DIR`（开发运行时覆盖，打包产品永不设置）即整体跳过——开发运行的默认 `DSH_HOME` 与已装正式版共享，防止把工作区 `file:` 依赖写进共享 profile。
-  1. `BundledPluginCatalog.AssemblePending` 清单逐项组装待装清单：未装即装（随包种子）；已装按 profile dependencies 的 spec 形态分流——registry 形态（非 `file:`/`link:`）**完全放手**跳过（与自装等价，即便闭包钉版更高也不回拉）；本地形态则 `PluginVersionCheck` 比对随包 tgz 内 `package/package.json` 的 version 与 profile `node_modules` 副本 version，闭包更新即入列（离线路径），同版或更高且清单项开启归化（dshmarket 开、companion 关）时改为入列 **registry 归化条目**（spec = `裸包名@latest`——裸名对既有依赖是 pnpm 幂等 no-op，显式 @latest 才强制改写 spec；装后与自装完全等价；失败下次启动重试，幂等）（改清单内插件必须 bump version，否则不触发升级；spec 缺失、解析器异常或脏版本串按单插件记日志跳过；见 ADR `implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog` + `implemented/feature/2026-08-29-bundled-plugin-registry-normalization`）。
+  0. dev 运行（`DSH_DESKTOP_RUNTIME_DIR` 或 `DSH_DESKTOP_DEV=1` 显式标记，打包产品两者皆无）且 DSH_HOME 为显式覆盖指回真实 home 时整体跳过——防把 dev 依赖写进共享 profile；自动隔离（`.cache/dev-home`）的 dev home 与正式版无涉，正常安装。
+  1. `BundledPluginCatalog.AssemblePending` 清单逐项组装待装清单：未装即装（本地来源 file: / registry 回退 `@latest`）；已装按 profile dependencies 的 spec 形态分流——registry 形态（非 `file:`/`link:`）**完全放手**跳过（与自装等价，即便来源版本更高也不回拉）；本地形态则 `PluginVersionCheck` 比对来源 tgz 内 `package/package.json` 的 version 与 profile `node_modules` 副本 version，来源更新即入列（离线路径），同版或更高且清单项开启归化（dshmarket 开、companion 关）时改为入列 **registry 归化条目**（spec = `裸包名@latest`——裸名对既有依赖是 pnpm 幂等 no-op，显式 @latest 才强制改写 spec；装后与自装完全等价；失败下次启动重试，幂等）（改清单内插件必须 bump version，否则不触发升级；spec 缺失、解析器异常或脏版本串按单插件记日志跳过；见 ADR `implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog` + `implemented/feature/2026-08-29-bundled-plugin-registry-normalization`）。
   1b. 清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`。
   2. `EnsureWorkspaceAllowBuilds` 把 `pnpm-workspace.yaml` 的 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）置 `true`。
   3. spec 解析：市场走 `ResolveMarketSpec`（运行时目录 tgz >10K → 目录 → 无本地来源回退 `dshmarket@latest` registry 直装，无钉版）；伴生走 `ResolveCompanionSpec`（安装器自带 `resources/plugins` tgz `>1K` → 运行时目录 tgz → 目录 → 无即跳过，无 registry 分发面）。
-  4. 分组 spawn `bundled node dsh/lib/bin.js plugin --profile desktop add <spec…>` 多包安装（注入 `DSH_HOME/.pnpm-store`）：本地路径 spec（随包 tgz/目录，离线可靠）先装、registry 触碰条目（归化/registry 回退首装）后装——pnpm 单事务多 spec 一败俱败，离线时归化失败不得拖累随包种子安装；`exit 0` 后对每项 `EnsureBundlesContainsAsync(pkg)` 兜底，并补回桌面必需 bundle（`dsh-base`/`dsh-web-app`）。
+  4. 分组 spawn `bundled node dsh/lib/bin.js plugin --profile desktop add <spec…>` 多包安装（注入 `DSH_HOME/.pnpm-store`）：本地路径 spec（随包 tgz/目录，离线可靠）先装、registry 触碰条目（归化/registry 回退首装）后装——pnpm 单事务多 spec 一败俱败，离线时归化失败不得拖累本地路径安装；`exit 0` 后对每项 `EnsureBundlesContainsAsync(pkg)` 兜底，并补回桌面必需 bundle（`dsh-base`/`dsh-web-app`）。
   5. `EvaluateRecovery + host.Stop()` 交 `RuntimeSupervisor` 重启并导航新 `URL`。
 * `dsh` 的 `reconcilePlugins` 在 `plugin add` 后自动把包名追加到 `dsh.profile.bundles`（`pilot-harness` 同款）。
 
@@ -72,11 +72,11 @@
 * online-first（ADR `proposed/architecture/2026-08-29-online-first-unbundled-runtime`）：安装器**不捆绑运行时闭包**，只带壳（publish 全量，实测 ~26-36MB 压缩后）+ 安装器自带插件资源 `resources/plugins/dsh-desktop-companion.tgz`（`scripts/build-companion-tgz.sh` 打包时从仓库源码现打并校验）；运行时由首启引导安装（见「运行时定位与启动」）。
 * `scripts/package-linux.sh`：`dotnet publish -r linux-x64|linux-arm64`（arm64 自 Ryn.Interop 0.30.4 供给 linux-arm64 native 起恢复发布，2026-08-25）→ `staging` 校验插件资源、拦闭包残留 → `deb (Depends: libwebkitgtk-6.0-4, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4, BuildArch x86_64/aarch64)`。
 * `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → 单一安装产物：mac `dmg`（`hdiutil`，含 `.app`）/ win `exe` 安装器（`Inno Setup`/`NSIS`/`7z SFX`，`…-setup.exe`），文件名含 `…_macos-*/…_windows-*` 标识，签名占位（`codesign`/`signtool` 待证书）。**不单独产出便携 zip**（对齐 pilot-harness 每平台单产物的思路）。
-* 安装器资源一律 **exe 目录相对**（`AppContext.BaseDirectory/resources/plugins`，Linux `usr/lib/<app>` / mac `Contents/MacOS` / win 安装根三平台同构）；`verify-package-layout.sh` 断言无闭包残留 + 插件 tgz 与现打源内容一致；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。
+* 安装器资源一律 **exe 目录相对**（`AppContext.BaseDirectory/resources/plugins`，Linux `usr/lib/<app>` / mac `Contents/MacOS` / win 安装根三平台同构）；`verify-package-layout.sh` 断言无闭包残留 + 插件 tgz 名称/体积关；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。
 
 ## 配置与扩展
 
 * `appsettings.json`：`DevTools:false`（`DSH_DEVTOOLS=1` 开启）；`Update` 节（自更新仓库/超时/目录）。
 * `ryn.json`：`identifier/capabilities`。
 * 扩展点：`DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DSH_HOME` / `DSH_DESKTOP_UPDATE_FORCE`（dev 下显式开启自更新）覆盖。
-* **开发运行时隔离**：设置 `DSH_DESKTOP_RUNTIME_DIR` 即进入 dev 模式——ApplicationId 自动加 `.dev` 后缀（与已装正式版可同时开窗，避开 GTK 同 id 单实例互斥），DSH_HOME 未显式覆盖时自动指向 `<仓库>/.cache/dev-home`；显式指回真实 home 时随包插件安装自动跳过防串扰。
+* **开发运行时隔离**：`DSH_DESKTOP_RUNTIME_DIR` 或 `DSH_DESKTOP_DEV=1` 显式标记即进入 dev 模式（判定不探测闭包存在性）——ApplicationId 自动加 `.dev` 后缀（与已装正式版可同时开窗，避开 GTK 同 id 单实例互斥），DSH_HOME 未显式覆盖时自动指向 `<仓库>/.cache/dev-home`；显式指回真实 home 时随包插件安装自动跳过防串扰。

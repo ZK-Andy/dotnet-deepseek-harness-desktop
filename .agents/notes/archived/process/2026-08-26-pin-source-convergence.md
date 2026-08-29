@@ -1,6 +1,7 @@
 # Agent Note: pin-source-convergence
 
 Status: implemented
+Archived: 2026-08-29
 
 ## Problem
 

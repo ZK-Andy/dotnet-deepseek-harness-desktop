@@ -90,8 +90,8 @@
 
 ```sh
 # 前置：.NET 10 SDK；Linux 需 WebKitGTK
-# 运行——有 PATH dsh 用之；没有则首启引导下载钉版 Node 并经 registry 安装 dsh（online-first）
-dotnet run --project src/DeepSeek.Harness.Desktop
+# 运行（开发环境必须带 DSH_DESKTOP_DEV=1——dev 隔离 home 与单实例后缀；无 PATH dsh 时走首启引导，需网络）
+DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 # 测试（412/412）
 dotnet test dotnet-deepseek-harness-desktop.slnx

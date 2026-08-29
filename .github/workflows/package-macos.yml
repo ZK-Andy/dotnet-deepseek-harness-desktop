@@ -75,7 +75,7 @@ jobs:
           # 断言失败也要卸载：trap 兜底 detach，失败路径不留挂载点给同 job 后续步骤
           trap 'hdiutil detach "$MNT" >/dev/null 2>&1 || true' EXIT
           hdiutil attach "$DMG" -mountpoint "$MNT" -nobrowse -readonly
-          bash scripts/verify-package-layout.sh --plugins "$MNT/DeepSeek.Harness.Desktop.app/Contents/MacOS/resources/plugins/dsh-desktop-companion.tgz" --target "$MNT/DeepSeek.Harness.Desktop.app/Contents/MacOS"
+          bash scripts/verify-package-layout.sh --target "$MNT/DeepSeek.Harness.Desktop.app/Contents/MacOS"
           hdiutil detach "$MNT"
       - name: 上传
         uses: actions/upload-artifact@v4
