@@ -6,7 +6,7 @@
 
 <p align="center"><a href="README.md">中文</a> · <strong>English</strong></p>
 
-<p align="center"><strong>A .NET desktop client for DeepSeek Harness — bundled full runtime, download and run.</strong></p>
+<p align="center"><strong>A .NET desktop client for DeepSeek Harness — online-first: downloads and prepares the runtime on first launch, no manual setup.</strong></p>
 
 <p align="center">
   <a href="#features">Features</a> ·
@@ -31,7 +31,7 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell bundles the complete DeepSeek Harness runtime, so end users need **no separate Node.js or DeepSeek Harness installation** — download and run.
+A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell does **not** bundle the DeepSeek Harness runtime — end users need **no separate Node.js or DeepSeek Harness installation**; the first launch downloads and prepares the runtime (needs network), then it's ready to use.
 
 ## Features
 
@@ -55,7 +55,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 | `macOS` | `arm64` / `x64` | `dmg` |
 | `Windows` | `x64` | `exe` installer (`…-setup.exe`) |
 
-> **Preview notice**: this project is in an early preview stage and may ship **breaking changes** (data directory layout, configuration format, bundled component versions). **Cross-version data compatibility is not guaranteed**; back up important sessions and configuration before upgrading.
+> **Preview notice**: this project is in an early preview stage and may ship **breaking changes** (data directory layout, configuration format, runtime component versions). **Cross-version data compatibility is not guaranteed**; back up important sessions and configuration before upgrading.
 >
 > **Unsigned note**: this is an **open-source project and we do not do paid signing**, so releases are **unsigned**. On macOS, if Gatekeeper shows "unidentified developer", right-click → Open, or System Settings → Privacy & Security → Open Anyway. On Windows, if SmartScreen shows "unknown publisher", choose More info → Run anyway. For dev/internal use, `SELF_SIGN=1` signs locally to clear warnings; see [docs/development.md](docs/development.md).
 >

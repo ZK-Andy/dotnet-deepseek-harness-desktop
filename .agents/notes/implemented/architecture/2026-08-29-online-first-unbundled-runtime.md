@@ -1,6 +1,6 @@
 # Agent Note: online-first 去捆绑运行时——安装器瘦身 + 首启引导安装
 
-Status: proposed
+Status: implemented
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
@@ -15,11 +15,11 @@ Status: proposed
 
 用户反思定性：**离线本身是过度设计**——dsh 的价值在于连模型，用模型的场景必有网络。同赛道产品 dsh-tauri-desk/deepseek-harness-desktop（Tauri 版，两周 1361 星）以「5MB 安装器 + 首启联网下载」验证了该路线的可行性与传播力。本变更将 2026-08-23 共享 home ADR（「生态一等公民」）未走完的另一半走完：数据与运行时都归还生态，壳只管生命周期。
 
-## Proposal
+## Decision
 
 **策略转向：联网优先（online-first），离线从设计约束中删除。**
 
-### 新首启形态
+### 首启形态
 
 1. 安装器只带壳 + 自有插件（companion tgz），体积降至 10MB 级；
 2. 首启引导：壳启动时检测运行时（本机 Node ≥ RuntimeVersionGate 底线则复用，否则下载钉版 Node zip 到 app-data，SHA256 校验）→ `npm install @deepseek-ai/dsh@latest`（npm 随 Node 分发，零额外依赖）→ registry 安装 dshmarket；
@@ -31,7 +31,7 @@ Status: proposed
 - dsh：`@latest`（跟 npm `latest` dist-tag）。上游现习惯 rc 直发 latest（实证：latest = 0.1.1-rc.2），预发行版可触达；若上游改用 `--tag next` 则自动隔离（同样是保护）。内核升级与壳发版解耦，`ERR_PNPM_NO_MATCHING_VERSION` 类等待链消失。`RuntimeVersionGate` 底线保留兜底；
 - Node：钉版 zip（现役 24.20.0），来源 nodejs.org dist，下载带 SHA256 校验与重试。
 
-### 插件随包范围收口（配合转向）
+### 插件随包范围收口
 
 - **自有插件随包**：仅 companion（file: 自带安装，不涉网）；
 - **dshmarket 降级**：种子机制对新增插件失去必要（唯一理由是离线首装），改为首启经 registry 安装；存量用户归化迁移逻辑保留（v0.3.12 存量已归化，自愈路径继续有效）；
@@ -44,12 +44,12 @@ Status: proposed
 - `MarketInstallHelper` 随包种子安装路径（保留归化迁移）；
 - 相关测试夹具（freshness clean/drift/inconsistent、闭包 staging 校验）与 cookbook 对应判别条目随代码退役。
 
-### 实施批次
+### 实施批次（已全部落地）
 
-1. **批次一 · 首启引导**：RuntimeBootstrap（检测/下载/安装状态机）+ Ryn 静态进度页 + 失败重试；此批闭包仍在，行为为「bundled 优先、缺失走引导」（✅ 2026-08-29 已落地）；
-2. **批次二 · 安装器与 CI 瘦身**：package-*.sh 停止捆绑闭包，删除清单逐项退役，preflight 同步；**必须先重构 `DevEnvironment.IsDevRuntime`**（吸收 [shared-home ADR 的在案挂账](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md)：其 dev 判定以「有无捆绑闭包」为信号之一，闭包消失 ⇒ 全部新装用户被判 dev → ApplicationId 带 .dev 后缀 + 随包插件安装被跳过。改为显式环境标记，不依赖闭包存在性探测）（✅ 2026-08-29 已落地：dev 判定改 `DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DEV=1` 显式标记；companion tgz 改由打包时现打进安装器 `resources/plugins/`（批次三的「安装器资源自带」提前落地，顺带修正 mac 资源非 exe 相对路径的潜伏布局 bug）；dshmarket 无本地来源时回退 `dshmarket@latest` registry 直装，钉版与巡检随之退役）；
-3. **批次三 · 插件面收口**：BundledPluginCatalog 收缩为 companion（dshmarket 条目随 registry 回退形态自然退役），companion tgz 供给已由批次二迁入安装器资源；随条目同批退役其近死供给分支与守护测试——market 解析器的运行时目录 tgz/目录分支（唯一生成器 bundle-runtime-ci.sh 已删）、companion 的运行时目录 tgz/目录回退、测试 `RegistryFallbackSpec_WithoutNormalization_Skipped` / `ResolveCompanionSpec_UsesRuntimeTgz_WhenInstallerDirMissing` / `RealCatalog_ResolvesBothBundledPlugins_FromRuntimeLayout`，避免近死分支与负控钉子带进批次四成永久包袱。**「dshmarket 迁引导」**（§新启形态 2 的 registry 安装）与 **config reconcile**（见下方 #177 约束）一并并入本批落地（✅ 2026-08-29 已落地，见 `implemented/feature/2026-08-29-plugin-surface-consolidation`）；
-4. **批次四 · 文档与实机**：architecture/user-guide/README 双语同步，实机验收转交（首启下载全链、存量升级触发一次性下载、断网 fail loud 文案）。
+1. **批次一 · 首启引导**：RuntimeBootstrap（检测/下载/安装状态机）+ Ryn 静态进度页 + 失败重试；此批闭包仍在，行为为「bundled 优先、缺失走引导」（✅ 2026-08-29）；
+2. **批次二 · 安装器与 CI 瘦身**：package-*.sh 停止捆绑闭包，删除清单逐项退役，preflight 同步；**先重构 `DevEnvironment.IsDevRuntime`**（吸收 shared-home ADR 的在案挂账：其 dev 判定以「有无捆绑闭包」为信号之一，闭包消失 ⇒ 全部新装用户被判 dev → ApplicationId 带 .dev 后缀 + 随包插件安装被跳过。改为显式环境标记，不依赖闭包存在性探测）（✅ 2026-08-29：dev 判定改 `DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DEV=1` 显式标记；companion tgz 改由打包时现打进安装器 `resources/plugins/`；dshmarket 无本地来源时回退 `dshmarket@latest` registry 直装，钉版与巡检随之退役）；
+3. **批次三 · 插件面收口**：BundledPluginCatalog 收缩为 companion，market 解析器运行时目录近死分支与守护测试退役，dshmarket 迁引导（`EnsureMarketFromRegistryAsync`），启动前 config reconcile（`ReconcileProfile`），Profile 写盘原子化（✅ 2026-08-29，见 `implemented/feature/2026-08-29-plugin-surface-consolidation`）；
+4. **批次四 · 文档与实机**：architecture / user-guide / README 双语同步 + cookbook 存量语义条目收口，实机验收转交清单见下（✅ 2026-08-29；本篇 turn proposed→implemented）。
 
 ### 对齐竞品踩坑的设计约束（dsh-tauri-desk 已付学费，2026-08-29 调研）
 
@@ -65,6 +65,17 @@ Status: proposed
 - **npm 装 dsh 依赖树（454 包）堆峰值 ~1.7-3GB**：默认 V8 堆上限（≈物理内存一半）在 8G 内存机器会 abort（exit 134），显式 `NODE_OPTIONS=--max-old-space-size=3072` 强制积极 GC 可稳过（仅注入 npm-cli 调用，不污染 dsh 运行时堆行为）；
 - **Node 发行包布局 ≠ 捆绑闭包布局**：发行包为 `bin/node` + `lib/node_modules/npm`，闭包探测形态为根级 `node(.exe)` + 平台相关 npm 模块树——解压后必须归一（搬 `bin/node`→根、npm 树→平台相对路径、删 include/share 等杂物），否则 RuntimeLocator 永远探测不到。
 
+### 实机验收转交（批次四）
+
+本地无各平台真机，以下实测项随下次发版交社区真机验收（不能以 CI 冒烟替代）：
+
+1. **首启下载全链**：新装（无捆绑、无 PATH dsh）在有网环境首启 → 检测/复用 Node 或下载钉版 Node → 安装 dsh → registry 安装 dshmarket → 进入主界面，全程进度页可见、每步校验产物。
+2. **存量升级触发一次性下载**：v0.3.12 或更早升级到新版，安装器替换目录后 `resources/runtime` 消失 → 首启检测缺失 → 触发一次性下载；无迁移代码，共享 home（~/.dsh）数据不受影响。
+3. **断网 fail loud 文案**：断网首启 → 引导在对应步骤 fail loud，进度页显示失败原因+可重试（步骤级超时兜底），不白屏死循环；联网后重试成功。
+4. **minimal 桌面 libadwaita 依赖链**：无 GNOME 全家桶的 minimal Linux 装 deb/rpm → 因 Depends/Requires 含 `libadwaita-1-0` / `libadwaita-1.so.0()(64bit)` 正常启动（冒烟曾证 minimal 缺它会 Run 即 DllNotFound）。
+5. **dshmarket registry 直装**：首启后市场以 registry 形态就位（desktop profile `dependencies.dshmarket` spec 为 `^x.y.z`），与用户自装完全等价；断网时 best-effort 失败，联网后重试。
+6. **首启后市场在设置卡出更新行**：registry 形态下市场随 upstream 发版在设置卡 self-managed 区出更新行（区别旧 file: 形态永不提示更新）。
+
 ## Alternatives considered
 
 - **保留离线优先不动**：维护成本持续累积（CI 闭包机器、钉版巡检、bump 发版耦合），且服务的场景（无网用模型）被证明不存在。落败。
@@ -72,18 +83,20 @@ Status: proposed
 - **Node 一律下载不复用本机**：避免版本漂移，但对已有 Node 的开发者多一次 30MB+ 下载，与竞品实践不符。落败；本机 ≥ 底线则复用。
 - **dshmarket 仍随包**：离线首装出市场是唯一论据，随离线约束删除而失效；随包种子机制（归化、钉版、巡检）整体退役更简洁。落败；存量迁移逻辑保留。
 
-## Acceptance criteria
+## Consequences
 
-- 新装：安装器不含 `resources/runtime`，首启在有网环境完成 Node/dsh/dshmarket 安装并进入主界面，全过程进度页可见、失败 fail loud 可重试；
-- 存量升级：升级后首启触发一次性运行时下载，无迁移代码，dsh 数据（共享 home）不受影响；
-- CI：打包流水线不再组装/缓存闭包，打包时长显著下降；freshness 巡检退役；
-- 壳发版与 dsh 内核升级解耦：上游 publish 后已装用户不经壳发版即可获取新内核。
+- 新装：安装器不含 `resources/runtime`（仅壳 + 安装器自带插件资源），首启在有网环境完成 Node/dsh/dshmarket 安装并进入主界面，全过程进度页可见、失败 fail loud 可重试。
+- 存量升级：升级后首启触发一次性运行时下载，无迁移代码，dsh 数据（共享 home）不受影响。
+- CI：打包流水线不再组装/缓存闭包；freshness 巡检、钉版、闭包瘦身机器随批次二/三整体退役；打包时长显著下降（不再有闭包组装与缓存键）。
+- 壳发版与 dsh 内核升级解耦：dsh 跟 npm `latest`，上游 publish 后已装用户不经壳发版即可获取新内核。
+- dev 判定改显式标记（`DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DEV=1`），不探测闭包存在性——online-first 后打包新装同样无闭包，旧探测信号已失效（shared-home ADR 在案挂账由其批次二收口）。
+- 测试：`RuntimeBootstrap`/`RuntimeLocator`/`ReconcileProfile`/`EnsureMarketFromRegistry` 等新增回归；闭包/freshness/钉版相关夹具与守护测试退役。README 双语徽章、功能清单、架构图、目录、终端用户文档同步 online-first 表述。
 
 ## Risks
 
 - **npm 可达性**（弱网/镜像场景）：首装可能慢或失败——进度页重试 + 文档给镜像配置指引；竞品同路线已被市场验证；
 - **上游 breaking 变化直触达用户**：`@latest` 使上游缺陷无缓冲直达，靠 RuntimeVersionGate 底线（出问题立即抬）与自有回归观察兜底；
-- **首启体验新增失败面**：下载/安装/校验每步都可能失败，进度页状态机需完整错误呈现（对齐竞品 docs/testing/01-install/05 的失败场景清单）；步骤超时（StepTimeoutMinutes）已接线兜底网络停滞；
+- **首启体验新增失败面**：下载/安装/校验每步都可能失败，进度页状态机需完整错误呈现；步骤超时（StepTimeoutMinutes）已接线兜底网络停滞；
 - **SHA256 校验是防损坏而非信任锚**：摘要与文件同源同一 base url，`NodeDistBaseUrl`/`DshSpec` 可配置时校验无信任增量（能改配置的攻击者等权能改运行时目录）——本变更接受此边界，与自更新栈「release 侧复取哈希锚点」的强校验不同级；
 - **Node 钉版副本无巡检（显式接受）**：`RuntimeBootstrapOptions.NodeVersion`（appsettings）现为该版本号的唯一正典——巡检机器随批次二整体退役（原计划「先扩巡检副本集」作废：钉版面本身消失，无可巡检的副本集）。漂移影响面 = 新装下载的 Node 版本，由 `RuntimeVersionGate` 底线兜底；追平现役 LTS 属人工拍板。
 - **放弃的东西**：离线可用性（有意放弃）；闭包缓存带来的打包提速（由不再组装闭包直接取代）；随包种子的「逐字节等价」确定性（registry 安装天然等价）。
@@ -94,3 +107,6 @@ Status: proposed
 - [bundled-plugin-registry-normalization](../../implemented/feature/2026-08-29-bundled-plugin-registry-normalization.md)（implemented）：本 ADR 取代其「随包 = 种子保离线可靠」前提与「MARKET_VERSION 钉版语义（freshness 巡检职责不变）」一条（批次二/三退役）；归化**语义**（显式 `dshmarket@latest` 改写存量）由批次三引导注册表安装承接（`AssemblePending` 的归化机制已随批次三退役）。
 - [ryn-shell-bundled-dsh-runtime](../../implemented/architecture/2026-08-20-ryn-shell-bundled-dsh-runtime.md)（implemented）：本 ADR 直接转向其「完整运行时打包」决定，捆绑闭包与「零下载确定性」差异化表述随 offline 约束删除而退役。
 - [companion-plugin-version-aware-upgrade](../../implemented/feature/2026-08-22-companion-plugin-version-aware-upgrade.md)（implemented）：随包种子退役后 tgz 供给渠道变化见批次三；版本比对机制不变。
+- [dev-runtime-isolation](../../implemented/process/2026-08-22-dev-runtime-isolation.md)（implemented）：本 ADR 取代其 dev 判定条件「定位不到捆绑闭包」的原始形态（批次二改显式标记）；隔离内容不变。
+- [artifact-verification-chain](../../implemented/process/2026-08-24-artifact-verification-chain.md)（implemented）：本 ADR 移除其闭包图静态校验一环（唯一消费者 `bundle-runtime-ci.sh` 已删）；依赖树完整性改由 npm registry 安装原子性把关。
+- [plugin-surface-consolidation](../../implemented/feature/2026-08-29-plugin-surface-consolidation.md)（implemented）：本篇的批次三——插件面收口 + config reconcile + dshmarket 迁引导。

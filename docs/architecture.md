@@ -1,6 +1,6 @@
 # Architecture
 
-> 现状。`Ryn` 壳 + online-first 运行时引导（无捆绑闭包）+ 崩溃监督 + 插件后台安装 + pilot-harness 打包（ADR `proposed/architecture/2026-08-29-online-first-unbundled-runtime`）。
+> 现状。`Ryn` 壳 + online-first 运行时引导（无捆绑闭包）+ 崩溃监督 + 首启引导装 dshmarket + 随包 companion 装配 + 安装器瘦身打包（ADR `implemented/architecture/2026-08-29-online-first-unbundled-runtime`）。
 
 ## 概览
 
@@ -22,11 +22,11 @@
 ## 壳与窗口
 
 * `src/DeepSeek.Harness.Desktop/Program.cs`：`HarnessRuntimeHost.StartAsync(60s)` → `dsh web:` → `RynApplication.CreateBuilder().ConfigureOptions(opts.Url = webUrl)`。`ryn.json:identifier=io.github.ZK-Andy.dotnet-deepseek-harness-desktop` 与 `StartupWMClass` 同值，`Wayland/X11` 任务栏正确关联；`icon.png` 进 `AppContext.BaseDirectory` 并上 `hicolor/pixmaps`。
-* `Services/CurrentWindowAccessor` 供 `RuntimeSupervisor` 与后台随包插件任务做 `EvaluateJavaScriptAsync`/`NavigateAsync`。
+* `CurrentWindowAccessor`（Ryn.Core）供 `RuntimeSupervisor`、`PageHealthMonitor` 与后台随包插件任务做 `EvaluateJavaScriptAsync`/`NavigateAsync`。
 
 ## 运行时定位与启动
 
-* **online-first 运行时来源**（ADR `proposed/architecture/2026-08-29-online-first-unbundled-runtime`）：安装器不携带运行时；`RuntimeLocator.TryLocateRuntimeDirectory` 按「捆绑目录（`DSH_DESKTOP_RUNTIME_DIR` / `resources/runtime`，dev/存量场景）→ 引导下载目录 `~/.dsh-desktop/runtime`」解析。捆绑与 PATH `dsh` 均缺失时进入**首启引导**：`RuntimeBootstrap` 状态机复用本机 Node（≥底线主版本）或下载钉版 Node（nodejs.org dist + SHA256 校验 + 解压归一），`npm install @deepseek-ai/dsh@latest`，每步完成即验证产物，失败进度页可见、可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
+* **online-first 运行时来源**（ADR `implemented/architecture/2026-08-29-online-first-unbundled-runtime`）：安装器不携带运行时；`RuntimeLocator.TryLocateRuntimeDirectory` 按「捆绑目录（`DSH_DESKTOP_RUNTIME_DIR` / `resources/runtime`，dev/存量场景）→ 引导下载目录 `~/.dsh-desktop/runtime`」解析。捆绑与 PATH `dsh` 均缺失时进入**首启引导**：`RuntimeBootstrap` 状态机复用本机 Node（≥底线主版本）或下载钉版 Node（nodejs.org dist + SHA256 校验 + 解压归一），`npm install @deepseek-ai/dsh@latest`，每步完成即验证产物，失败进度页可见、可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
 * `Services/RuntimeLocator`：`TryLocateBundled` 判 `node(.exe)` + `node_modules/@deepseek-ai/dsh/lib/bin.js`（捆绑与引导下载同布局）。
 * `Services/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`，占位回退 `0`。
 * `Services/HarnessUrlParser`：单行解析 `dsh web: http://127.0.0.1:<port>`。
@@ -43,7 +43,7 @@
 ## 插件装配与引导
 
 * 随包插件清单：`dsh-desktop-companion`（桌面伴生：更新/诊断/设置 UI 与托盘事件中继，仅随包分发）——成员登记于 `Services/BundledPluginCatalog`，清单是唯一扩展点；dshmarket 不再随包，改由首启引导经 registry 安装（见下）。
-* 首启引导（`RuntimeBootstrap`，online-first）：无捆绑运行时且无 PATH dsh 时，在 spawn dsh **之前**完成「检测/复用本机 Node → 下载钉版 Node（SHA256 校验）→ npm 安装 `@deepseek-ai/dsh@latest` → 验证产物」；随后经 `dsh plugin add dshmarket@latest` 注册表安装市场（插件与核心一次就位，不再「后台 3s 装→重启」）。失败 best-effort 只告警不阻断首启。
+* 首启引导（`RuntimeBootstrap`，online-first）：无捆绑运行时且无 PATH dsh 时，在 spawn dsh **之前**完成「检测/复用本机 Node → 下载钉版 Node（SHA256 校验）→ npm 安装 `@deepseek-ai/dsh@latest` → 验证产物」，全程进度页可见、失败可重试（`desktop.bootstrap.retry`）。引导落定后由 `MarketInstallHelper.EnsureMarketFromRegistryAsync` 经 dsh CLI 子命令 `plugin add dshmarket@latest` 注册表安装市场（插件与核心一次就位；best-effort 失败只告警不阻断首启，联网即可重试）。
 * 启动前 reconcile（`DesktopProfileBootstrap.ReconcileProfile`）：扫描 desktop profile，移除解析目标已不存在的本地 `file:`/`link:` bundle 引用（退役随包种子属之），对齐 dsh-tauri-desk #177——不允许不可解析 bundle 引用残留。
 * `Program.cs` 后台任务（`Task.Delay 3s`，不阻塞首启窗口）：
   0. dev 运行（`DSH_DESKTOP_RUNTIME_DIR` 或 `DSH_DESKTOP_DEV=1` 显式标记，打包产品两者皆无）且 DSH_HOME 为显式覆盖指回真实 home 时整体跳过——防把 dev 依赖写进共享 profile；自动隔离（`.cache/dev-home`）的 dev home 与正式版无涉，正常安装。
@@ -71,8 +71,8 @@
 
 ## 打包
 
-* online-first（ADR `proposed/architecture/2026-08-29-online-first-unbundled-runtime`）：安装器**不捆绑运行时闭包**，只带壳（publish 全量，实测 ~26-36MB 压缩后）+ 安装器自带插件资源 `resources/plugins/dsh-desktop-companion.tgz`（`scripts/build-companion-tgz.sh` 打包时从仓库源码现打并校验）；运行时由首启引导安装（见「运行时定位与启动」）。
-* `scripts/package-linux.sh`：`dotnet publish -r linux-x64|linux-arm64`（arm64 自 Ryn.Interop 0.30.4 供给 linux-arm64 native 起恢复发布，2026-08-25）→ `staging` 校验插件资源、拦闭包残留 → `deb (Depends: libwebkitgtk-6.0-4, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4, BuildArch x86_64/aarch64)`。
+* online-first（ADR `implemented/architecture/2026-08-29-online-first-unbundled-runtime`）：安装器**不捆绑运行时闭包**，只带壳（publish 全量，实测 ~26-36MB 压缩后）+ 安装器自带插件资源 `resources/plugins/dsh-desktop-companion.tgz`（`scripts/build-companion-tgz.sh` 打包时从仓库源码现打并校验）；运行时由首启引导安装（见「运行时定位与启动」）。
+* `scripts/package-linux.sh`：`dotnet publish -r linux-x64|linux-arm64`（arm64 自 Ryn.Interop 0.30.4 供给 linux-arm64 native 起恢复发布，2026-08-25）→ `staging` 现打 companion tgz 进 `resources/plugins`、拦 `resources/runtime` 闭包残留（fail loud）→ `deb (Depends: libwebkitgtk-6.0-4, libadwaita-1-0, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4()(64bit), libadwaita-1.so.0()(64bit), BuildArch x86_64/aarch64)`。
 * `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → 单一安装产物：mac `dmg`（`hdiutil`，含 `.app`）/ win `exe` 安装器（`Inno Setup`/`NSIS`/`7z SFX`，`…-setup.exe`），文件名含 `…_macos-*/…_windows-*` 标识，签名占位（`codesign`/`signtool` 待证书）。**不单独产出便携 zip**（对齐 pilot-harness 每平台单产物的思路）。
 * 安装器资源一律 **exe 目录相对**（`AppContext.BaseDirectory/resources/plugins`，Linux `usr/lib/<app>` / mac `Contents/MacOS` / win 安装根三平台同构）；`verify-package-layout.sh` 断言无闭包残留 + 插件 tgz 名称/体积关；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。
 

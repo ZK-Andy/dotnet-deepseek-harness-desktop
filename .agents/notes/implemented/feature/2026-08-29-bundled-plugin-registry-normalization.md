@@ -33,4 +33,4 @@ Status: implemented
 
 - `2026-08-25-bundled-plugin-version-aware-catalog`：本笔记修订其 Consequences 中「重装把 registry spec 拉回 `file:`」一条——registry 形态现改为完全放手；未装即装/闭包更新即升的机制三件套原样保留。
 - `2026-08-20-dshmarket-background-install`：随包 tgz 种子的来源（离线首启可靠），本笔记在其之上叠加归化层，不取代。
-- [online-first 去捆绑运行时](../../proposed/architecture/2026-08-29-online-first-unbundled-runtime.md)（proposed）：**部分取代本篇**——「随包 = 种子保离线可靠」前提与「MARKET_VERSION 钉版语义（freshness 巡检职责不变）」一条随批次二/三退役；归化迁移机制与存量自愈路径被该 ADR 显式保留。
+- [online-first 去捆绑运行时](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：**部分取代本篇**——「随包 = 种子保离线可靠」前提与「MARKET_VERSION 钉版语义（freshness 巡检职责不变）」一条随批次二/三退役；归化迁移机制与存量自愈路径被该 ADR 显式保留。

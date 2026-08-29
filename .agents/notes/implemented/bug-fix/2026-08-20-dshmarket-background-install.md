@@ -34,4 +34,4 @@ Status: implemented
 
 ## Related
 
-- [online-first 去捆绑运行时](../../proposed/architecture/2026-08-29-online-first-unbundled-runtime.md)（proposed）：**tgz 供给面随其批次二退役**（`bundle-runtime-ci.sh` curl 官方包进闭包已删）；本篇的后台安装机制（allowBuilds 自愈 / app 迁移 / bundles 双保险 / 装后重启）仍为现行行为。
+- [online-first 去捆绑运行时](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：**tgz 供给面随其批次二退役**（`bundle-runtime-ci.sh` curl 官方包进闭包已删）；本篇的后台安装机制（allowBuilds 自愈 / app 迁移 / bundles 双保险 / 装后重启）仍为现行行为。

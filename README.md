@@ -6,7 +6,7 @@
 
 <p align="center"><a href="README.en.md">English</a> · <strong>中文</strong></p>
 
-<p align="center"><strong>DeepSeek Harness（MIT）的 .NET 桌面客户端——内置完整运行时，下载即用。</strong></p>
+<p align="center"><strong>DeepSeek Harness（MIT）的 .NET 桌面客户端——online-first：首启自动下载并准备运行时，无需手动安装。</strong></p>
 
 <p align="center">
   <a href="#功能">功能</a> ·
@@ -31,7 +31,7 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-**[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端**，基于 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 原生 WebView 框架）。桌面壳**内置完整 DeepSeek Harness 运行时**——终端用户**无需单独安装 Node / DeepSeek Harness**，下载即开即用。
+**[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端**，基于 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 原生 WebView 框架）。桌面壳**不捆绑 DeepSeek Harness 运行时**——终端用户**无需单独安装 Node / DeepSeek Harness**，首次启动自动下载并准备运行时（需联网），之后即开即用。
 
 ## 功能
 
@@ -55,7 +55,7 @@
 | `macOS` | `arm64` / `x64` | `dmg` |
 | `Windows` | `x64` | `exe` 安装器（`…-setup.exe`） |
 
-> **预览版提示**：项目处于早期预览阶段，可能存在破坏性变更（数据目录布局、配置格式、内置组件版本等），**不保证跨版本数据兼容**；升级前请自行备份重要会话与配置。
+> **预览版提示**：项目处于早期预览阶段，可能存在破坏性变更（数据目录布局、配置格式、运行时组件版本等），**不保证跨版本数据兼容**；升级前请自行备份重要会话与配置。
 >
 > **未签名说明**：本项目**开源、不做付费签名**，发布包**未签名**。macOS 首次打开若见 Gatekeeper「来自身份不明的开发者」→ 右键「打开」或 系统设置 → 隐私与安全性 →「仍要打开」；Windows 若见 SmartScreen「未知发布者」→「更多信息」→「仍要运行」。开发/内部可用 `SELF_SIGN=1` 自签消除本机告警，用法见 [docs/development.md](docs/development.md)。
 >

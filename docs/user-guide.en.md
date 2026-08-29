@@ -13,7 +13,7 @@ Grab the installer for your platform from [GitHub Releases](https://github.com/Z
 | Debian/Ubuntu x64 / arm64 | `..._linux-amd64.deb` / `..._linux-arm64.deb` |
 | Fedora/RHEL x86_64 / aarch64 | `..._linux-x86_64.rpm` / `..._linux-aarch64.rpm` |
 
-**No Node.js or command-line tools required** — the full DeepSeek Harness runtime is bundled; download and run.
+**No separate Node.js or DeepSeek Harness installation required** — the shell downloads and prepares the runtime on **first launch** (pinned Node download, dsh install from the registry). This needs **network**; progress is visible and failures are retryable.
 
 ## Install
 
@@ -25,7 +25,7 @@ Unsigned builds: this project is open source and ships without paid code signing
 
 ## First Launch
 
-1. The shell starts the bundled runtime automatically and loads the UI (when no bundled runtime or PATH dsh exists, the first launch bootstraps: downloads/reuses Node and installs dsh and the plugin market, visible on a progress page; retryable on offline failure).
+1. The shell auto-prepares and starts the DeepSeek Harness runtime, then loads the UI. On the first launch (no bundled runtime and no PATH dsh) it bootstraps: detects/reuses a local Node, otherwise downloads the pinned Node and installs dsh and the plugin market — progress visible throughout; **retry the progress page on offline/failure** (per-step timeout).
 2. Configure your own model API credentials in the in-app model settings.
 3. During bootstrap the plugin market (from the registry) and the bundled desktop companion plugin are installed, and the UI then loads. The bundled companion follows the shell version: after a shell update, the first launch brings any companion plugin older than the bundled copy up to date (logged in `host.log`).
 4. Once ready, browse the plugin market and install community plugins.
@@ -64,7 +64,7 @@ Runtime logs are written to `logs/host.log` inside that directory.
 
 ## Troubleshooting
 
-1. **Blank window or endless "reconnecting"**: check the tail of `logs/host.log`.
+1. **First launch stuck on download/install** (offline or slow mirror): the progress page shows the failing step and is retryable — confirm network and retry (per-step timeout). **Blank window or endless "reconnecting"**: check the tail of `logs/host.log`.
 2. **Window "disappeared" after closing**: the close button hides the app to the system tray (it keeps running); pick "Show window" from the tray menu to bring it back, or quit fully via the tray menu. On desktops without a tray, the app logs a fallback and closing exits for real.
 3. **Update fails**: signature verification failures refuse to install (by design); re-download the latest installer and install over the old one.
 4. **Plugin market missing**: a slow network can stall the first-run install; restarting the app usually self-heals.

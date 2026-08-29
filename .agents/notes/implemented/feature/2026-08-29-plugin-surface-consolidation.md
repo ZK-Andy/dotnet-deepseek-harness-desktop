@@ -32,7 +32,7 @@ online-first 去捆绑转向（`online-first-unbundled-runtime`）批次二已�
 
 ## Related
 
-- [online-first-unbundled-runtime](../../proposed/architecture/2026-08-29-online-first-unbundled-runtime.md)（proposed）：本篇为其实施批次三——插件面收口 + config reconcile + dshmarket 迁引导。
+- [online-first-unbundled-runtime](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：本篇为其实施批次三——插件面收口 + config reconcile + dshmarket 迁引导。
 - [bundled-plugin-registry-normalization](../feature/2026-08-29-bundled-plugin-registry-normalization.md)（implemented）：本篇退役其「随包 = 种子」前提与后台装配归化路径；归化语义（`dshmarket@latest` 显式改写存量）由引导注册表安装承接。
 - [bundled-plugin-version-aware-catalog](../feature/2026-08-25-bundled-plugin-version-aware-catalog.md)（implemented）：清单机制本体保留（companion 版本感知升级不因收口改变）；随包目录收缩后其多插件通用语义不再被消费。
 - [desktop-shell-companion-plugin](../process/2026-08-21-desktop-shell-companion-plugin.md)（implemented）：companion 随包供给与安装器资源通道的既有决定，本篇不动。

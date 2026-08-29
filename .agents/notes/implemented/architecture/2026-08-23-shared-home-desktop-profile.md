@@ -43,4 +43,4 @@ Status: implemented
 
 - [dev 运行时隔离](../process/2026-08-22-dev-runtime-isolation.md)：dev 隔离守卫保留，本决定仅改变产品态 home；其判定所依赖的捆绑闭包信号在本形态下不受影响。
 - [companion 版本感知升级](../feature/2026-08-22-companion-plugin-version-aware-upgrade.md)：比对逻辑不变；作用对象改为 `profiles/desktop`，tgz 供给渠道不变（随壳本地 tgz）。
-- [online-first 去捆绑运行时](../../proposed/architecture/2026-08-29-online-first-unbundled-runtime.md)（proposed）：**部分取代本篇**——「闭包保留为预览期形态、去捆绑是远期选项」条款与 dev 判定挂账由该 ADR 接管（去捆绑启动后 `IsDevRuntime` 信号重构为前置义务）；共享 home / desktop profile 决定不变。
+- [online-first 去捆绑运行时](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：**部分取代本篇**——「闭包保留为预览期形态、去捆绑是远期选项」条款与 dev 判定挂账由该 ADR 接管（去捆绑启动后 `IsDevRuntime` 信号重构为前置义务）；共享 home / desktop profile 决定不变。

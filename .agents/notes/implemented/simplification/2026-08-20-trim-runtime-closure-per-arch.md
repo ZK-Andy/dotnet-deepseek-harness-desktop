@@ -31,4 +31,4 @@ Status: implemented
 
 ## Related
 
-- [online-first 去捆绑运行时](../../proposed/architecture/2026-08-29-online-first-unbundled-runtime.md)（proposed）：**本篇宿主机器（闭包组装/裁剪）随其批次二退役**——「盲删 TRIM」教训是未来任何构建产物裁剪的重引入护栏；机制仅对存量 tag 包有判别价值。
+- [online-first 去捆绑运行时](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：**本篇宿主机器（闭包组装/裁剪）随其批次二退役**——「盲删 TRIM」教训是未来任何构建产物裁剪的重引入护栏；机制仅对存量 tag 包有判别价值。
