@@ -20,12 +20,13 @@ Status: proposed
 
 按参照机制对齐 5 项（排序即实施批次），全部遵守既有 ADR 与质量门。
 
-### 批次一 · companion 改 spawn 前安装（internal 时序对齐）
+### 批次一 · companion 改 spawn 前安装（internal 时序对齐）✅
 
 - 把「随包插件装配」从 dsh 起来后的后台 3s 任务，迁到 **spawn dsh 之前**：确定运行时（bundled/PATH-dsh 走 `host.StartAsync` 前；引导路径在 `BindRuntime` + `EnsureMarketFromRegistry` 后、`StartAsync` 前）→ `AssemblePending` → 有 pending 即 `plugin add` → 校验/补写 bundles → 再 `StartAsync`。
 - 消除首启「先起 dsh 无 companion → 装 → 重启」的二次启动；首启 dsh 第一次即带 full 插件集。
 - 保留 dev 隔离守卫（显式覆盖 home 时跳过）；`restartTriggered`/恢复覆写路径随之退役（不再需要安装后重启）。
 - 失败语义：companion 安装 best-effort 仍只告警不阻断（缺 companion 不阻 dsh 起动），但改为 spawn 前尝试、失败留痕。
+- ✅ 批次一已落地（2026-08-29，提交 `cfa4113`）：`MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync` + 双路径 spawn 前接线，测试 389/389、覆盖率 52.3%。
 
 ### 批次二 · 首启插件引导页（preinstall UX 对齐）
 
