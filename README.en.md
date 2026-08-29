@@ -25,8 +25,8 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-455%2F455-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-54.0%25-yellowgreen" alt="coverage"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-463%2F463-brightgreen" alt="tests"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-53.7%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
@@ -39,6 +39,7 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 - ⌨️ **Terminal commands (CLI shim registration)** — once the runtime is ready the shell registers `dsh`/`pnpm` onto the user's `PATH` (Windows `%LOCALAPPDATA%\deepseek-harness\bin` + idempotent `HKCU\Environment\Path` merge; macOS/Linux `~/.local/bin` + idempotent shell-rc block), so `dsh`/`pnpm` are usable straight from the terminal. The shim prefers a compatible local node and falls back to the desktop runtime; it never overwrites a user's own same-named command.
 - 🔒 **Native, lightweight shell** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
 - 🔄 **Crash self-heal & session return** — the shell supervises the runtime process: crash → recovery screen (cause / stderr tail + export diagnostics + exit) → auto-restart → same window back to a new URL; **the port stays stable** so the Web UI origin (and page-level session memory) survives — **return to your previous conversation after a crash or restart**.
+- 💓 **Page-health watch (fake-alive watchdog)** — a host-side, read-only probe polls for the "dsh process running but page blank" fake-alive state (no script injection, no reliance on the bundled companion surviving); after consecutive blanks cross a threshold it triggers one bounded reload for self-heal, exhausts back to observation, and resets its budget on successful recovery — preventing an unlimited reload loop on false positives.
 - ⬆️ **Self-update** — background check at launch plus a manual check under Settings → Desktop Settings; one-click install & restart when a new version is found (`SHA256`-verified packages; `macOS` guides manual update). See [Auto-Update](#auto-update) below.
 - 🧩 **Plugin market + version-aware upgrades + registry self-management** — `dsh-market` is installed from the registry via the first-launch "Plugin setup" step (recommended chip + install/skip + streaming logs) into the dedicated desktop profile (`~/.dsh/profiles/desktop`), brought up together with the dsh kernel on confirm (online; skip to install later from the in-app market). The bundled desktop companion plugin upgrades by version awareness — when the bundled copy is newer it upgrades automatically and never downgrades. The market is registry-shaped (fully equivalent to a self-install: new upstream releases show up in the market without waiting for a desktop release). `1200+` plugins are searchable and one-click installable.
 - 🖥️ **System tray** — closing the window minimizes to the tray by default (switchable in Settings), with a tray menu for show main window / check for updates / quit (zh/en following the dsh language); quitting runs an orderly shutdown so the runtime child process is reaped cleanly.
@@ -95,7 +96,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 # without a PATH dsh the first-launch bootstrap runs, which needs network)
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# tests (455/455)
+# tests (463/463)
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # webview devtools (default off)
@@ -108,7 +109,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program + Services/ (runtime supervision, self-update, system tray, single-instance activation, diagnostics)
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 455/455
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 463/463
 ├── scripts/                        # gates + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```
