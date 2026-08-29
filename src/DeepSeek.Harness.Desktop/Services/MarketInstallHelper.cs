@@ -4,9 +4,9 @@ using System.Text.Json.Nodes;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
-/// <summary>随包插件后台安装的纯逻辑（可单测）：检测、迁移、workspace 修正、spec 解析、bundles 补写。</summary>
-/// <remarks>随包插件当前有两项：<c>dshmarket</c>（市场，registry 有上游）与 <c>dsh-desktop-companion</c>
-/// （桌面伴生，仅随包分发、无 registry 回退）。</remarks>
+/// <summary>随包插件后台安装的纯逻辑（可单测）：检测、workspace 修正、spec 解析、bundles 补写。</summary>
+/// <remarks>随包插件当前仅 <c>dsh-desktop-companion</c>（桌面伴生，安装器资源供给、无 registry 回退）；
+/// dshmarket 改由首启引导经 registry 安装（见 RuntimeBootstrap，online-first 批次三）。</remarks>
 public static class MarketInstallHelper
 {
     /// <summary>精确检测插件是否已就位：<c>dependencies.&lt;pkg&gt;</c> 存在且 <c>dsh.profile.bundles</c> 含 <c>&lt;pkg&gt;</c>。</summary>
@@ -114,48 +114,12 @@ public static class MarketInstallHelper
         }
     }
 
-    /// <summary>解析市场安装的 <c>spec</c>：优先校验过的 <c>tgz &gt;10K</c>（dev 闭包场景），否则目录；
-    /// 都不可得回退 <c>dshmarket@latest</c>（registry 直装，跟随上游 dist-tag——online-first 去捆绑后
-    /// 打包形态不携带市场种子，钉版与巡检随 ADR online-first-unbundled-runtime 退役）。</summary>
-    public static string ResolveMarketSpec(string runtimeDir)
-    {
-        var tgz = Path.Combine(runtimeDir, "dshmarket.tgz");
-        if (File.Exists(tgz))
-        {
-            try
-            {
-                var fi = new FileInfo(tgz);
-                if (fi.Length > 10 * 1024)
-                {
-                    return tgz;
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // tgz 状态探测失败（恰被清理/无权限）：按「tgz 不可用」继续走目录/registry 回退
-            }
-        }
-
-        var dir = Path.Combine(runtimeDir, "node_modules", "dshmarket");
-        if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, "package.json")))
-        {
-            return dir;
-        }
-
-        return MarketRegistrySpec;
-    }
-
-    /// <summary>dshmarket 的 registry 直装 spec（@latest 与归化同形：pnpm 对既有依赖裸名 add 幂等，
-    /// 显式 @latest 才会重新解析 registry）。无版本钉版——市场内核跟随上游，freshness 巡检随之退役。</summary>
-    public const string MarketRegistrySpec = "dshmarket@latest";
-
-    /// <summary>解析桌面伴生插件的安装 <c>spec</c>：安装器资源 tgz（&gt;1K 防假包）→ 随包运行时目录 tgz
-    /// → 闭包内目录；无 registry 分发面。<paramref name="installerPluginsDir"/> 是安装器自带的
-    /// resources/plugins（online-first 后打包形态唯一供给源；runtime 目录供给服务 dev 闭包场景）。</summary>
+    /// <summary>解析桌面伴生插件的安装 <c>spec</c>：安装器资源 tgz（&gt;1K 防假包）；
+    /// 无 registry 分发面，运行时目录种子随 online-first 退役（ADR online-first-unbundled-runtime 批次三）。</summary>
+    /// <param name="installerPluginsDir">安装器自带的 resources/plugins（打包形态唯一供给源）。</param>
     /// <returns>可安装的 spec；<see langword="null"/> 表示无任何来源（如开发用 PATH dsh），调用方跳过。</returns>
-    public static string? ResolveCompanionSpec(string runtimeDir, string? installerPluginsDir)
+    public static string? ResolveCompanionSpec(string _runtimeDir, string? installerPluginsDir)
     {
-        // 安装器资源优先：打包形态的唯一供给源（resources/plugins，与运行时闭包无关）
         if (!string.IsNullOrWhiteSpace(installerPluginsDir))
         {
             var packaged = Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz");
@@ -163,18 +127,6 @@ public static class MarketInstallHelper
             {
                 return packaged;
             }
-        }
-
-        var tgz = Path.Combine(runtimeDir, "dsh-desktop-companion.tgz");
-        if (IsUsableTgz(tgz, minBytes: 1024))
-        {
-            return tgz;
-        }
-
-        var dir = Path.Combine(runtimeDir, "node_modules", "dsh-desktop-companion");
-        if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, "package.json")))
-        {
-            return dir;
         }
 
         return null;
@@ -198,44 +150,6 @@ public static class MarketInstallHelper
             return false;
         }
     }
-
-    /// <summary>读 profile <c>dependencies</c> 中 <paramref name="packageName"/> 的 spec 原始值。
-    /// 未装、值非字符串或文件不可读返回 <see langword="null"/>（与 <see cref="IsBundleInstalled"/> 同款 fail-safe）。</summary>
-    public static string? ReadDependencySpec(string profilePkg, string packageName)
-    {
-        try
-        {
-            if (!File.Exists(profilePkg))
-            {
-                return null;
-            }
-
-            var root = JsonNode.Parse(File.ReadAllText(profilePkg));
-            return root?["dependencies"] is JsonObject deps &&
-                deps[packageName] is JsonValue value &&
-                value.TryGetValue<string>(out var spec)
-                ? spec
-                : null;
-        }
-        catch (Exception ex) when (ex is JsonException or IOException or InvalidOperationException)
-        {
-            // 检测失败按「形态未知」处理（fail-safe，不阻断启动链）：文件损坏/不可读/结构意外
-            return null;
-        }
-    }
-
-    /// <summary>spec 是否为本地形态（<c>file:</c>/<c>link:</c> 前缀，大小写不敏感）——由本机路径安装、
-    /// 非 registry 所有。registry 形态（semver/range/别名等）一律 <see langword="false"/>；null 视为非本地。
-    /// 用于 profile dependencies 存量值的形态判定。</summary>
-    public static bool IsLocalSpec(string? spec) =>
-        spec is not null && (spec.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ||
-            spec.StartsWith("link:", StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>spec 是否为本地路径形态（含路径分隔符，含 <c>file:</c>/<c>link:</c> 前缀）——
-    /// 区别于裸包名与 registry 串。待装清单的 spec 来自解析器（绝对路径/目录）或归化（裸包名），
-    /// 据此分组成 spawn 事务。</summary>
-    public static bool IsPathSpec(string? spec) =>
-        !string.IsNullOrEmpty(spec) && (spec.Contains('/') || spec.Contains('\\'));
 
     /// <summary>确保 <c>dsh.profile.bundles</c> 含 <paramref name="packageName"/>，缺则追加并写回。</summary>
     /// <returns>是否发生写回。</returns>

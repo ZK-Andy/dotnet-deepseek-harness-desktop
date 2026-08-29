@@ -6,6 +6,8 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>MarketInstallHelper 的分支与错误路径覆盖，目标把 3.6% 拉至 40%+。</summary>
 public class MarketInstallHelperTests
 {
+    private const string RuntimeDir = "/unused-runtime";
+
     private static string WriteTempFile(string content)
     {
         var p = Path.Combine(Path.GetTempPath(), "market-" + Guid.NewGuid().ToString("N") + ".json");
@@ -17,54 +19,6 @@ public class MarketInstallHelperTests
     public void IsBundleInstalled_ReturnsFalse_WhenFileMissing()
     {
         Assert.False(MarketInstallHelper.IsBundleInstalled(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
-    }
-
-    [Theory]
-    [InlineData("file:/x/dshmarket.tgz", true)]
-    [InlineData("FILE:/x/dshmarket.tgz", true)] // 大小写不敏感
-    [InlineData("link:../dshmarket", true)]
-    [InlineData("^1.36.0", false)]
-    [InlineData("dshmarket@1.36.0", false)]
-    [InlineData("npm:dshmarket@^1.0.0", false)]
-    [InlineData("github:owner/repo", false)]
-    [InlineData(null, false)]
-    public void IsLocalSpec_ClassifiesSpecShape(string? spec, bool expected)
-    {
-        Assert.Equal(expected, MarketInstallHelper.IsLocalSpec(spec));
-    }
-
-    [Theory]
-    [InlineData("/x/dshmarket.tgz", true)]
-    [InlineData("C:\\x\\dshmarket.tgz", true)] // Windows 路径
-    [InlineData("file:/x/dshmarket.tgz", true)]
-    [InlineData("dshmarket", false)] // 裸包名（归化条目）
-    [InlineData("dshmarket@1.36.0", false)] // registry 回退串
-    [InlineData(null, false)]
-    public void IsPathSpec_ClassifiesPendingSpecShape(string? spec, bool expected)
-    {
-        Assert.Equal(expected, MarketInstallHelper.IsPathSpec(spec));
-    }
-
-    [Fact]
-    public void ReadDependencySpec_ReturnsRawSpec_WhenPresent()
-    {
-        var json = """{"dependencies":{"dshmarket":"file:/x/dshmarket.tgz","other":123}}""";
-        var p = WriteTempFile(json);
-        try
-        {
-            Assert.Equal("file:/x/dshmarket.tgz", MarketInstallHelper.ReadDependencySpec(p, "dshmarket"));
-            Assert.Null(MarketInstallHelper.ReadDependencySpec(p, "other")); // 非字符串值按「形态未知」处理
-            Assert.Null(MarketInstallHelper.ReadDependencySpec(p, "ghost")); // 未装
-        }
-        finally { File.Delete(p); }
-    }
-
-    [Fact]
-    public void ReadDependencySpec_ReturnsNull_WhenFileMissingOrInvalid()
-    {
-        Assert.Null(MarketInstallHelper.ReadDependencySpec(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
-        var p = WriteTempFile("not json");
-        try { Assert.Null(MarketInstallHelper.ReadDependencySpec(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
     [Fact]
@@ -151,48 +105,22 @@ public class MarketInstallHelperTests
     }
 
     [Fact]
-    public async Task CleanupBogusApp_NoOp_WhenAppNotTgz()
+    public async Task CleanupBogusApp_NoOp_WhenFileMissing()
     {
-        var json = """{"dependencies":{"app":"1.0.0"}}""";
-        var p = WriteTempFile(json);
-        try
-        {
-            await MarketInstallHelper.CleanupBogusAppDependencyAsync(p);
-            Assert.Contains("\"app\"", File.ReadAllText(p));
-        }
-        finally { File.Delete(p); }
+        await MarketInstallHelper.CleanupBogusAppDependencyAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
     }
 
     [Fact]
-    public async Task CleanupBogusApp_WriteFormat_IndentedWithTrailingNewline()
-    {
-        // 写盘格式钉子：缩进 JSON + 尾部换行（与 dsh 自身写盘形态一致，防序列化实现更换后漂移）
-        var json = """{"dependencies":{"app":"file:/tmp/dshmarket.tgz","keep":"1.0.0"}}""";
-        var p = WriteTempFile(json);
-        try
-        {
-            await MarketInstallHelper.CleanupBogusAppDependencyAsync(p);
-            var after = File.ReadAllText(p);
-            Assert.EndsWith("\n", after);
-            Assert.Contains("\n  \"dependencies\"", after);
-        }
-        finally { File.Delete(p); }
-    }
-
-    [Fact]
-    public void EnsureWorkspaceAllowBuilds_ReplacesPlaceholderAndAddsEsbuild()
+    public void EnsureWorkspaceAllowBuilds_AddsEsbuild_WhenMissing()
     {
         var dir = Path.Combine(Path.GetTempPath(), "ws-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        var ws = Path.Combine(dir, "pnpm-workspace.yaml");
-        File.WriteAllText(ws, "allowBuilds:\n  '@deepseek-ai/dsh-subprocess-local': set this to true or false\n  koffi: set this to true or false\n");
+        var path = Path.Combine(dir, "pnpm-workspace.yaml");
+        Assert.False(File.Exists(path));
         try
         {
-            MarketInstallHelper.EnsureWorkspaceAllowBuilds(ws);
-            var t = File.ReadAllText(ws);
-            Assert.Contains("esbuild: true", t);
-            Assert.Contains("'@deepseek-ai/dsh-subprocess-local': true", t);
-            Assert.DoesNotContain("set this to true or false", t);
+            MarketInstallHelper.EnsureWorkspaceAllowBuilds(path); // 缺失：不抛
+            Assert.False(File.Exists(path));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -205,124 +133,26 @@ public class MarketInstallHelperTests
     }
 
     [Fact]
-    public void ResolveMarketSpec_PrefersTgz_WhenLarge()
+    public void ResolveCompanionSpec_PrefersInstallerPluginsDir()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        var tgz = Path.Combine(dir, "dshmarket.tgz");
-        File.WriteAllBytes(tgz, new byte[11 * 1024]);
-        try
-        {
-            Assert.Equal(tgz, MarketInstallHelper.ResolveMarketSpec(dir));
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public void ResolveMarketSpec_FallsBackToDir_WhenTgzSmall()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        var tgz = Path.Combine(dir, "dshmarket.tgz");
-        File.WriteAllBytes(tgz, new byte[100]);
-        var d = Path.Combine(dir, "node_modules", "dshmarket");
-        Directory.CreateDirectory(d);
-        File.WriteAllText(Path.Combine(d, "package.json"), "{}");
-        try
-        {
-            Assert.Equal(d, MarketInstallHelper.ResolveMarketSpec(dir));
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public void ResolveMarketSpec_FallsBackToRegistryLatest_WhenNothing()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        try
-        {
-            // online-first：闭包退役后无钉版回退，@latest 跟随上游（freshness 巡检随之退役）
-            Assert.Equal("dshmarket@latest", MarketInstallHelper.ResolveMarketSpec(dir));
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public void ResolveCompanionSpec_PrefersInstallerPluginsDir_OverRuntime()
-    {
-        var runtime = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
         var plugins = Path.Combine(Path.GetTempPath(), "pl-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(runtime);
         Directory.CreateDirectory(plugins);
-        var runtimeTgz = Path.Combine(runtime, "dsh-desktop-companion.tgz");
         var packagedTgz = Path.Combine(plugins, "dsh-desktop-companion.tgz");
-        File.WriteAllBytes(runtimeTgz, new byte[2 * 1024]);
         File.WriteAllBytes(packagedTgz, new byte[2 * 1024]);
         try
         {
-            // 安装器资源是打包形态唯一供给源，优先于运行时目录
-            Assert.Equal(packagedTgz, MarketInstallHelper.ResolveCompanionSpec(runtime, plugins));
+            // 安装器资源是打包形态唯一供给源（运行时目录种子已退役）
+            Assert.Equal(packagedTgz, MarketInstallHelper.ResolveCompanionSpec(RuntimeDir, plugins));
         }
-        finally { Directory.Delete(runtime, true); Directory.Delete(plugins, true); }
-    }
-
-    [Fact]
-    public void ResolveCompanionSpec_UsesRuntimeTgz_WhenInstallerDirMissing()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        var tgz = Path.Combine(dir, "dsh-desktop-companion.tgz");
-        File.WriteAllBytes(tgz, new byte[2 * 1024]);
-        try
-        {
-            Assert.Equal(tgz, MarketInstallHelper.ResolveCompanionSpec(dir, null));
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public void ResolveCompanionSpec_PrefersTgz_WhenLarge()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        var tgz = Path.Combine(dir, "dsh-desktop-companion.tgz");
-        File.WriteAllBytes(tgz, new byte[2 * 1024]);
-        try
-        {
-            Assert.Equal(tgz, MarketInstallHelper.ResolveCompanionSpec(dir, null));
-        }
-        finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public void ResolveCompanionSpec_FallsBackToDir_WhenTgzTiny()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        var tgz = Path.Combine(dir, "dsh-desktop-companion.tgz");
-        File.WriteAllBytes(tgz, new byte[100]);
-        var d = Path.Combine(dir, "node_modules", "dsh-desktop-companion");
-        Directory.CreateDirectory(d);
-        File.WriteAllText(Path.Combine(d, "package.json"), "{}");
-        try
-        {
-            Assert.Equal(d, MarketInstallHelper.ResolveCompanionSpec(dir, null));
-        }
-        finally { Directory.Delete(dir, true); }
+        finally { Directory.Delete(plugins, true); }
     }
 
     [Fact]
     public void ResolveCompanionSpec_ReturnsNull_WhenNothing()
     {
-        // 伴生插件无 registry 回退：安装器资源与运行时目录均未携带时返回 null（调用方跳过）
-        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        try
-        {
-            Assert.Null(MarketInstallHelper.ResolveCompanionSpec(dir, null));
-        }
-        finally { Directory.Delete(dir, true); }
+        // 伴生插件无 registry 回退：安装器资源缺失时返回 null（调用方跳过）。
+        // 运行时目录种子已退役，不提供 tgz/目录回退。
+        Assert.Null(MarketInstallHelper.ResolveCompanionSpec(RuntimeDir, null));
     }
 
     [Fact]

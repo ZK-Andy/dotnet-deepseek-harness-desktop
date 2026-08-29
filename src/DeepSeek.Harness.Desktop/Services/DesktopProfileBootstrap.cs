@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
 namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
@@ -77,5 +80,120 @@ public static class DesktopProfileBootstrap
         }
 
         return createdManifest;
+    }
+
+    /// <summary>
+    /// 启动前 reconcile 不可解析的 bundle 引用（ADR online-first-unbundled-runtime 批次三，
+    /// 对齐 dsh-tauri-desk #177：壳升级后 dsh 配置仍引用已消失的插件包 → 启动卡死循环）。
+    /// 扫描 desktop profile 的 <c>dependencies</c>，凡声明为本地 <c>file:</c>/<c>link:</c> 形态而
+    /// 其路径目标已不存在（被退役的随包种子属之）的，从 <c>dependencies</c> 与
+    /// <c>dsh.profile.bundles</c> 一并移除。幂等；结构损坏/不可读按 fail-safe 不碰并记日志。
+    /// </summary>
+    /// <param name="dshHome">共享 DSH_HOME 绝对路径。</param>
+    /// <param name="log">诊断日志出口（host.log 同款行文）。</param>
+    /// <returns>本次移除的不可解析引用条目数。</returns>
+    public static int ReconcileProfile(string dshHome, Action<string> log)
+    {
+        var dir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        var manifestPath = Path.Combine(dir, "package.json");
+        if (!File.Exists(manifestPath))
+        {
+            return 0;
+        }
+
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(File.ReadAllText(manifestPath));
+        }
+        catch (Exception ex) when (ex is JsonException or IOException)
+        {
+            // 清单不可读：无法安全改写，按 fail-safe 不碰（不阻断启动链，只记日志留痕）
+            log($"[host] 桌面 profile 清单 reconcile 失败（不可读）：{ex.Message}");
+            return 0;
+        }
+
+        if (root?["dependencies"] is not JsonObject deps)
+        {
+            return 0;
+        }
+
+        var removable = new List<(string Name, string Spec)>();
+        foreach (var (name, value) in deps)
+        {
+            if (value is JsonValue v && v.TryGetValue<string>(out var spec) && IsDeadLocalPath(spec, dir))
+            {
+                removable.Add((name, spec));
+            }
+        }
+
+        if (removable.Count == 0)
+        {
+            return 0;
+        }
+
+        foreach (var (name, _) in removable)
+        {
+            deps.Remove(name);
+        }
+
+        if (root["dsh"]?["profile"]?["bundles"] is JsonArray bundles)
+        {
+            foreach (var (name, _) in removable)
+            {
+                var matches = bundles.Where(b =>
+                    b is JsonValue v && v.TryGetValue<string>(out var s) && s == name).ToList();
+                foreach (var m in matches)
+                {
+                    bundles.Remove(m);
+                }
+            }
+        }
+
+        WriteManifest(manifestPath, root);
+        foreach (var (name, spec) in removable)
+        {
+            log($"[host] 桌面 profile reconcile：移除不可解析插件引用 {name}（{spec}）");
+        }
+
+        return removable.Count;
+    }
+
+    /// <summary>spec 是否为本地 <c>file:</c>/<c>link:</c> 形态且其路径目标已不存在（参数
+    /// <paramref name="profileDir"/> 用于解析相对路径）。registry/别名/github 等非本地形态返回 false。</summary>
+    private static bool IsDeadLocalPath(string spec, string profileDir)
+    {
+        string? target = null;
+        if (spec.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+        {
+            target = spec["file:".Length..];
+        }
+        else if (spec.StartsWith("link:", StringComparison.OrdinalIgnoreCase))
+        {
+            target = spec["link:".Length..];
+        }
+
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            return false;
+        }
+
+        var full = Path.IsPathRooted(target)
+            ? target
+            : Path.Combine(profileDir, target);
+        return !File.Exists(full) && !Directory.Exists(full);
+    }
+
+    /// <summary>按缩进 JSON + 尾部换行写回 profile <c>package.json</c>（与 dsh 自身写盘格式一致）。</summary>
+    private static void WriteManifest(string path, JsonNode root)
+    {
+        using var ms = new MemoryStream();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(ms, new System.Text.Json.JsonWriterOptions { Indented = true }))
+        {
+            root.WriteTo(writer);
+        }
+
+        var newJson = System.Text.Encoding.UTF8.GetString(ms.ToArray()) + "\n";
+        File.WriteAllText(path, newJson);
     }
 }

@@ -170,6 +170,15 @@ public static class Program
             {
                 Services.HostLog.Write("[host] 已初始化 profiles/desktop（bundles 对齐 web 模板）");
             }
+
+            // 启动前 reconcile 不可解析的 bundle 引用（ADR online-first-unbundled-runtime 批次三，
+            // 对齐 dsh-tauri-desk #177：退役随包种子后，存量 profile 可能残留指向已消失 tgz 的
+            // file:/link: 引用，dsh 启动时视作不可解析 → 卡死循环）。必须在 spawn 前清理。
+            var reconciled = DesktopProfileBootstrap.ReconcileProfile(HarnessRuntimeHost.ResolveDshHome(), Services.HostLog.Write);
+            if (reconciled > 0)
+            {
+                Services.HostLog.Write($"[host] 桌面 profile reconcile：移除 {reconciled} 个不可解析插件引用");
+            }
         }
         catch (Exception ex)
         {
@@ -476,6 +485,28 @@ public static class Program
 
                     bundledClosure = runtime;
                     host.BindRuntime(runtime.Value);
+
+                    // 首启引导经 registry 安装市场（ADR online-first-unbundled-runtime 批次三：
+                    // dshmarket 不再随包/种子，改由引导在 spawn dsh 前注册表安装——插件与核心一次就位，
+                    // 不再「后台 3s 装 → 重启」。显式 @latest 对既存本地 seed 同样强制改写为 registry 形态
+                    // （承接 bundled-plugin-registry-normalization 的归化语义）。best-effort：失败只告警不阻断
+                    // 首启——市场缺失不阻塞 dsh 起动，失败留痕下次引导（或用户手动装市场）自愈。
+                    var marketSpec = "dshmarket@latest";
+                    try
+                    {
+                        HostLog.Write($"[host] 引导：registry 安装市场（{marketSpec}）");
+                        var (mExit, mOut, mErr) = await RunDshPluginAddAsync(
+                            runtime.Value.NodeExe, runtime.Value.DshEntry, marketSpec, bootCt);
+                        if (mExit != 0)
+                        {
+                            HostLog.Write($"[host] 市场安装失败 exit={mExit} stdout={mOut.Trim()} stderr={mErr.Trim()}（市场缺失不阻塞首启，可稍后经设置/手动安装）");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        HostLog.Write($"[host] 市场安装异常跳过：{ex.Message}");
+                    }
+
                     var url = await host.StartAsync(timeout: TimeSpan.FromSeconds(60), bootCt);
                     if (url is null)
                     {
@@ -830,15 +861,9 @@ public static class Program
 
                     if (pending.Count == 0)
                     {
-                        HostLog.Write("[host] 随包插件无需安装（全部就位或已交市场自管），跳过");
+                        HostLog.Write("[host] 随包插件无需安装（companion 已就位），跳过");
                         return;
                     }
-
-                    // 1a) 分组：本地路径 spec（tgz/目录，离线可靠）先装；registry 触碰条目（归化/
-                    // registry 回退首装）后装。pnpm 单事务多 spec 一败俱败——离线时归化失败不得拖累
-                    // 随包种子安装。
-                    var localPending = pending.Where(p => !p.FromRegistry).ToList();
-                    var registryPending = pending.Where(p => p.FromRegistry).ToList();
 
                     // 1b) 迁移：清理 0.1.8-0.1.10 误写入的 app 依赖（file:.../dshmarket.tgz 假包）
                     await MarketInstallHelper.CleanupBogusAppDependencyAsync(profilePkg);
@@ -848,11 +873,10 @@ public static class Program
 
                     // 首次严格（尊重 pnpm minimumReleaseAge 等供应链政策）；当整份 lockfile 被政策
                     // 拒绝（如市场新装插件发布不足 24h，v0.2.0 实证会连带阻断随包补装）时，降级
-                    // 放宽该单一政策重试一次并显式留痕——随包组只装第一方 file: 包，不新增注册源；
-                    // 归化组走 registry，受同一政策约束。
-                    async Task<bool> RunPluginAddGroupAsync(string label, List<(string Package, string Spec, bool FromRegistry)> group)
+                    // 放宽该单一政策重试一次并显式留痕——随包组只装第一方 file: 包，不新增注册源。
+                    async Task<bool> RunPluginAddGroupAsync(string label, List<(string Package, string Spec)> group)
                     {
-                        foreach (var (_, spec, _) in group)
+                        foreach (var (_, spec) in group)
                         {
                             HostLog.Write($"[host] 随包插件安装（{label}）spec={spec}");
                         }
@@ -871,7 +895,7 @@ public static class Program
                             psi.ArgumentList.Add("--profile");
                             psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
                             psi.ArgumentList.Add("add");
-                            foreach (var (_, spec, _) in group)
+                            foreach (var (_, spec) in group)
                             {
                                 psi.ArgumentList.Add(spec);
                             }
@@ -914,7 +938,7 @@ public static class Program
                         }
 
                         // 4) dsh 的 reconcilePlugins 理论上已写入 bundles，仍做兜底校验并补写（0.1.10 的 file:app 未进 bundles 需补）
-                        foreach (var (pkg, _, _) in group)
+                        foreach (var (pkg, _) in group)
                         {
                             if (await MarketInstallHelper.EnsureBundlesContainsAsync(profilePkg, pkg))
                             {
@@ -925,13 +949,7 @@ public static class Program
                         return true;
                     }
 
-                    var anyInstalled = localPending.Count > 0 && await RunPluginAddGroupAsync("本地", localPending);
-
-                    // 本地组失败（同一 workspace，registry 组大概率同败）则跳过归化组，下次启动自愈
-                    if ((localPending.Count == 0 || anyInstalled) && registryPending.Count > 0)
-                    {
-                        anyInstalled |= await RunPluginAddGroupAsync("registry", registryPending);
-                    }
+                    var anyInstalled = await RunPluginAddGroupAsync("companion", pending);
 
                     if (anyInstalled)
                     {
@@ -1261,6 +1279,43 @@ public static class Program
             {
                 // 窗口尚未就绪：本次推送丢弃，后续状态变化会再推
             }
+        }
+
+        /// <summary>
+        /// 用解析出的运行时执行一次 <c>dsh plugin add &lt;spec&gt;</c>（写入桌面 profile）。供引导路径在
+        /// spawn dsh 前 registry 安装市场使用。注入 DSH_HOME + pnpm store/cache 重定向（与随包插件安装
+        /// 同款单点，EROFS 兜底）；流显式 UTF-8（Windows 中文区域 OEM 码页解码 UTF-8 输出会乱码）。
+        /// </summary>
+        async Task<(int Exit, string Out, string Err)> RunDshPluginAddAsync(
+            string nodeExe, string dshEntry, string spec, CancellationToken ct)
+        {
+            var dshHome = HarnessRuntimeHost.ResolveDshHome();
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = nodeExe,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            psi.ArgumentList.Add(dshEntry);
+            psi.ArgumentList.Add("plugin");
+            psi.ArgumentList.Add("--profile");
+            psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
+            psi.ArgumentList.Add("add");
+            psi.ArgumentList.Add(spec);
+            psi.Environment["DSH_HOME"] = dshHome;
+            HarnessRuntimeHost.ApplyPnpmWriteDirs(psi, dshHome);
+            HarnessRuntimeHost.UseUtf8TextStreams(psi);
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p is null)
+            {
+                throw new InvalidOperationException("无法启动 dsh plugin 进程");
+            }
+
+            var stdoutTask = p.StandardOutput.ReadToEndAsync(ct);
+            var stderrTask = p.StandardError.ReadToEndAsync(ct);
+            await p.WaitForExitAsync(ct).ConfigureAwait(false);
+            return (p.ExitCode, await stdoutTask.ConfigureAwait(false), await stderrTask.ConfigureAwait(false));
         }
     }
 }
