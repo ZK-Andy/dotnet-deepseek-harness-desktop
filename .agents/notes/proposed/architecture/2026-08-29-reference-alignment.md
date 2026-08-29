@@ -40,8 +40,15 @@ Status: proposed
 
 ### 批次三 · 下载健壮性（download 对齐）
 
-- `RuntimeBootstrap` 下载：改用**断点续传**（`Range` 头 + 已下临时文件续传）、**多源回落**（官方 nodejs.org dist 主源 + 镜像后备；镜像仅用于「有可信 SHA256 摘要」场景，防投毒）、**原子 staging**（下载+解压先落同盘临时目录，成功 rename 为正式目录保留 `runtimeDir`，失败清理恢复）与 **Windows 文件锁重试**（rename/remove 有界重试）。
-- 摘要仍来自 `SHASUMS256.txt`（既有）；下载临时文件与正式目录分离，失败不残留半成品。
+`RuntimeBootstrap` 的 Node 发行包下载链路（`DownloadNodeAsync`）从「单源 `GetAsync→CopyTo` + 事后校验」升级为「摘要优先 + 多源回落 + 断点续传 + 原子落盘 + 锁重试」。四项子能力与取舍（2026-08-29 用户拍板）：
+
+- **摘要优先取自官方（防投毒信任模型）**：先经 `FetchTextAsync` 拉**官方** `SHASUMS256.txt` 得可信摘要；后下载归档（官方→镜像）逐一用该可信摘要校验。官方摘要不可达即 fail loud（无可信摘要 → **不用镜像**，宁可中止不装坏包）。镜像只承担**下载**，绝不提供摘要（镜像提供摘要即自证自证、失去独立信任根）。
+- **多源回落**：归档下载候选 = 官方 `NodeDistBaseUrl` → 镜像 `NodeMirrorBaseUrl`（默认 `https://cdn.npmmirror.com/binaries/node`，已核对与官方 `SHASUMS256.txt` 逐字节一致、是 nodejs.org dist 的合法镜像）；镜像经 appsettings 可配置，**置空字符串 = 仅官方单源**（镜像关闭）。候选按序尝试，前一源失败（网络/异常）即切下一源；**同一 dest** 不删、续传。
+- **断点续传（Range）**：下载落**确定性命名的 `.download/<versionDir>/<fileName>`**（runtimeDir 同盘兄弟区，跨重试/跨进程存活，非每尝试随机 GUID）。生产 `DownloadFileAsync` 先读 dest 现有字节长，发 `Range: bytes=<n>-`；`206` 追加、`200`（服务端不支持 Range/文件已变）重头写、`416`（Range 不可满足=疑似已完整）重头写兜底——正确性由后续 SHA256 校验兜底。
+- **原子 staging + 备份切换**：下载校验通过后，解压先落同盘兄弟临时目录 `.staging-<guid>/`（含 `extract`），归一为捆绑闭包同款扁平布局（node + npm 模块树）于 staging 根；成功再**原子 swap** 进正式 `runtimeDir`（`runtimeDir` → `.backup-<guid>`，staging → `runtimeDir`，成功后删 backup），失败清理 staging/恢复 backup。旧「逐件 `MoveInto` 进 runtimeDir」的半成品残留面消除。
+- **Windows 文件锁重试**：swap 的 rename/remove（及 `.download` 清理）对 `IOException`（AV/文件扫描器瞬时锁）做**有界重试**（默认 10 次 × 200ms，达上限 fail loud）。
+- 摘要仍来自 `SHASUMS256.txt`（既有）；`.download` 临时归档与正式 `runtimeDir` 分离，失败不残留半成品运行时。
+- **测试策略**：既有 `RuntimeBootstrapTests` 的 fake hooks 改为**摘要先行**契约（FetchTextAsync 用常量摘要、DownloadFileAsync 写常量字节使其自洽），并新增回归：多源回落（主源抛→镜像命中）、续传（dest 已有字节→Range 路径）、原子 swap（staging 就位 runtimeDir、失败恢复 backup）、锁重试（前 N 次 IOException 后成功）、摘要缺失/不匹配 fail loud、镜像置空仅官方。真实 Range/206 行为由 `DSH_TEST_BOOTSTRAP_E2E` 门控 E2E 覆盖（不默认跑）。
 
 ### 批次四 · CLI shim / PATH 注册（三个平台）
 
@@ -59,6 +66,9 @@ Status: proposed
 - **companion 维持在安装后重启**：功能可用，但违背参照「绝不安装后重启」原则，且首启两次启动 dsh 引入会话/端口二次初始化抖动。落败。
 - **引入 React + Vite 换型前端**（完全等同参照）：技术栈等同让 UI/状态机逐点对齐成本最低，但引入前端构建链 + iframe 桥 + 容器化,与我方"C#/Ryn 稳定 + 静态 wwwroot + companion 插件"的既有稳定面冲突，属大换型。**延后专项讨论**（用户批示），本 ADR 先做能力等价（引导页增强）。
 - **下载层多源镜像无摘要也镜像**：镜像只信任"有可信摘要"场景，否则第三方镜像投毒风险。落败。
+- **摘要与归档同取自镜像**：镜像既给摘要又给归档即自证自证、失去独立信任根。落败；摘要只取自官方，镜像仅承担归档下载。
+- **续传临时文件用每尝试随机 GUID**（现状 `.bootstrap-{guid}`）：每次重试换名、跨重试/跨进程无续传价值。落败；改确定性 `.download/<versionDir>/<fileName>`，跨重试/跨进程续传。
+- **逐件 `MoveInto` 进 runtimeDir（现状）**：下载产物直接逐件搬入正式目录，中途失败留半成品（node 在而 npm 树缺等）。落败；原子 staging + 备份切换，失败恢复旧版。
 - **CLI shim 写入系统 PATH（HKCU vs HKLM）**：只写用户级 HKCU + `~/.local/bin`，不触系统级；系统级需管理员且影响面大。落败。
 - **假活看门狗无限重载**：误报会形成重启/重载循环，伤害可用性。落败；有界恢复 + 计数上限。
 - **插件引导塞进 RuntimeBootstrap 步骤机**：RuntimeBootstrap 是「运行时下载/安装」的严格状态机（Node+dsh），插件引导发生在 BindRuntime 之后、StartAsync 之前，属外层编排相——塞进去会混两个域并在其测试基线上造成混淆。落败；改为 `BootstrapStep` 增 `PreinstallPlugins` 只作页面步骤呈现，实际交互由专用 `dsh-desktop-preinstall` 事件 + `PreinstallChoiceGate` 驱动。
