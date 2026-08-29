@@ -105,8 +105,8 @@ Section: devel
 Priority: optional
 Architecture: $ARCH
 Maintainer: $MAINTAINER
-Depends: libwebkitgtk-6.0-4
-Description: DeepSeek Harness Desktop for .NET (native shell + bundled runtime)
+Depends: libwebkitgtk-6.0-4, libadwaita-1-0
+Description: DeepSeek Harness Desktop for .NET (native shell, online-first runtime bootstrap)
 EOF
 mkdir -p "$OUT"
 # 文件名加入 linux 标识，避免与 macos/windows 混淆（原 _amd64.deb 无平台前缀；deb 控制内 Architecture 仍为 amd64/arm64，文件名仅作发布区分）
@@ -126,11 +126,11 @@ BuildArch: $RPM_ARCH
 # 参照 pilot-harness asar:false 与数万文件闭包：rpm 自动依赖扫描会把 node_modules 跨平台 prebuild
 #（aarch64/musl/ld-linux/perl 等）误判为运行依赖，导致 dnf 安装失败 → 整体禁用自动依赖，显式声明真实依赖。
 AutoReqProv: no
-# saucer 动态链接 libwebkitgtk-6.0.so.4（WebKitGTK 6 / GTK4），由该包（webkitgtk6.0）连带拉
-# GTK/JavaScriptCore/soup/cairo 等。必须写带 (()(64bit)) 限定的规范形：裸名在 aarch64 上无任何
-# 提供者（v0.3.4 arm64 冒烟实证 nothing provides），在 x86_64 上则被 i686 多库包侥幸满足、
-# 拉进整套 32 位栈——限定名两架构都精确命中 webkitgtk6.0 的真实 provide。
-Requires: libwebkitgtk-6.0.so.4()(64bit)
+# saucer 动态链接 libwebkitgtk-6.0.so.4（WebKitGTK 6 / GTK4）与 libadwaita-1.so.0（壳窗口
+# 直接依赖；minimal 系统缺它会在 Run 即 DllNotFound——2026-08-29 冒烟实证）。两者必须写带
+# (()(64bit)) 限定的规范形：裸名在 aarch64 上无任何提供者（v0.3.4 arm64 冒烟实证 nothing
+# provides），在 x86_64 上则被 i686 多库包侥幸满足、拉进整套 32 位栈——限定名两架构都精确命中。
+Requires: libwebkitgtk-6.0.so.4()(64bit), libadwaita-1.so.0()(64bit)
 # 跨平台 .node 预编译体会被 rpm 的 brp-strip 与 debuginfo 抽取误伤（如 linux-arm64/pty.node）→ 整体禁用
 %global _enable_debug_packages 0
 %define __os_install_post %{nil}

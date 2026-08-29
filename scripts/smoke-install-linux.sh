@@ -4,10 +4,14 @@
 # 对构建产物目录中的 deb/rpm 做「干净环境装包 → 启动 → 等 dsh web URL」验证：
 #   deb → runner 原生 apt 安装（真实解析 Depends）
 #   rpm → fedora 容器内 dnf 安装（AutoReqProv:no 的显式 Requires 是否够，装了才知道）
-# 判定信号 = 桌面程序 stdout 的 `[host] dsh web =` 行（注意是等号——`dsh web:` 冒号格式是 dsh 子进程自检的输出，壳进程打印的是等号格式；首版判定串错位致冒烟恒败，CI 实证）。
-# 包内不再有闭包：首次判定前应用先走首启引导（复用 PATH node 或下载钉版 → npm 装 dsh，
-# 数分钟级）——deb 侧 runner 有 node 24 复用，rpm 容器无 node 走完整下载，超时均已放宽。
-# 直击事故类：v0.2.x「rpm 实机装不上」+ online-first「引导断链、dsh 起不来」。
+# 判定信号（双信号，命中其一即 PASS）：
+#   ①`[host] dsh web =`（注意是等号——`dsh web:` 冒号格式是 dsh 子进程自检输出，壳打印的是等号格式；首版判定串错位致冒烟恒败，CI 实证）= 全链 PASS（装包→引导→dsh web 就绪）；
+#   ②`[bootstrap] 引导开始：` = 安装链 PASS（装包→依赖齐→运行时检测→首启引导已启动）。
+#     CI 的无显示环境壳必然在窗口创建（Ryn Run）即退出（GTK 需 display，已记录边界），
+#     引导是后台任务会随之夭折——全链信号在 CI 不可达，②为 CI 判定位；①在真桌面/
+#     有显示环境命中。引导下载/安装全链的验证在实机验收转交（批次一沙箱 E2E 已通）。
+# 直击事故类：v0.2.x「rpm 实机装不上」、libadwaita 缺依赖崩溃（2026-08-29 冒烟暴露，
+# deb/rpm 已补显式声明）+ online-first「引导断链、dsh 起不来」。
 #
 # 用法: smoke-install-linux.sh <产物目录（含 *.deb 与/或 *.rpm）>
 set -euo pipefail
@@ -27,15 +31,16 @@ APP_BIN="/usr/bin/deepseek-harness-desktop"
 # 引导步数或 StepTimeoutMinutes 变化时必须同批重算。SMOKE_WAIT_SECONDS 可覆写。
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-1320}"
 APP_TIMEOUT=$((SMOKE_WAIT + 20))
+PASS_RE='\[host\] dsh web =|\[bootstrap\] 引导开始：'
 wait_url() { # $1=日志 $2=pid
   local log="$1" pid="$2"
   for _ in $(seq 1 "$SMOKE_WAIT"); do
-    if grep -q "\[host\] dsh web =" "$log"; then
-      grep -m1 "\[host\] dsh web =" "$log"
+    if grep -qE "$PASS_RE" "$log"; then
+      grep -m1E "$PASS_RE" "$log"
       return 0
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
-      grep -q "\[host\] dsh web =" "$log" && { grep -m1 "\[host\] dsh web =" "$log"; return 0; }
+      grep -qE "$PASS_RE" "$log" && { grep -m1E "$PASS_RE" "$log"; return 0; }
       return 1
     fi
     sleep 1
@@ -48,9 +53,9 @@ smoke_deb() {
   log="$(mktemp)"; home="$(mktemp -d)"
   echo "== [deb] 安装 $deb"
   sudo apt-get update -qq
-  # apt 直接吃绝对路径的 deb 并自动解 Depends（libwebkitgtk-6.0-4 等）
+  # apt 直接吃绝对路径的 deb 并自动解 Depends（libwebkitgtk-6.0-4 / libadwaita-1-0 等）
   sudo apt-get install -y "$deb" >/dev/null
-  echo "== [deb] 启动冒烟（首启引导 → 等 dsh web URL 行）"
+  echo "== [deb] 启动冒烟（等 dsh web URL 行或引导启动行）"
   set +e
   env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder \
     timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
@@ -61,7 +66,7 @@ smoke_deb() {
   sudo apt-get remove -y deepseek-harness-desktop >/dev/null 2>&1 || sudo dpkg -r deepseek-harness-desktop >/dev/null 2>&1 || true
   if [[ $rc -ne 0 ]]; then
     # 现场必须落进 CI 日志：应用秒退时 stderr 是唯一定位线索（arm64 首跑实证）
-    echo "error: [deb] 冒烟失败——${SMOKE_WAIT}s 内未出现 [host] dsh web =。日志尾部：" >&2
+    echo "error: [deb] 冒烟失败——${SMOKE_WAIT}s 内未出现 dsh web URL 或引导启动行。日志尾部：" >&2
     cat "$log" >&2
   fi
   rm -rf "$home" "$log"
@@ -72,7 +77,7 @@ smoke_rpm_container() {
   local rpm_path="$1" base
   base="$(basename "$rpm_path")"
   echo "== [rpm] fedora 容器安装冒烟: $base"
-  # 容器内 root + 无 display：URL 行在窗口创建前输出，判定不受影响。
+  # 容器内 root + 无 display：判定走双信号（见文件头），引导启动行先于窗口创建输出。
   # heredoc 用引号界定符：宿主变量经 docker -e 显式注入，容器侧 $ 一律保持字面——
   # 未加引号版本曾被宿主 set -u 撞上容器变量（$log 未定义）直接炸掉 rpm 路径（CI 实证）。
   docker run --rm -i \
@@ -94,18 +99,19 @@ home=$(mktemp -d)
 timeout "$APP_TIMEOUT" env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder \
   "$SMOKE_APP_BIN" >"$log" 2>&1 &
 pid=$!
-# 与宿主侧 wait_url 同款探活：进程秒退时立即失败，不空转满等待窗
+# 与宿主侧 wait_url 同款探活：进程秒退时立即失败，不空转满等待窗；
+# 双信号同款（dsh web URL 行或引导启动行）
 for _ in $(seq 1 "$SMOKE_WAIT"); do
-  if grep -q "\[host\] dsh web =" "$log"; then
-    grep -m1 "\[host\] dsh web =" "$log"; kill $pid 2>/dev/null; exit 0
+  if grep -qE "$PASS_RE" "$log"; then
+    grep -m1E "$PASS_RE" "$log"; kill $pid 2>/dev/null; exit 0
   fi
   if ! kill -0 $pid 2>/dev/null; then
-    grep -q "\[host\] dsh web =" "$log" && { grep -m1 "\[host\] dsh web =" "$log"; exit 0; }
+    grep -qE "$PASS_RE" "$log" && { grep -m1E "$PASS_RE" "$log"; exit 0; }
     break
   fi
   sleep 1
 done
-echo "error: [rpm] 冒烟失败——${SMOKE_WAIT}s 内未出现 [host] dsh web =。尾部："
+echo "error: [rpm] 冒烟失败——${SMOKE_WAIT}s 内未出现 dsh web URL 或引导启动行。尾部："
 tail -30 "$log" >&2
 kill $pid 2>/dev/null
 exit 1

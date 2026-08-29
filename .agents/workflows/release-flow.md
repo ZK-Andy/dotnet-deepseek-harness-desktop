@@ -6,7 +6,7 @@
 2. **打 tag**：annotated `vX.Y.Z` 推送 origin——触发三平台 package-*.yml + release.yml。
 3. **盯四流水线**：package-linux / package-macos / package-windows 全绿 → 统一 Release。
    - 打包时长预期：无闭包组装，各平台 job 以 dotnet publish + 安装器打包为主。
-   - 验证链已自动化：布局断言（无闭包残留 + 插件 tgz）在各平台 job、Linux 安装冒烟覆盖「首启引导 → dsh web URL」全链、release preflight 总检位在 release.yml——任一红先修再发，不要人工绕过。
+   - 验证链已自动化：布局断言（无闭包残留 + 插件 tgz）在各平台 job、Linux 安装冒烟双信号判定（dsh web URL 全链 / 引导启动安装链——无显示环境壳在窗口创建即退出属已记录边界）、release preflight 总检位在 release.yml——任一红先修再发，不要人工绕过。
 4. **Release 核验**：
    - 标记 = Latest、非 prerelease/draft
    - 资产 8 项齐整：deb×2 + rpm×2 + dmg×2 + setup.exe + SHA256SUMS.txt（无 zip）
