@@ -120,17 +120,31 @@ npm init -y >/dev/null 2>&1
 # 旧版 pnpm pack dshmarket 会误打 app 包（394B），已改为直接拉 registry 官方 tgz（已含 lib/client，无需 tsc 构建）
 "$PNPM_BIN" add "dshmarket@${MARKET_VERSION}" --prod --store-dir "$PNPM_STORE_DIR" --allow-build=esbuild
 echo "   拉取 dshmarket 官方 tgz（跳过本地 pack 的 tsc/prepare 坑）"
-if curl -fsSL "https://registry.npmjs.org/dshmarket/-/dshmarket-${MARKET_VERSION}.tgz" -o "$DEST/dshmarket.tgz" 2>/dev/null; then
-  echo "   dshmarket tgz 已随包：$DEST/dshmarket.tgz ($(du -h "$DEST/dshmarket.tgz" | cut -f1))"
-  # 轻量校验：包内应为 dshmarket 而非 app（直接校验 package.json 的 name）
-  if ! tar -xOzf "$DEST/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name": "dshmarket"'; then
-    echo "warn: tgz 非 dshmarket 包，删除后回退" >&2
-    rm -f "$DEST/dshmarket.tgz"
+# 下载三重校验（重试 + gzip 完整性 + name）：截断下载曾使 Windows runner 上 tar 校验静默失败
+# （v0.3.12 首发实测：curl 成功但 gzip 流不完整 → tar -xOzf 空输出 → 误判「非 dshmarket 包」删除）。
+# name 校验放宽为 "name":[[:space:]]* —— 上游改 package.json 缩进格式不再误杀。
+MARKET_URL="https://registry.npmjs.org/dshmarket/-/dshmarket-${MARKET_VERSION}.tgz"
+market_ok=0
+for attempt in 1 2 3; do
+  rm -f "$DEST/dshmarket.tgz"
+  if ! curl -fsSL --retry 2 --retry-delay 2 "$MARKET_URL" -o "$DEST/dshmarket.tgz" 2>/dev/null; then
+    echo "warn: 官方 tgz 下载失败（第 $attempt 次）" >&2
+    continue
   fi
-fi
-# 回退：若 curl 失败（离线 CI），用已装的本地目录 tar 出正确包（package/ 前缀，跳过 lifecycle）
-if [[ ! -s "$DEST/dshmarket.tgz" ]]; then
-  echo "   官方 tgz 拉取失败，改由本地 node_modules/dshmarket 目录 tar（免构建）"
+  if ! gzip -t "$DEST/dshmarket.tgz" 2>/dev/null; then
+    echo "warn: 官方 tgz gzip 完整性校验失败（第 $attempt 次，$(wc -c < "$DEST/dshmarket.tgz")B）——疑似截断" >&2
+    continue
+  fi
+  if tar -xOzf "$DEST/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name":[[:space:]]*"dshmarket"'; then
+    echo "   dshmarket tgz 已随包：$DEST/dshmarket.tgz ($(du -h "$DEST/dshmarket.tgz" | cut -f1))"
+    market_ok=1
+    break
+  fi
+  echo "warn: 官方 tgz name 校验未过（第 $attempt 次）——诊断：$(tar -tzf "$DEST/dshmarket.tgz" 2>&1 | head -3 | tr '\n' ' ')" >&2
+done
+# 回退：若官方 tgz 三次尝试均未就位（离线 CI/网络抖动），用已装的本地目录 tar 出正确包（package/ 前缀，跳过 lifecycle）
+if [[ "$market_ok" != 1 ]]; then
+  echo "   官方 tgz 未就位，改由本地 node_modules/dshmarket 目录 tar（免构建）"
   REAL_DIR="$(realpath "$TMP/app/node_modules/dshmarket" 2>/dev/null || echo "")"
   if [[ -z "$REAL_DIR" ]]; then
     REAL_DIR="$(find "$TMP/app/node_modules/.pnpm" -type d -path "*dshmarket@${MARKET_VERSION}*/node_modules/dshmarket" -print -quit 2>/dev/null || echo "")"
@@ -142,7 +156,7 @@ if [[ ! -s "$DEST/dshmarket.tgz" ]]; then
     (cd "$REAL_DIR" && tar -czf "$DEST/dshmarket.tgz" --transform 's,^\./,package/,' --transform 's,^\.,package,' package.json cordis.patch.yml lib client README.md README.zh.md LICENSE 2>/dev/null) || \
     (cd "$REAL_DIR" && tar -czf "$DEST/dshmarket.tgz" --transform 's,^,package/,' package.json cordis.patch.yml lib client 2>/dev/null) || true
     # 校验
-    if ! tar -xOzf "$DEST/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name": "dshmarket"'; then
+    if ! tar -xOzf "$DEST/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name":[[:space:]]*"dshmarket"'; then
       echo "warn: 本地 tar 仍异常，删除" >&2
       rm -f "$DEST/dshmarket.tgz"
     else

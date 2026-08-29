@@ -64,7 +64,7 @@ if [[ -d "$ROOT/resources/runtime" ]]; then
       tar -tzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>&1 | head -20 >&2 || true
       exit 1
     fi
-    if ! tar -xOzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name": "dshmarket"'; then
+    if ! tar -xOzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name":[[:space:]]*"dshmarket"'; then
       echo "error: staging 的 dshmarket.tgz 非 dshmarket 包" >&2
       tar -tzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>&1 | head -20 >&2 || true
       exit 1
