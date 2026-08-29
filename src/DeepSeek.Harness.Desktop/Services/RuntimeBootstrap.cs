@@ -6,9 +6,6 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// <summary>引导进度步骤。</summary>
 public enum BootstrapStep
 {
-    /// <summary>探测本机运行时（PATH node/dsh）。</summary>
-    ProbeLocal,
-
     /// <summary>获取 Node（本机复用或下载钉版发行包）。</summary>
     EnsureNode,
 
@@ -30,13 +27,14 @@ public sealed record BootstrapProgress(BootstrapStep Step, string Message, bool 
 
 /// <summary>一次引导尝试的结果。</summary>
 /// <param name="Success">是否完成。</param>
+/// <param name="Step">结果所在步骤（失败时即失败步骤，供进度页高亮）。</param>
 /// <param name="Error">失败原因（Success=false 时非空，人可读）。</param>
 /// <param name="Runtime">就位的运行时 (node 可执行, dsh bin.js)。</param>
-public sealed record BootstrapOutcome(bool Success, string? Error, (string NodeExe, string DshEntry)? Runtime)
-{
-    /// <summary>用户放弃引导（关窗退出）的终态。</summary>
-    public static readonly BootstrapOutcome Quit = new(false, null, null);
-}
+public sealed record BootstrapOutcome(
+    bool Success,
+    BootstrapStep Step,
+    string? Error,
+    (string NodeExe, string DshEntry)? Runtime);
 
 /// <summary>
 /// 引导外部世界注入点：下载、取文本、解压、跑子进程、探测本机 node。生产实现见
@@ -166,6 +164,8 @@ public static class RuntimeBootstrap
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // GUI 子系统壳 spawn tar/node/npm 不能闪控制台窗（Windows）
+            CreateNoWindow = true,
         };
         HarnessRuntimeHost.UseUtf8TextStreams(psi);
         foreach (var arg in args)
@@ -184,10 +184,33 @@ public static class RuntimeBootstrap
         log?.Invoke($"[bootstrap] run: {psi.FileName} {string.Join(' ', args)}");
         using var p = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException($"无法启动进程 {exe}");
-        var stdout = await p.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
-        var stderr = await p.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);
-        await p.WaitForExitAsync(ct).ConfigureAwait(false);
-        return (p.ExitCode, stdout, stderr);
+        try
+        {
+            // 双流并发读：顺序先读 stdout 时 stderr 塞满 pipe buffer（~64KB）会互等死锁
+            // （npm 崩溃 full report 可超限）。进程退出后两流必然收尾，收尾读取不再带 ct
+            var stdoutTask = p.StandardOutput.ReadToEndAsync(ct);
+            var stderrTask = p.StandardError.ReadToEndAsync(ct);
+            await p.WaitForExitAsync(ct).ConfigureAwait(false);
+            var stdout = await stdoutTask.ConfigureAwait(false);
+            var stderr = await stderrTask.ConfigureAwait(false);
+            return (p.ExitCode, stdout, stderr);
+        }
+        catch (Exception)
+        {
+            // 取消/异常路径必须整树击杀：ReadToEndAsync 的 OCE 会跳过 WaitForExitAsync（其内部
+            // 才注册 kill-on-cancel），using dispose 只关句柄不杀进程——npm 会带着 runtimeDir
+            // 的写权成孤儿，下次引导与新进程竞写 node_modules
+            try
+            {
+                p.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // 进程已自行退出：无需击杀
+            }
+
+            throw;
+        }
     }
 
     private static readonly Regex NodeVersionToken = new(
@@ -226,6 +249,9 @@ public static class RuntimeBootstrap
         RuntimeBootstrapHooks hooks,
         CancellationToken ct)
     {
+        // 每步超时（StepTimeoutMinutes，R2 评审 B3：下载无超时则服务器停滞时无限 spinner 无出路）。
+        // 步超时转 InvalidOperationException 走失败重试页；应用退出（parent ct）仍是 OCE 上抛
+        var step = BootstrapStep.EnsureNode;
         try
         {
             Directory.CreateDirectory(runtimeDir);
@@ -282,17 +308,19 @@ public static class RuntimeBootstrap
                 File.WriteAllText(packageJson, "{\n  \"name\": \"dsh-desktop-runtime\",\n  \"private\": true\n}\n");
             }
 
+            step = BootstrapStep.InstallDsh;
             report(new BootstrapProgress(BootstrapStep.InstallDsh, $"安装 dsh（{options.DshSpec}）"));
-            var (exit, stdout, stderr) = await hooks.RunProcessAsync(
+            var (exit, stdout, stderr) = await WithStepTimeout(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
                 nodePath,
                 [npmCli!, "install", "--prefix", StripExtendedPrefix(runtimeDir), "--no-audit", "--no-fund", "--loglevel=error", options.DshSpec],
-                ct).ConfigureAwait(false);
+                token)).ConfigureAwait(false);
             if (exit != 0)
             {
                 return Fail(BootstrapStep.InstallDsh, $"npm install 失败 exit={exit}：{(stderr.Length > 0 ? stderr : stdout).Trim()}");
             }
 
             // ③ 验证产物入口（对齐 ADR「每步装完验证产物」约束）
+            step = BootstrapStep.VerifyDsh;
             report(new BootstrapProgress(BootstrapStep.VerifyDsh, "验证 dsh 产物"));
             var located = RuntimeLocator.TryLocateBundled(runtimeDir);
             if (located is null)
@@ -300,16 +328,16 @@ public static class RuntimeBootstrap
                 return Fail(BootstrapStep.VerifyDsh, $"安装后未找到 dsh 入口（{runtimeDir}）");
             }
 
-            var (vExit, vOut, vErr) = await hooks.RunProcessAsync(
-                located.Value.NodeExe, [located.Value.DshEntry, "--version"], ct).ConfigureAwait(false);
+            var (vExit, vOut, vErr) = await WithStepTimeout(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
+                located.Value.NodeExe, [located.Value.DshEntry, "--version"], token)).ConfigureAwait(false);
             var version = RuntimeVersionGate.TryParseVersionOutput(vOut);
             if (vExit != 0 || version is null)
             {
                 return Fail(BootstrapStep.VerifyDsh, $"dsh --version 验证失败 exit={vExit}：{vErr.Trim()}");
             }
 
-        report(new BootstrapProgress(BootstrapStep.Ready, $"dsh {version} 就绪"));
-        return new BootstrapOutcome(true, null, located);
+            report(new BootstrapProgress(BootstrapStep.Ready, $"dsh {version} 就绪"));
+            return new BootstrapOutcome(true, BootstrapStep.Ready, null, located);
         }
         catch (OperationCanceledException)
         {
@@ -318,15 +346,38 @@ public static class RuntimeBootstrap
         catch (Exception ex)
         {
             // 引导是长链路网络/文件操作，任何一步的意外异常都收口为人可读失败态（进度页可重试），
-            // 绝不让壳崩——真正的启动失败由后续 StartAsync 的降级链路呈现
-            return Fail(BootstrapStep.Ready, ex.Message);
+            // 绝不让壳崩——真正的启动失败由后续 StartAsync 的降级链路呈现。step 变量随进度推进，
+            // 失败归属步骤用于进度页红色高亮
+            return Fail(step, ex.Message);
+        }
+    }
+
+    /// <summary>步骤级超时包装：应用退出（appCt）取消仍以 OCE 上抛；仅步超时转异常走失败重试页。</summary>
+    private static Task WithStepTimeout(int minutes, CancellationToken appCt, Func<CancellationToken, Task> action) =>
+        WithStepTimeout<object?>(minutes, appCt, async token =>
+        {
+            await action(token).ConfigureAwait(false);
+            return null;
+        });
+
+    private static async Task<T> WithStepTimeout<T>(int minutes, CancellationToken appCt, Func<CancellationToken, Task<T>> action)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(appCt);
+        cts.CancelAfter(TimeSpan.FromMinutes(minutes));
+        try
+        {
+            return await action(cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!appCt.IsCancellationRequested)
+        {
+            throw new InvalidOperationException($"步骤超时（>{minutes} 分钟），网络停滞或资源受限，可重试");
         }
     }
 
     private static BootstrapOutcome Fail(BootstrapStep step, string error)
     {
         // 失败进度由调用方在重试循环推送（此处返回即可，避免双通道）
-        return new BootstrapOutcome(false, $"[{step}] {error}", null);
+        return new BootstrapOutcome(false, step, $"[{step}] {error}", null);
     }
 
     private static string? TryFindNode(string runtimeDir)
@@ -372,60 +423,57 @@ public static class RuntimeBootstrap
             ?? throw new InvalidOperationException("当前平台无对应的 Node 发行包坐标（fail loud）");
         var baseUrl = options.NodeDistBaseUrl.TrimEnd('/');
         var versionDir = $"v{options.NodeVersion}";
-        var archivePath = Path.Combine(Path.GetTempPath(), $"dsh-desktop-{fileName}");
+        // 归档与解压目录都放 runtimeDir 同卷：跨卷 Directory.Move 会 Invalid cross-device link
+        // （/tmp=tmpfs 的 Linux 发行版上首启必炸）；GUID 命名防共享目录 symlink 竞争，finally 清理
+        var workDir = Path.Combine(runtimeDir, $".bootstrap-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workDir);
+        var archivePath = Path.Combine(workDir, fileName);
 
-        report(new BootstrapProgress(BootstrapStep.EnsureNode, $"下载 Node v{options.NodeVersion}"));
-        await hooks.DownloadFileAsync($"{baseUrl}/{versionDir}/{fileName}", archivePath, ct).ConfigureAwait(false);
-
-        // SHA256 校验：摘要与文件同源于官方 dist 目录（HTTPS），缺失摘要属供应链异常，安全中止
-        report(new BootstrapProgress(BootstrapStep.ExtractNode, "校验 SHA256"));
-        var shasums = await hooks.FetchTextAsync($"{baseUrl}/{versionDir}/SHASUMS256.txt", ct).ConfigureAwait(false);
-        var expected = SelectSha256(shasums, fileName)
-            ?? throw new InvalidOperationException($"SHASUMS256.txt 缺少 {fileName} 的摘要，安全中止");
-        var actual = await Sha256FileAsync(archivePath, ct).ConfigureAwait(false);
-        if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                $"Node 发行包 SHA256 不匹配（期望 {ShortHash(expected)}，实际 {ShortHash(actual)}），安全中止");
-        }
-
-        report(new BootstrapProgress(BootstrapStep.ExtractNode, "解压 Node"));
-        var extractDir = Path.Combine(Path.GetTempPath(), $"dsh-desktop-node-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(extractDir);
         try
         {
-            await hooks.ExtractArchiveAsync(archivePath, extractDir, ct).ConfigureAwait(false);
+            report(new BootstrapProgress(BootstrapStep.EnsureNode, $"下载 Node v{options.NodeVersion}"));
+            await WithStepTimeout(options.StepTimeoutMinutes, ct,
+                token => hooks.DownloadFileAsync($"{baseUrl}/{versionDir}/{fileName}", archivePath, token)).ConfigureAwait(false);
+
+            // SHA256 校验：摘要与文件同源于官方 dist 目录（HTTPS），缺失摘要属供应链异常，安全中止。
+            // 威胁模型边界（ADR）：该校验只防传输损坏，非信任锚（base url 可配置时同源自证）
+            report(new BootstrapProgress(BootstrapStep.ExtractNode, "校验 SHA256"));
+            var shasums = await WithStepTimeout(options.StepTimeoutMinutes, ct,
+                token => hooks.FetchTextAsync($"{baseUrl}/{versionDir}/SHASUMS256.txt", token)).ConfigureAwait(false);
+            var expected = SelectSha256(shasums, fileName)
+                ?? throw new InvalidOperationException($"SHASUMS256.txt 缺少 {fileName} 的摘要，安全中止");
+            var actual = await Sha256FileAsync(archivePath, ct).ConfigureAwait(false);
+            if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Node 发行包 SHA256 不匹配（期望 {ShortHash(expected)}，实际 {ShortHash(actual)}），安全中止");
+            }
+
+            report(new BootstrapProgress(BootstrapStep.ExtractNode, "解压 Node"));
+            var extractDir = Path.Combine(workDir, "extract");
+            Directory.CreateDirectory(extractDir);
+            await WithStepTimeout(options.StepTimeoutMinutes, ct,
+                token => hooks.ExtractArchiveAsync(archivePath, extractDir, token)).ConfigureAwait(false);
 
             // 归一为捆绑闭包同款扁平布局（RuntimeLocator.TryLocateBundled 的探测形态）：
             // node(.exe) 在根目录、npm 模块树按平台相对路径可达；发行包其余内容
-            // （include/share/CHANGELOG 等）删除，保持 runtimeDir 与闭包同构。
+            // （include/share/CHANGELOG 等）随 workDir 一并清理，保持 runtimeDir 与闭包同构
             var inner = Directory.EnumerateDirectories(extractDir).FirstOrDefault()
                 ?? throw new InvalidOperationException("Node 发行包解压结果无内容目录");
             var nodeRel = OperatingSystem.IsWindows() ? "node.exe" : Path.Combine("bin", "node");
             var npmTreeRel = OperatingSystem.IsWindows() ? "node_modules" : "lib";
             MoveInto(runtimeDir, Path.Combine(inner, nodeRel), Path.GetFileName(nodeRel));
             MoveInto(runtimeDir, Path.Combine(inner, npmTreeRel), npmTreeRel);
-            foreach (var leftover in Directory.EnumerateFileSystemEntries(inner))
-            {
-                if (Directory.Exists(leftover))
-                {
-                    Directory.Delete(leftover, recursive: true);
-                }
-                else
-                {
-                    File.Delete(leftover);
-                }
-            }
         }
         finally
         {
             try
             {
-                Directory.Delete(extractDir, recursive: true);
+                Directory.Delete(workDir, recursive: true);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // 临时解压目录清理失败不影响引导结果（系统临时目录自清）
+                // 临时工作目录清理失败不影响引导结果（归一产物在 runtimeDir 根，不受影响）
             }
         }
 

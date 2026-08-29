@@ -109,12 +109,12 @@ public class RuntimeLocatorTests
             File.WriteAllText(Path.Combine(downloadDir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"), "// dsh\n");
 
             Assert.Equal(Path.GetFullPath(downloadDir), RuntimeLocator.TryLocateRuntimeDirectory());
-            Assert.NotNull(RuntimeLocator.TryLocateResolved());
+            Assert.NotNull(RuntimeLocator.TryLocateBundled(RuntimeLocator.TryLocateRuntimeDirectory()!));
 
             // 两处都未就位 → null（只读探测）
             Directory.Delete(downloadDir, recursive: true);
             Assert.Null(RuntimeLocator.TryLocateRuntimeDirectory());
-            Assert.Null(RuntimeLocator.TryLocateResolved());
+            Assert.Null(RuntimeLocator.TryLocateRuntimeDirectory());
         }
         finally
         {

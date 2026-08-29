@@ -240,6 +240,42 @@ public class RuntimeBootstrapTests
     }
 
     [Fact]
+    public async Task RunAsync_StepTimeout_FailsAsRetryableError()
+    {
+        // 步超时（R2 评审 B3）：挂起的下载不再无限 spinner，转人可读失败态走重试页。
+        // StepTimeoutMinutes=0 → CancelAfter 立即触发，测试无需等待
+        var runtimeDir = Path.Combine(Path.GetTempPath(), "boot-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(runtimeDir);
+        try
+        {
+            var hooks = new RuntimeBootstrapHooks(
+                DownloadFileAsync: async (url, dest, ct) =>
+                {
+                    await Task.Delay(Timeout.Infinite, ct);
+                },
+                FetchTextAsync: (url, ct) => Task.FromResult(string.Empty),
+                ExtractArchiveAsync: (archive, destDir, ct) => Task.CompletedTask,
+                RunProcessAsync: (exe, args, ct) => Task.FromResult((0, string.Empty, string.Empty)),
+                ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((null, null)));
+
+            var outcome = await RuntimeBootstrap.RunAsync(
+                new RuntimeBootstrapOptions { StepTimeoutMinutes = 0 },
+                runtimeDir,
+                _ => { },
+                hooks,
+                CancellationToken.None);
+
+            Assert.False(outcome.Success);
+            Assert.Contains("超时", outcome.Error);
+            Assert.Equal(BootstrapStep.EnsureNode, outcome.Step);
+        }
+        finally
+        {
+            Directory.Delete(runtimeDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task RunAsync_NpmInstallFails_FailsLoudWithStderr()
     {
         var runtimeDir = Path.Combine(Path.GetTempPath(), "boot-" + Guid.NewGuid().ToString("N"));

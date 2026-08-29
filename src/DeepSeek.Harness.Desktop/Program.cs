@@ -9,11 +9,11 @@ using Ryn.Plugins.Tray;
 
 namespace DeepSeek.Harness.Desktop;
 
-    /// <summary>DeepSeek Harness Desktop 入口：Ryn 桌面壳 + 托管 dsh 运行时 + 崩溃监督。</summary>
-    public static class Program
-    {
-        /// <summary>引导进度帧（wwwroot 引导页监听 <c>dsh-desktop-bootstrap</c> CustomEvent 渲染）。</summary>
-        internal sealed record BootstrapStateFrame(string Step, string Message, bool Failed);
+/// <summary>DeepSeek Harness Desktop 入口：Ryn 桌面壳 + 托管 dsh 运行时 + 崩溃监督。</summary>
+public static class Program
+{
+    /// <summary>引导进度帧（wwwroot 引导页监听 <c>dsh-desktop-bootstrap</c> CustomEvent 渲染）。</summary>
+    internal sealed record BootstrapStateFrame(string Step, string Message, bool Failed);
 
     /// <summary>
     /// 壳启动流程：托管 dsh web（OS 分配端口）→ 解析 `dsh web:` URL → Ryn WebView 加载；
@@ -761,22 +761,19 @@ namespace DeepSeek.Harness.Desktop;
             {
                 try
                 {
-                    if (bootstrapSettled is not null)
+                if (bootstrapSettled is not null)
+                {
+                    try
                     {
-                        try
-                        {
-                            await bootstrapSettled.Task.WaitAsync(TimeSpan.FromMinutes(15), supervisorCts.Token);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            return;
-                        }
-                        catch (TimeoutException)
-                        {
-                            HostLog.Write("[host] 引导迟迟未落定，跳过随包插件安装");
-                            return;
-                        }
+                        // 无超时等待：settled 在引导任务 finally 恒置位（成功/失败/取消各终态），
+                        // 用户重试几轮都不受时限——限时会让「重试成功但晚于限时」的本会话丢随包插件
+                        await bootstrapSettled.Task.WaitAsync(supervisorCts.Token);
                     }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                }
 
                     if (webUrl is null)
                     {
@@ -1144,11 +1141,13 @@ namespace DeepSeek.Harness.Desktop;
         /// </summary>
         static async Task PushBootstrapStateAsync(CurrentWindowAccessor accessor, string step, string message, bool failed)
         {
+            // detail 必须是帧对象本身的 JSON（页面直接读 detail.step 等，无 JSON.parse）——
+            // 与 PushUpdateState 的 state.ToJson() 同款形态，禁止二次包字符串
             var frameJson = JsonSerializer.Serialize(
                 new BootstrapStateFrame(step, message, failed),
                 Services.AppJsonContext.Default.BootstrapStateFrame);
             var script = "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-bootstrap',{detail:"
-                + JsonSerializer.Serialize(frameJson, Services.AppJsonContext.Default.BootstrapStateFrame)
+                + frameJson
                 + "}));}catch(e){}})();";
             for (var attempt = 0; attempt < 15; attempt++)
             {
@@ -1211,7 +1210,8 @@ namespace DeepSeek.Harness.Desktop;
 
                 var reason = outcome.Error ?? "未知错误";
                 Services.HostLog.Write($"[bootstrap] 引导失败：{reason}（等待用户重试或退出）");
-                await PushBootstrapStateAsync(windowAccessor, "Ready", reason, failed: true);
+                // 推实际失败步骤：进度页据此红色高亮失败环节（推 "Ready" 会让高亮不可达）
+                await PushBootstrapStateAsync(windowAccessor, outcome.Step.ToString(), reason, failed: true);
 
                 // 等重试信号或应用退出；信号与取消都是即时语义事件，200ms 轮询足够
                 while (!gate.IsSignaled && !ct.IsCancellationRequested)

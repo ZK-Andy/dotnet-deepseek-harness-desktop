@@ -79,6 +79,7 @@ public static class RuntimeVersionGate
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
+                CreateNoWindow = true,
             };
             HarnessRuntimeHost.UseUtf8TextStreams(psi);
             if (bundled is { } b)

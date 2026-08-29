@@ -64,17 +64,9 @@ public static class RuntimeLocator
         return node is not null && File.Exists(bin) ? (node, bin) : null;
     }
 
-    /// <summary>
-    /// 统一运行时解析：捆绑目录优先，缺则探测引导下载目录（ADR online-first-unbundled-runtime
-    /// 的回退序：bundled → 引导下载 → PATH dsh）。两处都未就位返回 null。
-    /// </summary>
-    public static (string NodeExe, string DshEntry)? TryLocateResolved()
-    {
-        var runtimeDir = TryLocateRuntimeDirectory();
-        return runtimeDir is null ? null : TryLocateBundled(runtimeDir);
-    }
-
-    /// <summary>统一解析出实际就位的运行时目录（捆绑 → 引导下载）；两处都未就位返回 null（只读探测，不创建目录）。</summary>
+    /// <summary>统一解析出实际就位的运行时目录（捆绑 → 引导下载）；两处都未就位返回 null（只读探测，不创建目录）。
+    /// 消费方需要运行时元组时对返回目录再调 <see cref="TryLocateBundled"/>——目录是 <c>AssemblePending</c>
+    /// 等种子解析的必要输入，单返回目录可同时服务两个消费面。</summary>
     public static string? TryLocateRuntimeDirectory()
     {
         var runtimeDir = ResolveRuntimeDirectory();
