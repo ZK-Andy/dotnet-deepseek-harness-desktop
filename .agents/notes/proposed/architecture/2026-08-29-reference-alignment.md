@@ -60,10 +60,12 @@ Status: proposed
 - dev 显式隔离（`DevEnvironment.IsDevRuntime`）时跳过 dsh shim 注册——避免把开发 home/runtime 烘焙进用户共享的终端 shim（对齐参照 debug 构建不写共享 dsh shim 的原则；Windows 同样遵守）。
 - ✅ **批次四已落地**（2026-08-29；提交 `bec831d` feat + `c8eabb6` docs(adr) + `c428ea2` docs + `6992873` refactor(review)）：`CliShimBuilder`（纯 shim 文本生成，dsh/pnpm × cmd/ps1/sh）+ `CliShimPath`（PATH 幂等合并/rc 幂等块/生成标记识别）+ `CliShimPlanner`（按平台规划 shim 文件与 PATH 增量）+ `CliShimRegistrar`（定位运行时→烘焙→写 shim→注册 PATH；best-effort，失败仅告警；注册表写走 `[SupportedOSPlatform("windows")]` + 原始值读取保型 + `WM_SETTINGCHANGE` 广播；rc 只写已存在文件）。Program.cs 双路径（bundled/PATH-dsh 与引导完成后 `BindRuntime`）运行时就位后各注册一次；dev 隔离时跳过 dsh shim（Windows 亦遵守）。测试 **455/455**、覆盖率 **54.0%**、门禁全绿；三重审核 R1/R2/R3 串行收口（cmd DSH_HOME 注入时序、Windows dev 隔离失效、POSIX 谓词优先级、死 `DSH_NODE`/`RemovePathToken` 退役、注册表原始读保型、rc 补 `.zprofile` 等）。**待续**：批次五（boot 假活看门狗）。
 
-### 批次五 · boot 假活看门狗（PageHealthMonitor 有界恢复）
+### 批次五 · boot 假活看门狗（PageHealthMonitor 有界恢复）✅
 
 - `PageHealthMonitor` 从「只观测」升级为「观测 + 有界恢复」：连续 Dead 达阈值后，先一次有界刷新（`NavigateAsync` 当前 origin）或触发一次有界重载；**有界**——恢复计数达上限即停止并 leave 观测面（防误报重启循环），恢复计数窗口随同成功复位。
 - 对齐参照 `plugin_boot.rs` 的「卡 Loading plugins」恢复：探测到「dsh 在跑但页面空白」时，做有界 reload 而非无限轮询。
+- **有意偏差（对齐属「能力等价」而非逐点等同）**：参照的 `plugin_boot.js.inc` 精确识别 `#root` 下「HARNESS + Loading plugins」boot 花屏才报 stalled，而我方直接加载 dsh web（非 iframe），探针以「body 无子节点即空白」为 Dead 信号——两者都捕获「dsh 进程在跑但页面没到应用态」的假活形态，信号粒度不同但恢复机致一致（有界 reload + leave 观测面）。
+- ✅ **批次五已落地**（2026-08-29）：`PageHealthTracker.ReArm()`（重置死区，让 reload 后仍空白的页面重新凑满阈值再触发迁移）+ `PageHealthRecovery`（有界恢复预算：预算内允许 reload、耗尽转观测、成功恢复复位窗口，对齐参照 `BoundedReloadGate`）+ `PageHealthMonitor` 增 `HandleTransition`（Dead 迁移处经注入的 reload 委托触发，Alive 复位预算；reload 为 null 保持纯观测向后兼容）+ Program.cs 接线（reload 委托 = `webUrl` 非空时 `windowAccessor.Current.NavigateAsync(webUrl)`）。测试 **463/463**（+8：`PageHealthRecoveryTests` 7 例 + `PageHealthTracker.ReArm` 1 例）、覆盖率 54.x%、门禁全绿。**参照对齐批次全部完成**，本 ADR 随批次五收尾迁 implemented。
 
 ## Alternatives considered
 
