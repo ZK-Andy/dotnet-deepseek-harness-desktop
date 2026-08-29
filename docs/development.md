@@ -17,7 +17,7 @@ scripts/  build-companion-tgz.sh, package-*.sh, release-preflight.sh, verify-*.p
 ```
 
 * `appsettings.json`：`DevTools:false`；`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
-* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（覆盖捆绑运行时目录，dev 信号之一）、`DSH_DESKTOP_DEV=1`（显式 dev 声明——dev 判定只认这两个显式标记，不探测闭包存在性）、`DSH_DESKTOP_DSH_HOME`（桌面专属覆盖，默认共享 `~/.dsh`；dev 自动隔离到 `<仓库>/.cache/dev-home`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。
+* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（覆盖捆绑运行时目录，dev 信号之一）、`DSH_DESKTOP_DEV=1`（显式 dev 声明——dev 判定只认这两个显式标记，不探测闭包存在性）、`DSH_DESKTOP_DSH_HOME`（桌面专属覆盖，默认共享 `~/.dsh`；dev 自动隔离到 `<仓库>/.cache/dev-home`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。CLI shim 注册的测试隔离覆盖：`DSH_DESKTOP_CLI_BIN_DIR`（覆盖 shim 落盘目录）、`DSH_DESKTOP_CLI_RC_HOME`（覆盖 shell rc 基目录）——二者仅为 dev/测试隔离，不写用户真实路径。
 
 ## 运行时来源（online-first）
 

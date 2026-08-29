@@ -25,8 +25,8 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-427%2F427-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-53.5%25-yellowgreen" alt="coverage"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-453%2F453-brightgreen" alt="tests"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-54.3%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
@@ -36,6 +36,8 @@
 ## 功能
 
 - ⚡️ **零环境、下载即用（online-first）** — 安装器只带壳（约 30MB 级），首启自动引导：优先复用本机 Node，否则下载钉版 Node 并经 registry 安装 `@deepseek-ai/dsh`；下载层**断点续传 + 官方/镜像多源回落 + 原子落盘 + 文件锁重试**（断网/弱网更稳），壳在共享数据目录 `~/.dsh` 以专属 `desktop` profile 拉起 dsh。dsh 内核跟随 npm `latest`，升级不再等壳发版。会话/凭据/插件与 CLI、TUI、Web **同一宇宙互通**。
+- ⌨️ **终端命令（CLI shim 注册）** — 运行时就位后把 `dsh`/`pnpm` 命令注册到用户 `PATH`（Windows `%LOCALAPPDATA%\deepseek-harness\bin` + `HKCU\Environment\Path` 幂等合并；mac/linux `~/.local/bin` + shell rc 幂等块），终端可直接用 `dsh`/`pnpm`。shim 优先兼容本机 node、回退桌面运行时；不覆盖用户自己的同名命令。
+
 - 🔒 **原生轻量壳** — C# 后端跑在系统 WebView（WebView2 / WKWebView / WebKitGTK），NativeAOT 就绪，能力沙箱 deny-by-default（`ryn.json`）。
 - 🔄 **崩溃自愈与会话回归** — 壳监督运行时子进程：崩溃 → 恢复页（原因/stderr 尾部 + 导出诊断 + 退出应用）→ 自动重启 → 同一窗口回到新 URL；**端口保持稳定**，Web UI origin（及页面级会话记忆）存活——**崩溃或重启后回到之前的对话**。
 - ⬆️ **自更新** — 启动后台检查一次 + 设置页手动检查；发现新版本一键安装并自动重启（安装包 `SHA256` 强校验；`macOS` 引导手动更新），详见下方[「自动更新」](#自动更新)。
@@ -93,7 +95,7 @@
 # 运行（开发环境必须带 DSH_DESKTOP_DEV=1——dev 隔离 home 与单实例后缀；无 PATH dsh 时走首启引导，需网络）
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# 测试（427/427）
+# 测试（453/453）
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # WebView 调试器（默认关）
@@ -106,7 +108,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn 壳：Program + Services/（运行时监督、自更新、系统托盘、单实例仲裁、诊断导出等）
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 427/427
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 453/453
 ├── scripts/                        # 门禁 + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```
