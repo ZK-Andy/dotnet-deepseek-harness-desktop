@@ -25,8 +25,8 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-406%2F406-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-49.5%25-yellowgreen" alt="coverage"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-407%2F407-brightgreen" alt="tests"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-49.6%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
@@ -110,7 +110,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn 壳：Program + Services/（运行时监督、自更新、系统托盘、单实例仲裁、诊断导出等）
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 406/406
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 407/407
 ├── resources/runtime/              # 内置 Node + dsh 闭包 + dshmarket.tgz（生成物，gitignore）
 ├── scripts/                        # 门禁 + bundle-runtime-ci.sh + package-linux.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
