@@ -23,13 +23,25 @@ public sealed class HarnessRuntimeHost : IDisposable
     /// <summary>桌面专属 profile 名：启动组装与随包插件装配共用此单点，防两处漂移。</summary>
     internal const string DesktopProfileName = "desktop";
 
-    private readonly (string NodeExe, string DshEntry)? _bundled;
+    private (string NodeExe, string DshEntry)? _bundled;
     private readonly Action<string>? _log;
     private int? _port;
     private Process? _process;
 
     /// <summary>Start/Stop/Restart 生命周期串行化门（防并发双 spawn/_process 覆盖互踩）。</summary>
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+
+    /// <summary>
+    /// 子进程文本流显式 UTF-8（单点）：dsh/npm/node 系子进程输出恒 UTF-8，不显式声明时
+    /// Windows 按系统 OEM 码页（如 GBK）解码，中文日志进 stderr tail/诊断包变乱码
+    /// （.NET replacement fallback 不炸管道，但观测面全花；竞品 #197 崩溃类的 .NET 变体，
+    /// ADR online-first-unbundled-runtime 踩坑约束）。
+    /// </summary>
+    internal static void UseUtf8TextStreams(System.Diagnostics.ProcessStartInfo psi)
+    {
+        psi.StandardOutputEncoding = Encoding.UTF8;
+        psi.StandardErrorEncoding = Encoding.UTF8;
+    }
 
     /// <summary>创建运行时宿主。</summary>
     /// <param name="bundled">捆绑运行时 (node 可执行, dsh bin.js)；null 表示用 PATH 的 dsh。</param>
@@ -38,6 +50,22 @@ public sealed class HarnessRuntimeHost : IDisposable
     {
         _bundled = bundled;
         _log = log;
+    }
+
+    /// <summary>
+    /// 首启引导成功后绑定运行时（ADR online-first-unbundled-runtime）：宿主以 null 构造、
+    /// 引导完成后补绑，随后 StartAsync 按 bundled 形态 spawn。尚未启动过 dsh（_process 为空）
+    /// 才允许绑定；已启动后补绑属调用序错误，fail loud。
+    /// </summary>
+    public void BindRuntime((string NodeExe, string DshEntry) runtime)
+    {
+        if (_process is not null)
+        {
+            throw new InvalidOperationException("dsh 已启动，禁止补绑运行时（调用序错误）");
+        }
+
+        _bundled = runtime;
+        _log?.Invoke($"[host] 引导运行时已绑定：node={runtime.NodeExe} bin={runtime.DshEntry}");
     }
 
     /// <summary>本次采用的运行时描述（日志/恢复屏用）。</summary>
@@ -337,9 +365,10 @@ public sealed class HarnessRuntimeHost : IDisposable
             UseShellExecute = false,
             WorkingDirectory = AppContext.BaseDirectory,
         };
+        UseUtf8TextStreams(psi);
         if (_bundled is { } b)
         {
-            psi.FileName = b.NodeExe;
+            psi.FileName = RuntimeBootstrap.StripExtendedPrefix(b.NodeExe);
             psi.ArgumentList.Add(b.DshEntry);
         }
         else

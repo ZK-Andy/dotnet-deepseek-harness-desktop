@@ -55,4 +55,80 @@ public class RuntimeLocatorTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public void TryLocateBundled_WindowsNodeExeLayout_ReturnsPaths()
+    {
+        // 回归：Windows 发行包布局为 node.exe（File.Exists 不做扩展名探测，缺失此分支时
+        // Windows 捆绑运行时永远定位不到——v0.3.12 及之前为潜伏 bug）
+        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, "node_modules", "@deepseek-ai", "dsh", "lib"));
+        File.WriteAllText(Path.Combine(dir, "node.exe"), "MZ");
+        File.WriteAllText(Path.Combine(dir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"), "// dsh\n");
+        try
+        {
+            var located = RuntimeLocator.TryLocateBundled(dir);
+            Assert.NotNull(located);
+            Assert.Equal(Path.Combine(dir, "node.exe"), located!.Value.NodeExe);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResolveDownloadedRuntimeDirectory_EnvOverride_Wins()
+    {
+        var prior = Environment.GetEnvironmentVariable(RuntimeLocator.DownloadDirEnv);
+        try
+        {
+            Environment.SetEnvironmentVariable(RuntimeLocator.DownloadDirEnv, "/tmp/dl-runtime-x");
+            Assert.Equal(Path.GetFullPath("/tmp/dl-runtime-x"), RuntimeLocator.ResolveDownloadedRuntimeDirectory());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(RuntimeLocator.DownloadDirEnv, prior);
+        }
+    }
+
+    [Fact]
+    public void TryLocateRuntimeDirectory_FallsBackToDownloadedDir()
+    {
+        var priorBundled = Environment.GetEnvironmentVariable(RuntimeLocator.BundledDirEnv);
+        var priorDownload = Environment.GetEnvironmentVariable(RuntimeLocator.DownloadDirEnv);
+        var bundledDir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
+        var downloadDir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // 捆绑目录不存在 + 下载目录就位 → 统一解析命中下载目录
+            Environment.SetEnvironmentVariable(RuntimeLocator.BundledDirEnv, bundledDir);
+            Environment.SetEnvironmentVariable(RuntimeLocator.DownloadDirEnv, downloadDir);
+            Directory.CreateDirectory(Path.Combine(downloadDir, "node_modules", "@deepseek-ai", "dsh", "lib"));
+            File.WriteAllText(Path.Combine(downloadDir, "node"), "#!/bin/sh\n");
+            File.WriteAllText(Path.Combine(downloadDir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"), "// dsh\n");
+
+            Assert.Equal(Path.GetFullPath(downloadDir), RuntimeLocator.TryLocateRuntimeDirectory());
+            Assert.NotNull(RuntimeLocator.TryLocateResolved());
+
+            // 两处都未就位 → null（只读探测）
+            Directory.Delete(downloadDir, recursive: true);
+            Assert.Null(RuntimeLocator.TryLocateRuntimeDirectory());
+            Assert.Null(RuntimeLocator.TryLocateResolved());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(RuntimeLocator.BundledDirEnv, priorBundled);
+            Environment.SetEnvironmentVariable(RuntimeLocator.DownloadDirEnv, priorDownload);
+            if (Directory.Exists(bundledDir))
+            {
+                Directory.Delete(bundledDir, recursive: true);
+            }
+
+            if (Directory.Exists(downloadDir))
+            {
+                Directory.Delete(downloadDir, recursive: true);
+            }
+        }
+    }
 }

@@ -80,6 +80,7 @@ public static class RuntimeVersionGate
                 RedirectStandardError = true,
                 UseShellExecute = false,
             };
+            HarnessRuntimeHost.UseUtf8TextStreams(psi);
             if (bundled is { } b)
             {
                 psi.FileName = b.NodeExe;
