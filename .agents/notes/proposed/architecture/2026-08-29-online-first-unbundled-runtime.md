@@ -46,9 +46,9 @@ Status: proposed
 
 ### 实施批次
 
-1. **批次一 · 首启引导**：RuntimeBootstrap（检测/下载/安装状态机）+ Ryn 静态进度页 + 失败重试；此批闭包仍在，行为为「bundled 优先、缺失走引导」；
-2. **批次二 · 安装器与 CI 瘦身**：package-*.sh 停止捆绑闭包，删除清单逐项退役，preflight 同步；
-3. **批次三 · 插件面收口**：BundledPluginCatalog 收缩为 companion，dshmarket 转 registry 首装；
+1. **批次一 · 首启引导**：RuntimeBootstrap（检测/下载/安装状态机）+ Ryn 静态进度页 + 失败重试；此批闭包仍在，行为为「bundled 优先、缺失走引导」（✅ 2026-08-29 已落地）；
+2. **批次二 · 安装器与 CI 瘦身**：package-*.sh 停止捆绑闭包，删除清单逐项退役，preflight 同步；**必须先重构 `DevEnvironment.IsDevRuntime`**（吸收 [shared-home ADR 的在案挂账](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md)：其 dev 判定以「有无捆绑闭包」为信号之一，闭包消失 ⇒ 全部新装用户被判 dev → ApplicationId 带 .dev 后缀 + 随包插件安装被跳过。改为显式环境标记，不依赖闭包存在性探测）；
+3. **批次三 · 插件面收口**：BundledPluginCatalog 收缩为 companion，dshmarket 转 registry 首装；companion tgz 改由安装器资源自带（file:，与闭包无关）；
 4. **批次四 · 文档与实机**：architecture/user-guide/README 双语同步，实机验收转交（首启下载全链、存量升级触发一次性下载、断网 fail loud 文案）。
 
 ### 对齐竞品踩坑的设计约束（dsh-tauri-desk 已付学费，2026-08-29 调研）
@@ -83,5 +83,14 @@ Status: proposed
 
 - **npm 可达性**（弱网/镜像场景）：首装可能慢或失败——进度页重试 + 文档给镜像配置指引；竞品同路线已被市场验证；
 - **上游 breaking 变化直触达用户**：`@latest` 使上游缺陷无缓冲直达，靠 RuntimeVersionGate 底线（出问题立即抬）与自有回归观察兜底；
-- **首启体验新增失败面**：下载/安装/校验每步都可能失败，进度页状态机需完整错误呈现（对齐竞品 docs/testing/01-install/05 的失败场景清单）；
+- **首启体验新增失败面**：下载/安装/校验每步都可能失败，进度页状态机需完整错误呈现（对齐竞品 docs/testing/01-install/05 的失败场景清单）；步骤超时（StepTimeoutMinutes）已接线兜底网络停滞；
+- **SHA256 校验是防损坏而非信任锚**：摘要与文件同源同一 base url，`NodeDistBaseUrl`/`DshSpec` 可配置时校验无信任增量（能改配置的攻击者等权能改运行时目录）——本变更接受此边界，与自更新栈「release 侧复取哈希锚点」的强校验不同级；
+- **Node 钉版副本新增巡检盲区**：`RuntimeBootstrapOptions.NodeVersion`（appsettings）是与 bundle-runtime-ci.sh NODE_VERSION 并存的手工同步副本，check-pin-freshness.sh 未覆盖——批次二退役捆绑钉版前该漂移面存在（若批次二提前，先扩巡检副本集）；
 - **放弃的东西**：离线可用性（有意放弃）；闭包缓存带来的打包提速（由不再组装闭包直接取代）；随包种子的「逐字节等价」确定性（registry 安装天然等价）。
+
+## Related
+
+- [shared-home-desktop-profile](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md)（implemented）：本 ADR 取代其「运行时归属 B 形态：闭包保留为预览期形态、去捆绑是远期选项」条款与 dev 判定挂账——它自注「届时另立 ADR」，本篇即该 ADR；共享 home / desktop profile / 数据互通等其余决定全部保留。
+- [bundled-plugin-registry-normalization](../../implemented/feature/2026-08-29-bundled-plugin-registry-normalization.md)（implemented）：本 ADR 取代其「随包 = 种子保离线可靠」前提与「MARKET_VERSION 钉版语义（freshness 巡检职责不变）」一条（批次二/三退役）；归化迁移机制与存量自愈路径被显式保留。
+- [ryn-shell-bundled-dsh-runtime](../../implemented/architecture/2026-08-20-ryn-shell-bundled-dsh-runtime.md)（implemented）：本 ADR 直接转向其「完整运行时打包」决定，捆绑闭包与「零下载确定性」差异化表述随 offline 约束删除而退役。
+- [companion-plugin-version-aware-upgrade](../../implemented/feature/2026-08-22-companion-plugin-version-aware-upgrade.md)（implemented）：随包种子退役后 tgz 供给渠道变化见批次三；版本比对机制不变。

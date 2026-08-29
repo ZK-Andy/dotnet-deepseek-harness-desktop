@@ -37,3 +37,4 @@ Status: implemented
 
 - [shared-home-desktop-profile](2026-08-23-shared-home-desktop-profile.md)：数据 home 形态的现行裁决；与本决定的「闭包随包」同向互补（数据共享一份 + 执行副本随包）。
 - [dev 运行时隔离](../process/2026-08-22-dev-runtime-isolation.md)：dev 判定依赖「有无捆绑闭包」信号——闭包保留故信号有效；远期去捆绑须先重构该判定。
+- [online-first 去捆绑运行时](../../proposed/architecture/2026-08-29-online-first-unbundled-runtime.md)（proposed）：**部分取代本篇**——「完整运行时打包」决定由该 ADR 转向（安装器瘦身 + 首启引导），捆绑闭包与零下载确定性表述随 offline 约束删除而退役。
