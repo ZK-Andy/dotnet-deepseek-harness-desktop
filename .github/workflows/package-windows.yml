@@ -57,6 +57,9 @@ jobs:
       - name: 打 Windows 包（安装器 exe，文件名含 windows 标识；不再产独立 zip）
         shell: bash
         run: bash scripts/package-windows.sh artifacts/publish-win-x64
+      - name: 安装冒烟（静默安装→启动→等 dsh web URL 行或引导启动行）
+        shell: bash
+        run: bash scripts/smoke-install-windows.sh "$(ls artifacts/win-x64/*-setup.exe | head -1)"
       - name: 上传
         uses: actions/upload-artifact@v4
         with:
