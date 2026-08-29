@@ -43,10 +43,10 @@ Status: proposed
 `RuntimeBootstrap` 的 Node 发行包下载链路（`DownloadNodeAsync`）从「单源 `GetAsync→CopyTo` + 事后校验」升级为「摘要优先 + 多源回落 + 断点续传 + 原子落盘 + 锁重试」。四项子能力与取舍（2026-08-29 用户拍板）：
 
 - **摘要优先取自官方（防投毒信任模型）**：先经 `FetchTextAsync` 拉**官方** `SHASUMS256.txt` 得可信摘要；后下载归档（官方→镜像）逐一用该可信摘要校验。官方摘要不可达即 fail loud（无可信摘要 → **不用镜像**，宁可中止不装坏包）。镜像只承担**下载**，绝不提供摘要（镜像提供摘要即自证自证、失去独立信任根）。
-- **多源回落**：归档下载候选 = 官方 `NodeDistBaseUrl` → 镜像 `NodeMirrorBaseUrl`（默认 `https://cdn.npmmirror.com/binaries/node`，已核对与官方 `SHASUMS256.txt` 逐字节一致、是 nodejs.org dist 的合法镜像）；镜像经 appsettings 可配置，**置空字符串 = 仅官方单源**（镜像关闭）。候选按序尝试，前一源失败（网络/异常）即切下一源；**同一 dest** 不删、续传。
-- **断点续传（Range）**：下载落**确定性命名的 `.download/<versionDir>/<fileName>`**（runtimeDir 同盘兄弟区，跨重试/跨进程存活，非每尝试随机 GUID）。生产 `DownloadFileAsync` 先读 dest 现有字节长，发 `Range: bytes=<n>-`；`206` 追加、`200`（服务端不支持 Range/文件已变）重头写、`416`（Range 不可满足=疑似已完整）重头写兜底——正确性由后续 SHA256 校验兜底。
-- **原子 staging + 备份切换**：下载校验通过后，解压先落同盘兄弟临时目录 `.staging-<guid>/`（含 `extract`），归一为捆绑闭包同款扁平布局（node + npm 模块树）于 staging 根；成功再**原子 swap** 进正式 `runtimeDir`（`runtimeDir` → `.backup-<guid>`，staging → `runtimeDir`，成功后删 backup），失败清理 staging/恢复 backup。旧「逐件 `MoveInto` 进 runtimeDir」的半成品残留面消除。
-- **Windows 文件锁重试**：swap 的 rename/remove（及 `.download` 清理）对 `IOException`（AV/文件扫描器瞬时锁）做**有界重试**（默认 10 次 × 200ms，达上限 fail loud）。
+- **多源回落**：归档下载候选 = 官方 `NodeDistBaseUrl` → 镜像 `NodeMirrorBaseUrl`（默认 `https://cdn.npmmirror.com/binaries/node`，是 nodejs.org dist 的官方镜像）；镜像经 appsettings 可配置，**置空字符串 = 仅官方单源**（镜像关闭）。候选按序尝试，前一源失败（网络/异常）即切下一源；**同一 dest** 不删、续传。
+- **断点续传（Range）**：下载落**确定性命名的 `.download-<runtimeDir 名>/<versionDir>/<fileName>`**（runtimeDir 同盘兄弟区，跨重试/跨进程存活，非每尝试随机 GUID，按 runtimeDir 名区分避免同父多运行时撞名）。生产 `DownloadFileAsync` 先读 dest 现有字节长，发 `Range: bytes=<n>-`；`206` 追加、`200`（服务端不支持 Range/文件已变）重头写、`416`（Range 不可满足=疑似已完整）重头写兜底——正确性由后续 SHA256 校验兜底。
+- **原子 staging + 备份切换**：下载校验通过后，解压先落同盘兄弟临时目录 `.staging-<guid>/`（含 `extract`），归一为捆绑闭包同款扁平布局（node + npm 模块树）于 staging 根，**清掉 `extract/` 残余**（不把 include/share 等搬进正式目录）；成功再**原子 swap** 进正式 `runtimeDir`（`runtimeDir` → `.backup-<guid>`，staging → `runtimeDir`，成功后删 backup），失败清理 staging/恢复 backup。旧「逐件 `MoveInto` 进 runtimeDir」的半成品残留面消除。跨崩溃残留的 `.staging-*`/`.backup-*` 于下次下载前最佳努力清扫（防累积泄漏）。
+- **Windows 文件锁重试**：swap 的 rename/remove 对 `IOException`（AV/文件扫描器瞬时锁）做**有界重试**（默认 10 次 × 200ms，达上限 fail loud）；`.download` 归档区清理为**最佳努力**（失败不阻塞引导结果）。
 - 摘要仍来自 `SHASUMS256.txt`（既有）；`.download` 临时归档与正式 `runtimeDir` 分离，失败不残留半成品运行时。
 - **测试策略**：既有 `RuntimeBootstrapTests` 的 fake hooks 改为**摘要先行**契约（FetchTextAsync 用常量摘要、DownloadFileAsync 写常量字节使其自洽），并新增回归：多源回落（主源抛→镜像命中）、续传（dest 已有字节→Range 路径）、原子 swap（staging 就位 runtimeDir、失败恢复 backup）、锁重试（前 N 次 IOException 后成功）、摘要缺失/不匹配 fail loud、镜像置空仅官方。真实 Range/206 行为由 `DSH_TEST_BOOTSTRAP_E2E` 门控 E2E 覆盖（不默认跑）。
 
