@@ -51,7 +51,12 @@ echo "== 安装（静默，DIR=$WIN_DIR）"
 # 进程表 fail loud，绝不静默挂死。
 WIN_LOG="$(cygpath -w "$HOME_DIR/install.log" 2>/dev/null || echo "$HOME_DIR/install.log")"
 INSTALL_WAIT="${INSTALL_WAIT_SECONDS:-300}"
-"$SETUP" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="$WIN_LOG" /DIR="$WIN_DIR" &
+# 预建日志：排除「路径不可写/未创建」变量——Inno 正常初始化必然立即写日志，
+# 超时后日志仍空 = 安装器从未进入 Inno 初始化（执行前阻塞，如对话框/扫描）
+: > "$HOME_DIR/install.log"
+# stdin 断开（</dev/null）：CI 中 GUI 安装器继承 bash 管道句柄后启动期挂死是
+# 已知坑形态
+"$SETUP" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="$WIN_LOG" /DIR="$WIN_DIR" </dev/null &
 setup_pid=$!
 install_done=0
 for _ in $(seq 1 "$INSTALL_WAIT"); do
@@ -63,6 +68,9 @@ if [[ $install_done -eq 0 ]]; then
   tail -40 "$HOME_DIR/install.log" >&2 || true
   echo "--- 进程表（setup/DeepSeek 相关）---" >&2
   tasklist 2>/dev/null | grep -iE "setup|deepseek" >&2 || true
+  echo "--- 窗口定性（Responding/MainWindowTitle：有对话框直接现形）---" >&2
+  powershell -NoProfile -Command "Get-Process | Where-Object { \$_.ProcessName -match 'DeepSeek|setup' } | Select-Object Id,ProcessName,Responding,MainWindowTitle | Format-Table -AutoSize | Out-String -Width 200" >&2 || true
+  powershell -NoProfile -Command "Get-Process | Where-Object { \$_.MainWindowTitle -ne '' } | Select-Object ProcessName,MainWindowTitle | Format-Table -AutoSize | Out-String -Width 200" >&2 || true
   kill -9 "$setup_pid" 2>/dev/null || true
   exit 1
 fi
