@@ -13,32 +13,25 @@
 ```
 src/DeepSeek.Harness.Desktop/  Program.cs, Services/*, Commands/*, ryn.json, wwwroot/
 tests/DeepSeek.Harness.Desktop.Tests/  xunit（35 个测试文件，清单见 testing.md）
-resources/runtime/  node + node_modules + dshmarket.tgz（gitignore）
-scripts/  bundle-runtime{-ci,}.sh, package-*.sh, check-pin-freshness.sh, release-preflight.sh, verify-*.py
+scripts/  build-companion-tgz.sh, package-*.sh, release-preflight.sh, verify-*.py
 ```
 
 * `appsettings.json`：`DevTools:false`；`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
-* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（覆盖 `resources/runtime`）、`DSH_DESKTOP_DSH_HOME`（桌面专属覆盖，默认共享 `~/.dsh`；dev 自动隔离到 `<仓库>/.cache/dev-home`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。
+* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（覆盖捆绑运行时目录，dev 信号之一）、`DSH_DESKTOP_DEV=1`（显式 dev 声明——dev 判定只认这两个显式标记，不探测闭包存在性）、`DSH_DESKTOP_DSH_HOME`（桌面专属覆盖，默认共享 `~/.dsh`；dev 自动隔离到 `<仓库>/.cache/dev-home`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。
 
-## 捆绑运行时
+## 运行时来源（online-first）
 
-```sh
-# 统一入口（CI 同款，下载 Node + pnpm 闭包 + curl 497K tgz，~421M）
-bash scripts/bundle-runtime-ci.sh linux-x64
-# 兼容 wrapper
-bash scripts/bundle-runtime.sh
-```
-
-* 入口校验：`resources/runtime/node` + `node_modules/@deepseek-ai/dsh/lib/bin.js`；闭包签名 `.bundle-meta.json` 含 dsh/node/companion/market/trimPolicy/scriptSha256 六维，`restore-keys` 前缀命中捡回的旧闭包校验不过即全量重建。`package-linux.sh --stage-only` 在错布局/假包时 `fail loud`。
+安装器/仓库不再捆绑运行时闭包（ADR online-first-unbundled-runtime）：无捆绑闭包且无 PATH dsh 时，
+首启引导下载钉版 Node（SHA256 校验）并经 npm 安装 dsh（落位 `~/.dsh-desktop/runtime`）。
 
 ## 运行与调试
 
 ```sh
 export DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget
-# PATH dsh
+# PATH dsh（无 PATH dsh 时走首启引导，需网络）
 dotnet run --project src/DeepSeek.Harness.Desktop
-# 内置运行时
-DSH_DESKTOP_RUNTIME_DIR=$PWD/resources/runtime dotnet run --project src/DeepSeek.Harness.Desktop
+# 显式 dev 隔离（dev 判定改显式标记后必须带，防污染真实 home / 单实例互斥）
+DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 # 调试
 DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ```
@@ -94,7 +87,7 @@ SELF_SIGN=1 bash scripts/package-windows.sh artifacts/publish-win-x64
 
 * **边界**：自签/ad-hoc 仅消除**本机/内部**的"来源不明/未知发布者"告警，**不消除终端用户**的 Gatekeeper/SmartScreen——免费受信签名不存在，现状不签名、发布路径（tag 触发）不受影响。macOS 走 `codesign --force --deep --sign`（默认 `-` ad-hoc），Windows 走 `signtool sign /fd SHA256 /s My /n "DeepSeek Harness Desktop Dev"`。
 
-* `CI`：`ci.yml`（门禁+build+test+coverage）+ `package-linux/macos/windows.yml`（出包 + `7 天 Artifacts`）+ 统一 `release.yml`（tag 触发，聚合产物并发布结构化的单个 Release，正文由 `scripts/release-notes.sh` 生成：`bash scripts/release-notes.sh [from] [to]`）+ `freshness.yml`（每周钉版巡检：npm dist-tags ×2 + Node 现役 LTS 对三处钉版，漂移开/更新 issue、追平自动关；`bash scripts/check-pin-freshness.sh --self-test` 离线自测，发版 preflight 附 warn-only 漂移注解）。
+* `CI`：`ci.yml`（门禁+build+test+coverage）+ `package-linux/macos/windows.yml`（出包 + `7 天 Artifacts`）+ 统一 `release.yml`（tag 触发，聚合产物并发布结构化的单个 Release，正文由 `scripts/release-notes.sh` 生成：`bash scripts/release-notes.sh [from] [to]`）。
 
 ## 常见问题
 

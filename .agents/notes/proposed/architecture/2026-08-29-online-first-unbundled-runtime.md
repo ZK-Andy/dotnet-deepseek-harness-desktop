@@ -47,8 +47,8 @@ Status: proposed
 ### 实施批次
 
 1. **批次一 · 首启引导**：RuntimeBootstrap（检测/下载/安装状态机）+ Ryn 静态进度页 + 失败重试；此批闭包仍在，行为为「bundled 优先、缺失走引导」（✅ 2026-08-29 已落地）；
-2. **批次二 · 安装器与 CI 瘦身**：package-*.sh 停止捆绑闭包，删除清单逐项退役，preflight 同步；**必须先重构 `DevEnvironment.IsDevRuntime`**（吸收 [shared-home ADR 的在案挂账](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md)：其 dev 判定以「有无捆绑闭包」为信号之一，闭包消失 ⇒ 全部新装用户被判 dev → ApplicationId 带 .dev 后缀 + 随包插件安装被跳过。改为显式环境标记，不依赖闭包存在性探测）；
-3. **批次三 · 插件面收口**：BundledPluginCatalog 收缩为 companion，dshmarket 转 registry 首装；companion tgz 改由安装器资源自带（file:，与闭包无关）；
+2. **批次二 · 安装器与 CI 瘦身**：package-*.sh 停止捆绑闭包，删除清单逐项退役，preflight 同步；**必须先重构 `DevEnvironment.IsDevRuntime`**（吸收 [shared-home ADR 的在案挂账](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md)：其 dev 判定以「有无捆绑闭包」为信号之一，闭包消失 ⇒ 全部新装用户被判 dev → ApplicationId 带 .dev 后缀 + 随包插件安装被跳过。改为显式环境标记，不依赖闭包存在性探测）（✅ 2026-08-29 已落地：dev 判定改 `DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DEV=1` 显式标记；companion tgz 改由打包时现打进安装器 `resources/plugins/`（批次三的「安装器资源自带」提前落地，顺带修正 mac 资源非 exe 相对路径的潜伏布局 bug）；dshmarket 无本地来源时回退 `dshmarket@latest` registry 直装，钉版与巡检随之退役）；
+3. **批次三 · 插件面收口**：BundledPluginCatalog 收缩为 companion（dshmarket 条目随 registry 回退形态自然退役），companion tgz 供给已由批次二迁入安装器资源；
 4. **批次四 · 文档与实机**：architecture/user-guide/README 双语同步，实机验收转交（首启下载全链、存量升级触发一次性下载、断网 fail loud 文案）。
 
 ### 对齐竞品踩坑的设计约束（dsh-tauri-desk 已付学费，2026-08-29 调研）

@@ -25,7 +25,7 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-407%2F407-brightgreen" alt="tests"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-412%2F412-brightgreen" alt="tests"></a>
   <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-49.6%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
@@ -35,7 +35,7 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 
 ## Features
 
-- ⚡️ **Zero-setup, download and run** — bundles a Node binary + the `@deepseek-ai/dsh` dependency closure (`resources/runtime/`); the shell spawns dsh in the shared data directory `~/.dsh` under a dedicated `desktop` profile. No PATH `dsh`/`node` required (falls back to PATH `dsh` if the bundle is absent). Sessions, credentials and plugins are **one universe with the CLI, TUI and Web**.
+- ⚡️ **Zero-setup, download and run (online-first)** — the installer ships only the shell (~30MB); first launch bootstraps automatically: reuses a local Node when present, otherwise downloads the pinned Node and installs `@deepseek-ai/dsh` from the registry, then the shell spawns dsh in the shared data directory `~/.dsh` under a dedicated `desktop` profile. The dsh kernel follows npm `latest` — kernel upgrades no longer wait for a shell release. Sessions, credentials and plugins are **one universe with the CLI, TUI and Web**.
 - 🔒 **Native, lightweight shell** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
 - 🔄 **Crash self-heal & session return** — the shell supervises the runtime process: crash → recovery screen (cause / stderr tail + export diagnostics + exit) → auto-restart → same window back to a new URL; **the port stays stable** so the Web UI origin (and page-level session memory) survives — **return to your previous conversation after a crash or restart**.
 - ⬆️ **Self-update** — background check at launch plus a manual check under Settings → Desktop Settings; one-click install & restart when a new version is found (`SHA256`-verified packages; `macOS` guides manual update). See [Auto-Update](#auto-update) below.
@@ -78,8 +78,8 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 └─────────────────────────┬────────────────────────────┘
                           │ spawn + shared ~/.dsh · desktop profile
 ┌─────────────────────────▼────────────────────────────┐
-│ Bundled runtime resources/runtime/                    │
-│   Node binary + @deepseek-ai/dsh closure + dshmarket  │
+│ Runtime (first-launch bootstrap, online-first)        │
+│   local Node or pinned download → registry dsh install │
 │   dsh web (localhost)                                │
 └──────────────────────────────────────────────────────┘
 ```
@@ -90,14 +90,11 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 ```sh
 # prerequisites: .NET 10 SDK; on Linux: WebKitGTK
-# optional: bundle the runtime from a local dsh install
-scripts/bundle-runtime.sh
-
-# run — uses PATH dsh by default; use the bundled runtime with:
-# DSH_DESKTOP_RUNTIME_DIR=$PWD/resources/runtime
+# run — uses PATH dsh when available; otherwise the first-launch bootstrap
+# downloads the pinned Node and installs dsh from the registry (online-first)
 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# tests (387/387)
+# tests (412/412)
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # webview devtools (default off)
@@ -110,9 +107,8 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program + Services/ (runtime supervision, self-update, system tray, single-instance activation, diagnostics)
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 407/407
-├── resources/runtime/              # bundled Node + dsh closure + dshmarket.tgz (generated, gitignored)
-├── scripts/                        # gates + bundle-runtime-ci.sh + package-linux.sh + release-notes.sh
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 412/412
+├── scripts/                        # gates + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```
 

@@ -1,6 +1,6 @@
 # Architecture
 
-> 现状。`Ryn` 壳 + 捆绑 `dsh` 运行时 + 崩溃监督 + 随包插件后台安装 + `pilot-harness` 打包。
+> 现状。`Ryn` 壳 + online-first 运行时引导（无捆绑闭包）+ 崩溃监督 + 插件后台安装 + pilot-harness 打包（ADR `proposed/architecture/2026-08-29-online-first-unbundled-runtime`）。
 
 ## 概览
 
@@ -14,7 +14,7 @@
 
 * 壳只管生命周期、窗口、恢复；`dsh` 的插件树即应用运行时。
 * **共享 home（B 形态）**：默认上游规范 `~/.dsh`，经 `HarnessRuntimeHost.ResolveDshHome()` 解析——优先级：`DSH_DESKTOP_DSH_HOME`（dev 隔离/用户回退）> 生态标准 `DSH_HOME` > `~/.dsh`；home 层数据（sessions/credentials/workspaces）与 CLI/TUI/Web 互通。桌面插件装配走专属 `profiles/desktop`（`DesktopProfileBootstrap` 在首次 spawn 前按上游 `initProfile` 同款三件套自举，bundles 对齐 web 模板）。
-* 无内置运行时回退 `PATH dsh`（开发期）。
+* 运行时来源见「运行时定位与启动」的 online-first 条目（无捆绑时回退 `PATH dsh`，再缺失走首启引导）。
 * **可观测性**（ADR `2026-08-24-shell-observability-diagnostics`）：全部壳侧诊断经 `HostLog` 双写 stdout 与 `<home>/logs/host.log`（超 5MB 滚动 .old）；supervisor 恢复时落子进程 stderr 尾部、自更新状态机每次变化留痕；`RunMarker` 启动占位/owner 清理判定非受控退出（横幅提示）；`desktop.diagnostics.export` + CLI `--export-diagnostics` 导出白名单诊断 zip 到用户文档目录。
 * 启动期告知（ADR `implemented/architecture/2026-08-23-shared-home-desktop-profile`）：`RuntimeVersionGate` 只读探测 dsh 版本低于底线仅横幅提示不阻断；检测到 v0.2.x 私有 home 残留则在 host.log 留痕（界面横幅已去除，见 ADR `implemented/bug-fix/2026-08-24-companion-settings-consolidation`）。
 * **系统托盘与 hide-to-tray**（ADR `implemented/architecture/2026-08-24-shell-tray-hide-to-tray`）：`Ryn.Plugins.Tray` 注册图标 + 菜单（显示主窗/检查更新/退出）；点击事件经 companion 中继（`__ryn.on` → `desktop.tray.event`）回宿主解析——`TrayService.EmitEvent` 是插件内部属性，AOT 下反射不可用。关窗默认取消并隐藏（`CloseGate` 唯一放行通道：托盘退出与自更新安装路径先批准再 Close）；托盘初始化失败时拦截不同步生效，关窗保持直退。
@@ -26,7 +26,8 @@
 
 ## 运行时定位与启动
 
-* `Services/RuntimeLocator`：`ResolveRuntimeDirectory()` 优先 `DSH_DESKTOP_RUNTIME_DIR` 否则 `AppContext.BaseDirectory/resources/runtime`；`TryLocateBundled` 判 `node` + `node_modules/@deepseek-ai/dsh/lib/bin.js`（`pilot-harness` 整树入口）。
+* **online-first 运行时来源**（ADR `proposed/architecture/2026-08-29-online-first-unbundled-runtime`）：安装器不携带运行时；`RuntimeLocator.TryLocateRuntimeDirectory` 按「捆绑目录（`DSH_DESKTOP_RUNTIME_DIR` / `resources/runtime`，dev/存量场景）→ 引导下载目录 `~/.dsh-desktop/runtime`」解析。捆绑与 PATH `dsh` 均缺失时进入**首启引导**：`RuntimeBootstrap` 状态机复用本机 Node（≥底线主版本）或下载钉版 Node（nodejs.org dist + SHA256 校验 + 解压归一），`npm install @deepseek-ai/dsh@latest`，每步完成即验证产物，失败进度页可见、可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
+* `Services/RuntimeLocator`：`TryLocateBundled` 判 `node(.exe)` + `node_modules/@deepseek-ai/dsh/lib/bin.js`（捆绑与引导下载同布局）。
 * `Services/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`，占位回退 `0`。
 * `Services/HarnessUrlParser`：单行解析 `dsh web: http://127.0.0.1:<port>`。
 
@@ -47,7 +48,7 @@
   1. `BundledPluginCatalog.AssemblePending` 清单逐项组装待装清单：未装即装（随包种子）；已装按 profile dependencies 的 spec 形态分流——registry 形态（非 `file:`/`link:`）**完全放手**跳过（与自装等价，即便闭包钉版更高也不回拉）；本地形态则 `PluginVersionCheck` 比对随包 tgz 内 `package/package.json` 的 version 与 profile `node_modules` 副本 version，闭包更新即入列（离线路径），同版或更高且清单项开启归化（dshmarket 开、companion 关）时改为入列 **registry 归化条目**（spec = `裸包名@latest`——裸名对既有依赖是 pnpm 幂等 no-op，显式 @latest 才强制改写 spec；装后与自装完全等价；失败下次启动重试，幂等）（改清单内插件必须 bump version，否则不触发升级；spec 缺失、解析器异常或脏版本串按单插件记日志跳过；见 ADR `implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog` + `implemented/feature/2026-08-29-bundled-plugin-registry-normalization`）。
   1b. 清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`。
   2. `EnsureWorkspaceAllowBuilds` 把 `pnpm-workspace.yaml` 的 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）置 `true`。
-  3. spec 解析：市场走 `ResolveMarketSpec`（`resources/runtime/dshmarket.tgz >10K` → 目录 → `dshmarket@<tgz 版本>`）；伴生走 `ResolveCompanionSpec`（tgz `>1K` → 闭包目录 → 无即跳过，无 registry 回退）。
+  3. spec 解析：市场走 `ResolveMarketSpec`（运行时目录 tgz >10K → 目录 → 无本地来源回退 `dshmarket@latest` registry 直装，无钉版）；伴生走 `ResolveCompanionSpec`（安装器自带 `resources/plugins` tgz `>1K` → 运行时目录 tgz → 目录 → 无即跳过，无 registry 分发面）。
   4. 分组 spawn `bundled node dsh/lib/bin.js plugin --profile desktop add <spec…>` 多包安装（注入 `DSH_HOME/.pnpm-store`）：本地路径 spec（随包 tgz/目录，离线可靠）先装、registry 触碰条目（归化/registry 回退首装）后装——pnpm 单事务多 spec 一败俱败，离线时归化失败不得拖累随包种子安装；`exit 0` 后对每项 `EnsureBundlesContainsAsync(pkg)` 兜底，并补回桌面必需 bundle（`dsh-base`/`dsh-web-app`）。
   5. `EvaluateRecovery + host.Stop()` 交 `RuntimeSupervisor` 重启并导航新 `URL`。
 * `dsh` 的 `reconcilePlugins` 在 `plugin add` 后自动把包名追加到 `dsh.profile.bundles`（`pilot-harness` 同款）。
@@ -68,10 +69,10 @@
 
 ## 打包
 
-* `scripts/bundle-runtime-ci.sh`：下载 `Node 24.20.0 LTS`（`linux-x64/arm64`, `win-x64`, `osx-x64/arm64`）+ `pnpm add @deepseek-ai/dsh@${DSH_VERSION:-0.1.1-rc.2} --allow-build=*` + `dshmarket@1.36.0 --allow-build=esbuild`（随包种子钉版——首装/离线升级用；在线启动会把本地形态安装归化为 registry 自管，见「随包插件后台安装」；`--store-dir $PNPM_STORE_DIR`，默认 `$HOME/.dsh-pnpm/store`，CI 由 `actions/cache` 跨 run 持久化缓存，命中免重下包/重编原生模块），`curl` 官方 `dshmarket.tgz`（`>10K/name` 双校验）+ 仓库源码 staging tar 出 `dsh-desktop-companion.tgz`（package/ 前缀，源码缺失 fail loud）→ `cp -a node_modules/. resources/runtime/node_modules/`，`60s` 抓 `dsh web:` 自检。
-* `scripts/package-linux.sh`：`dotnet publish -r linux-x64|linux-arm64`（arm64 自 Ryn.Interop 0.30.4 供给 linux-arm64 native 起恢复发布，2026-08-25）→ `staging` 校验 `node + dsh/lib/bin.js + dshmarket.tgz` → `deb (Depends: libwebkitgtk-6.0-4, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4, BuildArch x86_64/aarch64)`。
-* `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → 单一安装产物：mac `dmg`（`hdiutil`，含 `.app`）/ win `exe` 安装器（`Inno Setup`/`NSIS`/`7z SFX`，`…-setup.exe`），文件名含 `…_macos-*/…_windows-*` 标识，签名占位（`codesign`/`signtool` 待证书）。**不单独产出便携 zip**（避免对 ~1.5GB 闭包重复压缩，对齐 pilot-harness 每平台单产物的思路）。
-* `resources/runtime` 含整树 `node_modules` + `node(.exe)` + `dshmarket.tgz` + `dsh-desktop-companion.tgz`，随 `usr/lib`/`Contents/Resources`/`stage` 进包；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。
+* online-first（ADR `proposed/architecture/2026-08-29-online-first-unbundled-runtime`）：安装器**不捆绑运行时闭包**，只带壳（publish 全量，实测 ~26-36MB 压缩后）+ 安装器自带插件资源 `resources/plugins/dsh-desktop-companion.tgz`（`scripts/build-companion-tgz.sh` 打包时从仓库源码现打并校验）；运行时由首启引导安装（见「运行时定位与启动」）。
+* `scripts/package-linux.sh`：`dotnet publish -r linux-x64|linux-arm64`（arm64 自 Ryn.Interop 0.30.4 供给 linux-arm64 native 起恢复发布，2026-08-25）→ `staging` 校验插件资源、拦闭包残留 → `deb (Depends: libwebkitgtk-6.0-4, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4, BuildArch x86_64/aarch64)`。
+* `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → 单一安装产物：mac `dmg`（`hdiutil`，含 `.app`）/ win `exe` 安装器（`Inno Setup`/`NSIS`/`7z SFX`，`…-setup.exe`），文件名含 `…_macos-*/…_windows-*` 标识，签名占位（`codesign`/`signtool` 待证书）。**不单独产出便携 zip**（对齐 pilot-harness 每平台单产物的思路）。
+* 安装器资源一律 **exe 目录相对**（`AppContext.BaseDirectory/resources/plugins`，Linux `usr/lib/<app>` / mac `Contents/MacOS` / win 安装根三平台同构）；`verify-package-layout.sh` 断言无闭包残留 + 插件 tgz 与现打源内容一致；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。
 
 ## 配置与扩展
 

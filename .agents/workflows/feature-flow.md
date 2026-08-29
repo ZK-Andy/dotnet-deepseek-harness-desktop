@@ -4,7 +4,7 @@
 
 1. **定案**：方案讨论收敛 → 写 ADR；Alternatives 强制。同会话内即落地的，proposed→implemented 可折叠——直接以 implemented 格式落档（格式由 verify-adr-format 把关）。
 2. **实现**：按 ADR 范围动 src/tests/scripts；越界想法记 TODO 不顺手做。
-3. **测试**：`dotnet test` 全绿 0 警告；行为级变更必须配套回归/快照。`scripts/**` 变更跑其自带自测（如 `check-pin-freshness.sh --self-test`、preflight 假资产冒烟）；`.github/workflows/**` 变更必须 dispatch 实跑验证——ci.yml 绿不代表打包流水线绿，表达式错误只有真 runner 能暴露。
+3. **测试**：`dotnet test` 全绿 0 警告；行为级变更必须配套回归/快照。`scripts/**` 变更跑其自带自测或冒烟（如 preflight 假资产冒烟、`package-*.sh --stage-only`）；`.github/workflows/**` 变更必须 dispatch 实跑验证——ci.yml 绿不代表打包流水线绿，表达式错误只有真 runner 能暴露。
 4. **门禁**：三脚本 + build 全绿（pre-commit 会再拦一次）。
 5. **评审**：三重审核以**三路并行 subagent** 执行——同一提交范围，三个子代理分别按 dsh-find-simplifications / dsh-code-review / dsh-archive-agent-notes 视角独立审查（各自带全量技能指令与仓库约定，不共享中间态）；主会话汇总裁定（逐条采纳/拒绝并附证据），复核发现间冲突（某路的修复可能使另一路发现失效），修复一次性收口为单个 `refactor(review)` 提交。触发条件（任一）：重大变更——触及安全面 / IPC 帧契约 / 发版链路 / 跨模块行为；或用户指令的批量形态——对指定提交范围做事后审核。
 6. **提交**：逻辑单元分粒度提交，conventional commits 格式。

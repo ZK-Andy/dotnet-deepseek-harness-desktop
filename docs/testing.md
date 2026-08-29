@@ -38,7 +38,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release
 
 * **沙箱冒烟**：`HarnessRuntimeHost` `StartAsync` 抓 `dsh web:`（`60s`），`RuntimeSupervisor` `kill` 子进程→自动重启+换 `URL`（回归断言重启 `URL` 相同以保 `origin`）。
 * **本机冒烟**：`dotnet run --project src/DeepSeek.Harness.Desktop` 起 `Ryn` 窗口加载 `dsh web:`（需 `DEEPSEEK_API_KEY` 与 `WebKitGTK`）。`DSH_DEVTOOLS=1` 开 `WebView` 调试。
-* **打包自检**：`bundle-runtime-ci.sh` 的 `60s` 常驻抓 `dsh web:`（闭包签名含 dsh/node/companion/market/trimPolicy/scriptSha256 六维，任一漂移即全量重建）；`package-linux.sh --stage-only` 校验 `node + dsh/lib/bin.js + dshmarket.tgz`。
+* **打包自检**：`verify-package-layout.sh` 断言安装器 staging 无闭包残留、插件 tgz 与现打源内容一致（`build-companion-tgz.sh` 打包即校验）；`release-preflight.sh` 发布前复核资产矩阵/体积下限（15MB）/SHA256SUMS；`smoke-install-linux.sh` 装 deb/rpm 后跑「首启引导 → dsh web URL」全链。
 * **随包插件**：全新 `DSH_HOME` 首启 `3s` 后台单条 `dsh plugin add <spec…>` 按 `BundledPluginCatalog` 清单装齐 `dshmarket + dsh-desktop-companion`（版本感知升级）→ `host.Stop()→Supervisor` 重启 → `Web UI` 出现市场、外链点击开系统浏览器（见 [architecture.md](architecture.md)）。
 
 ## 行为级回归要求
