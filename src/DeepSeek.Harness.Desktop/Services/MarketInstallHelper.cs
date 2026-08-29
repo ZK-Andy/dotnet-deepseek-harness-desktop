@@ -114,7 +114,9 @@ public static class MarketInstallHelper
         }
     }
 
-    /// <summary>解析市场安装的 <c>spec</c>：优先校验过的 <c>tgz &gt;10K</c>，否则目录或 registry。</summary>
+    /// <summary>解析市场安装的 <c>spec</c>：优先校验过的 <c>tgz &gt;10K</c>（dev 闭包场景），否则目录；
+    /// 都不可得回退 <c>dshmarket@latest</c>（registry 直装，跟随上游 dist-tag——online-first 去捆绑后
+    /// 打包形态不携带市场种子，钉版与巡检随 ADR online-first-unbundled-runtime 退役）。</summary>
     public static string ResolveMarketSpec(string runtimeDir)
     {
         var tgz = Path.Combine(runtimeDir, "dshmarket.tgz");
@@ -130,7 +132,7 @@ public static class MarketInstallHelper
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // tgz 状态探测失败（恰被清理/无权限）：按「tgz 不可用」继续走目录/配置回退
+                // tgz 状态探测失败（恰被清理/无权限）：按「tgz 不可用」继续走目录/registry 回退
             }
         }
 
@@ -140,28 +142,33 @@ public static class MarketInstallHelper
             return dir;
         }
 
-        return BundledPluginCatalog.MarketRegistryFallback;
+        return MarketRegistrySpec;
     }
 
-    /// <summary>解析桌面伴生插件的安装 <c>spec</c>：随包 <c>tgz</c>（&gt;1K 防假包）→ 闭包内目录；无 registry 回退。</summary>
-    /// <returns>可安装的 spec；<see langword="null"/> 表示本闭包未携带（如开发用 PATH dsh），调用方跳过。</returns>
-    public static string? ResolveCompanionSpec(string runtimeDir)
+    /// <summary>dshmarket 的 registry 直装 spec（@latest 与归化同形：pnpm 对既有依赖裸名 add 幂等，
+    /// 显式 @latest 才会重新解析 registry）。无版本钉版——市场内核跟随上游，freshness 巡检随之退役。</summary>
+    public const string MarketRegistrySpec = "dshmarket@latest";
+
+    /// <summary>解析桌面伴生插件的安装 <c>spec</c>：安装器资源 tgz（&gt;1K 防假包）→ 随包运行时目录 tgz
+    /// → 闭包内目录；无 registry 分发面。<paramref name="installerPluginsDir"/> 是安装器自带的
+    /// resources/plugins（online-first 后打包形态唯一供给源；runtime 目录供给服务 dev 闭包场景）。</summary>
+    /// <returns>可安装的 spec；<see langword="null"/> 表示无任何来源（如开发用 PATH dsh），调用方跳过。</returns>
+    public static string? ResolveCompanionSpec(string runtimeDir, string? installerPluginsDir)
     {
-        var tgz = Path.Combine(runtimeDir, "dsh-desktop-companion.tgz");
-        if (File.Exists(tgz))
+        // 安装器资源优先：打包形态的唯一供给源（resources/plugins，与运行时闭包无关）
+        if (!string.IsNullOrWhiteSpace(installerPluginsDir))
         {
-            try
+            var packaged = Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz");
+            if (IsUsableTgz(packaged, minBytes: 1024))
             {
-                var fi = new FileInfo(tgz);
-                if (fi.Length > 1024)
-                {
-                    return tgz;
-                }
+                return packaged;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // tgz 状态探测失败（恰被清理/无权限）：按「tgz 不可用」继续走目录回退
-            }
+        }
+
+        var tgz = Path.Combine(runtimeDir, "dsh-desktop-companion.tgz");
+        if (IsUsableTgz(tgz, minBytes: 1024))
+        {
+            return tgz;
         }
 
         var dir = Path.Combine(runtimeDir, "node_modules", "dsh-desktop-companion");
@@ -171,6 +178,25 @@ public static class MarketInstallHelper
         }
 
         return null;
+    }
+
+    /// <summary>tgz 可用性判定：存在且体积达下限（防 0.1.10 式假包）。</summary>
+    private static bool IsUsableTgz(string path, int minBytes)
+    {
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            return new FileInfo(path).Length > minBytes;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // tgz 状态探测失败（恰被清理/无权限）：按「tgz 不可用」继续走后续回退
+            return false;
+        }
     }
 
     /// <summary>读 profile <c>dependencies</c> 中 <paramref name="packageName"/> 的 spec 原始值。

@@ -7,14 +7,16 @@ namespace DeepSeek.Harness.Desktop.Tests;
 public class DevEnvironmentTests
 {
     [Theory]
-    [InlineData(null, true, false)]
-    [InlineData("", true, false)]
-    [InlineData("  ", false, true)]
-    [InlineData("/repo/resources/runtime", false, true)]
-    [InlineData(null, false, true)]
-    public void IsDevRuntime_EnvOrMissingClosure(string? runtimeDir, bool hasBundled, bool expected)
+    [InlineData(null, null, false)] // 打包新装（online-first 无闭包）：无任何标记 → 非 dev
+    [InlineData(null, "", false)]
+    [InlineData(null, "0", false)] // 仅显式 1 生效
+    [InlineData(null, "1", true)]
+    [InlineData("", "1", true)]
+    [InlineData("/repo/resources/runtime", null, true)] // runtime 目录覆盖 = dev 意图
+    [InlineData("  ", null, false)]
+    public void IsDevRuntime_OnlyExplicitEnvMarkers(string? runtimeDir, string? devFlag, bool expected)
     {
-        Assert.Equal(expected, DevEnvironment.IsDevRuntime(runtimeDir, hasBundled));
+        Assert.Equal(expected, DevEnvironment.IsDevRuntime(runtimeDir, devFlag));
     }
 
     [Theory]

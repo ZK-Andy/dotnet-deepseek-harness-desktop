@@ -3,7 +3,7 @@ using System.IO.Compression;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 
-/// <summary>测试共享的随包插件 tgz 构造器（与 bundle-runtime-ci.sh 的 `tar -czf … package` 结构一致）。</summary>
+/// <summary>测试共享的随包插件 tgz 构造器（与 build-companion-tgz.sh 的 `tar -czf … package` 结构一致）。</summary>
 internal static class TestTarGz
 {
     /// <summary>把若干条目写入 <paramref name="path"/> 指定的 gzip+tar 包。</summary>

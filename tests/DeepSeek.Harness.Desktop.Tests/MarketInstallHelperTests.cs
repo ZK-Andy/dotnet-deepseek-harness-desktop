@@ -236,13 +236,47 @@ public class MarketInstallHelperTests
     }
 
     [Fact]
-    public void ResolveMarketSpec_FallsBackToRegistry_WhenNothing()
+    public void ResolveMarketSpec_FallsBackToRegistryLatest_WhenNothing()
     {
         var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
-            Assert.Equal(BundledPluginCatalog.MarketRegistryFallback, MarketInstallHelper.ResolveMarketSpec(dir));
+            // online-first：闭包退役后无钉版回退，@latest 跟随上游（freshness 巡检随之退役）
+            Assert.Equal("dshmarket@latest", MarketInstallHelper.ResolveMarketSpec(dir));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void ResolveCompanionSpec_PrefersInstallerPluginsDir_OverRuntime()
+    {
+        var runtime = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
+        var plugins = Path.Combine(Path.GetTempPath(), "pl-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(runtime);
+        Directory.CreateDirectory(plugins);
+        var runtimeTgz = Path.Combine(runtime, "dsh-desktop-companion.tgz");
+        var packagedTgz = Path.Combine(plugins, "dsh-desktop-companion.tgz");
+        File.WriteAllBytes(runtimeTgz, new byte[2 * 1024]);
+        File.WriteAllBytes(packagedTgz, new byte[2 * 1024]);
+        try
+        {
+            // 安装器资源是打包形态唯一供给源，优先于运行时目录
+            Assert.Equal(packagedTgz, MarketInstallHelper.ResolveCompanionSpec(runtime, plugins));
+        }
+        finally { Directory.Delete(runtime, true); Directory.Delete(plugins, true); }
+    }
+
+    [Fact]
+    public void ResolveCompanionSpec_UsesRuntimeTgz_WhenInstallerDirMissing()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var tgz = Path.Combine(dir, "dsh-desktop-companion.tgz");
+        File.WriteAllBytes(tgz, new byte[2 * 1024]);
+        try
+        {
+            Assert.Equal(tgz, MarketInstallHelper.ResolveCompanionSpec(dir, null));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -256,7 +290,7 @@ public class MarketInstallHelperTests
         File.WriteAllBytes(tgz, new byte[2 * 1024]);
         try
         {
-            Assert.Equal(tgz, MarketInstallHelper.ResolveCompanionSpec(dir));
+            Assert.Equal(tgz, MarketInstallHelper.ResolveCompanionSpec(dir, null));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -273,7 +307,7 @@ public class MarketInstallHelperTests
         File.WriteAllText(Path.Combine(d, "package.json"), "{}");
         try
         {
-            Assert.Equal(d, MarketInstallHelper.ResolveCompanionSpec(dir));
+            Assert.Equal(d, MarketInstallHelper.ResolveCompanionSpec(dir, null));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -281,12 +315,12 @@ public class MarketInstallHelperTests
     [Fact]
     public void ResolveCompanionSpec_ReturnsNull_WhenNothing()
     {
-        // 伴生插件无 registry 回退：闭包未携带时返回 null（调用方跳过），而非字符串 spec
+        // 伴生插件无 registry 回退：安装器资源与运行时目录均未携带时返回 null（调用方跳过）
         var dir = Path.Combine(Path.GetTempPath(), "rt-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
-            Assert.Null(MarketInstallHelper.ResolveCompanionSpec(dir));
+            Assert.Null(MarketInstallHelper.ResolveCompanionSpec(dir, null));
         }
         finally { Directory.Delete(dir, true); }
     }

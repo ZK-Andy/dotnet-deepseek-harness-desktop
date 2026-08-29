@@ -13,8 +13,8 @@ namespace DeepSeek.Harness.Desktop.Services;
 public static class RuntimeVersionGate
 {
     /// <summary>
-    /// 桌面支持的最低 dsh 版本（与随包闭包钉版同源：<c>bundle-runtime-ci.sh</c> 的 DSH_VERSION
-    /// 升级时同步此常量）。协议级兼容底线，固定在代码不入 appsettings。
+    /// 桌面支持的最低 dsh 版本（online-first 后 dsh 走 @latest，本底线是对上游缺陷/破坏性
+    /// 变更的唯一兜底：出问题立即抬升）。协议级兼容底线，固定在代码不入 appsettings。
     /// </summary>
     public const string MinimumVersion = "0.1.1-rc.2";
 

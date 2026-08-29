@@ -46,7 +46,9 @@ public static class Program
         // 开发运行时完全隔离（ADR dev-runtime-isolation）：ApplicationId 加 .dev 后缀避开
         // GTK 同 id 单实例互斥（与已装正式版可同时开窗）；DSH_HOME 未显式覆盖时自动指向
         // 仓库 .cache/dev-home，杜绝与正式版共享 profile 的串扰。
-        // dev 判定：显式 runtime 覆盖，或定位不到捆绑闭包（dotnet run 的 PATH dsh 回退形态）。
+        // dev 判定只认显式环境标记（DSH_DESKTOP_RUNTIME_DIR / DSH_DESKTOP_DEV=1）——绝不以
+        // 捆绑闭包存在性探测（online-first 后打包新装同样没有闭包，探测会误判全部新装用户，
+        // ADR online-first-unbundled-runtime 批次二收口 shared-home 挂账）。
         var updateRuntimeDir = RuntimeLocator.ResolveRuntimeDirectory();
         var bundledClosure = RuntimeLocator.TryLocateBundled(updateRuntimeDir);
 
@@ -70,7 +72,8 @@ public static class Program
         TaskCompletionSource? bootstrapSettled = null;
         CancellationTokenSource? bootstrapCts = null;
         var devRuntimeDir = Environment.GetEnvironmentVariable(DevEnvironment.RuntimeDirEnv);
-        var isDev = DevEnvironment.IsDevRuntime(devRuntimeDir, bundledClosure is not null);
+        var devFlag = Environment.GetEnvironmentVariable(DevEnvironment.DevFlagEnv);
+        var isDev = DevEnvironment.IsDevRuntime(devRuntimeDir, devFlag);
         var devAutoIsolated = false;
         if (isDev && Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) is null)
         {
@@ -753,8 +756,9 @@ public static class Program
         // 对齐 Tauri 的“推荐预设”后台装 + pilot-harness 的随包 theme 已在 node_modules
         // 0.1.10 失败复盘：tgz 为 394B 假包（app）+ pnpm allowBuilds 未开致 ERR_PNPM_IGNORED_BUILDS + 检测/补 bundles 未落地
         // 随包插件：dshmarket（市场）+ dsh-desktop-companion（桌面伴生：外部链接接管等，见 ADR desktop-shell-companion-plugin）
-        // 引导路径同样进入：等引导落定（bootstrapSettled）后按解析出的运行时目录继续——种子 tgz
-        // 缺失时 dshmarket 自动走 registry 回退 spec（ADR online-first-unbundled-runtime）。
+        // 引导路径同样进入：等引导落定（bootstrapSettled）后按解析出的运行时目录继续——插件 tgz
+        // 来自安装器资源（resources/plugins）或 dev 闭包，dshmarket 无本地来源时自动走 registry
+        // 回退 spec（dshmarket@latest，ADR online-first-unbundled-runtime）。
         if (bootstrapNeeded || webUrl is not null)
         {
             _ = Task.Run(async () =>
@@ -798,8 +802,9 @@ public static class Program
                     var workspacePath = Path.Combine(profileDir, "pnpm-workspace.yaml");
 
                     // 统一运行时解析：捆绑目录 → 引导下载目录（ADR online-first-unbundled-runtime 回退序）。
-                    // 种子 tgz 跟随所在目录解析；下载目录无 tgz 时 dshmarket 走 registry 回退 spec，
-                    // companion 无 registry 分发面则自然跳过（批次三补安装器内自带）。
+                    // 插件 tgz 来源：安装器自带 resources/plugins（打包形态唯一供给源）→ 运行时目录
+                    // （dev 闭包场景）；dshmarket 无本地来源时走 registry 回退 spec（dshmarket@latest，
+                    // 无钉版），companion 无 registry 分发面则自然跳过。
                     var runtimeDir = RuntimeLocator.TryLocateRuntimeDirectory();
                     if (runtimeDir is null || RuntimeLocator.TryLocateBundled(runtimeDir) is not { } bundled)
                     {
@@ -807,11 +812,14 @@ public static class Program
                         return;
                     }
 
-                    // 1) 清单逐项检测随包插件待装项：未装即装（随包种子）、本地形态闭包更新即升、
-                    // registry 形态放手、本地形态同版归化 registry（ADR bundled-plugin-version-aware-catalog
-                    // + bundled-plugin-registry-normalization）。
+                    var installerPluginsDir = Path.Combine(AppContext.BaseDirectory, "resources", "plugins");
+
+                    // 1) 清单逐项检测随包插件待装项：未装即装、本地形态来源更新即升、
+                    // registry 形态放手、本地形态同版/registry 回退归化 registry（ADR
+                    // bundled-plugin-version-aware-catalog + bundled-plugin-registry-normalization
+                    // + online-first-unbundled-runtime）。
                     var pending = BundledPluginCatalog.AssemblePending(
-                        BundledPluginCatalog.All, runtimeDir, profilePkg, profileDir, HostLog.Write);
+                        BundledPluginCatalog.All, runtimeDir, installerPluginsDir, profilePkg, profileDir, HostLog.Write);
 
                     if (pending.Count == 0)
                     {

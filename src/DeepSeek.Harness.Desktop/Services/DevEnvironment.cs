@@ -2,8 +2,11 @@ namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
 /// 开发运行时隔离的纯判定（可单测）。触发条件满足其一：<c>DSH_DESKTOP_RUNTIME_DIR</c> 已设置，
-/// 或运行时定位不到捆绑闭包（PATH dsh 回退——<c>dotnet run</code> 调试的典型形态）；
-/// 打包安装的产品自带闭包，两者都不命中。
+/// 或 <c>DSH_DESKTOP_DEV=1</c> 显式声明（<c>dotnet run</c> 调试的典型形态）。
+/// 判定只认显式环境标记，绝不以「捆绑闭包是否存在」探测——online-first 去捆绑后
+/// （ADR online-first-unbundled-runtime）打包新装同样没有闭包，闭包探测会把全部新装用户
+/// 误判为 dev（ApplicationId 带 .dev 后缀 + 随包插件安装被跳过；shared-home ADR 在案挂账，
+/// 本判定即其重构收口）。
 /// 隔离包含两件事：ApplicationId 加 <c>.dev</c> 后缀（避开 GTK 同 id 单实例互斥，使 dev 与
 /// 正式版可同时开窗）与 DSH_HOME 默认指向仓库内 <c>.cache/dev-home</c>（杜绝与正式版共享
 /// profile 的串扰）。
@@ -13,15 +16,21 @@ public static class DevEnvironment
     /// <summary>开发运行时覆盖的环境变量名（RuntimeLocator 同款语义）。</summary>
     public const string RuntimeDirEnv = "DSH_DESKTOP_RUNTIME_DIR";
 
+    /// <summary>开发运行时显式声明环境变量名（<c>dotnet run</c> 调试用）。</summary>
+    public const string DevFlagEnv = "DSH_DESKTOP_DEV";
+
+    /// <summary><see cref="DevFlagEnv"/> 的唯一生效值。</summary>
+    public const string DevFlagValue = "1";
+
     /// <summary>DSH_HOME 显式覆盖的环境变量名（单点来源 <see cref="HarnessRuntimeHost.HomeOverrideEnv"/>）。</summary>
     public const string HomeOverrideEnv = HarnessRuntimeHost.HomeOverrideEnv;
 
     /// <summary>dev 实例的 ApplicationId 后缀（Wayland app_id / GTK unique id 随之变化，任务栏独立条目属预期）。</summary>
     public const string AppIdSuffix = ".dev";
 
-    /// <summary>是否为开发运行时。</summary>
-    public static bool IsDevRuntime(string? runtimeDirEnv, bool hasBundledClosure) =>
-        !string.IsNullOrWhiteSpace(runtimeDirEnv) || !hasBundledClosure;
+    /// <summary>是否为开发运行时：只认显式环境标记（runtime 目录覆盖或 dev 声明），不探测闭包存在性。</summary>
+    public static bool IsDevRuntime(string? runtimeDirEnv, string? devFlagEnv) =>
+        !string.IsNullOrWhiteSpace(runtimeDirEnv) || devFlagEnv == DevFlagValue;
 
     /// <summary>按是否为 dev 返回 ApplicationId（dev 加后缀；非 dev 原样返回）。</summary>
     public static string ApplicationIdFor(string baseId, bool isDev) => isDev ? baseId + AppIdSuffix : baseId;

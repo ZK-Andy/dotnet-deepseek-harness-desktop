@@ -5,11 +5,11 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// <summary>
 /// 首启引导的可调参数（appsettings.json 的 <c>RuntimeBootstrap</c> 节，禁止硬编码进逻辑）。
 /// ADR online-first-unbundled-runtime：无捆绑运行时且无 PATH dsh 时，引导下载钉版 Node +
-/// registry 安装 dsh。版本钉版随 <c>bundle-runtime-ci.sh</c> 的 NODE_VERSION 同源维护。
+/// registry 安装 dsh。闭包退役后本记录的 <see cref="NodeVersion"/> 是 Node 钉版的唯一正典。
 /// </summary>
 public sealed record RuntimeBootstrapOptions
 {
-    /// <summary>引导下载的 Node 钉版（与 <c>bundle-runtime-ci.sh</c> 的 <c>NODE_VERSION</c> 同源）。</summary>
+    /// <summary>引导下载的 Node 钉版（闭包退役后的唯一正典；追平现役 LTS 属人工拍板）。</summary>
     public string NodeVersion { get; init; } = "24.20.0";
 
     /// <summary>Node 官方发行目录基址（含尾随 dist 段）。</summary>
