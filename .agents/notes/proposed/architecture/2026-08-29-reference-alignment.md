@@ -53,9 +53,12 @@ Status: proposed
 
 ### 批次四 · CLI shim / PATH 注册（三个平台）
 
-- 安装成功后（或每次启动对账）注册 `dsh`/`pnpm` shim：Windows `%LOCALAPPDATA%\deepseek-harness\bin` 生成 `.cmd`/`.ps1` + `HKCU\Environment\Path` 幂等追加 + `WM_SETTINGCHANGE` 广播；mac/linux `~/.local/bin` 落 shim + `.zshrc`/`.bashrc` 幂等更新块。
-- shim 优先本地兼容 node、回退捆绑运行时；pnpm shim 优先用户自有 pnpm。幂等合并、绝不覆盖用户配置；写入前说明路径（workflow 边界），失败仅告警不阻启动。
-- 桌面壳只在自己安装/首次登录负责注册，避免与用户已有 PATH 冲突。
+- 运行时就位后（每次启动对账）注册 `dsh`/`pnpm` shim：Windows `%LOCALAPPDATA%\deepseek-harness\bin` 生成 `.cmd`/`.ps1` + `HKCU\Environment\Path` 幂等追加 + `WM_SETTINGCHANGE` 广播；mac/linux `~/.local/bin` 落 shim + `.zshrc`/`.bashrc` 幂等更新块。bin 目录经 `DSH_DESKTOP_CLI_BIN_DIR` 可覆盖（dev/测试）。
+- **dsh shim**：烘焙运行时（`<runtimeDir>` 含 node + `node_modules/@deepseek-ai/dsh/lib/bin.js`）与 `DSH_HOME`；节点解析序 = 本地兼容 node（≥24 或 22.15+ 或 23.8+）→ 运行时 node；执行 `node <runtimeDir>/*/bin.js "$@"`，设 `DSH_HOME`/`DSH_TELEMETRY_DISABLED`。用户自己已装 dsh（PATH 上排除本 shim 目录）优先转发，绝不覆盖用户配置。
+- **pnpm shim**：优先用户自有 pnpm（PATH 排除本 shim 目录）；否则若运行时/本 shim 目录可发现 pnpm 则用；再否则输出「pnpm 未找到」提示。**online-first 适配偏差**——我方运行时（npm 装 dsh@latest）不捆绑独立 pnpm，参照项目随 zip 发行版内置 `dependencies/pnpm/bin/pnpm.cjs`；故本批次 pnpm shim 只承担「用户 pnpm 转发 + 诚实提示」，不假装自供给 pnpm（见 Alternatives）。
+- 幂等合并、绝不覆盖用户配置；写入前说明路径（workflow 边界），失败仅告警不阻启动。桌面壳只在自己安装/首次登录对账时注册，避免与用户已有 PATH 冲突。
+- dev 显式隔离（`DevEnvironment.IsDevRuntime`）时跳过 dsh shim 注册——避免把开发 home/runtime 烘焙进用户共享的终端 shim（对齐参照 debug 构建不写共享 dsh shim 的原则）。
+- ✅ **批次四已落地**（2026-08-29…）：`CliShimBuilder`（纯 shim 文本生成，dsh/pnpm × cmd/ps1/sh）+ `CliShimPath`（PATH 幂等合并/rc 幂等块/生成标记识别）+ `CliShimPlanner`（按平台规划 shim 文件与 PATH 增量）+ `CliShimRegistrar`（定位运行时→烘焙→写 shim→注册 PATH；best-effort，失败仅告警；注册表写走 `[SupportedOSPlatform("windows")]` + `WM_SETTINGCHANGE` 广播；rc 只写已存在文件）。Program.cs 双路径（bundled/PATH-dsh 与引导完成后 `BindRuntime`）运行时就位后各注册一次；dev 隔离时跳过 dsh shim。测试 **453/453**（+26）、覆盖率 **54.29%**（+0.82）、门禁全绿。**待续**：批次五（boot 假活看门狗）。
 
 ### 批次五 · boot 假活看门狗（PageHealthMonitor 有界恢复）
 
@@ -71,6 +74,9 @@ Status: proposed
 - **续传临时文件用每尝试随机 GUID**（现状 `.bootstrap-{guid}`）：每次重试换名、跨重试/跨进程无续传价值。落败；改确定性 `.download/<versionDir>/<fileName>`，跨重试/跨进程续传。
 - **逐件 `MoveInto` 进 runtimeDir（现状）**：下载产物直接逐件搬入正式目录，中途失败留半成品（node 在而 npm 树缺等）。落败；原子 staging + 备份切换，失败恢复旧版。
 - **CLI shim 写入系统 PATH（HKCU vs HKLM）**：只写用户级 HKCU + `~/.local/bin`，不触系统级；系统级需管理员且影响面大。落败。
+- **pnpm shim 假装自供给 pnpm（online-first 下 bundle 一份 pnpm 随 shim 落盘）**：我方 online-first 去捆绑，运行时仅 node + npm 装的 dsh@latest，无独立 pnpm.cjs 可烘焙；为「自供给」而额外捆绑一份 pnpm 违背去捆绑转向且与 dsh 内部 `spawnSync("pnpm")` 的生态约定重叠。落败；本批次 pnpm shim 只做「用户 pnpm 转发 + 诚实提示」，dsh 插件安装所需 pnpm 仍依赖用户环境（与参照 `dependencies/pnpm` 的差异属有意，见 `有意设计差异`）。已记录为准。
+- **pnpm shim 经运行时 node + npx 兜底拉取 pnpm**：能保证无全局 pnpm 时终端 `pnpm` 可用，但每次首调走 registry 下载、慢且需联网，作为日常命令 shim 体验差；且掩盖「pnpm 依赖用户环境」这一事实。落败；转发用户 pnpm，缺则明确提示。
+- **dev 隔离下仍写共享 dsh shim**：开发运行时会把自己的 home/runtime 烘焙进用户终端共享的 `~/.local/bin/dsh`，污染生产命令行集成。落败；`DevEnvironment.IsDevRuntime` 显式跳过 dsh shim（pnpm shim 内容不烘焙 home/hash，dev 可写，与参照 debug 不写 dsh shim 一致）。
 - **假活看门狗无限重载**：误报会形成重启/重载循环，伤害可用性。落败；有界恢复 + 计数上限。
 - **插件引导塞进 RuntimeBootstrap 步骤机**：RuntimeBootstrap 是「运行时下载/安装」的严格状态机（Node+dsh），插件引导发生在 BindRuntime 之后、StartAsync 之前，属外层编排相——塞进去会混两个域并在其测试基线上造成混淆。落败；改为 `BootstrapStep` 增 `PreinstallPlugins` 只作页面步骤呈现，实际交互由专用 `dsh-desktop-preinstall` 事件 + `PreinstallChoiceGate` 驱动。
 - **引导页无超时、永久等用户决策**：页面未触发/用户离席时壳会永久挂在安装前、dsh 永不启动（最坏天气）。落败；5 分钟超时默认 SKIP——默认「不装」比「装未确认插件」可恢复，dsh 照常起动、市场可从应用内补装。
