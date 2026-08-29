@@ -14,7 +14,7 @@ DSH_VERSION="${DSH_VERSION:-0.1.1-rc.2}"
 # 随包插件市场版本（market 正典单点）：闭包签名含此维度——market 版本变化而
 # dsh/node/companion 未变时，旧闭包缓存必须失效（v0.3.8 教训：meta 签名缺此
 # 维度，restore-key 回退捡回旧闭包，版本感知升级拿不到新 market）。
-MARKET_VERSION="${MARKET_VERSION:-1.31.1}"
+MARKET_VERSION="${MARKET_VERSION:-1.36.0}"
 # 裁剪策略版本（trimPolicy 正典单点）：trim_runtime_closure 行为变更时必须 bump——
 # meta 签名含此维度，restore-key 前缀命中捡回的旧闭包因 trimPolicy 不匹配而强制全量重建
 # （v0.3.8 同类洞的同步根治：cache key 的 hashFiles 只保证精确 key miss，前缀命中仍可绕过；

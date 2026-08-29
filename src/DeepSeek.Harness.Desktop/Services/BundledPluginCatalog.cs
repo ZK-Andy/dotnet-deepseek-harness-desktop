@@ -11,7 +11,7 @@ public static class BundledPluginCatalog
     /// <summary>dshmarket 的 registry 回退 spec：随包 tgz 与闭包内目录均不可得时的最后回退。
     /// 正典 = <c>scripts/bundle-runtime-ci.sh</c> 的 <c>MARKET_VERSION</c>；半 bump 由
     /// <c>scripts/check-pin-freshness.sh</c> 巡检拦截（本常量在 MARKET 一致性组内）。</summary>
-    public const string MarketRegistryFallback = "dshmarket@1.31.1";
+    public const string MarketRegistryFallback = "dshmarket@1.36.0";
 
     /// <summary>清单项：<paramref name="ResolveSpec"/> 返回 <see langword="null"/> 表示本闭包未携带（如开发用 PATH dsh），调用方跳过；
     /// 解析器抛出的异常按单插件跳过处理，不影响其余清单项。</summary>

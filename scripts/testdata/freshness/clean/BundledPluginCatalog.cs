@@ -1,7 +1,7 @@
 namespace DeepSeek.Harness.Desktop.Services;
 
-/// <summary>夹具：clean 场景的 C# registry 回退钉版（dshmarket@1.31.1）。</summary>
+/// <summary>夹具：clean 场景的 C# registry 回退钉版（dshmarket@1.36.0）。</summary>
 public static class BundledPluginCatalog
 {
-    public const string MarketRegistryFallback = "dshmarket@1.31.1";
+    public const string MarketRegistryFallback = "dshmarket@1.36.0";
 }
