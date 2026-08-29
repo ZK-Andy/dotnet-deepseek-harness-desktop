@@ -36,7 +36,7 @@ DeepSeek Harness 桌面壳（Ryn/saucer → WebKitGTK）在高强度负载（后
 
 - **不接 `DSH_DEVTOOLS=1`**：用户拍板不接。DevTools Performance 火焰图虽能给出 JS 主线程 vs painting 的细粒度，但会显著增加负载、**污染「高负载」现场**，使取证失真。探针聚焦进程级 CPU/线程状态，以系统采样为准，避免观测工具干扰被测对象。
 - **复用 `--export-diagnostics`**：探针**不耦合**既有的 `--export-diagnostics` CLI（`Program.cs` 兜底导出），而是直接读 `$DSH_HOME/logs/host.log` 尾部。理由：`--export-diagnostics` 会额外 spawn dsh，在正常 dsh 运行的冻结场景下属额外副作用；且探针定位为**系统侧观测**，保持与产品进程最小耦合，缩小风险面。
-- **页面探针（`PageHealthMonitor`）不纳入**：页面是否 alive 由宿主 `PageHealthMonitor`（阶段 1，只读探针）承担，本探针只做进程级 CPU/线程，两者职责分离。若宿主未开探针，探针仅以「壳 CPU 低」作弱触发信号。
+- **页面探针（`PageHealthMonitor`）不纳入**：页面是否 alive 由宿主 `PageHealthMonitor` 承担，本探针只做进程级 CPU/线程，两者职责分离。`PageHealthMonitor` 现为「观测 + 有界恢复」（见 [page-health-monitor](2026-08-26-page-health-monitor.md)），但其有界恢复基于 `NavigateAsync` 重载页面，与进程级冻结的判据（CPU/线程状态）不同，故不影响本探针的职责分离。若宿主未开探针，探针仅以「壳 CPU 低」作弱触发信号。
 
 ## Alternatives considered
 

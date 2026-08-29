@@ -110,4 +110,4 @@ Status: implemented
 - [dev-runtime-isolation](../../implemented/process/2026-08-22-dev-runtime-isolation.md)（implemented）：本 ADR 取代其 dev 判定条件「定位不到捆绑闭包」的原始形态（批次二改显式标记）；隔离内容不变。
 - [artifact-verification-chain](../../implemented/process/2026-08-24-artifact-verification-chain.md)（implemented）：本 ADR 移除其闭包图静态校验一环（唯一消费者 `bundle-runtime-ci.sh` 已删）；依赖树完整性改由 npm registry 安装原子性把关。
 - [plugin-surface-consolidation](../../implemented/feature/2026-08-29-plugin-surface-consolidation.md)（implemented）：本篇的批次三——插件面收口 + config reconcile + dshmarket 迁引导。
-- [reference-alignment](../../proposed/architecture/2026-08-29-reference-alignment.md)（proposed）：本篇「引导 registry 装市场「一次就位」」的叙事被其对批次一/二修订——companion（internal）改 spawn 前静默自愈（不再装后重启）、dshmarket 改引导页「插件准备」步确认/跳过（不再自动装）。
+- [reference-alignment](2026-08-29-reference-alignment.md)（implemented）：本篇「引导 registry 装市场「一次就位」」的叙事被其对批次一/二修订——companion（internal）改 spawn 前静默自愈（不再装后重启）、dshmarket 改引导页「插件准备」步确认/跳过（不再自动装）。

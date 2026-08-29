@@ -1,6 +1,6 @@
 # Agent Note: reference-alignment（参照项目对齐——插件生命周期 + 引导健壮性）
 
-Status: proposed
+Status: implemented
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
@@ -16,7 +16,7 @@ Status: proposed
 
 有意设计差异（**不**在本 ADR 对齐）：下载模型（参照 zip 发行版 vs 我方 npm @latest）、端口（固定+自愈 vs `--port 0`）、自更新触发（参照 10min 轮询+toast vs 我方不轮询）、macOS 自更新（双方均手动 dmg）、迁移（参照幂等 migrate vs 我方有意不做）。前端栈（React SPA + iframe vs 我方 C#/Ryn）**延后专项讨论**，不在本 ADR 范围。
 
-## Proposal
+## Decision
 
 按参照机制对齐 5 项（排序即实施批次），全部遵守既有 ADR 与质量门。
 
@@ -28,7 +28,7 @@ Status: proposed
 - 失败语义：companion 安装 best-effort 仍只告警不阻断（缺 companion 不阻 dsh 起动），但改为 spawn 前尝试、失败留痕。
 - ✅ 批次一已落地（2026-08-29，提交 `cfa4113`）：`MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync` + 双路径 spawn 前接线，测试 389/389、覆盖率 52.3%。
 
-### 批次二 · 首启插件引导页（preinstall UX 对齐）
+### 批次二 · 首启插件引导页（preinstall UX 对齐）✅
 
 - 静态 wwwroot 引导页增「插件引导」相：运行时就位后（BindRuntime 后）、`StartAsync` 前，若存在待装**可选**插件（当前仅 dshmarket 预设），引导页展示推荐 chip（默认勾选）+「确认安装/跳过」+ 安装日志回流；用户确认后宿主执行安装并把 `dsh plugin add` 的 stdout/stderr 推送回页面。跳过则该次不装（less-bootstrapped，但 dsh 起动后可从市场/设置自愈入口补装）。
 - **与批次一 spawn 前安装合流**：companion（internal）保持 spawn 前静默自愈（不出现在勾选清单，对齐参照 `ensure_internal_plugins`）；dshmarket（preset）经引导页勾选后、`StartAsync` 前安装（对齐参照 `ensure_preset_plugins` + `preinstall-setup` UI）。
@@ -62,10 +62,10 @@ Status: proposed
 
 ### 批次五 · boot 假活看门狗（PageHealthMonitor 有界恢复）✅
 
-- `PageHealthMonitor` 从「只观测」升级为「观测 + 有界恢复」：连续 Dead 达阈值后，先一次有界刷新（`NavigateAsync` 当前 origin）或触发一次有界重载；**有界**——恢复计数达上限即停止并 leave 观测面（防误报重启循环），恢复计数窗口随同成功复位。
-- 对齐参照 `plugin_boot.rs` 的「卡 Loading plugins」恢复：探测到「dsh 在跑但页面空白」时，做有界 reload 而非无限轮询。
-- **有意偏差（对齐属「能力等价」而非逐点等同）**：参照的 `plugin_boot.js.inc` 精确识别 `#root` 下「HARNESS + Loading plugins」boot 花屏才报 stalled，而我方直接加载 dsh web（非 iframe），探针以「body 无子节点即空白」为 Dead 信号——两者都捕获「dsh 进程在跑但页面没到应用态」的假活形态，信号粒度不同但恢复机致一致（有界 reload + leave 观测面）。
-- ✅ **批次五已落地**（2026-08-29）：`PageHealthTracker.ReArm()`（重置死区，让 reload 后仍空白的页面重新凑满阈值再触发迁移）+ `PageHealthRecovery`（有界恢复预算：预算内允许 reload、耗尽转观测、成功恢复复位窗口，对齐参照 `BoundedReloadGate`）+ `PageHealthMonitor` 增 `HandleTransition`（Dead 迁移处经注入的 reload 委托触发，Alive 复位预算；reload 为 null 保持纯观测向后兼容）+ Program.cs 接线（reload 委托 = `webUrl` 非空时 `windowAccessor.Current.NavigateAsync(webUrl)`）。测试 **463/463**（+8：`PageHealthRecoveryTests` 7 例 + `PageHealthTracker.ReArm` 1 例）、覆盖率 54.x%、门禁全绿。**参照对齐批次全部完成**，本 ADR 随批次五收尾迁 implemented。
+- `PageHealthMonitor` 从「只观测」升级为「观测 + 有界恢复」：连续 Dead 达阈值后，先一次有界刷新（`NavigateAsync` 到记录的当前 dsh web URL）或触发一次有界重载；**有界**——恢复计数达上限即停止并 leave 观测面（防误报重启循环），恢复计数窗口随同成功复位。
+- 对齐参照 `plugin_boot.rs`（Rust 编排层）的「卡 Loading plugins」恢复：探测到「dsh 在跑但页面空白」时，做有界 reload 而非无限轮询。
+- **有意偏差（对齐属「能力等价」而非逐点等同）**：参照经 `plugin_boot.js.inc`（注入 iframe 的信号脚本）精确识别 `#root` 下「HARNESS + Loading plugins」boot 花屏才报 stalled，而我方直接加载 dsh web（非 iframe），探针以「body 无子节点即空白」为 Dead 信号——两者都捕获「dsh 进程在跑但页面没到应用态」的假活形态，信号粒度不同但恢复机致一致（有界 reload + leave 观测面）。
+- ✅ **批次五已落地**（2026-08-29；提交 `2f12e69` feat + `cbbf70e` docs(adr) + `b44c18d` refactor(review)）：`PageHealthTracker.ReArm()`（重置死区，让 reload 后仍空白的页面重新凑满阈值再触发迁移）+ `PageHealthRecovery`（有界恢复预算：预算内允许 reload、耗尽转观测、成功恢复复位窗口，对齐参照 `BoundedReloadGate`）+ `PageHealthMonitor` 增 `HandleTransition`（Dead 迁移处经注入的 reload 委托触发，Alive 复位预算；reload 为 null 保持纯观测向后兼容）+ Program.cs 接线（reload 委托 = `webUrl` 非空时 `windowAccessor.Current.NavigateAsync(webUrl)`；崩溃恢复导航同步刷新 `webUrl`，防 reload 打到崩溃重启旧端口）。测试 **463/463**（+8：`PageHealthRecoveryTests` 7 例 + `PageHealthTracker.ReArm` 1 例）、覆盖率 53.7%、三重审核 R1/R2/R3 串行无 Blocker、门禁全绿。**参照对齐批次全部完成**。
 
 ## Alternatives considered
 
@@ -80,6 +80,7 @@ Status: proposed
 - **pnpm shim 经运行时 node + npx 兜底拉取 pnpm**：能保证无全局 pnpm 时终端 `pnpm` 可用，但每次首调走 registry 下载、慢且需联网，作为日常命令 shim 体验差；且掩盖「pnpm 依赖用户环境」这一事实。落败；转发用户 pnpm，缺则明确提示。
 - **dev 隔离下仍写共享 dsh shim**：开发运行时会把自己的 home/runtime 烘焙进用户终端共享的 `~/.local/bin/dsh`，污染生产命令行集成。落败；`DevEnvironment.IsDevRuntime` 显式跳过 dsh shim（pnpm shim 内容不烘焙 home/hash，dev 可写，与参照 debug 不写 dsh shim 一致）。
 - **假活看门狗无限重载**：误报会形成重启/重载循环，伤害可用性。落败；有界恢复 + 计数上限。
+- **逐点等同参照的精确 boot 花屏信号**（在 iframe 内精确识别 `#root` 下「HARNESS + Loading plugins」）：参照是 iframe 模型，精确识别其特定花屏形态；我方直载 dsh web（非 iframe），若也复刻该 DOM 锚点会随上游前端演进漂移制造假阴性，且捕获不到「同样假活但非该花屏」的形态。落败；以引擎层事实「body 无子节点即空白」为 Dead 信号，能力等价而非信号逐点等同。
 - **插件引导塞进 RuntimeBootstrap 步骤机**：RuntimeBootstrap 是「运行时下载/安装」的严格状态机（Node+dsh），插件引导发生在 BindRuntime 之后、StartAsync 之前，属外层编排相——塞进去会混两个域并在其测试基线上造成混淆。落败；改为 `BootstrapStep` 增 `PreinstallPlugins` 只作页面步骤呈现，实际交互由专用 `dsh-desktop-preinstall` 事件 + `PreinstallChoiceGate` 驱动。
 - **引导页无超时、永久等用户决策**：页面未触发/用户离席时壳会永久挂在安装前、dsh 永不启动（最坏天气）。落败；5 分钟超时默认 SKIP——默认「不装」比「装未确认插件」可恢复，dsh 照常起动、市场可从应用内补装。
 - **跳过即永久不引导**：无重试入口会让跳过用户永远失去市场提示。落败；dsh 起动后市场/设置侧仍是自愈补装入口，且该次「跳过」只影响当前引导会话（下次引导时若仍未装会再次呈现）。
@@ -96,8 +97,9 @@ Status: proposed
 
 ## Related
 
-- [online-first-unbundled-runtime](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：本 ADR 在其首启引导/下载层之上对齐健壮性与插件时序；下载层改动直接作用于其 `RuntimeBootstrap`。
-- [plugin-surface-consolidation](../../implemented/feature/2026-08-29-plugin-surface-consolidation.md)（implemented）：本 ADR 批次一/二在其「dshmarket 迁 spawn 前」基础上把 companion（internal）也收敛到 spawn 前，并补插件引导 UX。
-- [shell-observability-diagnostics](../../implemented/architecture/2026-08-24-shell-observability-diagnostics.md)（implemented）：PageHealthMonitor 从只观测升级为有界恢复，观测面保留。
-- [desktop-shell-companion-plugin](../../implemented/process/2026-08-21-desktop-shell-companion-plugin.md)（implemented）：companion 供给链与装配，本 ADR 批次一调整其装配时点。
+- [online-first-unbundled-runtime](2026-08-29-online-first-unbundled-runtime.md)（implemented）：本 ADR 在其首启引导/下载层之上对齐健壮性与插件时序；下载层改动直接作用于其 `RuntimeBootstrap`。
+- [plugin-surface-consolidation](../feature/2026-08-29-plugin-surface-consolidation.md)（implemented）：本 ADR 批次一/二在其「dshmarket 迁 spawn 前」基础上把 companion（internal）也收敛到 spawn 前，并补插件引导 UX。
+- [page-health-monitor](../process/2026-08-26-page-health-monitor.md)（implemented）：批次五直接扩展其 `PageHealthMonitor`——从「阶段 1 只观测」升级为「观测 + 有界恢复」，其被取代的「阶段 2 未立项」陈述随批次五改写。
+- [shell-observability-diagnostics](2026-08-24-shell-observability-diagnostics.md)（implemented）：PageHealthMonitor 观测面保留、有界恢复叠加其上。
+- [desktop-shell-companion-plugin](../process/2026-08-21-desktop-shell-companion-plugin.md)（implemented）：companion 供给链与装配，本 ADR 批次一调整其装配时点。
 - 参照项目 `dsh-tauri-desk/deepseek-harness-desktop`（v0.9.4，调研详录 `.plan/journal/2026-08-29-reference-project-key-differences.md`）。
