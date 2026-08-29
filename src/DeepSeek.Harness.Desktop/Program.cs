@@ -726,11 +726,18 @@ public static class Program
                 () => RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), marker.Token));
         };
 
-        // 页面健康观测阶段 1（ADR page-health-monitor）：宿主只读探针轮询，不注入不依赖
-        // companion——「dsh 在跑但页面空白」类事故（历史三起全靠人肉发现）从此有自动留痕。
-        // 只记录迁移 + 快照进诊断包，绝不自动恢复：误报引发的重启循环比白屏更伤可用性，
-        // 是否接线裁决由阶段数据决定。首拍延迟 10s 避开启动空窗，探针异常按 Unknown 续跑。
-        healthMonitor = new Services.PageHealthMonitor(windowAccessor, Services.HostLog.Write);
+        // 页面健康观测 + 有界恢复（ADR page-health-monitor / reference-alignment 批次五）：
+        // 宿主只读探针轮询，不注入不依赖 companion——「dsh 在跑但页面空白」类事故（历史三起全靠
+        // 人肉发现）从此有自动留痕；连续 Dead 达阈值后在预算内触发一次有界 reload，耗尽转观测-only，
+        // 成功恢复复位预算（防误报引发无限重载循环，对齐参照 plugin_boot.rs 的有界刷新门控）。
+        // 首拍延迟 10s 避开启动空窗，探针异常按 Unknown 续跑。reload 委托捕获 webUrl（闭包变量），
+        // 引导完成后已指向 dsh web；webUrl 为空（引导未落定）时不触发恢复。
+        healthMonitor = new Services.PageHealthMonitor(
+            windowAccessor,
+            Services.HostLog.Write,
+            reload: ct => webUrl is null
+                ? ValueTask.CompletedTask
+                : windowAccessor.Current.NavigateAsync(webUrl, ct));
         _ = healthMonitor.RunAsync(TimeSpan.FromSeconds(10), supervisorCts.Token);
 
         // 自更新启动对账 + 后台检查一次（失败静默转 error 态，不影响首屏）

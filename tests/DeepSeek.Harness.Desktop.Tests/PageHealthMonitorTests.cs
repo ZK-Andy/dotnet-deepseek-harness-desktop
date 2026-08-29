@@ -85,4 +85,27 @@ public class PageHealthTrackerTests
 	{
 		Assert.Equal(expected, PageHealthMonitor.Parse(raw));
 	}
+
+	[Fact]
+	public void ReArm_ResetsToUnknown_AndClearsDeadStreak()
+	{
+		var t = new PageHealthTracker(deadThreshold: 3);
+
+		t.Record(PageHealth.Dead);
+		t.Record(PageHealth.Dead);
+		t.Record(PageHealth.Dead);
+		Assert.Equal(PageHealth.Dead, t.Current);
+
+		// 一次有界 reload 后 ReArm：死区重置——reload 后仍为空的页面需重新凑满阈值再触发迁移
+		t.ReArm();
+		Assert.Equal(PageHealth.Unknown, t.Current);
+
+		// 复位后需全新凑满 3 次 Dead 才再迁移，且 ProbeCount 不重置（诊断累计）
+		var probesBefore = t.ProbeCount;
+		Assert.Null(t.Record(PageHealth.Dead));
+		Assert.Null(t.Record(PageHealth.Dead));
+		Assert.Equal("页面健康：连续 3 次探针为空（dead）", t.Record(PageHealth.Dead));
+		Assert.Equal(PageHealth.Dead, t.Current);
+		Assert.Equal(probesBefore + 3, t.ProbeCount);
+	}
 }
