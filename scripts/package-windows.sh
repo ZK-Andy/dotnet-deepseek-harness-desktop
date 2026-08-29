@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# package-windows.sh — 从 .NET publish 输出打 Windows 安装器（exe，Inno Setup/NSIS/7z SFX）。
+# package-windows.sh — 从 .NET publish 输出打 Windows 安装器（exe，Inno Setup 唯一）。
+# Inno 编译失败必须 fail loud——绝不静默降级（历史教训：Git Bash 把 iscc 的 /Q 当
+# POSIX 路径转换成第二个脚本文件名致编译恒失败，NSIS/SFX 回退链把失败吞成
+# 「成功」，Windows 发布资产实际长期为 7z 自解压包而非安装器，2026-08-29 冒烟实锤）。
 # online-first（ADR online-first-unbundled-runtime）：包只带壳 + 安装器自带插件资源
 # （resources/plugins/dsh-desktop-companion.tgz）；运行时由首启引导下载，不再捆绑闭包。
 # 布局：publish 全量 + resources/plugins
@@ -87,10 +90,13 @@ INSTALLER="$OUT/DeepSeek.Harness.Desktop_${VERSION}_windows-${ARCH}-setup.exe"
 rm -f "$INSTALLER"
 
 # 安装器 exe（Windows 期待 exe 安装器；Linux 已有 deb/rpm，macOS 已有 dmg）
-# 优先 Inno Setup (iscc)，回退 NSIS (makensis)，再回退 7z SFX
+# Inno Setup 6 唯一安装器链（缺工具/编译失败即 fail loud，无静默回退）。
+# 坑位（2026-08-29 实锤）：Git Bash 会把 iscc 的 /Q 开关当 POSIX 路径转换成第二个
+# 「脚本文件名」（iscc 报 You may not specify more than one script filename），
+# 须 MSYS2_ARG_CONV_EXCL 排除 + iss 路径 cygpath -w 显式给 Windows 形态。
 create_installer_exe() {
   local staging="$1" installer="$2"
-  local staging_win installer_win out_dir iss_file
+  local staging_win installer_win out_dir iss_file iss_file_win
   # 转 Windows 风格供 Inno Setup（Git Bash 下用 cygpath）
   if command -v cygpath >/dev/null 2>&1; then
     staging_win="$(cygpath -w "$staging" 2>/dev/null || echo "$staging")"
@@ -101,32 +107,40 @@ create_installer_exe() {
     installer_win="$installer"
     out_dir="$(dirname "$installer")"
   fi
-  local iss_out_dir="$out_dir"
   local iss_base="$(basename "$installer" .exe)"
-  # 优先 Inno Setup 6
   local iscc=""
   for p in "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "/c/Program Files/Inno Setup 6/ISCC.exe" "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" "C:\\Program Files\\Inno Setup 6\\ISCC.exe"; do
     if [[ -f "$p" ]]; then iscc="$p"; break; fi
   done
   if [[ -z "$iscc" ]] && command -v iscc >/dev/null 2>&1; then iscc="$(command -v iscc)"; fi
   if [[ -z "$iscc" ]] && command -v ISCC.exe >/dev/null 2>&1; then iscc="$(command -v ISCC.exe)"; fi
-  if [[ -n "$iscc" ]]; then
-    echo "   尝试 Inno Setup: $iscc"
-    iss_file="$(mktemp --suffix=.iss 2>/dev/null || mktemp -t iss).iss"
-    # icon 若存在转 ico（若缺则跳过）
-    local icon_line=""
-    if [[ -f "$ROOT/assets/icon.png" ]]; then
-      # 尝试在 Windows 上用 magick 转 ico（若可用），否则忽略
-      if command -v magick >/dev/null 2>&1 && [[ ! -f "$ROOT/assets/icon.ico" ]]; then
-        magick "$ROOT/assets/icon.png" -define icon:auto-resize=16,32,48,64,128,256 "$ROOT/assets/icon.ico" 2>/dev/null || true
-      fi
-      if [[ -f "$ROOT/assets/icon.ico" ]]; then
-        local icon_win
-        if command -v cygpath >/dev/null 2>&1; then icon_win="$(cygpath -w "$ROOT/assets/icon.ico")"; else icon_win="$ROOT/assets/icon.ico"; fi
-        icon_line="SetupIconFile=$icon_win"
-      fi
+  if [[ -z "$iscc" ]]; then
+    echo "error: 缺 Inno Setup 6（ISCC.exe）——安装器唯一产物链，不做 SFX/NSIS 静默降级" >&2
+    return 1
+  fi
+  echo "== Inno Setup: $iscc"
+  iss_file="$(mktemp --suffix=.iss 2>/dev/null || mktemp -t iss).iss"
+  # icon 若存在转 ico（若缺则跳过）
+  local icon_line=""
+  if [[ -f "$ROOT/assets/icon.png" ]]; then
+    if command -v magick >/dev/null 2>&1 && [[ ! -f "$ROOT/assets/icon.ico" ]]; then
+      magick "$ROOT/assets/icon.png" -define icon:auto-resize=16,32,48,64,128,256 "$ROOT/assets/icon.ico" 2>/dev/null || true
     fi
-    cat > "$iss_file" <<ISS_EOF
+    if [[ -f "$ROOT/assets/icon.ico" ]]; then
+      local icon_win
+      if command -v cygpath >/dev/null 2>&1; then icon_win="$(cygpath -w "$ROOT/assets/icon.ico")"; else icon_win="$ROOT/assets/icon.ico"; fi
+      icon_line="SetupIconFile=$icon_win"
+    fi
+  fi
+  # 语言包条件化：runner 的 Inno 安装形态不定，缺 ChineseSimplified.isl 时编译
+  # 不得因此失败（英文兜底）
+  local lang_line='Name: "chinese"; MessagesFile: "compiler:Languages\\ChineseSimplified.isl"'
+  local iscc_dir="$(dirname "$iscc")"
+  if [[ ! -f "$iscc_dir/Languages/ChineseSimplified.isl" ]]; then
+    lang_line=""
+    echo "   warn: runner 缺 ChineseSimplified.isl，安装器仅英文界面"
+  fi
+  cat > "$iss_file" <<ISS_EOF
 [Setup]
 AppName=DeepSeek Harness Desktop
 AppVersion=$VERSION
@@ -148,7 +162,7 @@ WizardStyle=modern
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "chinese"; MessagesFile: "compiler:Languages\\ChineseSimplified.isl"
+$lang_line
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -164,101 +178,28 @@ Name: "{autodesktop}\\DeepSeek Harness Desktop"; Filename: "{app}\\DeepSeek.Harn
 [Run]
 Filename: "{app}\\DeepSeek.Harness.Desktop.exe"; Description: "{cm:LaunchProgram,DeepSeek Harness Desktop}"; Flags: nowait postinstall skipifsilent
 ISS_EOF
-    echo "   ISS: $iss_file"
-    cat "$iss_file" 2>&1 | head -40 || true
-    if "$iscc" /Q "$iss_file" 2>&1 | tail -30; then
-      if [[ -f "$installer" ]]; then
-        echo "== 产物 installer exe (Inno Setup): $installer ($(du -h "$installer" 2>/dev/null | cut -f1 || ls -lh "$installer" | awk '{print $5}'))"
-        rm -f "$iss_file"
-        return 0
-      fi
-    fi
-    echo "   Inno Setup 失败，回退" >&2
-    rm -f "$iss_file"
+  if command -v cygpath >/dev/null 2>&1; then iss_file_win="$(cygpath -w "$iss_file")"; else iss_file_win="$iss_file"; fi
+  # MSYS2_ARG_CONV_EXCL：防 /Q 被当 POSIX 路径转换（本轮实锤的恒失败根因）
+  local compile_ok=0
+  if MSYS2_ARG_CONV_EXCL='*' "$iscc" /Q "$iss_file_win" 2>&1 | tail -30; then
+    [[ -f "$installer" ]] && compile_ok=1
   fi
-  # 回退 NSIS
-  local makensis=""
-  for p in "/c/Program Files (x86)/NSIS/makensis.exe" "/c/Program Files/NSIS/makensis.exe" "C:\\Program Files (x86)\\NSIS\\makensis.exe" "C:\\Program Files\\NSIS\\makensis.exe"; do
-    if [[ -f "$p" ]]; then makensis="$p"; break; fi
-  done
-  if [[ -z "$makensis" ]] && command -v makensis >/dev/null 2>&1; then makensis="$(command -v makensis)"; fi
-  if [[ -n "$makensis" ]]; then
-    echo "   尝试 NSIS: $makensis"
-    local nsi_file
-    nsi_file="$(mktemp --suffix=.nsi 2>/dev/null || mktemp -t nsi).nsi"
-    cat > "$nsi_file" <<NSIS_EOF
-!include "MUI2.nsh"
-Name "DeepSeek Harness Desktop"
-OutFile "$installer_win"
-InstallDir "\$PROGRAMFILES64\\DeepSeek Harness Desktop"
-RequestExecutionLevel user
-!insertmacro MUI_PAGE_DIRECTORY
-!insertmacro MUI_PAGE_INSTFILES
-!insertmacro MUI_PAGE_FINISH
-!insertmacro MUI_LANGUAGE "English"
-!insertmacro MUI_LANGUAGE "SimpChinese"
-Section "Install"
-  SetOutPath "\$INSTDIR"
-  File /r "$staging_win\\*.*"
-  CreateDirectory "\$SMPROGRAMS\\DeepSeek Harness Desktop"
-  CreateShortCut "\$SMPROGRAMS\\DeepSeek Harness Desktop\\DeepSeek Harness Desktop.lnk" "\$INSTDIR\\DeepSeek.Harness.Desktop.exe"
-  CreateShortCut "\$DESKTOP\\DeepSeek Harness Desktop.lnk" "\$INSTDIR\\DeepSeek.Harness.Desktop.exe"
-  WriteUninstaller "\$INSTDIR\\Uninstall.exe"
-SectionEnd
-Section "Uninstall"
-  Delete "\$INSTDIR\\*.*"
-  RMDir /r "\$INSTDIR"
-  Delete "\$SMPROGRAMS\\DeepSeek Harness Desktop\\DeepSeek Harness Desktop.lnk"
-  Delete "\$DESKTOP\\DeepSeek Harness Desktop.lnk"
-SectionEnd
-NSIS_EOF
-    cat "$nsi_file" 2>&1 | head -30 || true
-    if "$makensis" "$nsi_file" 2>&1 | tail -30; then
-      if [[ -f "$installer" ]]; then
-        echo "== 产物 installer exe (NSIS): $installer ($(du -h "$installer" 2>/dev/null | cut -f1 || ls -lh "$installer" | awk '{print $5}'))"
-        rm -f "$nsi_file"
-        return 0
-      fi
-    fi
-    echo "   NSIS 失败，回退" >&2
-    rm -f "$nsi_file"
+  rm -f "$iss_file"
+  if [[ $compile_ok -ne 1 ]]; then
+    echo "error: Inno Setup 编译失败（见上方输出）——安装器唯一产物链，不做静默降级" >&2
+    return 1
   fi
-  # 回退 7z SFX（若可用，产出自解压 exe；需 7z.sfx）
-  if command -v 7z >/dev/null 2>&1; then
-    local sfx
-    for sfx in "/c/Program Files/7-Zip/7z.sfx" "C:\\Program Files\\7-Zip\\7z.sfx" "/usr/lib/7zip/7z.sfx" "/usr/lib/p7zip/7z.sfx"; do
-      if [[ -f "$sfx" ]]; then
-        echo "   尝试 7z SFX: $sfx"
-        # 7z SFX 需先压 7z 再拼 SFXstub + config + archive
-        local tmp7z
-        tmp7z="$(mktemp --suffix=.7z 2>/dev/null || mktemp -t sfx).7z"
-        (cd "$(dirname "$staging")" && 7z a -t7z "$tmp7z" "$(basename "$staging")" -mx=9 >/dev/null 2>&1)
-        if [[ -f "$tmp7z" ]]; then
-          # 简单拼接 SFX（部分 SFX 模块支持 -sfx 选项直接产出 exe）
-          if 7z a -sfx"$sfx" "$installer" "$staging" >/dev/null 2>&1; then
-            if [[ -f "$installer" ]]; then echo "== 产物 SFX exe: $installer"; rm -f "$tmp7z"; return 0; fi
-          fi
-          cat "$sfx" "$tmp7z" > "$installer" 2>/dev/null || true
-          if [[ -f "$installer" && -s "$installer" ]]; then echo "== 产物 SFX exe (拼接): $installer"; rm -f "$tmp7z"; return 0; fi
-        fi
-        rm -f "$tmp7z"
-        break
-      fi
-    done
-  fi
-  return 1
+  echo "== 产物 installer exe (Inno Setup): $installer ($(du -h "$installer" 2>/dev/null | cut -f1 || ls -lh "$installer" | awk '{print $5}'))"
+  return 0
 }
 
 if create_installer_exe "$STAGE" "$INSTALLER"; then
-  echo "== Windows 安装器已生成 == "
+  echo "== Windows 安装器已生成 = "
   ls -lh "$INSTALLER" 2>&1 | head -5 || true
-  if command -v iscc >/dev/null 2>&1 || [[ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]]; then
-    echo "   （Inno Setup 已用）"
-  fi
   # 自签安装器 exe（仅内部/开发；同 SELF_SIGN=1 门控）
   if [[ "${SELF_SIGN:-0}" == "1" ]]; then sign_windows "$INSTALLER"; fi
 else
-  echo "error: 未能生成安装器 exe（无 Inno Setup/NSIS/7z SFX；独立 zip 已不再产出）" >&2
+  echo "error: 未能生成安装器 exe（Inno Setup 编译失败；不做静默降级）" >&2
   exit 1
 fi
 

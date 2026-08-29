@@ -83,6 +83,11 @@ if [[ $install_rc -ne 0 || ! -f "$APP_EXE" ]]; then
   tail -40 "$HOME_DIR/install.log" >&2 || true
   exit 1
 fi
+if [[ ! -f "$INSTALL_DIR/unins000.exe" ]]; then
+  # 真安装器语义断言：无卸载器 = 产物是自解压包而非安装器（历史静默降级事故的判别位）
+  echo "error: 安装后缺 unins000.exe——产物疑似非 Inno 安装器（回退链静默降级？）" >&2
+  exit 1
+fi
 echo "== 安装完成（install.log 尾部留痕）"
 tail -3 "$HOME_DIR/install.log" >&2
 echo "== 启动冒烟（等 dsh web URL 行或引导启动行，窗=${SMOKE_WAIT}s）"
