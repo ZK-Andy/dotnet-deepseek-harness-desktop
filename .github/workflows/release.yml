@@ -101,6 +101,21 @@ jobs:
           { echo "body<<BODY"; cat release-body.md; echo "BODY"; } >> "$GITHUB_OUTPUT"
           echo "== 生成正文 =="; cat release-body.md
 
+      # 预发布/Latest 判定走 step 内 bash 正则（grep -E 完整语义：v1.2.0rc1 无点形态也命中）——
+      # 不用表达式 matches()：表达式层被 GitHub 判为 workflow 解析失败时整个文件失效
+      # （实测症状：workflow name 回退为路径、push 产出零 job failure run）。
+      # make_latest 仅对稳定版置 true——prerelease 抢 Latest 会误导普通用户的「检查更新」。
+      - name: 预发布与 Latest 判定
+        id: relmeta
+        run: |
+          if echo "$GITHUB_REF_NAME" | grep -Eq '[._-](rc|beta|alpha)([.0-9]*)?$'; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 创建 Release
         uses: softprops/action-gh-release@v2
         with:
@@ -109,10 +124,8 @@ jobs:
           body: ${{ steps.notes.outputs.body }}
           generate_release_notes: false
           draft: false
-          # 预发布判定用正则（rc/beta/alpha 不带点号的 v1.2.3rc1 形态也命中）；
-          # make_latest 仅对稳定版置 true——prerelease 抢 Latest 会误导普通用户的「检查更新」
-          prerelease: ${{ matches(github.ref_name, '[._-](rc|beta|alpha)([.0-9]*)?$') }}
-          make_latest: ${{ !matches(github.ref_name, '[._-](rc|beta|alpha)([.0-9]*)?$') }}
+          prerelease: ${{ steps.relmeta.outputs.prerelease }}
+          make_latest: ${{ steps.relmeta.outputs.latest }}
           files: |
             release-assets/**/*.deb
             release-assets/**/*.rpm
