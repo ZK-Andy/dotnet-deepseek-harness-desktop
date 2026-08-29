@@ -37,7 +37,8 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ```
 
 * `HarnessRuntimeHost` 抓 `dsh web:` 日志；`RuntimeSupervisor` 崩溃自动重启（端口复用保 `origin`）。
-* 随包插件：首启 `3s` 后台按 `BundledPluginCatalog` 清单单条 `dsh plugin add <spec…>` 装齐 `dshmarket + dsh-desktop-companion`（版本感知升级），装完 `host.Stop()→Supervisor` 重启即现；`pnpm-workspace.yaml` 的 `allowBuilds` 6 项由壳自愈。
+* 无捆绑运行时且无 PATH dsh 时，首启经 `RuntimeBootstrap` 引导（复用/下载钉版 Node → npm 装 `@deepseek-ai/dsh@latest` → registry 装市场 `dshmarket@latest`），在 spawn dsh 前一次就位。
+* 随包插件（companion）：后台按 `BundledPluginCatalog` 清单单条 `dsh plugin add <spec…>` 装（版本感知升级），装完 `host.Stop()→Supervisor` 重启即现；`pnpm-workspace.yaml` 的 `allowBuilds` 6 项由壳自愈（companion 与市场用）。启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用。
 
 ## 测试与门禁
 

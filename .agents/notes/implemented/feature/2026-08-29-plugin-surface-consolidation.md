@@ -13,7 +13,7 @@ online-first 去捆绑转向（`online-first-unbundled-runtime`）批次二已�
 - **目录收缩**：`BundledPluginCatalog.All` 收缩为单条目 `dsh-desktop-companion`（`ResolveCompanionSpec`），dshmarket 条目随其 registry 回退形态一并退役。
 - **解析器近死分支退役**：删 `MarketInstallHelper.ResolveMarketSpec`/`MarketRegistrySpec`（其运行时目录 tgz/目录分支唯一生成器已删，只剩 registry 回退——该回退移入引导后无处消费）；`ResolveCompanionSpec` 删运行时目录 tgz/目录回退（批次二已迁入安装器 `resources/plugins`，运行时目录分支为近死）。companion 安装器资源缺失时返回 null（开发用 PATH dsh 由调用方跳过）。
 - **归化/分组机器退役**：`AssemblePending` 删 `NormalizeToRegistry`/`IsLocalSpec`/`IsPathSpec`/`ReadDependencySpec`/`FromRegistry` 分支——这些只服务随包 dshmarket 一个消费者；companion 无语义（无 registry 上游、无 seed 归化）。消费点 `Program.cs` 随之去掉本地/registry 双组 spawn，单组安装。
-- **dshmarket 迁入引导**：`RuntimeBootstrap` 在 `InstallDsh` 步骤后追加一处 registry 安装——经随 Node 的 npm 以 `dsh plugin add dshmarket@latest`（写 desktop profile）装市场。一次 add 同时承担新装与存量 seed 自愈归化（`dshmarket@latest` 显式 spec 对既存依赖同样强制改写为 registry 形态，等价 `bundled-plugin-registry-normalization` 的归化语义）。此步骤在引导状态机内、dsh spawn **之前**（对齐 dsh-tauri-desk「插件与核心一起就位」，不启动后再装→重启）。
+- **dshmarket 迁入引导**：引导任务在 `BindRuntime` 后、`StartAsync` 前经 dsh CLI 子命令安装市场——`node <dsh-entry> plugin add dshmarket@latest`（写 desktop profile；由 `MarketInstallHelper.EnsureMarketFromRegistryAsync` 封装，非 `RuntimeBootstrap` 状态机步骤）。一次 add 同时承担新装与存量 seed 自愈归化（`dshmarket@latest` 显式 spec 对既存依赖同样强制改写为 registry 形态，等价 `bundled-plugin-registry-normalization` 的归化语义）。此步在 dsh spawn **之前**（对齐 dsh-tauri-desk「插件与核心一起就位」，不启动后再装→重启）。
 - **config reconcile 先于启动**：`DesktopProfileBootstrap` 新增 reconcile——扫描 desktop profile 的 `dependencies`/`dsh.profile.bundles`，删除解析目标已不存在的本地 `file:`/`link:` 引用（被退役的 dshmarket 种子属之），再启动。幂等、fail loud 于结构错误（记日志不阻断）。此为 #177 事故的对齐约束：不允许不可解析 bundle 引用残留。
 
 ## Alternatives considered
@@ -27,8 +27,8 @@ online-first 去捆绑转向（`online-first-unbundled-runtime`）批次二已�
 
 - 收益：插件面收敛到「随包 = companion + 注册表市场」单一模型；近死分支与归化/分组机器退役，`AssemblePending` 大幅简化；dshmarket 自动安装位从「后台 3s 装→重启 dsh」改为「引导内、dsh spawn 前」——插件与核心一次就位，重启循环消失；compliance 对齐 dsh-tauri-desk #177（启动前 reconcile 不可解析引用）。
 - 代价/风险：dshmarket 安装从引导的 registry 路径走，**必须联网**（online-first 面向联网模型场景，可接受；断网时引导在 install 步 fail loud，进度页可重试）；`dshmarket@latest` 不经我方验证矩阵（与用户自装同风险面，市场出现后由 dshmarket 自带更新检查跟进）；companion 安装器资源缺失时无法自动装（仅开发用 PATH dsh 场景，调用方跳过）。
-- 引导状态机改动：新增一个 `InstallMarket` 步骤（或并入 `InstallDsh` 之后一步），保持「每步完成即验证产物」约束——dshmarket 装完校验其 `dependencies`/bundles 就位。
-- 测试：删 3 个守护测试（`RegistryFallbackSpec_WithoutNormalization_Skipped` / `ResolveCompanionSpec_UsesRuntimeTgz_WhenInstallerDirMissing` / `RealCatalog_ResolvesBothBundledPlugins_FromRuntimeLayout`）；`MarketInstallHelperTests` 删随 `ResolveMarketSpec`/`IsLocalSpec`/`IsPathSpec`/`ReadDependencySpec`/运行时目录分支相关的用例；新增 reconcile 回归 + 引导装 dshmarket 回归（hooks 注入断言）。
+- 引导装机位：dshmarket 经 `MarketInstallHelper.EnsureMarketFromRegistryAsync` 在引导任务内执行（`BindRuntime` 后、`StartAsync` 前，内联调用，非 `RuntimeBootstrap` 状态机步骤）——先放行 profile workspace 的 allowBuilds（dshmarket 依赖树含原生构建，pnpm 11 默认拒绝）、再 `dsh plugin add dshmarket@latest`（minimumReleaseAge 政策拒绝时放宽重试一次）、最后补写 bundles 兜底；best-effort 失败只告警不阻断首启。
+- 测试：删 3 个守护测试（`RegistryFallbackSpec_WithoutNormalization_Skipped` / `ResolveCompanionSpec_UsesRuntimeTgz_WhenInstallerDirMissing` / `RealCatalog_ResolvesBothBundledPlugins_FromRuntimeLayout`）；`MarketInstallHelperTests` 删随 `ResolveMarketSpec`/`IsLocalSpec`/`IsPathSpec`/`ReadDependencySpec`/运行时目录分支相关的用例；新增 reconcile 回归（`ReconcileProfile_RemovesDeadLocalSeedRefs_KeepsRegistryAndPresentLocal`/`_NoOp_WhenNoDeadLocalRefs`/`_NoOp_WhenManifestMissing`）+ 引导装市场回归（`EnsureMarketFromRegistry_BuildsCorrectArgsAndEnv_AndBackfillsBundles`/`_RetriesOnMinimumReleaseAge_Dropcap`，经注入 subprocess 执行器断言参数形状与 env）。
 
 ## Related
 

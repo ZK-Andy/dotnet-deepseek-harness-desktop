@@ -137,6 +137,15 @@ public static class DesktopProfileBootstrap
             deps.Remove(name);
         }
 
+        // bundles 若存在但非数组（损坏态）：整体放弃移除，避免写回「dependencies 已删、bundles 残留」的
+        // 半 reconcile 状态——半写会把不可解析引用留在 bundles，反而违背 reconcile 的初衷。
+        var profileNode = root["dsh"]?["profile"];
+        if (profileNode is JsonObject profile && profile["bundles"] is not null && profile["bundles"] is not JsonArray)
+        {
+            log($"[host] 桌面 profile reconcile 放弃（bundles 结构损坏，非数组）：{manifestPath}");
+            return 0;
+        }
+
         if (root["dsh"]?["profile"]?["bundles"] is JsonArray bundles)
         {
             foreach (var (name, _) in removable)
@@ -150,7 +159,7 @@ public static class DesktopProfileBootstrap
             }
         }
 
-        WriteManifest(manifestPath, root);
+        MarketInstallHelper.WriteProfilePkg(manifestPath, root);
         foreach (var (name, spec) in removable)
         {
             log($"[host] 桌面 profile reconcile：移除不可解析插件引用 {name}（{spec}）");
@@ -182,18 +191,5 @@ public static class DesktopProfileBootstrap
             ? target
             : Path.Combine(profileDir, target);
         return !File.Exists(full) && !Directory.Exists(full);
-    }
-
-    /// <summary>按缩进 JSON + 尾部换行写回 profile <c>package.json</c>（与 dsh 自身写盘格式一致）。</summary>
-    private static void WriteManifest(string path, JsonNode root)
-    {
-        using var ms = new MemoryStream();
-        using (var writer = new System.Text.Json.Utf8JsonWriter(ms, new System.Text.Json.JsonWriterOptions { Indented = true }))
-        {
-            root.WriteTo(writer);
-        }
-
-        var newJson = System.Text.Encoding.UTF8.GetString(ms.ToArray()) + "\n";
-        File.WriteAllText(path, newJson);
     }
 }

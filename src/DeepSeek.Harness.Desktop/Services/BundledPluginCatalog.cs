@@ -11,8 +11,8 @@ public static class BundledPluginCatalog
 {
     /// <summary>清单项：<paramref name="ResolveSpec"/> 返回 <see langword="null"/> 表示无任何来源（如开发用 PATH dsh），调用方跳过；
     /// 解析器抛出的异常按单插件跳过处理，不影响其余清单项。
-    /// 参数依次为运行时目录（引导下载同布局）与安装器自带插件资源目录（resources/plugins，可为 null）。</summary>
-    public sealed record Entry(string Package, Func<string, string?, string?> ResolveSpec);
+    /// 参数为安装器自带插件资源目录（resources/plugins，可为 null）——online-first 后随包唯一供给源。</summary>
+    public sealed record Entry(string Package, Func<string?, string?> ResolveSpec);
 
     /// <summary>清单顺序即单条 <c>plugin add</c> 的 spec 顺序。</summary>
     public static readonly IReadOnlyList<Entry> All =
@@ -26,7 +26,6 @@ public static class BundledPluginCatalog
     /// 来源更新即入列（升级），与来源同版或更高即跳过；spec 缺失（null）或解析器抛错按单插件跳过。
     /// </summary>
     /// <param name="catalog">随包插件清单。</param>
-    /// <param name="runtimeDir">运行时目录（引导下载布局）。</param>
     /// <param name="installerPluginsDir">安装器自带插件资源目录（resources/plugins）；开发/引导形态可 null。</param>
     /// <param name="profilePkg">profile 的 package.json 绝对路径。</param>
     /// <param name="profileDir">profile 目录（读取已装副本版本）。</param>
@@ -34,7 +33,6 @@ public static class BundledPluginCatalog
     /// <returns>待安装/升级的 (包名, spec) 列表，顺序与清单一致。</returns>
     public static List<(string Package, string Spec)> AssemblePending(
         IEnumerable<Entry> catalog,
-        string runtimeDir,
         string? installerPluginsDir,
         string profilePkg,
         string profileDir,
@@ -46,7 +44,7 @@ public static class BundledPluginCatalog
             string? spec;
             try
             {
-                spec = entry.ResolveSpec(runtimeDir, installerPluginsDir);
+                spec = entry.ResolveSpec(installerPluginsDir);
             }
             catch (Exception ex)
             {

@@ -11,9 +11,6 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// </summary>
 public class BundledPluginCatalogTests
 {
-    /// <summary>假 catalog 忽略 runtimeDir 参数，用常量避免无意义的临时目录创建。</summary>
-    private const string UnusedRuntime = "/unused-runtime";
-
     private static string NewRoot() => Directory.CreateTempSubdirectory("bpc-").FullName;
 
     /// <summary>目录形态的随包 spec（ReadBundledVersion 直读其 package.json，无需 tgz）。</summary>
@@ -54,11 +51,11 @@ public class BundledPluginCatalogTests
     }
 
     private static (List<(string Package, string Spec)> Pending, List<string> Logs) Assemble(
-        IEnumerable<BundledPluginCatalog.Entry> catalog, string runtimeDir, string profileDir, string? pluginsDir = null)
+        IEnumerable<BundledPluginCatalog.Entry> catalog, string profileDir, string? pluginsDir = null)
     {
         var logs = new List<string>();
         var pending = BundledPluginCatalog.AssemblePending(
-            catalog, runtimeDir, pluginsDir, Path.Combine(profileDir, "package.json"), profileDir, logs.Add);
+            catalog, pluginsDir, Path.Combine(profileDir, "package.json"), profileDir, logs.Add);
         return (pending, logs);
     }
 
@@ -69,9 +66,9 @@ public class BundledPluginCatalogTests
         try
         {
             var profile = NewProfile(root); // 空 profile = 什么都未装；spec 指向不存在的路径也不读
-            var catalog = new[] { new BundledPluginCatalog.Entry("pkg-a", (_, _) => "/nonexistent/pkg-a.tgz") };
+            var catalog = new[] { new BundledPluginCatalog.Entry("pkg-a", _ => "/nonexistent/pkg-a.tgz") };
 
-            var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
+            var (pending, logs) = Assemble(catalog, profile);
 
             var entry = Assert.Single(pending);
             Assert.Equal(("pkg-a", "/nonexistent/pkg-a.tgz"), (entry.Package, entry.Spec));
@@ -88,9 +85,9 @@ public class BundledPluginCatalogTests
         {
             var profile = NewProfile(root, "pkg-a");
             InstallCopy(profile, "pkg-a", "0.0.1");
-            var catalog = new[] { new BundledPluginCatalog.Entry("pkg-a", (_, _) => NewSpecDir(root, "pkg-a", "0.0.2")) };
+            var catalog = new[] { new BundledPluginCatalog.Entry("pkg-a", _ => NewSpecDir(root, "pkg-a", "0.0.2")) };
 
-            var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
+            var (pending, logs) = Assemble(catalog, profile);
 
             Assert.Single(pending);
             Assert.Equal("pkg-a", pending[0].Package);
@@ -110,9 +107,9 @@ public class BundledPluginCatalogTests
             // 来源 spec 固定 0.0.2；已装 0.0.2 视为同版、已装 0.0.3 高于来源，均不得入列。
             var profile = NewProfile(root, "pkg-a");
             InstallCopy(profile, "pkg-a", installedVersion);
-            var catalog = new[] { new BundledPluginCatalog.Entry("pkg-a", (_, _) => NewSpecDir(root, "pkg-a", "0.0.2")) };
+            var catalog = new[] { new BundledPluginCatalog.Entry("pkg-a", _ => NewSpecDir(root, "pkg-a", "0.0.2")) };
 
-            var (pending, _) = Assemble(catalog, UnusedRuntime, profile);
+            var (pending, _) = Assemble(catalog, profile);
 
             Assert.Empty(pending);
         }
@@ -127,9 +124,9 @@ public class BundledPluginCatalogTests
         {
             // 已入 dependencies/bundles 但 node_modules 副本缺失 → 已装版本不可读 → 重装修复。
             var profile = NewProfile(root, "pkg-a");
-            var catalog = new[] { new BundledPluginCatalog.Entry("pkg-a", (_, _) => NewSpecDir(root, "pkg-a", "0.0.9")) };
+            var catalog = new[] { new BundledPluginCatalog.Entry("pkg-a", _ => NewSpecDir(root, "pkg-a", "0.0.9")) };
 
-            var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
+            var (pending, logs) = Assemble(catalog, profile);
 
             Assert.Single(pending);
             Assert.Contains(logs, l => l.Contains("(不可读)"));
@@ -144,9 +141,9 @@ public class BundledPluginCatalogTests
         try
         {
             var profile = NewProfile(root);
-            var catalog = new[] { new BundledPluginCatalog.Entry("ghost", (_, _) => null) };
+            var catalog = new[] { new BundledPluginCatalog.Entry("ghost", _ => null) };
 
-            var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
+            var (pending, logs) = Assemble(catalog, profile);
 
             Assert.Empty(pending);
             Assert.Contains(logs, l => l.Contains("ghost") && l.Contains("无可用来源"));
@@ -166,11 +163,11 @@ public class BundledPluginCatalogTests
 
             var catalog = new[]
             {
-                new BundledPluginCatalog.Entry("dirty", (_, _) => NewSpecDir(root, "dirty", "2.a.0")),
-                new BundledPluginCatalog.Entry("healthy", (_, _) => NewSpecDir(root, "healthy", "2.0.0")),
+                new BundledPluginCatalog.Entry("dirty", _ => NewSpecDir(root, "dirty", "2.a.0")),
+                new BundledPluginCatalog.Entry("healthy", _ => NewSpecDir(root, "healthy", "2.0.0")),
             };
 
-            var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
+            var (pending, logs) = Assemble(catalog, profile);
 
             // 脏版本串只跳过本插件的升级检查，不拖垮其余插件。
             var entry = Assert.Single(pending);
@@ -191,11 +188,11 @@ public class BundledPluginCatalogTests
 
             var catalog = new[]
             {
-                new BundledPluginCatalog.Entry("boom", (_, _) => throw new InvalidOperationException("boom")),
-                new BundledPluginCatalog.Entry("healthy", (_, _) => NewSpecDir(root, "healthy", "2.0.0")),
+                new BundledPluginCatalog.Entry("boom", _ => throw new InvalidOperationException("boom")),
+                new BundledPluginCatalog.Entry("healthy", _ => NewSpecDir(root, "healthy", "2.0.0")),
             };
 
-            var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
+            var (pending, logs) = Assemble(catalog, profile);
 
             // 清单扩展点下解析器实现出错：该插件跳过，其余清单项照常装配。
             var entry = Assert.Single(pending);
@@ -214,11 +211,11 @@ public class BundledPluginCatalogTests
             var profile = NewProfile(root);
             var catalog = new[]
             {
-                new BundledPluginCatalog.Entry("second", (_, _) => "/x/second.tgz"),
-                new BundledPluginCatalog.Entry("first", (_, _) => "/x/first.tgz"),
+                new BundledPluginCatalog.Entry("second", _ => "/x/second.tgz"),
+                new BundledPluginCatalog.Entry("first", _ => "/x/first.tgz"),
             };
 
-            var (pending, _) = Assemble(catalog, UnusedRuntime, profile);
+            var (pending, _) = Assemble(catalog, profile);
 
             Assert.Equal(["second", "first"], pending.Select(p => p.Package));
         }
@@ -242,11 +239,10 @@ public class BundledPluginCatalogTests
 
             var profile = NewProfile(root);
             var (pending, logs) = Assemble(
-                BundledPluginCatalog.All, root, profile, pluginsDir: pluginsDir);
+                BundledPluginCatalog.All, profile, pluginsDir: pluginsDir);
 
-            // 运行时目录 tgz/目录分支退役：不提供 runtimeDir 里的 companion tgz/dir 来源，
-            // companion 只能来自安装器资源；dshmarket 不再随包（catalog 仅 companion），
-            // 故 pending 仅 companion 一条。（不装 dshmarket，市场由引导线程经 registry 安装。）
+            // 运行时目录 tgz/目录分支退役：companion 只能来自安装器资源；dshmarket 不再随包
+            // （catalog 仅 companion），故 pending 仅 companion 一条。（不装 dshmarket，市场由引导经 registry 安装。）
             var entry = Assert.Single(pending);
             Assert.Equal(("dsh-desktop-companion", Path.Combine(pluginsDir, "dsh-desktop-companion.tgz")), (entry.Package, entry.Spec));
             Assert.DoesNotContain(pending, p => p.Package == "dshmarket");
@@ -263,7 +259,7 @@ public class BundledPluginCatalogTests
             // 开发用 PATH dsh 场景（安装器资源与运行时目录均未携带 companion 种子）：
             // companion 无来源返回 null，catalog 的 companion 条目跳过、无人待装。
             var profile = NewProfile(root);
-            var (pending, logs) = Assemble(BundledPluginCatalog.All, root, profile);
+            var (pending, logs) = Assemble(BundledPluginCatalog.All, profile, pluginsDir: null);
 
             Assert.Empty(pending);
             Assert.Contains(logs, l => l.Contains("dsh-desktop-companion") && l.Contains("无可用来源"));

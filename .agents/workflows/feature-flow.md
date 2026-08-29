@@ -6,7 +6,7 @@
 2. **实现**：按 ADR 范围动 src/tests/scripts；越界想法记 TODO 不顺手做。
 3. **测试**：`dotnet test` 全绿 0 警告；行为级变更必须配套回归/快照。`scripts/**` 变更跑其自带自测或冒烟（如 preflight 假资产冒烟、`package-*.sh --stage-only`）；`.github/workflows/**` 变更必须 dispatch 实跑验证——ci.yml 绿不代表打包流水线绿，表达式错误只有真 runner 能暴露。
 4. **门禁**：三脚本 + build 全绿（pre-commit 会再拦一次）。
-5. **评审**：三重审核以**三路并行 subagent** 执行——同一提交范围，三个子代理分别按 dsh-find-simplifications / dsh-code-review / dsh-archive-agent-notes 视角独立审查（各自带全量技能指令与仓库约定，不共享中间态）；主会话汇总裁定（逐条采纳/拒绝并附证据），复核发现间冲突（某路的修复可能使另一路发现失效），修复一次性收口为单个 `refactor(review)` 提交。触发条件（任一）：重大变更——触及安全面 / IPC 帧契约 / 发版链路 / 跨模块行为；或用户指令的批量形态——对指定提交范围做事后审核。
+5. **评审**：三重审核以**子代理逐个执行（不并发）**——同一提交范围，三个子代理分别按 dsh-find-simplifications / dsh-code-review / dsh-archive-agent-notes 视角**串行**独立审查（各自带全量技能指令与仓库约定，不共享中间态；**前一个收尾拿到结论后再放下一个**，避免并发子代理互相卡死）；主会话汇总裁定（逐条采纳/拒绝并附证据），复核发现间冲突（某路的修复可能使另一路发现失效），修复一次性收口为单个 `refactor(review)` 提交。触发条件（任一）：重大变更——触及安全面 / IPC 帧契约 / 发版链路 / 跨模块行为；或用户指令的批量形态——对指定提交范围做事后审核。
 6. **提交**：逻辑单元分粒度提交，conventional commits 格式。
 7. **推送 + 观察 CI**：main 推送触发 ci.yml，绿了才算完；涉及打包/workflow 链路的按步骤 3 加跑实跑验证。
 8. **收尾（每个功能批次完成即执行，不积压到会话结束；前置门 = 触发了步骤 5 的批次必须评审通过且修复已收口[CI 绿]，未触发的走简化路径直接收尾）**：按 [session-close](session-close.md) 检查单过一遍本批次相关项（提交对账 / README 双语同步 / 交接条目 / 待办速览）；ADR 保持与 shipped 现实一致的 implemented 表述。

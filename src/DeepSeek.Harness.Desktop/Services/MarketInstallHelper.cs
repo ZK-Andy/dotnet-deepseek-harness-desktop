@@ -9,6 +9,11 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// dshmarket 改由首启引导经 registry 安装（见 RuntimeBootstrap，online-first 批次三）。</remarks>
 public static class MarketInstallHelper
 {
+    /// <summary>dshmarket 的 registry 直装 spec（@latest：市场内核跟随上游 dist-tag，无钉版）。
+    /// 显式 @latest 对既存本地 seed 同样强制改写为 registry 形态（pnpm 对裸名 add 幂等、spec 永不翻转，
+    /// ADR bundled-plugin-registry-normalization 实机实证）。</summary>
+    public const string MarketSpec = "dshmarket@latest";
+
     /// <summary>精确检测插件是否已就位：<c>dependencies.&lt;pkg&gt;</c> 存在且 <c>dsh.profile.bundles</c> 含 <c>&lt;pkg&gt;</c>。</summary>
     public static bool IsBundleInstalled(string profilePkg, string packageName)
     {
@@ -118,7 +123,7 @@ public static class MarketInstallHelper
     /// 无 registry 分发面，运行时目录种子随 online-first 退役（ADR online-first-unbundled-runtime 批次三）。</summary>
     /// <param name="installerPluginsDir">安装器自带的 resources/plugins（打包形态唯一供给源）。</param>
     /// <returns>可安装的 spec；<see langword="null"/> 表示无任何来源（如开发用 PATH dsh），调用方跳过。</returns>
-    public static string? ResolveCompanionSpec(string _runtimeDir, string? installerPluginsDir)
+    public static string? ResolveCompanionSpec(string? installerPluginsDir)
     {
         if (!string.IsNullOrWhiteSpace(installerPluginsDir))
         {
@@ -200,8 +205,39 @@ public static class MarketInstallHelper
         }
     }
 
-    /// <summary>按缩进 JSON + 尾部换行写回 profile <c>package.json</c>（与 dsh 自身写盘格式一致）。</summary>
-    private static async Task WriteProfilePkgAsync(string profilePkg, JsonNode root)
+    /// <summary>按缩进 JSON + 尾部换行原子写回 profile <c>package.json</c>（同目录临时文件 + 原子替换，
+    /// 与 dsh 自身写盘格式一致；写入中途崩溃不产生半写状态）。</summary>
+    internal static Task WriteProfilePkgAsync(string profilePkg, JsonNode root)
+    {
+        AtomicWriteFile(profilePkg, RenderProfileJson(root));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>按缩进 JSON + 尾部换行原子写回 profile <c>package.json</c>（同步版，供启动前 reconcile 使用）。</summary>
+    internal static void WriteProfilePkg(string profilePkg, JsonNode root)
+    {
+        AtomicWriteFile(profilePkg, RenderProfileJson(root));
+    }
+
+    /// <summary>同目录临时文件 + 原子替换写文本（失败清理临时文件；目标不可写时抛，由调用方决定 fail-safe）。</summary>
+    private static void AtomicWriteFile(string path, string text)
+    {
+        var dir = Path.GetDirectoryName(path) ?? ".";
+        var temp = Path.Combine(dir, $".{Path.GetFileName(path)}.tmp-{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllText(temp, text);
+            File.Move(temp, path, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(temp); } catch { /* 临时文件清理失败不影响结果 */ }
+            throw;
+        }
+    }
+
+    /// <summary>把 profile <c>package.json</c> 序列化为缩进 JSON + 尾部换行（与 dsh 自身写盘格式一致）。</summary>
+    private static string RenderProfileJson(JsonNode root)
     {
         using var ms = new MemoryStream();
         using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
@@ -209,8 +245,7 @@ public static class MarketInstallHelper
             root.WriteTo(writer);
         }
 
-        var newJson = System.Text.Encoding.UTF8.GetString(ms.ToArray()) + "\n";
-        await File.WriteAllTextAsync(profilePkg, newJson);
+        return System.Text.Encoding.UTF8.GetString(ms.ToArray()) + "\n";
     }
 
     /// <summary>构造 bundles 数组条目与包名的等值谓词（非字符串条目视为不等）。</summary>
@@ -226,5 +261,83 @@ public static class MarketInstallHelper
         }
 
         return bundles.Any(BundleEntryEquals(packageName));
+    }
+
+    /// <summary>
+    /// 首启引导经 registry 安装市场（ADR online-first-unbundled-runtime 批次三）：在 spawn dsh 前
+    /// 经 <see cref="MarketSpec"/> 安装 dshmarket 到桌面 profile（新装 + 存量 seed 自愈归化）。
+    /// 先放行 profile workspace 的 allowBuilds（dshmarket 依赖树含原生构建，pnpm 11 默认拒绝），
+    /// 再 <c>dsh plugin add dshmarket@latest</c>（minimumReleaseAge 政策拒绝时放宽重试一次），
+    /// 最后补写 bundles 兜底。best-effort：失败只留日志不抛（市场缺失不阻塞首启）。
+    /// <paramref name="runPluginAdd"/> 是注入的子进程执行器（生产用真实 spawn，测试用 fake 断言参数/环境）。
+    /// </summary>
+    /// <param name="nodeExe">运行时的 node 可执行。</param>
+    /// <param name="dshEntry">运行时 dsh bin.js 入口。</param>
+    /// <param name="dshHome">共享 DSH_HOME。</param>
+    /// <param name="log">诊断日志出口。</param>
+    /// <param name="runPluginAdd">执行一次 <c>dsh plugin add</c> 的注入委托（接收已配好 env 的 ProcessStartInfo）。</param>
+    /// <param name="ct">取消令牌。</param>
+    public static async Task EnsureMarketFromRegistryAsync(
+        string nodeExe,
+        string dshEntry,
+        string dshHome,
+        Action<string> log,
+        Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> runPluginAdd,
+        CancellationToken ct)
+    {
+        // dshmarket 依赖树含原生构建；pnpm 11 默认拒绝，须先放行 allowBuilds（与随包安装同款自愈）
+        var workspacePath = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName, "pnpm-workspace.yaml");
+        EnsureWorkspaceAllowBuilds(workspacePath);
+
+        System.Diagnostics.ProcessStartInfo BuildPsi(bool relaxPolicy)
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = nodeExe,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            psi.ArgumentList.Add(dshEntry);
+            psi.ArgumentList.Add("plugin");
+            psi.ArgumentList.Add("--profile");
+            psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
+            psi.ArgumentList.Add("add");
+            psi.ArgumentList.Add(MarketSpec);
+            psi.Environment["DSH_HOME"] = dshHome;
+            if (relaxPolicy)
+            {
+                psi.Environment["pnpm_config_minimum_release_age"] = "0";
+            }
+
+            HarnessRuntimeHost.ApplyPnpmWriteDirs(psi, dshHome);
+            HarnessRuntimeHost.UseUtf8TextStreams(psi);
+            return psi;
+        }
+
+        async Task<(int Exit, string Out, string Err)> RunAsync(bool relaxPolicy)
+            => await runPluginAdd(BuildPsi(relaxPolicy), ct).ConfigureAwait(false);
+
+        log($"[host] 引导：registry 安装市场（{MarketSpec}）");
+        var (exitCode, outText, errText) = await RunAsync(relaxPolicy: false).ConfigureAwait(false);
+        log($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
+        if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
+        {
+            log("[host] lockfile 被 minimumReleaseAge 政策拒绝；放宽该政策重试一次（仅本次安装生效）");
+            (exitCode, outText, errText) = await RunAsync(relaxPolicy: true).ConfigureAwait(false);
+            log($"[host] dsh plugin add(重试) exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
+        }
+
+        if (exitCode != 0)
+        {
+            log($"[host] 市场安装失败 exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}（市场缺失不阻塞首启，可稍后经设置/手动安装）");
+            return;
+        }
+
+        var profilePkg = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
+        if (await EnsureBundlesContainsAsync(profilePkg, "dshmarket").ConfigureAwait(false))
+        {
+            log("[host] 已补写 bundles dshmarket");
+        }
     }
 }

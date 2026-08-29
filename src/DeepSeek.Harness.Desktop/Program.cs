@@ -491,20 +491,19 @@ public static class Program
                     // 不再「后台 3s 装 → 重启」。显式 @latest 对既存本地 seed 同样强制改写为 registry 形态
                     // （承接 bundled-plugin-registry-normalization 的归化语义）。best-effort：失败只告警不阻断
                     // 首启——市场缺失不阻塞 dsh 起动，失败留痕下次引导（或用户手动装市场）自愈。
-                    var marketSpec = "dshmarket@latest";
                     try
                     {
-                        HostLog.Write($"[host] 引导：registry 安装市场（{marketSpec}）");
-                        var (mExit, mOut, mErr) = await RunDshPluginAddAsync(
-                            runtime.Value.NodeExe, runtime.Value.DshEntry, marketSpec, bootCt);
-                        if (mExit != 0)
-                        {
-                            HostLog.Write($"[host] 市场安装失败 exit={mExit} stdout={mOut.Trim()} stderr={mErr.Trim()}（市场缺失不阻塞首启，可稍后经设置/手动安装）");
-                        }
+                        await Services.MarketInstallHelper.EnsureMarketFromRegistryAsync(
+                            runtime.Value.NodeExe,
+                            runtime.Value.DshEntry,
+                            HarnessRuntimeHost.ResolveDshHome(),
+                            Services.HostLog.Write,
+                            RunDshPluginAddAsync,
+                            bootCt);
                     }
                     catch (Exception ex)
                     {
-                        HostLog.Write($"[host] 市场安装异常跳过：{ex.Message}");
+                        Services.HostLog.Write($"[host] 市场安装异常跳过：{ex.Message}");
                     }
 
                     var url = await host.StartAsync(timeout: TimeSpan.FromSeconds(60), bootCt);
@@ -853,11 +852,10 @@ public static class Program
                     var installerPluginsDir = Path.Combine(AppContext.BaseDirectory, "resources", "plugins");
 
                     // 1) 清单逐项检测随包插件待装项：未装即装、本地形态来源更新即升、
-                    // registry 形态放手、本地形态同版/registry 回退归化 registry（ADR
-                    // bundled-plugin-version-aware-catalog + bundled-plugin-registry-normalization
-                    // + online-first-unbundled-runtime）。
+                    // 1) 清单逐项检测随包插件待装项：companion 未装即装、来源更新即升（ADR
+                    // bundled-plugin-version-aware-catalog + online-first-unbundled-runtime 批次三）。
                     var pending = BundledPluginCatalog.AssemblePending(
-                        BundledPluginCatalog.All, runtimeDir, installerPluginsDir, profilePkg, profileDir, HostLog.Write);
+                        BundledPluginCatalog.All, installerPluginsDir, profilePkg, profileDir, HostLog.Write);
 
                     if (pending.Count == 0)
                     {
@@ -908,6 +906,9 @@ public static class Program
 
                             // pnpm store/cache 重定向 + 预建目录（EROFS 兜底）与 dsh spawn 共用单点
                             HarnessRuntimeHost.ApplyPnpmWriteDirs(psi, dshHome);
+                            // 流显式 UTF-8（ADR online-first 踩坑约束 #197 .NET 变体）：Windows 中文区域
+                            // 按 OEM 码页解码 UTF-8 输出会乱码，host.log 留痕须同源可读
+                            HarnessRuntimeHost.UseUtf8TextStreams(psi);
                             using var p = System.Diagnostics.Process.Start(psi);
                             if (p is null)
                             {
@@ -1282,30 +1283,13 @@ public static class Program
         }
 
         /// <summary>
-        /// 用解析出的运行时执行一次 <c>dsh plugin add &lt;spec&gt;</c>（写入桌面 profile）。供引导路径在
-        /// spawn dsh 前 registry 安装市场使用。注入 DSH_HOME + pnpm store/cache 重定向（与随包插件安装
-        /// 同款单点，EROFS 兜底）；流显式 UTF-8（Windows 中文区域 OEM 码页解码 UTF-8 输出会乱码）。
+        /// 运行一次 <c>dsh plugin add</c> 子进程（写入桌面 profile），供 <see cref="Services.MarketInstallHelper.EnsureMarketFromRegistryAsync"/>
+        /// 注入执行。env（DSH_HOME + pnpm store/cache 重定向 + UTF-8 流）已由该 helper 配好；
+        /// 这里只负责 spawn、双流并发读、取消传递。
         /// </summary>
         async Task<(int Exit, string Out, string Err)> RunDshPluginAddAsync(
-            string nodeExe, string dshEntry, string spec, CancellationToken ct)
+            System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
-            var dshHome = HarnessRuntimeHost.ResolveDshHome();
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = nodeExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            psi.ArgumentList.Add(dshEntry);
-            psi.ArgumentList.Add("plugin");
-            psi.ArgumentList.Add("--profile");
-            psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
-            psi.ArgumentList.Add("add");
-            psi.ArgumentList.Add(spec);
-            psi.Environment["DSH_HOME"] = dshHome;
-            HarnessRuntimeHost.ApplyPnpmWriteDirs(psi, dshHome);
-            HarnessRuntimeHost.UseUtf8TextStreams(psi);
             using var p = System.Diagnostics.Process.Start(psi);
             if (p is null)
             {

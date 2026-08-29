@@ -48,7 +48,7 @@ Status: proposed
 
 1. **批次一 · 首启引导**：RuntimeBootstrap（检测/下载/安装状态机）+ Ryn 静态进度页 + 失败重试；此批闭包仍在，行为为「bundled 优先、缺失走引导」（✅ 2026-08-29 已落地）；
 2. **批次二 · 安装器与 CI 瘦身**：package-*.sh 停止捆绑闭包，删除清单逐项退役，preflight 同步；**必须先重构 `DevEnvironment.IsDevRuntime`**（吸收 [shared-home ADR 的在案挂账](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md)：其 dev 判定以「有无捆绑闭包」为信号之一，闭包消失 ⇒ 全部新装用户被判 dev → ApplicationId 带 .dev 后缀 + 随包插件安装被跳过。改为显式环境标记，不依赖闭包存在性探测）（✅ 2026-08-29 已落地：dev 判定改 `DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DEV=1` 显式标记；companion tgz 改由打包时现打进安装器 `resources/plugins/`（批次三的「安装器资源自带」提前落地，顺带修正 mac 资源非 exe 相对路径的潜伏布局 bug）；dshmarket 无本地来源时回退 `dshmarket@latest` registry 直装，钉版与巡检随之退役）；
-3. **批次三 · 插件面收口**：BundledPluginCatalog 收缩为 companion（dshmarket 条目随 registry 回退形态自然退役），companion tgz 供给已由批次二迁入安装器资源；随条目同批退役其近死供给分支与守护测试——market 解析器的运行时目录 tgz/目录分支（唯一生成器 bundle-runtime-ci.sh 已删）、companion 的运行时目录 tgz/目录回退、测试 `RegistryFallbackSpec_WithoutNormalization_Skipped` / `ResolveCompanionSpec_UsesRuntimeTgz_WhenInstallerDirMissing` / `RealCatalog_ResolvesBothBundledPlugins_FromRuntimeLayout`，避免近死分支与负控钉子带进批次四成永久包袱；
+3. **批次三 · 插件面收口**：BundledPluginCatalog 收缩为 companion（dshmarket 条目随 registry 回退形态自然退役），companion tgz 供给已由批次二迁入安装器资源；随条目同批退役其近死供给分支与守护测试——market 解析器的运行时目录 tgz/目录分支（唯一生成器 bundle-runtime-ci.sh 已删）、companion 的运行时目录 tgz/目录回退、测试 `RegistryFallbackSpec_WithoutNormalization_Skipped` / `ResolveCompanionSpec_UsesRuntimeTgz_WhenInstallerDirMissing` / `RealCatalog_ResolvesBothBundledPlugins_FromRuntimeLayout`，避免近死分支与负控钉子带进批次四成永久包袱。**「dshmarket 迁引导」**（§新启形态 2 的 registry 安装）与 **config reconcile**（见下方 #177 约束）一并并入本批落地（✅ 2026-08-29 已落地，见 `implemented/feature/2026-08-29-plugin-surface-consolidation`）；
 4. **批次四 · 文档与实机**：architecture/user-guide/README 双语同步，实机验收转交（首启下载全链、存量升级触发一次性下载、断网 fail loud 文案）。
 
 ### 对齐竞品踩坑的设计约束（dsh-tauri-desk 已付学费，2026-08-29 调研）
@@ -91,6 +91,6 @@ Status: proposed
 ## Related
 
 - [shared-home-desktop-profile](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md)（implemented）：本 ADR 取代其「运行时归属 B 形态：闭包保留为预览期形态、去捆绑是远期选项」条款与 dev 判定挂账——它自注「届时另立 ADR」，本篇即该 ADR；共享 home / desktop profile / 数据互通等其余决定全部保留。
-- [bundled-plugin-registry-normalization](../../implemented/feature/2026-08-29-bundled-plugin-registry-normalization.md)（implemented）：本 ADR 取代其「随包 = 种子保离线可靠」前提与「MARKET_VERSION 钉版语义（freshness 巡检职责不变）」一条（批次二/三退役）；归化迁移机制与存量自愈路径被显式保留。
+- [bundled-plugin-registry-normalization](../../implemented/feature/2026-08-29-bundled-plugin-registry-normalization.md)（implemented）：本 ADR 取代其「随包 = 种子保离线可靠」前提与「MARKET_VERSION 钉版语义（freshness 巡检职责不变）」一条（批次二/三退役）；归化**语义**（显式 `dshmarket@latest` 改写存量）由批次三引导注册表安装承接（`AssemblePending` 的归化机制已随批次三退役）。
 - [ryn-shell-bundled-dsh-runtime](../../implemented/architecture/2026-08-20-ryn-shell-bundled-dsh-runtime.md)（implemented）：本 ADR 直接转向其「完整运行时打包」决定，捆绑闭包与「零下载确定性」差异化表述随 offline 约束删除而退役。
 - [companion-plugin-version-aware-upgrade](../../implemented/feature/2026-08-22-companion-plugin-version-aware-upgrade.md)（implemented）：随包种子退役后 tgz 供给渠道变化见批次三；版本比对机制不变。

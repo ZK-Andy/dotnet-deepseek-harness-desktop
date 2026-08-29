@@ -6,8 +6,6 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>MarketInstallHelper 的分支与错误路径覆盖，目标把 3.6% 拉至 40%+。</summary>
 public class MarketInstallHelperTests
 {
-    private const string RuntimeDir = "/unused-runtime";
-
     private static string WriteTempFile(string content)
     {
         var p = Path.Combine(Path.GetTempPath(), "market-" + Guid.NewGuid().ToString("N") + ".json");
@@ -142,7 +140,7 @@ public class MarketInstallHelperTests
         try
         {
             // 安装器资源是打包形态唯一供给源（运行时目录种子已退役）
-            Assert.Equal(packagedTgz, MarketInstallHelper.ResolveCompanionSpec(RuntimeDir, plugins));
+            Assert.Equal(packagedTgz, MarketInstallHelper.ResolveCompanionSpec(plugins));
         }
         finally { Directory.Delete(plugins, true); }
     }
@@ -152,7 +150,7 @@ public class MarketInstallHelperTests
     {
         // 伴生插件无 registry 回退：安装器资源缺失时返回 null（调用方跳过）。
         // 运行时目录种子已退役，不提供 tgz/目录回退。
-        Assert.Null(MarketInstallHelper.ResolveCompanionSpec(RuntimeDir, null));
+        Assert.Null(MarketInstallHelper.ResolveCompanionSpec(null));
     }
 
     [Fact]
@@ -204,5 +202,91 @@ public class MarketInstallHelperTests
     public async Task EnsureBundles_ReturnsFalse_WhenFileMissing()
     {
         Assert.False(await MarketInstallHelper.EnsureBundlesContainsAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
+    }
+
+    [Fact]
+    public async Task EnsureMarketFromRegistry_BuildsCorrectArgsAndEnv_AndBackfillsBundles()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName));
+        var workspace = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "pnpm-workspace.yaml");
+        var profilePkg = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
+        // profile 清单：bundles 尚缺 dshmarket → 装后应补写。
+        File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
+        // workspace 尚缺 allowBuilds → helper 应先放行。
+        File.WriteAllText(workspace, "packages:\n  - .\n");
+
+        System.Diagnostics.ProcessStartInfo? capturedPsi = null;
+        var logs = new List<string>();
+        var args = new List<string>();
+
+        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            capturedPsi = psi;
+            args.Clear();
+            foreach (var a in psi.ArgumentList) args.Add(a);
+            return (0, "installed", string.Empty);
+        }
+
+        try
+        {
+            await MarketInstallHelper.EnsureMarketFromRegistryAsync(
+                "node", "/dsh/bin.js", home, logs.Add, RunFake, CancellationToken.None);
+
+            Assert.NotNull(capturedPsi);
+            // 参数形状：dsh bin.js plugin --profile desktop add dshmarket@latest
+            Assert.Equal(["/dsh/bin.js", "plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", MarketInstallHelper.MarketSpec], args);
+            Assert.Equal(home, capturedPsi!.Environment["DSH_HOME"]);
+            Assert.Equal(Path.Combine(home, ".pnpm-store"), capturedPsi.Environment["pnpm_config_store_dir"]);
+            // allowBuilds 已放行（ESBuild 至少一条）
+            Assert.Contains("allowBuilds", File.ReadAllText(workspace));
+            // bundles 已补写
+            Assert.Contains("dshmarket", File.ReadAllText(profilePkg));
+            Assert.Contains(logs, l => l.Contains("已补写 bundles dshmarket"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureMarketFromRegistry_RetriesOnMinimumReleaseAge_Dropcap()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName));
+        var profilePkg = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
+        File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
+
+        var relaxSeen = false;
+        var runs = 0;
+        var logs = new List<string>();
+
+        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            runs++;
+            // 首次发现 minimumReleaseAge 政策拒绝；放宽后第二次应带 pnpm_config_minimum_release_age=0。
+            if (runs == 1)
+            {
+                return (1, "ERR_PNPM_POLICY_MINIMUM_RELEASE_AGE", string.Empty);
+            }
+
+            relaxSeen = psi.Environment.ContainsKey("pnpm_config_minimum_release_age");
+            return (0, "installed", string.Empty);
+        }
+
+        try
+        {
+            await MarketInstallHelper.EnsureMarketFromRegistryAsync(
+                "node", "/dsh/bin.js", home, logs.Add, RunFake, CancellationToken.None);
+
+            Assert.Equal(2, runs);
+            Assert.True(relaxSeen, "放宽重试应带 pnpm_config_minimum_release_age=0");
+            Assert.Contains(logs, l => l.Contains("minimumReleaseAge 政策拒绝"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
     }
 }
