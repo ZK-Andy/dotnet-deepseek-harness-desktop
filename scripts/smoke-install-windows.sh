@@ -7,8 +7,9 @@
 # 判定信号与 Linux 冒烟同款双信号（命中其一即 PASS）：
 #   ①`[host] dsh web =` = 全链 PASS（装包→首启引导→dsh web 就绪）；
 #   ②`[bootstrap] 引导开始：` = 安装链 PASS。
-# Windows runner 有交互式桌面会话 + 预装 WebView2 + 网络，①应命中（比 Linux CI
-# 更完整）；②为壳提前退出时的保底判定位。
+# 实测边界（2026-08-29 首跑）：Windows runner 的壳同样在窗口创建（Ryn Run）即
+# 退出——WebView2 初始化的原生依赖在 runner 环境不可用，全链信号不可达，冒烟
+# 停在②安装链位；「装得上、起得来」的启动段覆盖由此完成。
 #
 # 信号源 = <DSH_HOME>/logs/host.log（HostLog 双写 stdout 与该文件）+ 启动器 stdout
 # 捕获（工程为 Exe 控制台子系统，重定向通常可达；host.log 为权威源）。
