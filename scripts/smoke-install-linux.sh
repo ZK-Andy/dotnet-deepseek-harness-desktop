@@ -36,11 +36,11 @@ wait_url() { # $1=日志 $2=pid
   local log="$1" pid="$2"
   for _ in $(seq 1 "$SMOKE_WAIT"); do
     if grep -qE "$PASS_RE" "$log"; then
-      grep -m1E "$PASS_RE" "$log"
+      grep -m1 -E "$PASS_RE" "$log"
       return 0
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
-      grep -qE "$PASS_RE" "$log" && { grep -m1E "$PASS_RE" "$log"; return 0; }
+      grep -qE "$PASS_RE" "$log" && { grep -m1 -E "$PASS_RE" "$log"; return 0; }
       return 1
     fi
     sleep 1
@@ -85,6 +85,7 @@ smoke_rpm_container() {
     -e SMOKE_PKG_NAME="$base" \
     -e SMOKE_APP_BIN="$APP_BIN" \
     -e SMOKE_WAIT="$SMOKE_WAIT" \
+    -e PASS_RE="$PASS_RE" \
     -e APP_TIMEOUT="$APP_TIMEOUT" \
     fedora:44 bash -s <<'INNER'
 # 刻意不带 -e：dnf 失败走显式分支打印包安装诊断，而非无声退出
@@ -103,10 +104,10 @@ pid=$!
 # 双信号同款（dsh web URL 行或引导启动行）
 for _ in $(seq 1 "$SMOKE_WAIT"); do
   if grep -qE "$PASS_RE" "$log"; then
-    grep -m1E "$PASS_RE" "$log"; kill $pid 2>/dev/null; exit 0
+    grep -m1 -E "$PASS_RE" "$log"; kill $pid 2>/dev/null; exit 0
   fi
   if ! kill -0 $pid 2>/dev/null; then
-    grep -qE "$PASS_RE" "$log" && { grep -m1E "$PASS_RE" "$log"; exit 0; }
+    grep -qE "$PASS_RE" "$log" && { grep -m1 -E "$PASS_RE" "$log"; exit 0; }
     break
   fi
   sleep 1
