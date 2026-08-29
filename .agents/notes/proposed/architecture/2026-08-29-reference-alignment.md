@@ -30,9 +30,13 @@ Status: proposed
 
 ### 批次二 · 首启插件引导页（preinstall UX 对齐）
 
-- 静态 wwwroot 引导页增「插件引导」步：安装 dshmarket（与任何随包插件）前，显示推荐/可选插件清单（chip）+ 确认/跳过 + 安装日志回流（进度页持续显示 `plugin add` 的 stderr/stdout）。
-- 状态机在既有 `BootstrapStep` 内增一个 `PreinstallPlugins`/由引导页交互驱动：引导页经 IPC 发「确认装」/「跳过」→ 宿主执行 dshmarket 安装并回传日志；跳过则该次不装（less-bootstrapped 但有重试入口）。
-- 与批次一的 spawn 前安装合流：插件引导页确认后、`StartAsync` 前安装。
+- 静态 wwwroot 引导页增「插件引导」相：运行时就位后（BindRuntime 后）、`StartAsync` 前，若存在待装**可选**插件（当前仅 dshmarket 预设），引导页展示推荐 chip（默认勾选）+「确认安装/跳过」+ 安装日志回流；用户确认后宿主执行安装并把 `dsh plugin add` 的 stdout/stderr 推送回页面。跳过则该次不装（less-bootstrapped，但 dsh 起动后可从市场/设置自愈入口补装）。
+- **与批次一 spawn 前安装合流**：companion（internal）保持 spawn 前静默自愈（不出现在勾选清单，对齐参照 `ensure_internal_plugins`）；dshmarket（preset）经引导页勾选后、`StartAsync` 前安装（对齐参照 `ensure_preset_plugins` + `preinstall-setup` UI）。
+- **驱动模型**：引导页经 IPC `desktop.preinstall.choose`（`{"action":"install"|"skip"}`）发决策 → 宿主 `PreinstallChoiceGate`（值携带版 RuntimeBootstrapGate）放行引导循环 → 命中 install 才执行 `EnsureMarketFromRegistryAsync`。决策等待期宿主无 dsh 进程，监督器持续被 `bootstrapSettled` 门控防空转恢复。
+- **安全兜底**：决策等待带 5 分钟超时，超时默认 SKIP（可恢复，dsh 照常起动；不默认装未确认的插件）——避免引导页未触发/用户离席导致壳永久挂在安装前，dsh 永不启动。
+- **日志回流**：经专用 `dsh-desktop-preinstall` CustomEvent（`{kind:decision|installing|log|done}`）推送；安装日志流由 Program.cs 的流式进程执行器逐行转发（companion 安装仍走静默执行器，不触发回流）。
+- **状态机呈现**：`BootstrapStep` 增 `PreinstallPlugins`（页面步骤序在 VerifyDsh 后呈现「插件准备」），引导页实际交互由 `dsh-desktop-preinstall` 事件驱动；RuntimeBootstrap 的步骤机仍严格为运行时下载/安装，不在其内混入插件引导。
+- **实现**：`PreinstallChoiceGate`（值携带、可复位）+ `PreinstallCommandRouter` + `PresetPluginCatalog`（present preset 判定；当前仅 dshmarket）+ 流式进程执行器（`RunProcessStreamingAsync` 逐行转发 → `dsh-desktop-preinstall` 日志帧）承载回流；`MarketInstallHelper.EnsureMarketFromRegistryAsync` 签名不变（复用注入的 `runPluginAdd` 委托，靠执行器本身回流）。Program.cs 引导任务接线：BindRuntime → companion 自愈 → 待装 preset 判定 → 引导页决策 → 安装/跳过 → StartAsync。
 
 ### 批次三 · 下载健壮性（download 对齐）
 
@@ -57,6 +61,10 @@ Status: proposed
 - **下载层多源镜像无摘要也镜像**：镜像只信任"有可信摘要"场景，否则第三方镜像投毒风险。落败。
 - **CLI shim 写入系统 PATH（HKCU vs HKLM）**：只写用户级 HKCU + `~/.local/bin`，不触系统级；系统级需管理员且影响面大。落败。
 - **假活看门狗无限重载**：误报会形成重启/重载循环，伤害可用性。落败；有界恢复 + 计数上限。
+- **插件引导塞进 RuntimeBootstrap 步骤机**：RuntimeBootstrap 是「运行时下载/安装」的严格状态机（Node+dsh），插件引导发生在 BindRuntime 之后、StartAsync 之前，属外层编排相——塞进去会混两个域并在其测试基线上造成混淆。落败；改为 `BootstrapStep` 增 `PreinstallPlugins` 只作页面步骤呈现，实际交互由专用 `dsh-desktop-preinstall` 事件 + `PreinstallChoiceGate` 驱动。
+- **引导页无超时、永久等用户决策**：页面未触发/用户离席时壳会永久挂在安装前、dsh 永不启动（最坏天气）。落败；5 分钟超时默认 SKIP——默认「不装」比「装未确认插件」可恢复，dsh 照常起动、市场可从应用内补装。
+- **跳过即永久不引导**：无重试入口会让跳过用户永远失去市场提示。落败；dsh 起动后市场/设置侧仍是自愈补装入口，且该次「跳过」只影响当前引导会话（下次引导时若仍未装会再次呈现）。
+- **companion 也进勾选清单**：companion 是桌面壳必需品（internal），让用户跳过会得到残缺壳；对齐参照 `ensure_internal_plugins` 自愈语义。落败；companion 保持 spawn 前静默就位，仅 preset（dshmarket）可勾选。
 
 ## Consequences
 

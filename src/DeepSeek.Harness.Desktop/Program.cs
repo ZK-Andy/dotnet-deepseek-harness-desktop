@@ -69,6 +69,10 @@ public static class Program
         // gate 供引导页 desktop.bootstrap.retry 命令放行重试循环；settled 在引导终态（成功/失败放弃/
         // 取消）置位——监督器与插件安装都等它，防引导期误拉 dsh 或误装插件。
         var bootstrapGate = new Services.RuntimeBootstrapGate();
+        // 插件引导决策闸门（ADR reference-alignment 批次二）：引导页 desktop.preinstall.choose
+        // 命令置位「确认装/跳过」，引导任务 await Choice 消费。与 bootstrapGate 同款声明提前——
+        // 命令路由注册、引导任务共用同一实例。
+        var preinstallGate = new Services.PreinstallChoiceGate();
         TaskCompletionSource? bootstrapSettled = null;
         CancellationTokenSource? bootstrapCts = null;
         var devRuntimeDir = Environment.GetEnvironmentVariable(DevEnvironment.RuntimeDirEnv);
@@ -396,6 +400,10 @@ public static class Program
                 // 引导任务与路由共用同一实例
                 services.AddSingleton<ICommandRouter>(new Services.BootstrapCommandRouter(
                     bootstrapGate, Services.HostLog.Write));
+                // 插件引导决策命令（desktop.preinstall.choose，ADR reference-alignment 批次二）：
+                // wwwroot 引导页「插件引导」步的确认装/跳过 → 闸门放行引导任务
+                services.AddSingleton<ICommandRouter>(new Services.PreinstallCommandRouter(
+                    preinstallGate, Services.HostLog.Write));
                 // 开机自启开关（desktop.autostart.getState/set）
                 services.AddSingleton<ICommandRouter>(new Services.AutostartCommandRouter(log: Services.HostLog.Write));
                 // 关闭最小化到托盘偏好（desktop.closeToTray.getState/set）；available 惰性求值——
@@ -508,28 +516,9 @@ public static class Program
                     bundledClosure = runtime;
                     host.BindRuntime(runtime.Value);
 
-                    // 首启引导经 registry 安装市场（ADR online-first-unbundled-runtime 批次三：
-                    // dshmarket 不再随包/种子，改由引导在 spawn dsh 前注册表安装——插件与核心一次就位，
-                    // 不再「后台 3s 装 → 重启」。显式 @latest 对既存本地 seed 同样强制改写为 registry 形态
-                    // （承接 bundled-plugin-registry-normalization 的归化语义）。best-effort：失败只告警不阻断
-                    // 首启——市场缺失不阻塞 dsh 起动，失败留痕下次引导（或用户手动装市场）自愈。
-                    try
-                    {
-                        await Services.MarketInstallHelper.EnsureMarketFromRegistryAsync(
-                            runtime.Value.NodeExe,
-                            runtime.Value.DshEntry,
-                            HarnessRuntimeHost.ResolveDshHome(),
-                            Services.HostLog.Write,
-                            RunDshPluginAddAsync,
-                            bootCt);
-                    }
-                    catch (Exception ex)
-                    {
-                        Services.HostLog.Write($"[host] 市场安装异常跳过：{ex.Message}");
-                    }
-
-                    // 对齐参照：companion（internal）与 market 同为 spawn dsh 前、BindRuntime 后就位，
-                    // 杜绝「启动后 3s 装 → 重启 dsh」的首启二次启动。best-effort：失败只告警不阻断。
+                    // 对齐参照：companion（internal）在 spawn dsh 前静默自愈（batch-1），不出现在
+                    // 引导勾选清单（对齐 ensure_internal_plugins）；best-effort：失败只告警不阻断
+                    // （缺 companion 不阻塞 dsh 起动，下次启动自愈）。
                     try
                     {
                         await Services.MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
@@ -544,6 +533,18 @@ public static class Program
                     catch (Exception ex)
                     {
                         Services.HostLog.Write($"[host] 引导：随包插件安装失败（跳过）：{ex.Message}");
+                    }
+
+                    // 首启插件引导（ADR reference-alignment 批次二）：dshmarket（preset）经引导页
+                    // chip 确认/跳过 + 日志回流；用户确认后才装（StartAsync 前，与 batch-1 合流）。
+                    // 跳过则该次不装（less-bootstrapped，dsh 起动后可从应用内市场/设置自愈补装）。
+                    try
+                    {
+                        await RunPreinstallPhaseAsync(runtime.Value, RunDshPluginAddStreamingAsync, bootCt);
+                    }
+                    catch (Exception ex)
+                    {
+                        Services.HostLog.Write($"[host] 插件引导异常跳过：{ex.Message}");
                     }
 
                     var url = await host.StartAsync(timeout: TimeSpan.FromSeconds(60), bootCt);
@@ -1089,6 +1090,198 @@ public static class Program
             var stderrTask = p.StandardError.ReadToEndAsync(ct);
             await p.WaitForExitAsync(ct).ConfigureAwait(false);
             return (p.ExitCode, await stdoutTask.ConfigureAwait(false), await stderrTask.ConfigureAwait(false));
+        }
+
+        /// <summary>
+        /// 流式版 <c>dsh plugin add</c> 执行器（ADR reference-alignment 批次二）：逐行读 stdout/stderr，
+        /// 把每行经 <paramref name="onLine"/> 转发（插件引导页日志回流用），同时累积完整输出供调用方
+        /// 判定。与 <see cref="RunDshPluginAddAsync"/> 同为测试友好形态；此处 onLine 是 fire-and-forget
+        /// 的页面推送，绝不抛入执行器（推送失败只丢一行日志，不影响安装主链路）。
+        /// 取消/异常路径整树击杀（对齐 <c>RuntimeBootstrap.RunCaptureAsync</c> 防御不变量）：
+        /// <c>WaitForExitAsync</c>/<c>ReadLineAsync</c> 的 OCE 会跳过等待，using dispose 只关句柄
+        /// 不杀进程——<c>dsh plugin add</c> 会带着 profile 写权成孤儿，后续引导批次与新进程竞写。
+        /// </summary>
+        static async Task<(int Exit, string Out, string Err)> RunProcessStreamingAsync(
+            System.Diagnostics.ProcessStartInfo psi, CancellationToken ct, Action<string>? onLine)
+        {
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p is null)
+            {
+                throw new InvalidOperationException("无法启动 dsh plugin 进程");
+            }
+
+            var outSb = new System.Text.StringBuilder();
+            var errSb = new System.Text.StringBuilder();
+
+            try
+            {
+                var tasks = new[] { PumpAsync(p.StandardOutput, outSb, onLine, ct), PumpAsync(p.StandardError, errSb, onLine, ct) };
+                await p.WaitForExitAsync(ct).ConfigureAwait(false);
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+                return (p.ExitCode, outSb.ToString(), errSb.ToString());
+            }
+            catch (Exception)
+            {
+                try
+                {
+                    p.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // 进程已自行退出：无需击杀
+                }
+
+                throw;
+            }
+        }
+
+        /// <summary>流式执行器：把 <c>dsh plugin add</c> 的每行输出推给插件引导页日志区。</summary>
+        async Task<(int Exit, string Out, string Err)> RunDshPluginAddStreamingAsync(
+            System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            return await RunProcessStreamingAsync(psi, ct, line => PushPreinstallLog(windowAccessor, line));
+        }
+
+        /// <summary>
+        /// 首启插件引导相（ADR reference-alignment 批次二）：运行时就位后（BindRuntime 后）、StartAsync 前，
+        /// 若存在待装可选插件（preset），引导页呈现 chip + 确认/跳过 + 日志回流；用户确认才安装，跳过则不装。
+        /// 5 分钟无决策默认跳过（避免壳永久挂在安装前、dsh 永不启动；跳过可经应用内市场补装）。
+        /// </summary>
+        async Task RunPreinstallPhaseAsync(
+            (string NodeExe, string DshEntry) runtime,
+            Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> runPluginAddStreaming,
+            CancellationToken ct)
+        {
+            var home = HarnessRuntimeHost.ResolveDshHome();
+            var profileDir = Path.Combine(home, "profiles", Services.HarnessRuntimeHost.DesktopProfileName);
+            var profilePkg = Path.Combine(profileDir, "package.json");
+            var pending = Services.PresetPluginCatalog.PendingForFirstBoot(profilePkg, Services.HostLog.Write);
+            if (pending.Count == 0)
+            {
+                Services.HostLog.Write("[host] 插件引导：无可选插件待装，跳过");
+                return;
+            }
+
+            preinstallGate.Reset();
+            // 步骤高亮：引导页把「插件准备」步点亮（renderBootstrap 按 step 序置 active）。
+            // 步骤名经枚举派生（单一事实源），避免与 JS STEP_ORDER 漂移。
+            await PushBootstrapStateAsync(windowAccessor, Services.BootstrapStep.PreinstallPlugins.ToString(), "可选插件准备", failed: false);
+            await RetryPushPreinstallAsync(windowAccessor, new Services.PreinstallFrame("decision", Plugins: pending.ToArray()));
+            Services.HostLog.Write($"[host] 插件引导：呈现可选插件 {string.Join(", ", pending)}，等待用户决策（5 分钟超时默认跳过）");
+
+            PreinstallChoice choice;
+            try
+            {
+                choice = await preinstallGate.Choice.WaitAsync(TimeSpan.FromMinutes(5), ct);
+            }
+            catch (TimeoutException)
+            {
+                Services.HostLog.Write("[host] 插件引导等待用户决策超时（5 分钟），默认跳过（可从应用内市场补装）");
+                choice = PreinstallChoice.Skip;
+            }
+
+            if (choice == PreinstallChoice.Skip)
+            {
+                Services.HostLog.Write("[host] 插件引导：用户跳过，本次不安装可选插件");
+                await RetryPushPreinstallAsync(windowAccessor, new Services.PreinstallFrame("done", Action: "skip", Message: "已跳过插件安装"));
+                await PushBootstrapStateAsync(windowAccessor, Services.BootstrapStep.Ready.ToString(), "插件准备完成", failed: false);
+                return;
+            }
+
+            Services.HostLog.Write("[host] 插件引导：用户确认，开始安装可选插件");
+            try
+            {
+                await RetryPushPreinstallAsync(windowAccessor, new Services.PreinstallFrame("installing", Plugin: Services.PresetPluginCatalog.Market));
+                await Services.MarketInstallHelper.EnsureMarketFromRegistryAsync(
+                    runtime.NodeExe,
+                    runtime.DshEntry,
+                    home,
+                    Services.HostLog.Write,
+                    runPluginAddStreaming,
+                    ct);
+                var installed = Services.MarketInstallHelper.IsBundleInstalled(profilePkg, Services.PresetPluginCatalog.Market);
+                await RetryPushPreinstallAsync(windowAccessor, new Services.PreinstallFrame(
+                    "done", Action: "install", Ok: installed, Message: installed ? "安装完成" : "安装未成功（见日志）"));
+                Services.HostLog.Write($"[host] 插件引导：可选插件安装{(installed ? "成功" : "未成功")}（{Services.PresetPluginCatalog.Market}）");
+            }
+            catch (Exception ex)
+            {
+                Services.HostLog.Write($"[host] 插件安装异常：{ex.Message}");
+                await RetryPushPreinstallAsync(windowAccessor, new Services.PreinstallFrame("done", Action: "install", Ok: false, Message: ex.Message));
+            }
+            finally
+            {
+                // 步骤收尾：无论装/跳/失败，引导页把「插件准备」置 done 后再导航进主界面
+                await PushBootstrapStateAsync(windowAccessor, Services.BootstrapStep.Ready.ToString(), "插件准备完成", failed: false);
+            }
+        }
+
+        /// <summary>构建 <c>dsh-desktop-preinstall</c> CustomEvent 注入脚本（detail 为帧对象 JSON）。</summary>
+        static string PreinstallEventScript(Services.PreinstallFrame frame)
+        {
+            var frameJson = JsonSerializer.Serialize(frame, Services.AppJsonContext.Default.PreinstallFrame);
+            return "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-preinstall',{detail:"
+                + frameJson
+                + "}));}catch(e){}})();";
+        }
+
+        /// <summary>推送一条插件引导状态（decision/installing/done）到引导页，带有限重试（同 PushBootstrapStateAsync）。</summary>
+        static async Task RetryPushPreinstallAsync(CurrentWindowAccessor accessor, Services.PreinstallFrame frame)
+        {
+            var script = PreinstallEventScript(frame);
+            for (var attempt = 0; attempt < 15; attempt++)
+            {
+                try
+                {
+                    await accessor.Current.EvaluateJavaScriptAsync(script);
+                    return;
+                }
+                catch (InvalidOperationException)
+                {
+                    // 页面/窗口未就绪：稍后重试
+                }
+                catch (Exception ex)
+                {
+                    Services.HostLog.Write($"[preinstall] 状态推送失败（放弃）：{ex.Message}");
+                    return;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(400));
+            }
+
+            Services.HostLog.Write("[preinstall] 状态推送重试耗尽（页面始终未就绪）");
+        }
+
+        /// <summary>推送一行安装日志到引导页日志区（fire-and-forget，失败仅丢一行、不阻断主链路）。</summary>
+        static void PushPreinstallLog(CurrentWindowAccessor accessor, string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return;
+            }
+
+            try
+            {
+                _ = accessor.Current.EvaluateJavaScriptAsync(
+                    PreinstallEventScript(new Services.PreinstallFrame("log", Line: line)));
+            }
+            catch (Exception)
+            {
+                // 页面未就绪/已导航：日志丢失可容忍（吞掉页面上游任何异常，仅丢一行日志）
+            }
+        }
+    }
+
+    /// <summary>逐行泵出进程流（测试可注入内存流验证行转发与累积；生产经进程的 stdout/stderr）。
+    /// 取消由调用方经 <paramref name="ct"/> 传递，异常级整树击杀在 <c>RunProcessStreamingAsync</c> 负责。</summary>
+    internal static async Task PumpAsync(
+        System.IO.StreamReader reader, System.Text.StringBuilder sb, Action<string>? onLine, CancellationToken ct)
+    {
+        string? line;
+        while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) is not null)
+        {
+            sb.AppendLine(line);
+            onLine?.Invoke(line);
         }
     }
 }

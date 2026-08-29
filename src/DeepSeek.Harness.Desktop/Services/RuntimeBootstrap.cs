@@ -18,6 +18,11 @@ public enum BootstrapStep
     /// <summary>验证产物入口（bin.js 可执行、版本可解析）。</summary>
     VerifyDsh,
 
+    /// <summary>插件引导（ADR reference-alignment 批次二）：运行时就位后的可选插件确认/安装相。
+    /// 仅作引导页步骤呈现——实际交互由 <c>dsh-desktop-preinstall</c> 事件驱动，
+    /// RuntimeBootstrap 的步骤机不产出此值。</summary>
+    PreinstallPlugins,
+
     /// <summary>引导完成。</summary>
     Ready,
 }
