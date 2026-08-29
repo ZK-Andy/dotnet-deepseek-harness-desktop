@@ -432,6 +432,10 @@ public static class RuntimeBootstrap
         var versionDir = $"v{options.NodeVersion}";
         var parent = Path.GetDirectoryName(Path.GetFullPath(runtimeDir))!;
 
+        // 跨崩溃残留：swap 两处 Directory.Move 之间崩溃会留下 .backup-<guid> 旧运行时、解压中断留 .staging-<guid>；
+        // 启动下载前最佳努力清扫，避免逐次泄漏（R2 S1）。仅清扫本运行时父目录下的这类瞬时目录
+        CleanupStaleStagingDirs(parent);
+
         // 摘要优先取自官方（信任根）：先拉 SHASUMS256.txt 得可信摘要，随后归档（官方→镜像）逐一用它校验；
         // 官方摘要不可达即中止（无可信摘要 → 不用镜像，防投毒，ADR 批次三）
         report(new BootstrapProgress(BootstrapStep.EnsureNode, "获取 Node 发行包 SHA256 摘要"));
@@ -494,6 +498,10 @@ public static class RuntimeBootstrap
             var npmTreeRel = OperatingSystem.IsWindows() ? "node_modules" : "lib";
             MoveInto(stagingDir, Path.Combine(inner, nodeRel), Path.GetFileName(nodeRel));
             MoveInto(stagingDir, Path.Combine(inner, npmTreeRel), npmTreeRel);
+            // 发行包其余内容（include/share/CHANGELOG/LICENSE 等）仍留在 extract/<inner>；swap 会把整个
+            // stagingDir 原子搬进 runtimeDir，必须先清 extract 残余，保证 runtimeDir 与闭包同构（R2 B1）。
+            // 用 DeleteWithLockRetry（fail loud）而非最佳努力——清不动就不该把残余搬进正式目录
+            DeleteWithLockRetry(extractDir);
 
             report(new BootstrapProgress(BootstrapStep.ExtractNode, "原子就位运行时"));
             SwapStagingIntoPlace(stagingDir, runtimeDir);
@@ -520,11 +528,12 @@ public static class RuntimeBootstrap
 
     /// <summary>多源回落下载：按候选源序经 <see cref="RuntimeBootstrapHooks.DownloadFileAsync"/> 尝试，
     /// 上一源失败（保持 <paramref name="dest"/> 现有字节）即切下一源续传，全部失败聚合抛错。
+    /// 仅吞真实源失败（网络/IO）；步超时（OCE）与编程 bug 不上抛让调用方 fail loud。
     /// 镜像仅在「已有可信摘要」后才进入候选（由调用方在摘要获取后构造），防投毒。</summary>
     internal static async Task DownloadWithFallbackAsync(
         IReadOnlyList<string> urls, string dest, RuntimeBootstrapHooks hooks, CancellationToken ct)
     {
-        Exception? last = null;
+        var failures = new List<string>();
         foreach (var url in urls)
         {
             try
@@ -532,14 +541,16 @@ public static class RuntimeBootstrap
                 await hooks.DownloadFileAsync(url, dest, ct).ConfigureAwait(false);
                 return;
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is HttpRequestException or IOException)
             {
-                // 上一源失败：保留 dest 现有字节，下一源经 Range 断点续传；步超时（OCE）不在此吞
-                last = ex;
+                // 仅把真实源失败（网络/IO）记为「该源不可用」，保留 dest 现有字节，下一源经 Range 断点续传；
+                // 步超时（OCE）与编程 bug（如 NRE/InvalidOperationException）不在此吞，向上 fail loud（R2 B2）
+                failures.Add($"{url}：{ex.Message}");
             }
         }
 
-        throw new InvalidOperationException($"Node 发行包下载：所有候选源均失败（{last?.Message}）");
+        throw new InvalidOperationException(
+            $"Node 发行包下载：所有候选源均失败（{string.Join("；", failures)}）");
     }
 
     /// <summary>原子 staging → runtimeDir 切换：runtimeDir 已存在则先移为 .backup，staging 再 swap 进，
@@ -595,6 +606,33 @@ public static class RuntimeBootstrap
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // 清理失败不影响引导结果（半成品目录可能残留，但不影响 runtimeDir 已就位的运行时）
+        }
+    }
+
+    /// <summary>清扫跨崩溃残留的瞬时目录（<c>.staging-*</c>/<c>.backup-*</c>），最佳努力、非致命
+    /// （R2 S1）。只处理由本引导下载路径生成的点前缀瞬时目录，绝不触碰用户/正式目录。</summary>
+    internal static void CleanupStaleStagingDirs(string parent)
+    {
+        if (!Directory.Exists(parent))
+        {
+            return;
+        }
+
+        foreach (var dir in Directory.EnumerateDirectories(parent))
+        {
+            var name = Path.GetFileName(dir);
+            if (name.StartsWith(".staging-", StringComparison.Ordinal) ||
+                name.StartsWith(".backup-", StringComparison.Ordinal))
+            {
+                try
+                {
+                    DeleteWithLockRetry(dir);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // 最佳努力：残留目录不阻塞本次引导
+                }
+            }
         }
     }
 

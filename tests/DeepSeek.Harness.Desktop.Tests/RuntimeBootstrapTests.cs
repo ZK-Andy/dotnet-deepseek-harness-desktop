@@ -96,11 +96,14 @@ public class RuntimeBootstrapTests
             ExtractArchiveAsync: (archive, destDir, ct) =>
             {
                 calls.Add($"extract:{archive}");
-                // 模拟 tar 解压出真实发行包布局：内层目录含 bin/node 与 npm 模块树，
-                // 归一化（生产代码）将其搬成捆绑闭包同款扁平形态
+                // 模拟 tar 解压出真实发行包布局：内层目录含 bin/node 与 npm 模块树，外加
+                // include/CHANGELOG 等「非运行时」残余——归一化（生产代码）只搬 node+模块树、
+                // 清残余，保证 runtimeDir 与闭包同构（B1）
                 var inner = Path.Combine(destDir, "node-v24.20.0-fake");
                 Directory.CreateDirectory(Path.Combine(inner, "bin"));
                 File.WriteAllText(Path.Combine(inner, "bin", "node"), "#!/bin/sh\n");
+                Directory.CreateDirectory(Path.Combine(inner, "include"));
+                File.WriteAllText(Path.Combine(inner, "include", "x.h"), "// leftover\n");
                 var npmTree = OperatingSystem.IsWindows() ? "node_modules" : "lib";
                 var npmCli = Path.Combine(inner, npmTree, "node_modules", "npm", "bin", "npm-cli.js");
                 Directory.CreateDirectory(Path.GetDirectoryName(npmCli)!);
@@ -146,6 +149,8 @@ public class RuntimeBootstrapTests
             Assert.True(File.Exists(outcome.Runtime.Value.DshEntry));
             // npm 静默 no-op 防线：安装前必须落最小 package.json（沙箱实证缺它 exit 0 不装）
             Assert.True(File.Exists(Path.Combine(runtimeDir, "package.json")));
+            // B1：发行包「非运行时」残余（include/CHANGELOG 等）不得被 swap 进 runtimeDir
+            Assert.False(Directory.Exists(Path.Combine(runtimeDir, "extract")));
             Assert.Contains(progress, p => p.Step == BootstrapStep.Ready && !p.Failed);
             Assert.Contains(calls, c => c.StartsWith("download:", StringComparison.Ordinal));
             Assert.Contains(calls, c => c.StartsWith("shasums:", StringComparison.Ordinal));
@@ -598,6 +603,33 @@ public class RuntimeBootstrapTests
         }
     }
 
+    [Fact]
+    public async Task DownloadWithFallback_NonNetworkBug_NotSwallowed()
+    {
+        // B2：编程 bug（非网络/IO 异常）不得被伪造成「源失败」，应原样上抛 fail loud
+        var dest = Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var hooks = new RuntimeBootstrapHooks(
+                DownloadFileAsync: (url, destPath, ct) => throw new InvalidOperationException("programmer bug"),
+                FetchTextAsync: (url, ct) => Task.FromResult(string.Empty),
+                ExtractArchiveAsync: (archive, destDir, ct) => Task.CompletedTask,
+                RunProcessAsync: (exe, args, ct) => Task.FromResult((0, string.Empty, string.Empty)),
+                ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((null, null)));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => RuntimeBootstrap.DownloadWithFallbackAsync(
+                    new[] { "https://a", "https://b" }, dest, hooks, CancellationToken.None));
+        }
+        finally
+        {
+            if (File.Exists(dest))
+            {
+                File.Delete(dest);
+            }
+        }
+    }
+
     // —— batch 3 · 原子 staging + 锁重试 ——
 
     [Fact]
@@ -646,6 +678,28 @@ public class RuntimeBootstrapTests
             {
                 Directory.Delete(parent, recursive: true);
             }
+        }
+    }
+
+    [Fact]
+    public void CleanupStaleStagingDirs_RemovesTransient_KeepsFormalDirs()
+    {
+        // S1：跨崩溃残留的 .staging-*/.backup-* 被清理，正式/用户目录不受影响
+        var parent = Path.Combine(Path.GetTempPath(), "stale-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(parent);
+        Directory.CreateDirectory(Path.Combine(parent, ".staging-dead"));
+        Directory.CreateDirectory(Path.Combine(parent, ".backup-dead"));
+        Directory.CreateDirectory(Path.Combine(parent, "runtime"));
+        try
+        {
+            RuntimeBootstrap.CleanupStaleStagingDirs(parent);
+            Assert.False(Directory.Exists(Path.Combine(parent, ".staging-dead")));
+            Assert.False(Directory.Exists(Path.Combine(parent, ".backup-dead")));
+            Assert.True(Directory.Exists(Path.Combine(parent, "runtime")));
+        }
+        finally
+        {
+            Directory.Delete(parent, recursive: true);
         }
     }
 
@@ -700,7 +754,9 @@ public class RuntimeBootstrapTests
 /// <summary>
 /// 真实网络 E2E（env 门控 <c>DSH_TEST_BOOTSTRAP_E2E=1</c> 才执行，否则自跳过）：真下载钉版
 /// Node + 官方 SHASUMS256 校验 + tar 解压 + npm 安装 dsh@latest + 产物验证。验证生产 hooks
-/// 全链（断点续传/多源回落/原子落盘/子进程），跑一次约 1-3 分钟、依赖外网与 npm 可达——CI 不默认跑。
+/// 主链（全新下载走普通 GET、原子落盘、子进程）。断点续传（206/416）与多源回落分支为纯单测
+/// 覆盖（本 E2E 为全新 runtimeDir + 官方源成功，不触发该二分支）。跑一次约 1-3 分钟、依赖外网
+/// 与 npm 可达——CI 不默认跑。
 /// </summary>
 public class RuntimeBootstrapE2ETests
 {
