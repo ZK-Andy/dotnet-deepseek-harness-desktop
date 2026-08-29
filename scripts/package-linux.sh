@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # package-linux.sh — 从 .NET publish 输出打 Linux 安装包（deb + rpm）。
 # 参照 pilot-harness apps/desktop/electron-builder.yml 的 Linux 产物理念：
-#   asar: false（DSH 闭包含 symlink/跨平台 prebuild，原样保留，不打包为单文件）
 #   linux.desktop（Name/Comment/Categories/StartupWMClass）
-#   产物为 AppImage→deb/rpm（此处为 .NET 自包含 publish + resources/runtime 手工组装的等价物）
+#   产物为 AppImage→deb/rpm（此处为 .NET 自包含 publish 的等价物）
+# online-first（ADR online-first-unbundled-runtime）：包只带壳 + 安装器自带插件资源
+# （resources/plugins/dsh-desktop-companion.tgz）；运行时由首启引导下载，不再捆绑闭包。
 # 布局：
-#   usr/lib/<app>/   = dotnet publish 全量 + resources/runtime（RuntimeLocator 按此探测）
+#   usr/lib/<app>/   = dotnet publish 全量 + resources/plugins（插件 tgz）
 #   usr/bin/<app>    = 符号链接
 #   usr/share/applications/<app>.desktop（对齐 pilot-harness linux.desktop）
 # 用法：
 #   scripts/package-linux.sh [publish_dir]          # 全量（需 dpkg-deb + rpmbuild；Ubuntu runner 自带 dpkg-deb，rpm 需 apt 安装）
-#   scripts/package-linux.sh --stage-only [dir]     # 仅组装 staging，供无工具机校验布局与 RuntimeLocator
+#   scripts/package-linux.sh --stage-only [dir]     # 仅组装 staging，供无工具机校验布局
 # 环境：VERSION（默认 0.1.0，CI 由 tag/inputs.version 注入）、MAINTAINER、ARCH（amd64/x86_64/arm64/aarch64）
 set -euo pipefail
 
@@ -43,42 +44,14 @@ rm -rf "$STAGE" && mkdir -p "$STAGE/$DEST"
 # 1) publish 全量（dotnet 自包含，含 saucer/lib* 等原生依赖）
 cp -r "$PUBLISH_DIR/." "$STAGE/$DEST/"
 
-# 2) resources/runtime 并入包 —— 必须保持 resources/runtime/ 嵌套（RuntimeLocator.ResolveRuntimeDirectory）
-# 参照 pilot-harness：闭包含数万文件 + 跨平台 prebuild/相对 symlink，原样收入，不走 asar/压缩重打包。
-if [[ -d "$ROOT/resources/runtime" ]]; then
-  echo "   并入 resources/runtime（pilot-harness 整树方案）"
-  mkdir -p "$STAGE/$DEST/resources"
-  cp -a "$ROOT/resources/runtime" "$STAGE/$DEST/resources/"
-  # 校验 Locator 能命中（fail loud，免装后才发现捆绑运行时失效）
-  if [[ ! -f "$STAGE/$DEST/resources/runtime/node" || ! -f "$STAGE/$DEST/resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
-    echo "error: staging 的 resources/runtime 不符合 RuntimeLocator 预期" >&2
-    echo "  期望：resources/runtime/node + resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" >&2
-    ls -R "$STAGE/$DEST/resources/runtime" 2>&1 | head -60 || true
-    exit 1
-  fi
-  # 校验 dshmarket 随包（0.1.10 曾为 394B 假包，需 fail loud）
-  if [[ -f "$STAGE/$DEST/resources/runtime/dshmarket.tgz" ]]; then
-    SZ=$(stat -c%s "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>/dev/null || stat -f%z "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>/dev/null || echo 0)
-    if [[ "$SZ" -lt 10240 ]]; then
-      echo "error: staging 的 dshmarket.tgz 过小（${SZ}B），疑似 0.1.10 假包" >&2
-      tar -tzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>&1 | head -20 >&2 || true
-      exit 1
-    fi
-    if ! tar -xOzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" package/package.json 2>/dev/null | grep -q '"name":[[:space:]]*"dshmarket"'; then
-      echo "error: staging 的 dshmarket.tgz 非 dshmarket 包" >&2
-      tar -tzf "$STAGE/$DEST/resources/runtime/dshmarket.tgz" 2>&1 | head -20 >&2 || true
-      exit 1
-    fi
-    echo "   校验 dshmarket.tgz OK ($(du -h "$STAGE/$DEST/resources/runtime/dshmarket.tgz" | cut -f1))"
-  else
-    echo "warn: staging 缺 dshmarket.tgz，首启将回退 registry 直装（需联网）" >&2
-  fi
-  # 额外校验 runtime 的 dshmarket 目录（file: 回退路径）
-  if [[ ! -d "$STAGE/$DEST/resources/runtime/node_modules/dshmarket" ]]; then
-    echo "warn: staging 缺 resources/runtime/node_modules/dshmarket，回退路径缺失" >&2
-  fi
-else
-  echo "warn: 未找到 $ROOT/resources/runtime，包将回退 PATH dsh（安装环境通常无 dsh，导致启动失败）" >&2
+# 2) 安装器自带插件资源（resources/plugins）：companion tgz 从仓库源码现打并校验（fail loud）。
+#    不再捆绑运行时闭包——首启引导负责 Node/dsh 安装（ADR online-first-unbundled-runtime）。
+mkdir -p "$STAGE/$DEST/resources/plugins"
+bash "$ROOT/scripts/build-companion-tgz.sh" "$STAGE/$DEST/resources/plugins/dsh-desktop-companion.tgz"
+# 闭包残留检测：resources/runtime 出现即打包漂移（旧缓存/手工产物混入），fail loud
+if [[ -e "$STAGE/$DEST/resources/runtime" ]]; then
+  echo "error: staging 出现 resources/runtime（闭包已退役，属打包漂移）" >&2
+  exit 1
 fi
 chmod +x "$STAGE/$DEST/DeepSeek.Harness.Desktop"
 
@@ -115,9 +88,8 @@ echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
 if [[ $STAGE_ONLY -eq 1 ]]; then
   echo "(--stage-only 校验布局)："
   find "$STAGE" -maxdepth 3 -type d | sort | head -30 || true
-  echo "--- 入口 ---"
-  ls -lh "$STAGE/$DEST/resources/runtime/node" 2>&1 | head -1 || echo "node 缺失"
-  ls -lh "$STAGE/$DEST/resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" 2>&1 | head -1 || echo "bin.js 缺失"
+  echo "--- 插件资源 ---"
+  ls -lh "$STAGE/$DEST/resources/plugins/" 2>&1 | head -3 || echo "plugins 缺失"
   exit 0
 fi
 

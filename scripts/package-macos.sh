@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # package-macos.sh — 从 .NET publish 输出打 macOS 包（dmg，含 app bundle）。
-# 参照 pilot-harness 的 mac 打包：此处为 .NET 自包含 publish + resources/runtime 手工组装。
+# 参照 pilot-harness 的 mac 打包：此处为 .NET 自包含 publish 的等价物。
+# online-first（ADR online-first-unbundled-runtime）：包只带壳 + 安装器自带插件资源
+# （Resources/plugins/dsh-desktop-companion.tgz）；运行时由首启引导下载，不再捆绑闭包。
 # 布局：
 #   DeepSeek.Harness.Desktop.app/Contents/MacOS/  = dotnet publish 全量
-#   DeepSeek.Harness.Desktop.app/Contents/Resources/runtime/ = resources/runtime（含对应架构的 node）
+#   DeepSeek.Harness.Desktop.app/Contents/Resources/plugins/ = 插件 tgz
 # 用法：
 #   scripts/package-macos.sh [publish_dir]          # 全量（需 hdiutil，产 dmg）
 #   scripts/package-macos.sh --stage-only [dir]     # 仅组装 staging
@@ -35,20 +37,17 @@ echo "== 组装 staging: $STAGE/$APP_BUNDLE"
 rm -rf "$STAGE" && mkdir -p "$STAGE/$APP_BUNDLE/Contents/MacOS" "$STAGE/$APP_BUNDLE/Contents/Resources"
 
 cp -r "$PUBLISH_DIR/." "$STAGE/$APP_BUNDLE/Contents/MacOS/"
-if [[ -d "$ROOT/resources/runtime" ]]; then
-  echo "   并入 resources/runtime"
-  cp -a "$ROOT/resources/runtime" "$STAGE/$APP_BUNDLE/Contents/Resources/"
-  if [[ ! -f "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/node" && ! -f "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
-    echo "warn: staging 的 resources/runtime 可能架构不匹配（$RID）" >&2
-    ls -R "$STAGE/$APP_BUNDLE/Contents/Resources/runtime" 2>&1 | head -20 >&2 || true
-  fi
-  # 校验 dshmarket
-  if [[ -f "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/dshmarket.tgz" ]]; then
-    SZ=$(stat -c%s "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/dshmarket.tgz" 2>/dev/null || stat -f%z "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/dshmarket.tgz" 2>/dev/null || echo 0)
-    if [[ "$SZ" -lt 10240 ]]; then
-      echo "error: dshmarket.tgz 过小（${SZ}B）" >&2; exit 1
-    fi
-  fi
+# 安装器自带插件资源：companion tgz 从仓库源码现打并校验（fail loud）。
+# 资源一律 exe 目录相对（Contents/MacOS/resources/，与 Linux/Windows 同构）——
+# 运行时侧（RuntimeLocator / 插件解析）按 AppContext.BaseDirectory 探测；旧布局
+# Resources/ 下的资源从未被探测到过（mac 无真机验证的潜伏布局 bug，本批顺势修正）。
+# 不再捆绑运行时闭包——首启引导负责 Node/dsh 安装（ADR online-first-unbundled-runtime）。
+mkdir -p "$STAGE/$APP_BUNDLE/Contents/MacOS/resources/plugins"
+bash "$ROOT/scripts/build-companion-tgz.sh" "$STAGE/$APP_BUNDLE/Contents/MacOS/resources/plugins/dsh-desktop-companion.tgz"
+# 闭包残留检测：resources/runtime 出现即打包漂移（旧缓存/手工产物混入），fail loud
+if [[ -e "$STAGE/$APP_BUNDLE/Contents/MacOS/resources/runtime" || -e "$STAGE/$APP_BUNDLE/Contents/Resources/runtime" ]]; then
+  echo "error: staging 出现 resources/runtime（闭包已退役，属打包漂移）" >&2
+  exit 1
 fi
 chmod +x "$STAGE/$APP_BUNDLE/Contents/MacOS/DeepSeek.Harness.Desktop" 2>/dev/null || true
 
@@ -68,7 +67,7 @@ EOF
 echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
 if [[ $STAGE_ONLY -eq 1 ]]; then
   find "$STAGE" -maxdepth 3 -type d | sort | head -20 || true
-  ls -lh "$STAGE/$APP_BUNDLE/Contents/Resources/runtime/node" 2>&1 | head -1 || echo "node 缺失"
+  ls -lh "$STAGE/$APP_BUNDLE/Contents/MacOS/resources/plugins/" 2>&1 | head -3 || echo "plugins 缺失"
   exit 0
 fi
 

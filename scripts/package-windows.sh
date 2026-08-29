@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # package-windows.sh — 从 .NET publish 输出打 Windows 安装器（exe，Inno Setup/NSIS/7z SFX）。
-# 布局：publish 全量 + resources/runtime
+# online-first（ADR online-first-unbundled-runtime）：包只带壳 + 安装器自带插件资源
+# （resources/plugins/dsh-desktop-companion.tgz）；运行时由首启引导下载，不再捆绑闭包。
+# 布局：publish 全量 + resources/plugins
 # 用法：
 #   scripts/package-windows.sh [publish_dir]
 #   scripts/package-windows.sh --stage-only [dir]
@@ -30,34 +32,23 @@ echo "== 组装 staging: $STAGE"
 rm -rf "$STAGE" && mkdir -p "$STAGE"
 cp -r "$PUBLISH_DIR/." "$STAGE/"
 
-if [[ -d "$ROOT/resources/runtime" ]]; then
-  echo "   并入 resources/runtime"
-  mkdir -p "$STAGE/resources"
-  if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* || -n "${WINDIR:-}" ]]; then
-    # Windows: 解引用拷贝，避免 junction/symlink 失败
-    cp -Lr "$ROOT/resources/runtime" "$STAGE/resources/" 2>/dev/null || powershell -Command "Copy-Item -Path '$ROOT/resources/runtime' -Destination '$STAGE/resources' -Recurse -Force" 2>/dev/null || cp -r "$ROOT/resources/runtime" "$STAGE/resources/"
-  else
-    cp -a "$ROOT/resources/runtime" "$STAGE/resources/"
-  fi
-  if [[ ! -f "$STAGE/resources/runtime/node.exe" && ! -f "$STAGE/resources/runtime/node" ]]; then
-    echo "warn: staging 缺 node(.exe)，可能架构不匹配 ($RID)" >&2
-  fi
-  if [[ ! -f "$STAGE/resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js" ]]; then
-    echo "warn: stagng 缺 dsh 入口" >&2
-  fi
-  if [[ -f "$STAGE/resources/runtime/dshmarket.tgz" ]]; then
-    SZ=$(stat -c%s "$STAGE/resources/runtime/dshmarket.tgz" 2>/dev/null || stat -f%z "$STAGE/resources/runtime/dshmarket.tgz" 2>/dev/null || echo 0)
-    if [[ "$SZ" -lt 10240 ]]; then echo "error: dshmarket.tgz 过小" >&2; exit 1; fi
-  fi
-  # 布局断言（批次一）：staging 是 Inno [Files] 的唯一内容源，断言 staging 即断言安装器——
-  # node/入口/tgz×2 存在且与源闭包逐字节一致，缺一 fail loud
-  bash "$ROOT/scripts/verify-package-layout.sh" --runtime "$ROOT/resources/runtime" --target "$STAGE"
+# 安装器自带插件资源：companion tgz 从仓库源码现打并校验（fail loud）。
+# 不再捆绑运行时闭包——首启引导负责 Node/dsh 安装（ADR online-first-unbundled-runtime）。
+mkdir -p "$STAGE/resources/plugins"
+bash "$ROOT/scripts/build-companion-tgz.sh" "$STAGE/resources/plugins/dsh-desktop-companion.tgz"
+# 闭包残留检测：resources/runtime 出现即打包漂移（旧缓存/手工产物混入），fail loud
+if [[ -e "$STAGE/resources/runtime" ]]; then
+  echo "error: staging 出现 resources/runtime（闭包已退役，属打包漂移）" >&2
+  exit 1
 fi
+# 布局断言（批次一）：staging 是 Inno [Files] 的唯一内容源，断言 staging 即断言安装器——
+# 插件 tgz 存在且与现打源 tgz 逐字节一致，无闭包残留，缺一 fail loud
+bash "$ROOT/scripts/verify-package-layout.sh" --plugins "$STAGE/resources/plugins/dsh-desktop-companion.tgz" --target "$STAGE"
 
 echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
 if [[ $STAGE_ONLY -eq 1 ]]; then
   find "$STAGE" -maxdepth 2 -type d | sort | head -20 || true
-  ls -lh "$STAGE/resources/runtime/node"* 2>&1 | head -5 || echo "node 缺失"
+  ls -lh "$STAGE/resources/plugins/" 2>&1 | head -3 || echo "plugins 缺失"
   exit 0
 fi
 

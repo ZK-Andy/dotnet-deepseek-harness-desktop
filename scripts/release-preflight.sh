@@ -2,7 +2,7 @@
 # release-preflight.sh — 发布总检位（批次一，ADR artifact-verification-chain）。
 # 在 release.yml 聚合三平台产物之后、创建 Release 之前执行：
 #   ①资产矩阵完备——deb×2 / rpm×2 / dmg×2 / setup.exe×1 按发布命名模式精确匹配；
-#   ②单资产体积下限——拦截空壳/半截包（闭包 ~340MB 压缩后正常包远高于此线）；
+#   ②单资产体积下限——拦截空壳/半截包（online-first 后包 = 壳 + 插件资源，实测 ~26-36MB）；
 #   ③SHA256SUMS 全量复核。
 # 任一不满足 fail loud 终止发布。
 #
@@ -11,12 +11,11 @@ set -euo pipefail
 
 DIR="${1:?usage: release-preflight.sh <assets-dir>}"
 [[ -d "$DIR" ]] || { echo "error: 资产目录不存在: $DIR" >&2; exit 1; }
-# 仓库根必须在 cd 进资产目录**之前**解析（其后相对路径全部失效）
-PREFLIGHT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
 
-# 体积下限 MB：deb 实测 ~90M+、dmg/exe ~100M+；50M 为保守线，误杀风险随瘦身同调
-FLOOR_MB=50
+# 体积下限 MB：online-first 去闭包后 deb/dmg/exe 实测 ~26-36MB；15M 为保守线
+#（正常包一半，仍拦空壳/半截包）。重新调线前先本地 publish 实测压缩体积。
+FLOOR_MB=15
 
 shopt -s nullglob
 errors=()
@@ -83,10 +82,5 @@ if [[ ${#errors[@]} -gt 0 ]]; then
   for e in "${errors[@]}"; do echo "  ✗ $e" >&2; done
   exit 1
 fi
-# 上游钉版漂移注解（warn-only，ADR freshness-pin-patrol）：发版时刻的第二触点——
-# 即使没人看巡检 issue，漂移也会在当事人必然在场的这个时刻浮出到 run log。
-# 注解模式自身恒 exit 0，此处再兜 `|| true`：preflight 是阻断闸门，任何探测抖动不得误伤发布。
-echo "== 上游钉版漂移注解（warn-only）=="
-bash "$PREFLIGHT_ROOT/scripts/check-pin-freshness.sh" --annotate || true
 
 echo "== 发布 preflight 通过：矩阵完备、体积达线、校验和一致 =="
