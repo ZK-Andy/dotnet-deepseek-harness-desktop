@@ -38,6 +38,18 @@ jobs:
           repo="$GITHUB_REPOSITORY"
           sha="$GITHUB_SHA"
           jq_filter="[.artifacts[]|select(.expired==false and (.workflow_run.head_sha==\"$sha\"))|.name]|join(\" \")"
+          runs_jq="[.workflow_runs[]|select(.path|test(\"package-(linux|macos|windows)\"))|\"\(.path) \(.conclusion // \"running\")\"]|join(\"; \")"
+          # 失败快速逃逸：产物判定只认「存在性」，平台 job 失败时产物永不出现，旧逻辑会把失败
+          # 当「还没好」空转满 25m 才报笼统超时（v0.3.12 首发实证）。任一平台 run 已失败即终止。
+          check_failed_runs() {
+            local status
+            status="$(gh api "repos/$repo/actions/runs?head_sha=$sha&per_page=30" --jq "$runs_jq" 2>/dev/null || true)"
+            if grep -qE '(failure|cancelled|startup_failure|timed_out)' <<< "$status"; then
+              echo "error: 平台构建失败——[$status]；先修平台构建再重发（勿人工绕过）" >&2
+              exit 1
+            fi
+          }
+          check_failed_runs
           for i in $(seq 1 150); do
             resp="$(gh api "repos/$repo/actions/artifacts?per_page=100" --jq "$jq_filter" 2>/dev/null || true)"
             ok=1
@@ -45,6 +57,7 @@ jobs:
               [[ "$resp" == *"${want}"*-packages* ]] || ok=0
             done
             if [[ "$ok" == 1 ]]; then echo "三平台产物就绪: $resp"; exit 0; fi
+            check_failed_runs
             echo "等待三平台产物（$((i*10))s / ~25m）：$resp"
             sleep 10
           done
