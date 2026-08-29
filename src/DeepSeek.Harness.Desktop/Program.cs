@@ -221,6 +221,15 @@ public static class Program
             }
         }
 
+        // CLI shim 注册（ADR reference-alignment 批次四）：运行时就位后把 dsh/pnpm 注册进用户
+        // PATH，让终端可直用。best-effort——失败仅告警不阻启动（registrar 内部吞错）；dev 隔离
+        // 时跳过 dsh shim（防把开发环境烘焙进共享 shim），仅写不烘焙 home/hash 的 pnpm shim。
+        if (!bootstrapNeeded && RuntimeLocator.TryLocateRuntimeDirectory() is { } shimRuntimeDir)
+        {
+            new Services.CliShimRegistrar(Services.HostLog.Write).TryRegister(
+                shimRuntimeDir, HarnessRuntimeHost.ResolveDshHome(), isDev);
+        }
+
         var webUrl = bootstrapNeeded
             ? null
             : host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
@@ -515,6 +524,15 @@ public static class Program
 
                     bundledClosure = runtime;
                     host.BindRuntime(runtime.Value);
+
+                    // CLI shim 注册（ADR reference-alignment 批次四）：引导完成后运行时已下载就位，
+                    // 把 dsh/pnpm 注册进用户 PATH。best-effort，失败只告警（registrar 内部吞错）；
+                    // dev 隔离时跳过 dsh shim，仅 shim 不烘焙 home/hash 内容恒定的 pnpm。
+                    if (RuntimeLocator.TryLocateRuntimeDirectory() is { } shimRuntimeDir)
+                    {
+                        new Services.CliShimRegistrar(Services.HostLog.Write).TryRegister(
+                            shimRuntimeDir, HarnessRuntimeHost.ResolveDshHome(), isDev);
+                    }
 
                     // 对齐参照：companion（internal）在 spawn dsh 前静默自愈（batch-1），不出现在
                     // 引导勾选清单（对齐 ensure_internal_plugins）；best-effort：失败只告警不阻断
