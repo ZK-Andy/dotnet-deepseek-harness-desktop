@@ -25,8 +25,8 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-412%2F412-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-52.6%25-yellowgreen" alt="coverage"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-427%2F427-brightgreen" alt="tests"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-53.5%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
@@ -35,7 +35,7 @@ A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/de
 
 ## Features
 
-- ⚡️ **Zero-setup, download and run (online-first)** — the installer ships only the shell (~30MB); first launch bootstraps automatically: reuses a local Node when present, otherwise downloads the pinned Node and installs `@deepseek-ai/dsh` from the registry, then the shell spawns dsh in the shared data directory `~/.dsh` under a dedicated `desktop` profile. The dsh kernel follows npm `latest` — kernel upgrades no longer wait for a shell release. Sessions, credentials and plugins are **one universe with the CLI, TUI and Web**.
+- ⚡️ **Zero-setup, download and run (online-first)** — the installer ships only the shell (~30MB); first launch bootstraps automatically: reuses a local Node when present, otherwise downloads the pinned Node and installs `@deepseek-ai/dsh` from the registry; the download layer is **resumable (Range) + official/mirror multi-source fallback + atomic staging + file-lock retry** (more resilient on slow/blocked networks), then the shell spawns dsh in the shared data directory `~/.dsh` under a dedicated `desktop` profile. The dsh kernel follows npm `latest` — kernel upgrades no longer wait for a shell release. Sessions, credentials and plugins are **one universe with the CLI, TUI and Web**.
 - 🔒 **Native, lightweight shell** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
 - 🔄 **Crash self-heal & session return** — the shell supervises the runtime process: crash → recovery screen (cause / stderr tail + export diagnostics + exit) → auto-restart → same window back to a new URL; **the port stays stable** so the Web UI origin (and page-level session memory) survives — **return to your previous conversation after a crash or restart**.
 - ⬆️ **Self-update** — background check at launch plus a manual check under Settings → Desktop Settings; one-click install & restart when a new version is found (`SHA256`-verified packages; `macOS` guides manual update). See [Auto-Update](#auto-update) below.
@@ -94,7 +94,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 # without a PATH dsh the first-launch bootstrap runs, which needs network)
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# tests (412/412)
+# tests (427/427)
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # webview devtools (default off)
@@ -107,7 +107,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program + Services/ (runtime supervision, self-update, system tray, single-instance activation, diagnostics)
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 412/412
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 427/427
 ├── scripts/                        # gates + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```
