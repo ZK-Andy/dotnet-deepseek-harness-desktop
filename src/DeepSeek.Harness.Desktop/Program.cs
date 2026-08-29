@@ -195,6 +195,28 @@ public static class Program
         {
             Services.HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
         }
+        // 对齐参照（dsh-tauri-desk launch.rs）：随包插件（companion）在 spawn dsh 前安装，绝不
+        // 「启动后 3s 装 → 重启」。此路径为 bundled/PATH-dsh 且非引导；引导路径在后台任务内、
+        // BindRuntime 后同样 spawn 前安装。dev 显式覆盖共享 home 时跳过（防串扰）。
+        if (!bootstrapNeeded && bundledClosure is not null && !(isDev && !devAutoIsolated))
+        {
+            try
+            {
+                Services.MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                    bundledClosure.Value.NodeExe,
+                    bundledClosure.Value.DshEntry,
+                    HarnessRuntimeHost.ResolveDshHome(),
+                    Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
+                    Services.HostLog.Write,
+                    RunDshPluginAddAsync,
+                    CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Services.HostLog.Write($"[host] 随包插件 spawn 前安装失败（跳过，不阻断启动）：{ex.Message}");
+            }
+        }
+
         var webUrl = bootstrapNeeded
             ? null
             : host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
@@ -506,6 +528,24 @@ public static class Program
                         Services.HostLog.Write($"[host] 市场安装异常跳过：{ex.Message}");
                     }
 
+                    // 对齐参照：companion（internal）与 market 同为 spawn dsh 前、BindRuntime 后就位，
+                    // 杜绝「启动后 3s 装 → 重启 dsh」的首启二次启动。best-effort：失败只告警不阻断。
+                    try
+                    {
+                        await Services.MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                            runtime.Value.NodeExe,
+                            runtime.Value.DshEntry,
+                            HarnessRuntimeHost.ResolveDshHome(),
+                            Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
+                            Services.HostLog.Write,
+                            RunDshPluginAddAsync,
+                            bootCt);
+                    }
+                    catch (Exception ex)
+                    {
+                        Services.HostLog.Write($"[host] 引导：随包插件安装失败（跳过）：{ex.Message}");
+                    }
+
                     var url = await host.StartAsync(timeout: TimeSpan.FromSeconds(60), bootCt);
                     if (url is null)
                     {
@@ -591,7 +631,6 @@ public static class Program
         // 启动期横幅导航门控（ADR shell-firstboot-hardening）：安装任务触发监督器重启后页面会被
         // NavigateAsync 整体替换，横幅必须等这次导航落地再注入，否则与导航竞速被清掉
         // （v0.3.0 实机：18:30:01 注入 vs 18:30:03 导航，旧 home 横幅陪葬）。
-        var restartTriggered = 0;
         var startupNavigationSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var supervisor = new RuntimeSupervisor(
             host,
@@ -718,20 +757,16 @@ public static class Program
         }
 
         // 共享 home 切换的启动期告知（ADR shared-home-desktop-profile）：版本底线检查 + 旧 home 一次性提示。
-        // 横幅必须等随包安装尘埃落定再注入：切换日首启普遍伴随补装（新 home 是空的），安装收尾会
-        // 覆写页面并重启运行时——先注入必被清掉，而旧 home 用户正是提示的目标受众。
-        // 降级形态（webUrl 为空）没有安装任务，信号立即置位保证横幅不被无限推迟。版本探测失败按未知处理只记日志。
-        var pluginInstallSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (webUrl is null && !bootstrapNeeded)
-        {
-            pluginInstallSettled.TrySetResult();
-        }
-
+        // 随包插件现于 spawn dsh 前安装（不再「启动后装 → 覆写页面并重启运行时」），横幅无需等安装收尾，
+        // 只需等首启引导落定——版本探针用的 bundledClosure 在引导完成时被赋值，提前跑会探到空。
         _ = Task.Run(async () =>
         {
             try
             {
-                await pluginInstallSettled.Task.WaitAsync(TimeSpan.FromSeconds(120), supervisorCts.Token);
+                if (bootstrapSettled is not null)
+                {
+                    await bootstrapSettled.Task.WaitAsync(TimeSpan.FromSeconds(120), supervisorCts.Token);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -739,24 +774,7 @@ public static class Program
             }
             catch (TimeoutException)
             {
-                // 安装链路迟迟未定也照常告知：横幅是增强信息，不能因异常路径永久缺席
-            }
-
-            // 安装触发了重启时，再等监督器把新 URL 导航完成——此刻起页面才不会再被整体替换。
-            // 30s 兜底：导航迟迟不来（重启失败重试中）也照常告知，与上方 settled 超时同哲学。
-            if (Volatile.Read(ref restartTriggered) == 1)
-            {
-                try
-                {
-                    await startupNavigationSettled.Task.WaitAsync(TimeSpan.FromSeconds(30), supervisorCts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                catch (TimeoutException)
-                {
-                }
+                // 引导链路迟迟未定也照常告知：横幅是增强信息，不能因异常路径永久缺席
             }
 
             var home = HarnessRuntimeHost.ResolveDshHome();
@@ -788,235 +806,6 @@ public static class Program
                 await ShowBannerWhenReady(windowAccessor, RunMarker.UncleanBannerScript(uiLocale), supervisorCts.Token);
             }
         });
-
-        // 随包插件后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装随包插件，装完自动刷新（不阻塞首启）
-        // 对齐 Tauri 的“推荐预设”后台装 + pilot-harness 的随包 theme 已在 node_modules
-        // 0.1.10 失败复盘：tgz 为 394B 假包（app）+ pnpm allowBuilds 未开致 ERR_PNPM_IGNORED_BUILDS + 检测/补 bundles 未落地
-        // 随包插件：dshmarket（市场）+ dsh-desktop-companion（桌面伴生：外部链接接管等，见 ADR desktop-shell-companion-plugin）
-        // 引导路径同样进入：等引导落定（bootstrapSettled）后按解析出的运行时目录继续——插件 tgz
-        // 来自安装器资源（resources/plugins）或 dev 闭包，dshmarket 无本地来源时自动走 registry
-        // 回退 spec（dshmarket@latest，ADR online-first-unbundled-runtime）。
-        if (bootstrapNeeded || webUrl is not null)
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                if (bootstrapSettled is not null)
-                {
-                    try
-                    {
-                        // 无超时等待：settled 在引导任务 finally 恒置位（成功/失败/取消各终态），
-                        // 用户重试几轮都不受时限——限时会让「重试成功但晚于限时」的本会话丢随包插件
-                        await bootstrapSettled.Task.WaitAsync(supervisorCts.Token);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        return;
-                    }
-                }
-
-                    if (webUrl is null)
-                    {
-                        HostLog.Write("[host] 运行时未就绪（引导未产出 URL），跳过随包插件安装");
-                        return;
-                    }
-
-                    await Task.Delay(TimeSpan.FromSeconds(3));
-
-                    // 开发运行时：仅当 home 已自动隔离（devAutoIsolated）才允许随包安装——
-                    // 隔离 home 与正式版无涉，装了市场/伴生 debug 才完整；
-                    // 用户显式把 DSH_DESKTOP_DSH_HOME 指回真实 home 时仍跳过（防串扰，2026-08-22 实证）。
-                    if (isDev && !devAutoIsolated)
-                    {
-                        HostLog.Write("[host] 开发运行时且 DSH_HOME 为显式覆盖，跳过随包插件安装以防污染共享 profile");
-                        return;
-                    }
-
-                    var dshHome = HarnessRuntimeHost.ResolveDshHome();
-                    var profileDir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
-                    var profilePkg = Path.Combine(profileDir, "package.json");
-                    var workspacePath = Path.Combine(profileDir, "pnpm-workspace.yaml");
-
-                    // 统一运行时解析：捆绑目录 → 引导下载目录（ADR online-first-unbundled-runtime 回退序）。
-                    // 插件 tgz 来源：安装器自带 resources/plugins（打包形态唯一供给源）→ 运行时目录
-                    // （dev 闭包场景）；dshmarket 无本地来源时走 registry 回退 spec（dshmarket@latest，
-                    // 无钉版），companion 无 registry 分发面则自然跳过。
-                    var runtimeDir = RuntimeLocator.TryLocateRuntimeDirectory();
-                    if (runtimeDir is null || RuntimeLocator.TryLocateBundled(runtimeDir) is not { } bundled)
-                    {
-                        HostLog.Write("[host] 未找到可用运行时（捆绑/引导下载均未就位），跳过随包插件安装");
-                        return;
-                    }
-
-                    var installerPluginsDir = Path.Combine(AppContext.BaseDirectory, "resources", "plugins");
-
-                    // 1) 清单逐项检测随包插件待装项：未装即装、本地形态来源更新即升、
-                    // 1) 清单逐项检测随包插件待装项：companion 未装即装、来源更新即升（ADR
-                    // bundled-plugin-version-aware-catalog + online-first-unbundled-runtime 批次三）。
-                    var pending = BundledPluginCatalog.AssemblePending(
-                        BundledPluginCatalog.All, installerPluginsDir, profilePkg, profileDir, HostLog.Write);
-
-                    if (pending.Count == 0)
-                    {
-                        HostLog.Write("[host] 随包插件无需安装（companion 已就位），跳过");
-                        return;
-                    }
-
-                    // 1b) 迁移：清理 0.1.8-0.1.10 误写入的 app 依赖（file:.../dshmarket.tgz 假包）
-                    await MarketInstallHelper.CleanupBogusAppDependencyAsync(profilePkg);
-
-                    // 2) 确保 pnpm-workspace.yaml 的 allowBuilds 已放行原生构建（pnpm 11 默认拒绝）
-                    MarketInstallHelper.EnsureWorkspaceAllowBuilds(workspacePath);
-
-                    // 首次严格（尊重 pnpm minimumReleaseAge 等供应链政策）；当整份 lockfile 被政策
-                    // 拒绝（如市场新装插件发布不足 24h，v0.2.0 实证会连带阻断随包补装）时，降级
-                    // 放宽该单一政策重试一次并显式留痕——随包组只装第一方 file: 包，不新增注册源。
-                    async Task<bool> RunPluginAddGroupAsync(string label, List<(string Package, string Spec)> group)
-                    {
-                        foreach (var (_, spec) in group)
-                        {
-                            HostLog.Write($"[host] 随包插件安装（{label}）spec={spec}");
-                        }
-
-                        async Task<(int Exit, string Out, string Err)> RunPluginAddAsync(bool relaxPolicy)
-                        {
-                            var psi = new System.Diagnostics.ProcessStartInfo
-                            {
-                                FileName = bundled.NodeExe,
-                                UseShellExecute = false,
-                                RedirectStandardOutput = true,
-                                RedirectStandardError = true,
-                            };
-                            psi.ArgumentList.Add(bundled.DshEntry);
-                            psi.ArgumentList.Add("plugin");
-                            psi.ArgumentList.Add("--profile");
-                            psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
-                            psi.ArgumentList.Add("add");
-                            foreach (var (_, spec) in group)
-                            {
-                                psi.ArgumentList.Add(spec);
-                            }
-
-                            psi.Environment["DSH_HOME"] = dshHome;
-                            if (relaxPolicy)
-                            {
-                                psi.Environment["pnpm_config_minimum_release_age"] = "0";
-                            }
-
-                            // pnpm store/cache 重定向 + 预建目录（EROFS 兜底）与 dsh spawn 共用单点
-                            HarnessRuntimeHost.ApplyPnpmWriteDirs(psi, dshHome);
-                            // 流显式 UTF-8（ADR online-first 踩坑约束 #197 .NET 变体）：Windows 中文区域
-                            // 按 OEM 码页解码 UTF-8 输出会乱码，host.log 留痕须同源可读
-                            HarnessRuntimeHost.UseUtf8TextStreams(psi);
-                            using var p = System.Diagnostics.Process.Start(psi);
-                            if (p is null)
-                            {
-                                throw new InvalidOperationException("无法启动 dsh plugin 进程");
-                            }
-
-                            var stdout = await p.StandardOutput.ReadToEndAsync();
-                            var stderr = await p.StandardError.ReadToEndAsync();
-                            await p.WaitForExitAsync();
-                            return (p.ExitCode, stdout, stderr);
-                        }
-
-                        var (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: false);
-                        HostLog.Write($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
-                        // 依赖 pnpm 输出文案含政策键名（大小写不敏感）：pnpm 改文案会静默失效（该次重试不触发），
-                        // 属可接受的降级——重试是自愈增强，失败仍走下方 fail loud 日志
-                        if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
-                        {
-                            HostLog.Write("[host] lockfile 被 minimumReleaseAge 政策拒绝；放宽该政策重试一次（仅本次安装生效）");
-                            (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: true);
-                            HostLog.Write($"[host] dsh plugin add(重试) exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
-                        }
-
-                        if (exitCode != 0)
-                        {
-                            HostLog.Write($"[host] 随包插件安装失败（{label}）exit={exitCode}（常见：ERR_PNPM_IGNORED_BUILDS——workspace 已自动修复，下次启动自愈；详情见上方 stderr）");
-                            return false;
-                        }
-
-                        // 4) dsh 的 reconcilePlugins 理论上已写入 bundles，仍做兜底校验并补写（0.1.10 的 file:app 未进 bundles 需补）
-                        foreach (var (pkg, _) in group)
-                        {
-                            if (await MarketInstallHelper.EnsureBundlesContainsAsync(profilePkg, pkg))
-                            {
-                                HostLog.Write($"[host] 已补写 bundles {pkg}");
-                            }
-                        }
-
-                        return true;
-                    }
-
-                    var anyInstalled = await RunPluginAddGroupAsync("companion", pending);
-
-                    if (anyInstalled)
-                    {
-                        // 4b) 桌面核心不变量：reconcile 无论怎么重整 bundles，web-app 层绝不能丢
-                        // （丢了下次启动就没有 Web UI）；缺失即补写并留痕。
-                        foreach (var builtin in DesktopProfileBootstrap.InitialBundles)
-                        {
-                            if (await MarketInstallHelper.EnsureBundlesContainsAsync(profilePkg, builtin))
-                            {
-                                HostLog.Write($"[host] 已补回桌面必需 bundle {builtin}");
-                            }
-                        }
-
-                        HostLog.Write("[host] 随包插件已后台安装，重启运行时以加载");
-                        try
-                        {
-                            await windowAccessor.Current.EvaluateJavaScriptAsync(Services.RecoveryPageBuilder.BuildRestartingScript());
-                        }
-                        catch (Exception ex1)
-                        {
-                            // 恢复覆写失败可忽略：WebView 可能尚未就绪，紧接着的运行时重启会重新导航
-                            HostLog.Write($"[host] 恢复覆写注入失败（忽略，重启后由新 URL 覆盖）：{ex1.Message}");
-                        }
-
-                        // 仅刷新 WebView 不会让服务端重载 package.json，交由 RuntimeSupervisor 重启 dsh 进程并导航新 URL
-                        // 此处直接 Stop，Supervisor 的 RunAsync 会检测退出→RestartAsync→Navigate
-                        Volatile.Write(ref restartTriggered, 1);
-                        try
-                        {
-                            host.Stop();
-                            HostLog.Write("[host] 已触发 dsh 重启（由监督器接管）");
-                        }
-                        catch (Exception ex2)
-                        {
-                            HostLog.Write($"[host] 触发重启失败：{ex2.Message}");
-                            try
-                            {
-                                var newUrl = await host.RestartAsync(TimeSpan.FromSeconds(60));
-                                if (newUrl is not null)
-                                {
-                                    await windowAccessor.Current.NavigateAsync(newUrl);
-                                }
-                                else
-                                {
-                                    await windowAccessor.Current.NavigateAsync(webUrl);
-                                }
-                            }
-                            catch (Exception ex3)
-                            {
-                                // 备用重启也失败：无法自动恢复，留痕交监督器/用户诊断（fail loud 于观测）
-                                HostLog.Write($"[host] 随包插件安装后重启失败（运行时可能停在旧包状态）：{ex3.Message}");
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    HostLog.Write($"[host] 随包插件后台安装跳过：{ex.Message}");
-                }
-                finally
-                {
-                    // 无论安装成败与否，启动期横幅都可以安全注入了（页面不会再被本任务覆写）
-                    pluginInstallSettled.TrySetResult();
-                }
-            });
-        }
 
         Services.HostLog.Write("[host] Ryn Run 开始（阻塞直到窗口关闭）");
         try

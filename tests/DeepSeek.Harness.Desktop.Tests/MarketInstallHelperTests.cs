@@ -289,4 +289,126 @@ public class MarketInstallHelperTests
             Directory.Delete(home, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_InstallsCompanion_AndBackfillsBundles()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        var profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        Directory.CreateDirectory(profileDir);
+        var profilePkg = Path.Combine(profileDir, "package.json");
+        var installerPluginsDir = Path.Combine(home, "plugins");
+        Directory.CreateDirectory(installerPluginsDir);
+        // ResolveCompanionSpec 要求 >1K 的 tgz（防 0.1.10 假包）；profile 不含 companion → AssemblePending 返回待装。
+        File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
+        File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
+
+        System.Diagnostics.ProcessStartInfo? capturedPsi = null;
+        var args = new List<string>();
+        var logs = new List<string>();
+        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            capturedPsi = psi;
+            args.Clear();
+            foreach (var a in psi.ArgumentList) args.Add(a);
+            return (0, "installed", string.Empty);
+        }
+
+        try
+        {
+            await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, CancellationToken.None);
+
+            Assert.NotNull(capturedPsi);
+            // 参数形状：dsh bin.js plugin --profile desktop add <companion tgz>
+            Assert.Equal(
+                ["/dsh/bin.js", "plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz")],
+                args);
+            Assert.Equal(home, capturedPsi!.Environment["DSH_HOME"]);
+            // companion 已补写 bundles
+            Assert.Contains("dsh-desktop-companion", File.ReadAllText(profilePkg));
+            Assert.Contains(logs, l => l.Contains("已补写 bundles dsh-desktop-companion"));
+            // 桌面核心不变量：web-app 层缺失时被补回
+            Assert.Contains("@deepseek-ai/dsh-web-app", File.ReadAllText(profilePkg));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_NoRun_WhenCompanionInstalled()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        var profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        Directory.CreateDirectory(profileDir);
+        var profilePkg = Path.Combine(profileDir, "package.json");
+        var installerPluginsDir = Path.Combine(home, "plugins");
+        Directory.CreateDirectory(installerPluginsDir);
+        File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
+        // companion 已就位（dependencies + bundles 双含）→ AssemblePending 返回空 → 不 spawn。
+        File.WriteAllText(profilePkg, """{"dependencies":{"dsh-desktop-companion":"file:./plugins/dsh-desktop-companion.tgz"},"dsh":{"profile":{"bundles":["dsh-desktop-companion","@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app"]}}}""");
+
+        var runs = 0;
+        var logs = new List<string>();
+        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            runs++;
+            return (0, "installed", string.Empty);
+        }
+
+        try
+        {
+            await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, CancellationToken.None);
+            Assert.Equal(0, runs);
+            Assert.Contains(logs, l => l.Contains("无需安装"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_RetriesOnMinimumReleaseAge_Dropcap()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        var profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        Directory.CreateDirectory(profileDir);
+        var profilePkg = Path.Combine(profileDir, "package.json");
+        var installerPluginsDir = Path.Combine(home, "plugins");
+        Directory.CreateDirectory(installerPluginsDir);
+        File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
+        File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
+
+        var relaxSeen = false;
+        var runs = 0;
+        var logs = new List<string>();
+        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            runs++;
+            if (runs == 1)
+            {
+                return (1, "ERR_PNPM_POLICY_MINIMUM_RELEASE_AGE", string.Empty);
+            }
+
+            relaxSeen = psi.Environment.ContainsKey("pnpm_config_minimum_release_age");
+            return (0, "installed", string.Empty);
+        }
+
+        try
+        {
+            await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, CancellationToken.None);
+            Assert.Equal(2, runs);
+            Assert.True(relaxSeen, "放宽重试应带 pnpm_config_minimum_release_age=0");
+            Assert.Contains(logs, l => l.Contains("minimumReleaseAge 政策拒绝"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
 }
