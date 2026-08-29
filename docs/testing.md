@@ -39,7 +39,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release
 * **沙箱冒烟**：`HarnessRuntimeHost` `StartAsync` 抓 `dsh web:`（`60s`），`RuntimeSupervisor` `kill` 子进程→自动重启+换 `URL`（回归断言重启 `URL` 相同以保 `origin`）。
 * **本机冒烟**：`dotnet run --project src/DeepSeek.Harness.Desktop` 起 `Ryn` 窗口加载 `dsh web:`（需 `DEEPSEEK_API_KEY` 与 `WebKitGTK`）。`DSH_DEVTOOLS=1` 开 `WebView` 调试。
 * **打包自检**：`verify-package-layout.sh` 断言安装器 staging 无闭包残留、插件 tgz 过名称/体积关（`build-companion-tgz.sh` 打包时现打现校验，新鲜度由「现打直进 staging」结构性保证）；`release-preflight.sh` 发布前复核资产矩阵/体积下限（15MB）/SHA256SUMS；`smoke-install-{linux,windows,macos}.sh` 三平台「静默安装/拷装 → 启动 → 双信号」（Linux 全链/安装链、win/mac runner 有桌面会话应达全链）。
-* **随包插件**：首启引导经 `RuntimeBootstrap` registry 装市场（`dshmarket@latest`）+ 后台按 `BundledPluginCatalog` 清单装 companion（自安装器 `resources/plugins`；版本感知升级）→ `host.Stop()→Supervisor` 重启 → `Web UI` 出现市场、外链点击开系统浏览器；启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用（见 [architecture.md](architecture.md)）。
+* **插件面**：首启引导（`RuntimeBootstrap`）完成运行时后、spawn dsh **前**装插件——companion（internal）静默自愈（`EnsureBundledPluginsBeforeSpawnAsync`，`BundledPluginCatalog` 清单 + 版本感知升级，自安装器 `resources/plugins`）、dshmarket（preset）经引导页「插件准备」步确认/跳过（`desktop.preinstall.choose` 决策 + `dsh-desktop-preinstall` 日志回流，5 分钟超时默认跳过），全部 `plugin add` 就位后 `StartAsync`（不再「装后 `host.Stop()` 重启」）；启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用（见 [architecture.md](architecture.md)）。
 
 ## 行为级回归要求
 

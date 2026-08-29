@@ -42,17 +42,11 @@
 
 ## 插件装配与引导
 
-* 随包插件清单：`dsh-desktop-companion`（桌面伴生：更新/诊断/设置 UI 与托盘事件中继，仅随包分发）——成员登记于 `Services/BundledPluginCatalog`，清单是唯一扩展点；dshmarket 不再随包，改由首启引导经 registry 安装（见下）。
-* 首启引导（`RuntimeBootstrap`，online-first）：无捆绑运行时且无 PATH dsh 时，在 spawn dsh **之前**完成「检测/复用本机 Node → 下载钉版 Node（SHA256 校验）→ npm 安装 `@deepseek-ai/dsh@latest` → 验证产物」，全程进度页可见、失败可重试（`desktop.bootstrap.retry`）。引导落定后由 `MarketInstallHelper.EnsureMarketFromRegistryAsync` 经 dsh CLI 子命令 `plugin add dshmarket@latest` 注册表安装市场（插件与核心一次就位；best-effort 失败只告警不阻断首启，联网即可重试）。
+* 随包插件清单：`dsh-desktop-companion`（桌面伴生：更新/诊断/设置 UI 与托盘事件中继，仅随包分发）——成员登记于 `Services/BundledPluginCatalog`；dshmarket 不再随包，改由首启引导经 registry 安装（`MarketInstallHelper.EnsureMarketFromRegistryAsync`，见下）。
+* 首启引导（`RuntimeBootstrap`，online-first）：无捆绑运行时且无 PATH dsh 时，在 spawn dsh **之前**完成「检测/复用本机 Node → 下载钉版 Node（SHA256 校验）→ npm 安装 `@deepseek-ai/dsh@latest` → 验证产物」，全程进度页可见、失败可重试（`desktop.bootstrap.retry`）。
+* **插件引导（ADR reference-alignment 批次二）**：运行时就位后、spawn dsh 前，若存在待装可选插件（现仅 `dshmarket` 预设），进度页呈现「插件准备」步（推荐 chip + 确认/跳过 + 安装日志回流）。用户确认才安装、跳过则该次不装（可经应用内市场补装）、5 分钟无决策默认跳过；companion（internal）不在勾选清单，保持 spawn 前静默自愈。
 * 启动前 reconcile（`DesktopProfileBootstrap.ReconcileProfile`）：扫描 desktop profile，移除解析目标已不存在的本地 `file:`/`link:` bundle 引用（退役随包种子属之），对齐 dsh-tauri-desk #177——不允许不可解析 bundle 引用残留。
-* `Program.cs` 后台任务（`Task.Delay 3s`，不阻塞首启窗口）：
-  0. dev 运行（`DSH_DESKTOP_RUNTIME_DIR` 或 `DSH_DESKTOP_DEV=1` 显式标记，打包产品两者皆无）且 DSH_HOME 为显式覆盖指回真实 home 时整体跳过——防把 dev 依赖写进共享 profile；自动隔离（`.cache/dev-home`）的 dev home 与正式版无涉，正常安装。
-  1. `BundledPluginCatalog.AssemblePending` 清单逐项组装待装清单（companion）：未装即装（安装器资源 tgz）；已装则 `PluginVersionCheck` 比对来源 tgz 内 `package/package.json` 的 version 与 profile `node_modules` 副本 version，来源更新即入列（升级），同版或更高即跳过（改清单内插件必须 bump version，否则不触发升级；spec 缺失、解析器异常或脏版本串按单插件记日志跳过；见 ADR `implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog` + `implemented/feature/2026-08-29-plugin-surface-consolidation`）。
-  1b. 清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`。
-  2. `EnsureWorkspaceAllowBuilds` 把 `pnpm-workspace.yaml` 的 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）置 `true`。
-  3. spec 解析：伴生走 `ResolveCompanionSpec`（安装器自带 `resources/plugins` tgz `>1K` → 无即跳过，无 registry 分发面）。
-  4. spawn `bundled node dsh/lib/bin.js plugin --profile desktop add <spec…>` 安装（注入 `DSH_HOME/.pnpm-store`）：`exit 0` 后对每项 `EnsureBundlesContainsAsync(pkg)` 兜底，并补回桌面必需 bundle（`dsh-base`/`dsh-web-app`）。
-  5. `EvaluateRecovery + host.Stop()` 交 `RuntimeSupervisor` 重启并导航新 `URL`。
+* **插件安装均在 spawn dsh 前完成**（对齐参照 `launch.rs`「所有插件内核前就位、绝不安装后重启」）：companion 经 `EnsureBundledPluginsBeforeSpawnAsync`——`BundledPluginCatalog.AssemblePending` 组装待装清单：未装即装（安装器资源 `resources/plugins` tgz，`ResolveCompanionSpec` `>1K` 校验）、已装则 `PluginVersionCheck` 版本感知升级（来源 > 已装副本即入列，同版/更高跳过；spec 缺失、解析器异常或脏版本串按单插件记日志跳过；见 ADR `implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog` + `implemented/feature/2026-08-29-plugin-surface-consolidation`）；dshmarket 经 `EnsureMarketFromRegistryAsync`（`plugin add dshmarket@latest`）。安装前 `EnsureWorkspaceAllowBuilds` 放行 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）、`CleanupBogusAppDependencyAsync` 清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`；装后 `EnsureBundlesContainsAsync` 兜底并补回桌面必需 bundle（`dsh-base`/`dsh-web-app`）。dev 运行且 DSH_HOME 显式覆盖指回真实 home 时整体跳过（防把 dev 依赖写进共享 profile）。
 * `dsh` 的 `reconcilePlugins` 在 `plugin add` 后自动把包名追加到 `dsh.profile.bundles`（`pilot-harness` 同款）。
 
 ## 外部链接接管

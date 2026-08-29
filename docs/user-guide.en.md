@@ -25,9 +25,9 @@ Unsigned builds: this project is open source and ships without paid code signing
 
 ## First Launch
 
-1. The shell auto-prepares and starts the DeepSeek Harness runtime, then loads the UI. On the first launch (no bundled runtime and no PATH dsh) it bootstraps: detects/reuses a local Node, otherwise downloads the pinned Node and installs dsh and the plugin market — progress visible throughout; **retry the progress page on offline/failure** (per-step timeout).
+1. The shell auto-prepares and starts the DeepSeek Harness runtime, then loads the UI. On the first launch (no bundled runtime and no PATH dsh) it bootstraps: detects/reuses a local Node, otherwise downloads the pinned Node and installs dsh — progress visible throughout; **retry the progress page on offline/failure** (per-step timeout).
 2. Configure your own model API credentials in the in-app model settings.
-3. During bootstrap the plugin market (from the registry) and the bundled desktop companion plugin are installed, and the UI then loads. The bundled companion follows the shell version: after a shell update, the first launch brings any companion plugin older than the bundled copy up to date (logged in `host.log`).
+3. Once the runtime is ready and before entering the UI, the progress page shows a "Plugin setup" step: the plugin market (dshmarket) is presented as a recommended chip, and you choose **Install** or **Skip** (skipping still allows installing later from the in-app market); install logs stream back to the page. The bundled desktop companion plugin is required by the shell and self-heals silently (not shown as a choice). Choose Install to continue into the UI.
 4. Once ready, browse the plugin market and install community plugins.
 
 ## Daily Use

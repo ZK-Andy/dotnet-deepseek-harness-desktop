@@ -9,7 +9,7 @@ Expected — the project ships without paid code signing. Choose "More info" →
 It bundles the complete DeepSeek Harness runtime (Node + dependency closure) for a zero-environment, works-offline experience. No Node.js needed and your system PATH stays untouched.
 
 **Q: A dark "reconnecting" screen on first launch — is that normal?**
-Yes. First launch installs bundled plugins in the background and restarts the runtime; it takes a couple of seconds.
+Yes. First launch prepares the runtime, then the "Plugin setup" step lets you install/skip the plugin market and installs the companion plugin; choosing Install continues into the UI. All plugins settle before dsh starts — no "install then restart runtime".
 
 **Q: Are my sessions preserved after an upgrade?**
 Yes within the same data directory (v0.3+ upgrades). Sessions persist locally and the app keeps a stable port, so it returns to your last session automatically.
