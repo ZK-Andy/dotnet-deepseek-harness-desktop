@@ -283,7 +283,7 @@ public class BundledPluginCatalogTests
             var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
 
             var entry = Assert.Single(pending);
-            Assert.Equal(("dshmarket", "dshmarket", true), (entry.Package, entry.Spec, entry.FromRegistry));
+            Assert.Equal(("dshmarket", "dshmarket@latest", true), (entry.Package, entry.Spec, entry.FromRegistry));
             Assert.Contains(logs, l => l.Contains("随包插件归化") && l.Contains("registry 自管"));
         }
         finally { Directory.Delete(root, recursive: true); }
@@ -352,7 +352,7 @@ public class BundledPluginCatalogTests
 
             // companion 未装 → 种子条目（本地组）；dshmarket 同版 → 归化条目（registry 组）。
             Assert.Equal(
-                [("dsh-desktop-companion", "/x/companion.tgz", false), ("dshmarket", "dshmarket", true)],
+                [("dsh-desktop-companion", "/x/companion.tgz", false), ("dshmarket", "dshmarket@latest", true)],
                 pending.Select(p => (p.Package, p.Spec, p.FromRegistry)).ToList());
         }
         finally { Directory.Delete(root, recursive: true); }

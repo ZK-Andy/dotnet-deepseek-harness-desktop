@@ -11,7 +11,7 @@ Status: implemented
 **随包 = 种子，不是牢笼**（2026-08-29 用户拍板）：
 
 - 随包 tgz 降级为离线种子：首装与离线升级仍走 `file:` tgz，保离线可靠。
-- **registry 归化**：`AssemblePending` 对开启 `NormalizeToRegistry` 的清单项（当前仅 dshmarket），检测到已装且 profile dependencies spec 为本地形态（`file:`/`link:`）、且闭包不比已装更新时，入列归化条目（spec = 裸包名 `dshmarket` → latest）。归化失败（离线/registry 错误）留痕下次启动重试，幂等（成功即 registry 形态不再入列）。归化 spec 用 latest 而非钉版——与用户自装逐字节等价（拍板）。
+- **registry 归化**：`AssemblePending` 对开启 `NormalizeToRegistry` 的清单项（当前仅 dshmarket），检测到已装且 profile dependencies spec 为本地形态（`file:`/`link:`）、且闭包不比已装更新时，入列归化条目（spec = `dshmarket@latest`——裸名对既有依赖是 pnpm 幂等 no-op、spec 永不翻转，v0.3.12 实机实证后修正）。归化失败（离线/registry 错误）留痕下次启动重试，幂等（成功即 registry 形态不再入列）。归化 spec 用 latest 而非钉版——与用户自装逐字节等价（拍板）。
 - **registry 形态完全放手**：已装 spec 非 `file:`/`link:` 一律跳过，即便闭包钉版更高也不回拉 `file:`（拍板）；dependencies 值不可读（null）同样保守不碰；companion 无 registry 上游，不归化，随包是唯一分发面。
 - 消费点分组：待装条目带 `FromRegistry` 标记（随包 tgz/目录路径 = 本地组；归化条目/registry 回退串 = registry 组），本地组先装、registry 组后装——pnpm 单事务多 spec 一败俱败，离线时归化失败不得拖累随包种子安装。
 

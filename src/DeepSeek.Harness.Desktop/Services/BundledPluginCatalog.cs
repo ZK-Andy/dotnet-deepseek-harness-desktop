@@ -111,10 +111,12 @@ public static class BundledPluginCatalog
 
                 if (entry.NormalizeToRegistry)
                 {
-                    // 本地形态且闭包不比已装更新：归化为 registry 自管（spec = 裸包名 → latest）。
+                    // 本地形态且闭包不比已装更新：归化为 registry 自管。spec 必须带显式 @latest——
+                    // pnpm 对「已存在的依赖」裸名 add 按既有 spec 幂等安装（file: 永不翻转，
+                    // v0.3.12 实机实证），显式 @latest 才会重新解析 registry 并改写 spec。
                     // 失败（离线/registry 错误）留痕后下次启动重试；成功即 registry 形态，本判定幂等。
                     log($"[host] 随包插件归化：{entry.Package}（本地形态随包安装）→ registry 自管");
-                    pending.Add((entry.Package, entry.Package, FromRegistry: true));
+                    pending.Add((entry.Package, $"{entry.Package}@latest", FromRegistry: true));
                 }
             }
             catch (Exception ex)
