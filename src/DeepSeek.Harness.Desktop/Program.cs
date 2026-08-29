@@ -222,13 +222,9 @@ public static class Program
         }
 
         // CLI shim 注册（ADR reference-alignment 批次四）：运行时就位后把 dsh/pnpm 注册进用户
-        // PATH，让终端可直用。best-effort——失败仅告警不阻启动（registrar 内部吞错）；dev 隔离
-        // 时跳过 dsh shim（防把开发环境烘焙进共享 shim），仅写不烘焙 home/hash 的 pnpm shim。
-        if (!bootstrapNeeded && RuntimeLocator.TryLocateRuntimeDirectory() is { } shimRuntimeDir)
-        {
-            new Services.CliShimRegistrar(Services.HostLog.Write).TryRegister(
-                shimRuntimeDir, HarnessRuntimeHost.ResolveDshHome(), isDev);
-        }
+        // PATH，让终端可直用。best-effort——注册内部吞预期异常（见 CliShimRegistrar），此处再兜底
+        // 意外异常；dev 隔离时跳过 dsh shim（防把开发环境烘焙进共享 shim）。
+        RegisterCliShim(isDev);
 
         var webUrl = bootstrapNeeded
             ? null
@@ -526,13 +522,8 @@ public static class Program
                     host.BindRuntime(runtime.Value);
 
                     // CLI shim 注册（ADR reference-alignment 批次四）：引导完成后运行时已下载就位，
-                    // 把 dsh/pnpm 注册进用户 PATH。best-effort，失败只告警（registrar 内部吞错）；
-                    // dev 隔离时跳过 dsh shim，仅 shim 不烘焙 home/hash 内容恒定的 pnpm。
-                    if (RuntimeLocator.TryLocateRuntimeDirectory() is { } shimRuntimeDir)
-                    {
-                        new Services.CliShimRegistrar(Services.HostLog.Write).TryRegister(
-                            shimRuntimeDir, HarnessRuntimeHost.ResolveDshHome(), isDev);
-                    }
+                    // 把 dsh/pnpm 注册进用户 PATH。best-effort（见 RegisterCliShim，内含兜底）。
+                    RegisterCliShim(isDev);
 
                     // 对齐参照：companion（internal）在 spawn dsh 前静默自愈（batch-1），不出现在
                     // 引导勾选清单（对齐 ensure_internal_plugins）；best-effort：失败只告警不阻断
@@ -974,6 +965,28 @@ public static class Program
                 Path.GetFullPath(a),
                 Path.GetFullPath(b),
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+        /// <summary>
+        /// CLI shim 注册（ADR reference-alignment 批次四）：运行时就位后把 dsh/pnpm 注册进用户 PATH。
+        /// best-effort——registrar 已吞预期异常；此处再兜底任何意外异常（注册是增强信息，绝不阻断启动）。
+        /// dev 隔离时跳过 dsh shim（防把开发环境烘焙进共享 shim），只写内容恒定的 pnpm shim。
+        /// </summary>
+        void RegisterCliShim(bool devIsolated)
+        {
+            try
+            {
+                if (RuntimeLocator.TryLocateRuntimeDirectory() is { } runtimeDir)
+                {
+                    new Services.CliShimRegistrar(Services.HostLog.Write).TryRegister(
+                        runtimeDir, HarnessRuntimeHost.ResolveDshHome(), devIsolated);
+                }
+            }
+            catch (Exception ex)
+            {
+                // 注册是增强信息：任何未预期异常都不该打断启动链路
+                Services.HostLog.Write($"[cli-shim] 注册跳过（意外异常）：{ex.Message}");
+            }
+        }
 
         /// <summary>
         /// 推送一条引导进度到引导页（fire-and-forget）。首次推送与页面加载存在竞态

@@ -47,24 +47,16 @@ public static class CliShimPath
         return string.IsNullOrEmpty(pathValue) ? token : pathValue + separator + token;
     }
 
-    /// <summary>从 PATH 值中移除 <paramref name="token"/>（同时处理尾部目录分隔符差异）。</summary>
-    public static string RemovePathToken(string pathValue, string token, string separator, bool caseInsensitive)
-    {
-        var tokenNorm = NormalizeTokenForCompare(token, separator, caseInsensitive);
-        var kept = pathValue
-            .Split(separator)
-            .Where(part => part.Length > 0 &&
-                           NormalizeTokenForCompare(part, separator, caseInsensitive) != tokenNorm)
-            .ToArray();
-        return string.Join(separator, kept);
-    }
-
     private static string NormalizeTokenForCompare(string part, string separator, bool caseInsensitive)
     {
         var norm = part.Trim();
         if (separator == ";")
         {
             norm = norm.TrimEnd('\\');
+        }
+        else
+        {
+            norm = norm.TrimEnd('/');
         }
 
         return caseInsensitive ? norm.ToLowerInvariant() : norm;
@@ -81,7 +73,7 @@ public static class CliShimPath
     public const string RcEndMarker = "# <<< deepseek-harness-desktop <<<";
 
     /// <summary>构造把 <paramref name="binDir"/> 加入 PATH 的 export 块（POSIX shell；幂等标记包裹）。</summary>
-    public static string BuildShellExportBlock(string binDir, string separator = ":") =>
+    public static string BuildShellExportBlock(string binDir, string separator) =>
         $"""
         {RcBeginMarker}
         # DeepSeek Harness Desktop: add the desktop CLI bin dir to PATH.

@@ -68,6 +68,18 @@ public class CliShimBuilderTests
     }
 
     [Fact]
+    public void DshCmd_Injects_DshHome_Only_In_Bundled_Path()
+    {
+        // DSH_HOME/telemetry 必须在用户 dsh 早退（call "%USER_DSH%"）之后注入，避免污染用户自己的 dsh 环境
+        var content = CliShimBuilder.BuildDshCmd(Runtime, DshHome);
+        var userExitAt = content.IndexOf("call \"%USER_DSH%\"", StringComparison.Ordinal);
+        var homeAt = content.IndexOf("set \"DSH_HOME=", StringComparison.Ordinal);
+        var telemetryAt = content.IndexOf("set \"DSH_TELEMETRY_DISABLED=1\"", StringComparison.Ordinal);
+        Assert.True(userExitAt >= 0 && homeAt > userExitAt && telemetryAt > userExitAt,
+            "DSH_HOME/telemetry must be injected only after the user-dsh early-exit (bundled path)");
+    }
+
+    [Fact]
     public void DshPs1_Bakes_And_Prefers_User_Dsh()
     {
         var content = CliShimBuilder.BuildDshPs1(Runtime, DshHome);
@@ -139,16 +151,16 @@ public class CliShimPathTests
     }
 
     [Fact]
-    public void RemovePathToken_Removes_Matching()
+    public void Unix_PathContainsToken_Normalizes_Trailing_Slash()
     {
-        var result = CliShimPath.RemovePathToken(@"/a:/b:/c", "/b", ":", caseInsensitive: false);
-        Assert.Equal("/a:/c", result);
+        Assert.True(CliShimPath.PathContainsToken("/a:/b", "/b/", ":", caseInsensitive: false));
+        Assert.False(CliShimPath.PathContainsToken("/a:/b", "/c", ":", caseInsensitive: false));
     }
 
     [Fact]
     public void EnsureShellRcBlock_Is_Idempotent()
     {
-        var block = CliShimPath.BuildShellExportBlock("/home/x/.local/bin");
+        var block = CliShimPath.BuildShellExportBlock("/home/x/.local/bin", ":");
         var once = CliShimPath.EnsureShellRcBlock("", block);
         Assert.Contains(CliShimPath.RcBeginMarker, once);
         Assert.Contains(CliShimPath.RcEndMarker, once);
@@ -160,7 +172,7 @@ public class CliShimPathTests
     [Fact]
     public void EnsureShellRcBlock_Appends_After_Existing_Content()
     {
-        var block = CliShimPath.BuildShellExportBlock("/home/x/.local/bin");
+        var block = CliShimPath.BuildShellExportBlock("/home/x/.local/bin", ":");
         var result = CliShimPath.EnsureShellRcBlock("# existing\n", block);
         Assert.StartsWith("# existing", result);
         Assert.Contains(CliShimPath.RcBeginMarker, result);
@@ -189,20 +201,30 @@ public class CliShimPlannerTests
     {
         var setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: true, writeDshShim: true);
         Assert.Equal(4, setup.Files.Count);
-        Assert.Contains(setup.Files, f => f.Path.EndsWith("dsh.cmd") && f.Path.EndsWith("dsh.ps1") == false);
-        Assert.Contains(setup.Files, f => f.Path.EndsWith("dsh.ps1"));
-        Assert.Contains(setup.Files, f => f.Path.EndsWith("pnpm.cmd"));
-        Assert.Contains(setup.Files, f => f.Path.EndsWith("pnpm.ps1"));
+        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("dsh.cmd"));
+        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("dsh.ps1"));
+        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm.cmd"));
+        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm.ps1"));
         Assert.Equal(";", setup.PathSeparator);
         Assert.Null(setup.ShellRcBlock);
+    }
+
+    [Fact]
+    public void Windows_Dev_Setup_Skips_Dsh_Shim()
+    {
+        var setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: true, writeDshShim: false);
+        Assert.DoesNotContain(setup.Files, f => f.TargetPath.EndsWith("dsh.cmd"));
+        Assert.DoesNotContain(setup.Files, f => f.TargetPath.EndsWith("dsh.ps1"));
+        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm.cmd"));
+        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm.ps1"));
     }
 
     [Fact]
     public void Unix_Setup_Emits_Dsh_And_Sh_Block()
     {
         var setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: false, writeDshShim: true);
-        Assert.Contains(setup.Files, f => f.Path.EndsWith("dsh") && f.Executable);
-        Assert.Contains(setup.Files, f => f.Path.EndsWith("pnpm") && f.Executable);
+        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("dsh") && f.Executable);
+        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm") && f.Executable);
         Assert.Equal(":", setup.PathSeparator);
         Assert.NotNull(setup.ShellRcBlock);
         Assert.Contains(Bin, setup.ShellRcBlock);
@@ -212,28 +234,28 @@ public class CliShimPlannerTests
     public void Unix_Dev_Setup_Skips_Dsh_Shim()
     {
         var setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: false, writeDshShim: false);
-        Assert.DoesNotContain(setup.Files, f => f.Path.EndsWith("dsh"));
-        Assert.Contains(setup.Files, f => f.Path.EndsWith("pnpm"));
+        Assert.DoesNotContain(setup.Files, f => f.TargetPath.EndsWith("dsh"));
+        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm"));
     }
 
     [Fact]
     public void DecideShimWrite_Preserves_User_File()
     {
-        var action = CliShimPlanner.DecideShimWrite(exists: true, isGeneratedShim: false, isSymlink: false, symlinkTargetExists: true);
+        var action = CliShimPlanner.DecideShimWrite(exists: true, isGeneratedShim: false, isSymlink: false);
         Assert.Equal(ShimWriteAction.PreserveUserFile, action);
     }
 
     [Fact]
     public void DecideShimWrite_Writes_Generated_Or_Missing()
     {
-        Assert.Equal(ShimWriteAction.Write, CliShimPlanner.DecideShimWrite(exists: false, isGeneratedShim: false, isSymlink: false, symlinkTargetExists: false));
-        Assert.Equal(ShimWriteAction.Write, CliShimPlanner.DecideShimWrite(exists: true, isGeneratedShim: true, isSymlink: false, symlinkTargetExists: true));
+        Assert.Equal(ShimWriteAction.Write, CliShimPlanner.DecideShimWrite(exists: false, isGeneratedShim: false, isSymlink: false));
+        Assert.Equal(ShimWriteAction.Write, CliShimPlanner.DecideShimWrite(exists: true, isGeneratedShim: true, isSymlink: false));
     }
 
     [Fact]
     public void DecideShimWrite_Removes_Dangling_Symlink()
     {
-        var action = CliShimPlanner.DecideShimWrite(exists: false, isGeneratedShim: false, isSymlink: true, symlinkTargetExists: false);
+        var action = CliShimPlanner.DecideShimWrite(exists: false, isGeneratedShim: false, isSymlink: true);
         Assert.Equal(ShimWriteAction.RemoveDanglingSymlinkThenWrite, action);
     }
 }

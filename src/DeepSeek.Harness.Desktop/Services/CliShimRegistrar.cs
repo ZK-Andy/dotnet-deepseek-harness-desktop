@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>一个待落盘的 shim 文件。</summary>
-public sealed record CliShimFile(string Path, string Content, bool Executable);
+public sealed record CliShimFile(string TargetPath, string Content, bool Executable);
 
 /// <summary>
 /// CLI shim 注册的纯规划结果：要落盘的 shim 文件、bin 目录与 PATH 增量（Windows 为 HKCU 追加、
@@ -46,15 +46,20 @@ public static class CliShimPlanner
     public const string PnpmShName = "pnpm";
 
     /// <summary>按平台构造 shim 规划。<paramref name="writeDshShim"/> 为 false 时（dev 隔离）只写不烘焙
-    /// home/hash 的 pnpm shim（对齐参照「debug 构建不写共享 dsh shim」，避免把开发环境烘焙进用户终端）。</summary>
+    /// home/hash 的 pnpm shim、跳过 dsh shim（对齐参照「debug 构建不写共享 dsh shim」，避免把开发环境
+    /// 烘焙进用户终端；Windows 同样遵守，避免 dev 写成共享 %LOCALAPPDATA%）。</summary>
     public static CliShimSetup BuildSetup(
         string runtimeDir, string dshHome, string binDir, bool isWindows, bool writeDshShim)
     {
         var files = new List<CliShimFile>();
         if (isWindows)
         {
-            files.Add(new CliShimFile(Path.Combine(binDir, DshCmdName), CliShimBuilder.BuildDshCmd(runtimeDir, dshHome), Executable: false));
-            files.Add(new CliShimFile(Path.Combine(binDir, DshPs1Name), CliShimBuilder.BuildDshPs1(runtimeDir, dshHome), Executable: false));
+            if (writeDshShim)
+            {
+                files.Add(new CliShimFile(Path.Combine(binDir, DshCmdName), CliShimBuilder.BuildDshCmd(runtimeDir, dshHome), Executable: false));
+                files.Add(new CliShimFile(Path.Combine(binDir, DshPs1Name), CliShimBuilder.BuildDshPs1(runtimeDir, dshHome), Executable: false));
+            }
+
             files.Add(new CliShimFile(Path.Combine(binDir, PnpmCmdName), CliShimBuilder.BuildPnpmCmd(), Executable: false));
             files.Add(new CliShimFile(Path.Combine(binDir, PnpmPs1Name), CliShimBuilder.BuildPnpmPs1(), Executable: false));
             return new CliShimSetup(files, binDir, ";", ShellRcBlock: null);
@@ -69,10 +74,11 @@ public static class CliShimPlanner
         return new CliShimSetup(files, binDir, ":", CliShimPath.BuildShellExportBlock(binDir, ":"));
     }
 
-    /// <summary>判定写入动作：悬空符号链接先移除；本应用生成/不存在则写；用户文件保留。</summary>
-    public static ShimWriteAction DecideShimWrite(bool exists, bool isGeneratedShim, bool isSymlink, bool symlinkTargetExists)
+    /// <summary>判定写入动作：悬空符号链接先移除；本应用生成/不存在则写；用户文件保留。
+    /// 悬空 = 链接本身存在但目标已被移动/删除（<c>File.Exists</c> 跟随链接故为 false）。</summary>
+    public static ShimWriteAction DecideShimWrite(bool exists, bool isGeneratedShim, bool isSymlink)
     {
-        if (isSymlink && !symlinkTargetExists)
+        if (isSymlink && !exists)
         {
             return ShimWriteAction.RemoveDanglingSymlinkThenWrite;
         }
@@ -115,11 +121,9 @@ public sealed class CliShimRegistrar
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin");
     }
 
-    /// <summary>是否应注册：运行时已就位（bundled 或下载）。<paramref name="writeDshShim"/> 只在
-    /// 非 dev 隔离时生效（dev 不把开发环境烘焙进共享 shim）。</summary>
     /// <summary>
-    /// 执行一次 shim 注册。内部吞掉任何异常（best-effort），返回 false 表示未/未完全注册。
-    /// 调用方（Program.cs）在运行时就位且非 dev 隔离时调用。
+    /// 执行一次 shim 注册。best-effort——吞掉预期内的异常并返回 false（调用方不因注册失败阻断启动）；
+    /// 绝不抛给上层。调用方（Program.cs）在运行时就位且非 dev 隔离时调用。
     /// </summary>
     public bool TryRegister(string runtimeDir, string dshHome, bool isDevIsolated)
     {
@@ -133,12 +137,19 @@ public sealed class CliShimRegistrar
                 WriteShimFile(file);
             }
 
-            RegisterPath(setup, isDevIsolated);
+            RegisterPath(setup);
             _log($"[cli-shim] 已注册终端命令到 {binDir}（dsh{(isDevIsolated ? "（dev 跳过），" : "/")}pnpm）");
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or PlatformNotSupportedException)
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or InvalidOperationException
+            or PlatformNotSupportedException
+            or System.ArgumentException
+            or System.Security.SecurityException
+            or System.NotSupportedException)
         {
+            // 预期内失败（权限/平台/路径/注册表拒绝）：仅告警，绝不阻断启动
             _log($"[cli-shim] CLI shim 注册失败（不影响启动）：{ex.Message}");
             return false;
         }
@@ -147,14 +158,13 @@ public sealed class CliShimRegistrar
     /// <summary>写单个 shim 文件：悬空符号链接先移除；本应用生成/不存在则写；用户文件保留。</summary>
     private static void WriteShimFile(CliShimFile file)
     {
-        var target = file.Path;
+        var target = file.TargetPath;
         var exists = File.Exists(target);
         var isSymlink = SymlinkTarget(target) is not null;
-        var symlinkTargetExists = File.Exists(target);
         var existing = exists ? SafeRead(target) : null;
         var isGenerated = CliShimPath.IsGeneratedShim(existing);
 
-        switch (CliShimPlanner.DecideShimWrite(exists, isGenerated, isSymlink, symlinkTargetExists))
+        switch (CliShimPlanner.DecideShimWrite(exists, isGenerated, isSymlink))
         {
             case ShimWriteAction.PreserveUserFile:
                 // 用户手动放置的同名 dsh/pnpm：保留，绝不覆盖
@@ -173,7 +183,7 @@ public sealed class CliShimRegistrar
 
     /// <summary>注册 PATH：Windows HKCU\Environment\Path 幂等追加 + WM_SETTINGCHANGE 广播；
     /// Unix ~/.local/bin + shell rc 幂等块（已由 <paramref name="setup"/> 规划）。</summary>
-    private static void RegisterPath(CliShimSetup setup, bool isDevIsolated)
+    private static void RegisterPath(CliShimSetup setup)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -188,14 +198,14 @@ public sealed class CliShimRegistrar
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void RegisterWindowsPath(CliShimSetup setup)
     {
-        var current = ReadUserEnvPath();
+        var (current, expand) = ReadUserEnvPath();
         var merged = CliShimPath.MergePathToken(current, setup.BinDir, ";", caseInsensitive: true);
         if (string.Equals(current, merged, StringComparison.Ordinal))
         {
             return;
         }
 
-        WriteUserEnvPath(merged);
+        WriteUserEnvPath(merged, expand);
         BroadcastSettingChange();
     }
 
@@ -232,7 +242,7 @@ public sealed class CliShimRegistrar
             home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         }
 
-        foreach (var name in new[] { ".bashrc", ".zshrc", ".profile", ".bash_profile" })
+        foreach (var name in new[] { ".bashrc", ".zshrc", ".profile", ".bash_profile", ".zprofile", ".zlogin" })
         {
             var path = Path.Combine(home, name);
             if (File.Exists(path))
@@ -246,18 +256,43 @@ public sealed class CliShimRegistrar
     // Windows 注册表 / 环境广播（P/Invoke）
     // ------------------------------------------------------------------
 
+    /// <summary>读取用户级 HKCU\Environment\Path 原始值（不展开 %VAR%）并记录其值类型，
+    /// 避免把 <c>%USERPROFILE%\bin</c> 类字面量误判为「已有/未有」以及写回时改型。</summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private static string ReadUserEnvPath()
+    private static (string Value, bool Expand) ReadUserEnvPath()
     {
         using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Environment");
-        return (key?.GetValue("Path", defaultValue: string.Empty) as string) ?? string.Empty;
+        if (key is null)
+        {
+            return (string.Empty, true);
+        }
+
+        var raw = key.GetValue("Path", defaultValue: string.Empty, Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string ?? string.Empty;
+        var expand = IsExpandString(key);
+        return (raw, expand);
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private static void WriteUserEnvPath(string value)
+    private static bool IsExpandString(Microsoft.Win32.RegistryKey key)
+    {
+        try
+        {
+            return key.GetValueKind("Path") == Microsoft.Win32.RegistryValueKind.ExpandString;
+        }
+        catch (Exception ex) when (ex is IOException or System.Security.SecurityException or System.ArgumentException)
+        {
+            // 「Path」值不存在或不可读：按默认可展开处理（写回不误改型）
+            return true;
+        }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void WriteUserEnvPath(string value, bool expand)
     {
         using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Environment");
-        key.SetValue("Path", value, Microsoft.Win32.RegistryValueKind.ExpandString);
+        key.SetValue("Path", value, expand
+            ? Microsoft.Win32.RegistryValueKind.ExpandString
+            : Microsoft.Win32.RegistryValueKind.String);
     }
 
     /// <summary>广播 WM_SETTINGCHANGE("Environment")，让 Explorer（已登录 shell）即时感知 PATH 变化。</summary>
@@ -295,8 +330,9 @@ public sealed class CliShimRegistrar
         {
             return new FileInfo(path).LinkTarget;
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
         {
+            // 探不出的链上目标按「非符号链接」处理（写入决策退化为普通文件存在性判断）
             return null;
         }
     }

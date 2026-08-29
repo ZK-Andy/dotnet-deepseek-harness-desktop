@@ -53,12 +53,12 @@ Status: proposed
 
 ### 批次四 · CLI shim / PATH 注册（三个平台）
 
-- 运行时就位后（每次启动对账）注册 `dsh`/`pnpm` shim：Windows `%LOCALAPPDATA%\deepseek-harness\bin` 生成 `.cmd`/`.ps1` + `HKCU\Environment\Path` 幂等追加 + `WM_SETTINGCHANGE` 广播；mac/linux `~/.local/bin` 落 shim + `.zshrc`/`.bashrc` 幂等更新块。bin 目录经 `DSH_DESKTOP_CLI_BIN_DIR` 可覆盖（dev/测试）。
-- **dsh shim**：烘焙运行时（`<runtimeDir>` 含 node + `node_modules/@deepseek-ai/dsh/lib/bin.js`）与 `DSH_HOME`；节点解析序 = 本地兼容 node（≥24 或 22.15+ 或 23.8+）→ 运行时 node；执行 `node <runtimeDir>/*/bin.js "$@"`，设 `DSH_HOME`/`DSH_TELEMETRY_DISABLED`。用户自己已装 dsh（PATH 上排除本 shim 目录）优先转发，绝不覆盖用户配置。
-- **pnpm shim**：优先用户自有 pnpm（PATH 排除本 shim 目录）；否则若运行时/本 shim 目录可发现 pnpm 则用；再否则输出「pnpm 未找到」提示。**online-first 适配偏差**——我方运行时（npm 装 dsh@latest）不捆绑独立 pnpm，参照项目随 zip 发行版内置 `dependencies/pnpm/bin/pnpm.cjs`；故本批次 pnpm shim 只承担「用户 pnpm 转发 + 诚实提示」，不假装自供给 pnpm（见 Alternatives）。
+- 运行时就位后（每次启动对账）注册 `dsh`/`pnpm` shim：Windows `%LOCALAPPDATA%\deepseek-harness\bin` 生成 `.cmd`/`.ps1` + `HKCU\Environment\Path` 幂等追加 + `WM_SETTINGCHANGE` 广播；mac/linux `~/.local/bin` 落 shim + 既有 shell rc（`.bashrc`/`.zshrc`/`.profile`/`.bash_profile`/`.zprofile`/`.zlogin`）幂等更新块。bin 目录经 `DSH_DESKTOP_CLI_BIN_DIR` 可覆盖、rc home 经 `DSH_DESKTOP_CLI_RC_HOME` 可覆盖（dev/测试）。
+- **dsh shim**：烘焙运行时（`<runtimeDir>` 含 node + `node_modules/@deepseek-ai/dsh/lib/bin.js`）与 `DSH_HOME`；节点解析序 = 本地兼容 node（≥24 或 22.15+ 或 23.8+）→ 运行时 node；执行 `node <runtimeDir>/*/bin.js "$@"`，`DSH_HOME`/`DSH_TELEMETRY_DISABLED` 仅在回退捆绑 dsh 时注入（转发用户自装 dsh 时保留用户环境）。用户自己已装 dsh（PATH 上排除本 shim 目录）优先转发，绝不覆盖用户配置。
+- **pnpm shim**：优先用户自有 pnpm（PATH 排除本 shim 目录）；缺则输出「pnpm 未找到」提示。**online-first 适配偏差**——我方运行时（npm 装 dsh@latest）不捆绑独立 pnpm，参照项目随 zip 发行版内置 `dependencies/pnpm/bin/pnpm.cjs`；故本批次 pnpm shim 只承担「用户 pnpm 转发 + 诚实提示」，不假装自供给 pnpm（见 Alternatives）。
 - 幂等合并、绝不覆盖用户配置；写入前说明路径（workflow 边界），失败仅告警不阻启动。桌面壳只在自己安装/首次登录对账时注册，避免与用户已有 PATH 冲突。
-- dev 显式隔离（`DevEnvironment.IsDevRuntime`）时跳过 dsh shim 注册——避免把开发 home/runtime 烘焙进用户共享的终端 shim（对齐参照 debug 构建不写共享 dsh shim 的原则）。
-- ✅ **批次四已落地**（2026-08-29…）：`CliShimBuilder`（纯 shim 文本生成，dsh/pnpm × cmd/ps1/sh）+ `CliShimPath`（PATH 幂等合并/rc 幂等块/生成标记识别）+ `CliShimPlanner`（按平台规划 shim 文件与 PATH 增量）+ `CliShimRegistrar`（定位运行时→烘焙→写 shim→注册 PATH；best-effort，失败仅告警；注册表写走 `[SupportedOSPlatform("windows")]` + `WM_SETTINGCHANGE` 广播；rc 只写已存在文件）。Program.cs 双路径（bundled/PATH-dsh 与引导完成后 `BindRuntime`）运行时就位后各注册一次；dev 隔离时跳过 dsh shim。测试 **453/453**（+26）、覆盖率 **54.29%**（+0.82）、门禁全绿。**待续**：批次五（boot 假活看门狗）。
+- dev 显式隔离（`DevEnvironment.IsDevRuntime`）时跳过 dsh shim 注册——避免把开发 home/runtime 烘焙进用户共享的终端 shim（对齐参照 debug 构建不写共享 dsh shim 的原则；Windows 同样遵守）。
+- ✅ **批次四已落地**（2026-08-29；提交 `bec831d` feat + `c8eabb6` docs(adr) + `c428ea2` docs + `<review>` refactor(review)）：`CliShimBuilder`（纯 shim 文本生成，dsh/pnpm × cmd/ps1/sh）+ `CliShimPath`（PATH 幂等合并/rc 幂等块/生成标记识别）+ `CliShimPlanner`（按平台规划 shim 文件与 PATH 增量）+ `CliShimRegistrar`（定位运行时→烘焙→写 shim→注册 PATH；best-effort，失败仅告警；注册表写走 `[SupportedOSPlatform("windows")]` + 原始值读取保型 + `WM_SETTINGCHANGE` 广播；rc 只写已存在文件）。Program.cs 双路径（bundled/PATH-dsh 与引导完成后 `BindRuntime`）运行时就位后各注册一次；dev 隔离时跳过 dsh shim（Windows 亦遵守）。测试 **455/455**、覆盖率 **54.0%**、门禁全绿；三重审核 R1/R2/R3 串行收口（cmd DSH_HOME 注入时序、Windows dev 隔离失效、POSIX 谓词优先级、死 `DSH_NODE`/`RemovePathToken` 退役、注册表原始读保型、rc 补 `.zprofile` 等）。**待续**：批次五（boot 假活看门狗）。
 
 ### 批次五 · boot 假活看门狗（PageHealthMonitor 有界恢复）
 
