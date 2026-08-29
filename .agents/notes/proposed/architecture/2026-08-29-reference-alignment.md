@@ -49,6 +49,7 @@ Status: proposed
 - **Windows 文件锁重试**：swap 的 rename/remove 对 `IOException`（AV/文件扫描器瞬时锁）做**有界重试**（默认 10 次 × 200ms，达上限 fail loud）；`.download` 归档区清理为**最佳努力**（失败不阻塞引导结果）。
 - 摘要仍来自 `SHASUMS256.txt`（既有）；`.download` 临时归档与正式 `runtimeDir` 分离，失败不残留半成品运行时。
 - **测试策略**：既有 `RuntimeBootstrapTests` 的 fake hooks 改为**摘要先行**契约（FetchTextAsync 用常量摘要、DownloadFileAsync 写常量字节使其自洽），并新增回归：多源回落（主源抛→镜像命中）、续传（dest 已有字节→Range 路径）、原子 swap（staging 就位 runtimeDir、失败恢复 backup）、锁重试（前 N 次 IOException 后成功）、摘要缺失/不匹配 fail loud、镜像置空仅官方。真实 Range/206 行为由 `DSH_TEST_BOOTSTRAP_E2E` 门控 E2E 覆盖（不默认跑）。
+- ✅ **批次三已落地**（2026-08-29，提交 `ba87738` feat + `e21cf78` docs(adr) + `3f16193` refactor(review) + `a54a459` docs(review) + `b0a6d72` docs(readme)）：三重审核 R1/R2/R3 串行——无 Blocker；收口 R2 B1（`extract/` 残余被 swap 进 runtimeDir）/B2（`DownloadWithFallbackAsync` 吞全异常）/R2 S1（跨崩溃残留 `.staging-*`/`.backup-*` 无清扫）；测试 **427/427**、覆盖率 **53.47%**、门禁全绿。**待续**：批次四（CLI shim）/五（假活看门狗）。
 
 ### 批次四 · CLI shim / PATH 注册（三个平台）
 
