@@ -173,6 +173,44 @@ public static class MarketInstallHelper
         return null;
     }
 
+    /// <summary>读 profile <c>dependencies</c> 中 <paramref name="packageName"/> 的 spec 原始值。
+    /// 未装、值非字符串或文件不可读返回 <see langword="null"/>（与 <see cref="IsBundleInstalled"/> 同款 fail-safe）。</summary>
+    public static string? ReadDependencySpec(string profilePkg, string packageName)
+    {
+        try
+        {
+            if (!File.Exists(profilePkg))
+            {
+                return null;
+            }
+
+            var root = JsonNode.Parse(File.ReadAllText(profilePkg));
+            return root?["dependencies"] is JsonObject deps &&
+                deps[packageName] is JsonValue value &&
+                value.TryGetValue<string>(out var spec)
+                ? spec
+                : null;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or InvalidOperationException)
+        {
+            // 检测失败按「形态未知」处理（fail-safe，不阻断启动链）：文件损坏/不可读/结构意外
+            return null;
+        }
+    }
+
+    /// <summary>spec 是否为本地形态（<c>file:</c>/<c>link:</c> 前缀，大小写不敏感）——由本机路径安装、
+    /// 非 registry 所有。registry 形态（semver/range/别名等）一律 <see langword="false"/>；null 视为非本地。
+    /// 用于 profile dependencies 存量值的形态判定。</summary>
+    public static bool IsLocalSpec(string? spec) =>
+        spec is not null && (spec.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ||
+            spec.StartsWith("link:", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>spec 是否为本地路径形态（含路径分隔符，含 <c>file:</c>/<c>link:</c> 前缀）——
+    /// 区别于裸包名与 registry 串。待装清单的 spec 来自解析器（绝对路径/目录）或归化（裸包名），
+    /// 据此分组成 spawn 事务。</summary>
+    public static bool IsPathSpec(string? spec) =>
+        !string.IsNullOrEmpty(spec) && (spec.Contains('/') || spec.Contains('\\'));
+
     /// <summary>确保 <c>dsh.profile.bundles</c> 含 <paramref name="packageName"/>，缺则追加并写回。</summary>
     /// <returns>是否发生写回。</returns>
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "JsonArray.Add 的元素恒为 string（包名，基元类型），无非基元序列化的裁剪风险")]

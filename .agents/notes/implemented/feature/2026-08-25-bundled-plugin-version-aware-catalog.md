@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-随包插件**清单化 + 装配判定循环化**：`BundledPluginCatalog`（包名 + spec 解析器的单一清单，`Services/BundledPluginCatalog.cs`）承载清单成员，启动装配经 `AssemblePending` 对清单逐项执行统一判定——未装即装、闭包版本更新即升、同版或更高跳过（绝不降级）。清单 = `dshmarket` + `dsh-desktop-companion`；解析器异常与脏版本串均按单插件记日志跳过，隔离粒度与版本比对段一致。
+随包插件**清单化 + 装配判定循环化**：`BundledPluginCatalog`（包名 + spec 解析器的单一清单，`Services/BundledPluginCatalog.cs`）承载清单成员，启动装配经 `AssemblePending` 对清单逐项执行统一判定——未装即装、闭包版本更新即升、同版或更高跳过（绝不降级）——「闭包版本更新即升」现仅对本地形态（`file:`/`link:`）已装项成立，registry 形态的放手分流见 `2026-08-29-bundled-plugin-registry-normalization` 修订。清单 = `dshmarket` + `dsh-desktop-companion`；解析器异常与脏版本串均按单插件记日志跳过，隔离粒度与版本比对段一致。
 
 两层决策解耦：**「是否随包」**（逐案拍板，决定清单成员）与**「是否版本感知」**（凡随包即感知，不再逐案）。`@anysearch/anysearch-dsh` 明确不随包、维持用户自装自管（2026-08-25 用户拍板），故天然不在清单内。
 
@@ -21,8 +21,8 @@ Status: implemented
 
 ## Consequences
 
-- 收益：发版换钉版后，存量机器首次启动自动拉齐全部随包插件；未装/副本损坏的自愈行为从扩展到清单全体。
-- 代价/风险：第三方插件新版行为变化直达用户（缓解：`[host]` 升级日志留痕，不做自动回退）；若闭包钉版比用户手动装的 registry spec 更新，重装会把依赖从 registry spec 拉回 `file:` 随包语义（随包哲学的体现，日志说明）；多插件同批升级共用单次 spawn + 单次重启（既有管线不变）；pnpm `minimumReleaseAge` 整锁拒绝由既有放宽重试兜底。
+- 收益：发版换钉版后，存量机器首次启动自动拉齐随包插件（本地形态项；registry 形态项已交市场自管，见 `2026-08-29-bundled-plugin-registry-normalization` 修订）；未装/副本损坏的自愈行为从扩展到清单全体。
+- 代价/风险：第三方插件新版行为变化直达用户（缓解：`[host]` 升级日志留痕，不做自动回退）；若闭包钉版比用户手动装的 registry spec 更新，重装会把依赖从 registry spec 拉回 `file:` 随包语义（随包哲学的体现，日志说明）——**此条已被 `2026-08-29-bundled-plugin-registry-normalization` 修订：registry 形态现完全放手、不再回拉**；多插件同批升级共用单次 spawn + 单次重启（既有管线不变）；pnpm `minimumReleaseAge` 整锁拒绝由既有放宽重试兜底。
 - 延续约束：「改插件必须 bump version」纪律从 companion 扩展到清单全体。
 - 验证：`dotnet test` 245/245 全绿 0 警告（基线 233 + 新增 12 用例：未装即装不读版本 / 落后即升带版本日志 / 同版与更高跳过 / 副本缺失修复重装 / spec 缺失跳过 / 解析器异常单项隔离 / registry 回退放弃升级检查保留首装 / 脏版本串 fail-loud 日志跳过且不拖垮其余插件 / 待装顺序随清单 / 真实闭包布局端到端与空闭包回退）；三门禁全绿；两轮评审（简化审查 + 代码评审）发现项全部收口。
 

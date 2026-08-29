@@ -28,13 +28,19 @@ public class BundledPluginCatalogTests
     /// <summary>构造含 dependencies + dsh.profile.bundles 的 profile 清单；未列出的包视为未装。</summary>
     private static string NewProfile(string root, params string[] bundlePkgs)
     {
+        return NewProfileWithSpecs(root, bundlePkgs.Select(p => (p, $"file:/x/{p}.tgz")).ToArray());
+    }
+
+    /// <summary>构造含自定义 spec 值的 profile 清单（如 registry 形态 dependencies）。</summary>
+    private static string NewProfileWithSpecs(string root, params (string Pkg, string Spec)[] deps)
+    {
         var dir = Path.Combine(root, "profile");
         Directory.CreateDirectory(dir);
-        var deps = string.Join(",\n    ", bundlePkgs.Select(p => $"\"{p}\": \"file:/x/{p}.tgz\""));
-        var bundles = string.Join(", ", bundlePkgs.Select(p => $"\"{p}\""));
+        var depsJson = string.Join(",\n    ", deps.Select(d => $"\"{d.Pkg}\": \"{d.Spec}\""));
+        var bundles = string.Join(", ", deps.Select(d => $"\"{d.Pkg}\""));
         File.WriteAllText(
             Path.Combine(dir, "package.json"),
-            "{\n  \"dependencies\": {\n    " + deps + "\n  },\n  \"dsh\": {\"profile\": {\"bundles\": [" + bundles + "]}}\n}");
+            "{\n  \"dependencies\": {\n    " + depsJson + "\n  },\n  \"dsh\": {\"profile\": {\"bundles\": [" + bundles + "]}}\n}");
         return dir;
     }
 
@@ -47,7 +53,7 @@ public class BundledPluginCatalogTests
             $"{{\"name\":\"{pkg}\",\"version\":\"{version}\"}}");
     }
 
-    private static (List<(string Package, string Spec)> Pending, List<string> Logs) Assemble(
+    private static (List<(string Package, string Spec, bool FromRegistry)> Pending, List<string> Logs) Assemble(
         IEnumerable<BundledPluginCatalog.Entry> catalog, string runtimeDir, string profileDir)
     {
         var logs = new List<string>();
@@ -215,6 +221,139 @@ public class BundledPluginCatalogTests
 
             Assert.Empty(pending);
             Assert.Contains(logs, l => l.Contains("dshmarket") && l.Contains("版本比对失败"));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void RegistryShapedInstalled_HandsOff_EvenWhenBundledNewer()
+    {
+        var root = NewRoot();
+        try
+        {
+            // registry 形态已装 = 用户侧/registry 所有：即使闭包钉版远高于已装版本也不回拉
+            // （ADR bundled-plugin-registry-normalization——回拉会让市场的更新检查与自更新再次失效）。
+            var profile = NewProfileWithSpecs(root, ("dshmarket", "^1.0.0"));
+            InstallCopy(profile, "dshmarket", "1.0.0");
+            var catalog = new[] { new BundledPluginCatalog.Entry("dshmarket", _ => NewSpecDir(root, "dshmarket", "9.9.9"), NormalizeToRegistry: true) };
+
+            var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
+
+            Assert.Empty(pending);
+            Assert.Contains(logs, l => l.Contains("dshmarket") && l.Contains("已为 registry 安装") && l.Contains("交由市场自管"));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void UnreadableInstalledSpec_ConservativeHandOff()
+    {
+        var root = NewRoot();
+        try
+        {
+            // dependencies 值非字符串（损坏态）→ spec 形态不可读 → 保守不碰（不回拉 file:）。
+            // IsBundleInstalled 仍为 true（键存在），所以走的是放手而非重装分支——行为钉子。
+            var dir = Path.Combine(root, "profile");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(
+                Path.Combine(dir, "package.json"),
+                """{"dependencies":{"dshmarket":123},"dsh":{"profile":{"bundles":["dshmarket"]}}}""");
+            InstallCopy(dir, "dshmarket", "1.0.0");
+            var catalog = new[] { new BundledPluginCatalog.Entry("dshmarket", _ => NewSpecDir(root, "dshmarket", "9.9.9"), NormalizeToRegistry: true) };
+
+            var (pending, logs) = Assemble(catalog, UnusedRuntime, dir);
+
+            Assert.Empty(pending);
+            Assert.Contains(logs, l => l.Contains("dshmarket") && l.Contains("spec 形态不可读，保守跳过"));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void LocalInstalled_CurrentBundledVersion_NormalizesToRegistry()
+    {
+        var root = NewRoot();
+        try
+        {
+            // 本地形态已装且闭包不比已装更新：归化为 registry 自管（spec = 裸包名 → latest）。
+            var profile = NewProfile(root, "dshmarket");
+            InstallCopy(profile, "dshmarket", "0.0.2");
+            var catalog = new[] { new BundledPluginCatalog.Entry("dshmarket", _ => NewSpecDir(root, "dshmarket", "0.0.2"), NormalizeToRegistry: true) };
+
+            var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
+
+            var entry = Assert.Single(pending);
+            Assert.Equal(("dshmarket", "dshmarket", true), (entry.Package, entry.Spec, entry.FromRegistry));
+            Assert.Contains(logs, l => l.Contains("随包插件归化") && l.Contains("registry 自管"));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void LocalInstalled_Older_StillUpgradesViaBundled_NotNormalizedYet()
+    {
+        var root = NewRoot();
+        try
+        {
+            // 本地形态已装且闭包更高：先走随包 tgz 升级（离线路径），归化留给版本追平后的下次启动。
+            var profile = NewProfile(root, "dshmarket");
+            InstallCopy(profile, "dshmarket", "0.0.1");
+            var bundledDir = NewSpecDir(root, "dshmarket", "0.0.2");
+            var catalog = new[] { new BundledPluginCatalog.Entry("dshmarket", _ => bundledDir, NormalizeToRegistry: true) };
+
+            var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
+
+            var entry = Assert.Single(pending);
+            Assert.Equal(("dshmarket", bundledDir, false), (entry.Package, entry.Spec, entry.FromRegistry));
+            Assert.Contains(logs, l => l.Contains("随包插件升级"));
+            Assert.DoesNotContain(logs, l => l.Contains("归化"));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void RegistryFallbackResolver_WithLocalInstalled_SkipsUpgradeAndNormalization()
+    {
+        var root = NewRoot();
+        try
+        {
+            // 闭包无 tgz（解析器回退 registry 串）+ 本地形态已装：版本不可比 → 升级与归化一并
+            // 保守放弃（fail-safe，下次闭包带 tgz 即自愈）——负控钉子，防止被当 bug 误修。
+            var profile = NewProfile(root, "dshmarket");
+            InstallCopy(profile, "dshmarket", "1.0.0");
+            var catalog = new[] { new BundledPluginCatalog.Entry("dshmarket", _ => "dshmarket@9.9.9", NormalizeToRegistry: true) };
+
+            var (pending, logs) = Assemble(catalog, UnusedRuntime, profile);
+
+            Assert.Empty(pending);
+            Assert.Contains(logs, l => l.Contains("dshmarket") && l.Contains("版本比对失败") && l.Contains("升级与归化检查"));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void PendingRegistryFlag_DistinguishesSeedFromNormalization()
+    {
+        var root = NewRoot();
+        try
+        {
+            // 分组契约：随包 tgz 路径 = 本地组（FromRegistry=false）；归化条目 = registry 组（true）。
+            // Program.cs 据此分两次 spawn 事务——离线时归化失败不得拖累种子安装。
+            var profile = NewProfile(root, "dshmarket");
+            InstallCopy(profile, "dshmarket", "1.0.0");
+            var bundledDir = NewSpecDir(root, "dshmarket", "1.0.0");
+            var catalog = new[]
+            {
+                new BundledPluginCatalog.Entry("dsh-desktop-companion", _ => "/x/companion.tgz"),
+                new BundledPluginCatalog.Entry("dshmarket", _ => bundledDir, NormalizeToRegistry: true),
+            };
+
+            var (pending, _) = Assemble(catalog, UnusedRuntime, profile);
+
+            // companion 未装 → 种子条目（本地组）；dshmarket 同版 → 归化条目（registry 组）。
+            Assert.Equal(
+                [("dsh-desktop-companion", "/x/companion.tgz", false), ("dshmarket", "dshmarket", true)],
+                pending.Select(p => (p.Package, p.Spec, p.FromRegistry)).ToList());
         }
         finally { Directory.Delete(root, recursive: true); }
     }

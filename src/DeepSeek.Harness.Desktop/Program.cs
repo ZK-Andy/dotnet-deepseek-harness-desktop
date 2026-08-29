@@ -682,16 +682,23 @@ public static class Program
                         return;
                     }
 
-                    // 1) 清单逐项检测随包插件待装项：未装即装、闭包版本更新即升
-                    // （ADR bundled-plugin-version-aware-catalog）。
+                    // 1) 清单逐项检测随包插件待装项：未装即装（随包种子）、本地形态闭包更新即升、
+                    // registry 形态放手、本地形态同版归化 registry（ADR bundled-plugin-version-aware-catalog
+                    // + bundled-plugin-registry-normalization）。
                     var pending = BundledPluginCatalog.AssemblePending(
                         BundledPluginCatalog.All, runtimeDir, profilePkg, profileDir, HostLog.Write);
 
                     if (pending.Count == 0)
                     {
-                        HostLog.Write("[host] 随包插件已就位（bundles 含全部待装项），跳过安装");
+                        HostLog.Write("[host] 随包插件无需安装（全部就位或已交市场自管），跳过");
                         return;
                     }
+
+                    // 1a) 分组：本地路径 spec（tgz/目录，离线可靠）先装；registry 触碰条目（归化/
+                    // registry 回退首装）后装。pnpm 单事务多 spec 一败俱败——离线时归化失败不得拖累
+                    // 随包种子安装。
+                    var localPending = pending.Where(p => !p.FromRegistry).ToList();
+                    var registryPending = pending.Where(p => p.FromRegistry).ToList();
 
                     // 1b) 迁移：清理 0.1.8-0.1.10 误写入的 app 依赖（file:.../dshmarket.tgz 假包）
                     await MarketInstallHelper.CleanupBogusAppDependencyAsync(profilePkg);
@@ -699,68 +706,75 @@ public static class Program
                     // 2) 确保 pnpm-workspace.yaml 的 allowBuilds 已放行原生构建（pnpm 11 默认拒绝）
                     MarketInstallHelper.EnsureWorkspaceAllowBuilds(workspacePath);
 
-                    foreach (var (_, spec) in pending)
-                    {
-                        HostLog.Write($"[host] 随包插件安装 spec={spec}");
-                    }
-
                     // 首次严格（尊重 pnpm minimumReleaseAge 等供应链政策）；当整份 lockfile 被政策
                     // 拒绝（如市场新装插件发布不足 24h，v0.2.0 实证会连带阻断随包补装）时，降级
-                    // 放宽该单一政策重试一次并显式留痕——本操作只装第一方 file: 包，不新增注册源。
-                    async Task<(int Exit, string Out, string Err)> RunPluginAddAsync(bool relaxPolicy)
+                    // 放宽该单一政策重试一次并显式留痕——随包组只装第一方 file: 包，不新增注册源；
+                    // 归化组走 registry，受同一政策约束。
+                    async Task<bool> RunPluginAddGroupAsync(string label, List<(string Package, string Spec, bool FromRegistry)> group)
                     {
-                        var psi = new System.Diagnostics.ProcessStartInfo
+                        foreach (var (_, spec, _) in group)
                         {
-                            FileName = bundled.Value.NodeExe,
-                            UseShellExecute = false,
-                            RedirectStandardOutput = true,
-                            RedirectStandardError = true,
-                        };
-                        psi.ArgumentList.Add(bundled.Value.DshEntry);
-                        psi.ArgumentList.Add("plugin");
-                        psi.ArgumentList.Add("--profile");
-                        psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
-                        psi.ArgumentList.Add("add");
-                        foreach (var (_, spec) in pending)
-                        {
-                            psi.ArgumentList.Add(spec);
+                            HostLog.Write($"[host] 随包插件安装（{label}）spec={spec}");
                         }
 
-                        psi.Environment["DSH_HOME"] = dshHome;
-                        if (relaxPolicy)
+                        async Task<(int Exit, string Out, string Err)> RunPluginAddAsync(bool relaxPolicy)
                         {
-                            psi.Environment["pnpm_config_minimum_release_age"] = "0";
+                            var psi = new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = bundled.Value.NodeExe,
+                                UseShellExecute = false,
+                                RedirectStandardOutput = true,
+                                RedirectStandardError = true,
+                            };
+                            psi.ArgumentList.Add(bundled.Value.DshEntry);
+                            psi.ArgumentList.Add("plugin");
+                            psi.ArgumentList.Add("--profile");
+                            psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
+                            psi.ArgumentList.Add("add");
+                            foreach (var (_, spec, _) in group)
+                            {
+                                psi.ArgumentList.Add(spec);
+                            }
+
+                            psi.Environment["DSH_HOME"] = dshHome;
+                            if (relaxPolicy)
+                            {
+                                psi.Environment["pnpm_config_minimum_release_age"] = "0";
+                            }
+
+                            // pnpm store/cache 重定向 + 预建目录（EROFS 兜底）与 dsh spawn 共用单点
+                            HarnessRuntimeHost.ApplyPnpmWriteDirs(psi, dshHome);
+                            using var p = System.Diagnostics.Process.Start(psi);
+                            if (p is null)
+                            {
+                                throw new InvalidOperationException("无法启动 dsh plugin 进程");
+                            }
+
+                            var stdout = await p.StandardOutput.ReadToEndAsync();
+                            var stderr = await p.StandardError.ReadToEndAsync();
+                            await p.WaitForExitAsync();
+                            return (p.ExitCode, stdout, stderr);
                         }
 
-                        // pnpm store/cache 重定向 + 预建目录（EROFS 兜底）与 dsh spawn 共用单点
-                        HarnessRuntimeHost.ApplyPnpmWriteDirs(psi, dshHome);
-                        using var p = System.Diagnostics.Process.Start(psi);
-                        if (p is null)
+                        var (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: false);
+                        HostLog.Write($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
+                        // 依赖 pnpm 输出文案含政策键名（大小写不敏感）：pnpm 改文案会静默失效（该次重试不触发），
+                        // 属可接受的降级——重试是自愈增强，失败仍走下方 fail loud 日志
+                        if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
                         {
-                            throw new InvalidOperationException("无法启动 dsh plugin 进程");
+                            HostLog.Write("[host] lockfile 被 minimumReleaseAge 政策拒绝；放宽该政策重试一次（仅本次安装生效）");
+                            (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: true);
+                            HostLog.Write($"[host] dsh plugin add(重试) exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
                         }
 
-                        var stdout = await p.StandardOutput.ReadToEndAsync();
-                        var stderr = await p.StandardError.ReadToEndAsync();
-                        await p.WaitForExitAsync();
-                        return (p.ExitCode, stdout, stderr);
-                    }
+                        if (exitCode != 0)
+                        {
+                            HostLog.Write($"[host] 随包插件安装失败（{label}）exit={exitCode}（常见：ERR_PNPM_IGNORED_BUILDS——workspace 已自动修复，下次启动自愈；详情见上方 stderr）");
+                            return false;
+                        }
 
-                    var (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: false);
-                    HostLog.Write($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
-                    // 依赖 pnpm 输出文案含政策键名（大小写不敏感）：pnpm 改文案会静默失效（该次重试不触发），
-                    // 属可接受的降级——重试是自愈增强，失败仍走上方 fail loud 日志
-                    if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
-                    {
-                        HostLog.Write("[host] lockfile 被 minimumReleaseAge 政策拒绝；放宽该政策重试一次（仅本次安装生效）");
-                        (exitCode, outText, errText) = await RunPluginAddAsync(relaxPolicy: true);
-                        HostLog.Write($"[host] dsh plugin add(重试) exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
-                    }
-
-                    if (exitCode == 0)
-                    {
                         // 4) dsh 的 reconcilePlugins 理论上已写入 bundles，仍做兜底校验并补写（0.1.10 的 file:app 未进 bundles 需补）
-                        foreach (var (pkg, _) in pending)
+                        foreach (var (pkg, _, _) in group)
                         {
                             if (await MarketInstallHelper.EnsureBundlesContainsAsync(profilePkg, pkg))
                             {
@@ -768,6 +782,19 @@ public static class Program
                             }
                         }
 
+                        return true;
+                    }
+
+                    var anyInstalled = localPending.Count > 0 && await RunPluginAddGroupAsync("本地", localPending);
+
+                    // 本地组失败（同一 workspace，registry 组大概率同败）则跳过归化组，下次启动自愈
+                    if ((localPending.Count == 0 || anyInstalled) && registryPending.Count > 0)
+                    {
+                        anyInstalled |= await RunPluginAddGroupAsync("registry", registryPending);
+                    }
+
+                    if (anyInstalled)
+                    {
                         // 4b) 桌面核心不变量：reconcile 无论怎么重整 bundles，web-app 层绝不能丢
                         // （丢了下次启动就没有 Web UI）；缺失即补写并留痕。
                         foreach (var builtin in DesktopProfileBootstrap.InitialBundles)
@@ -818,10 +845,6 @@ public static class Program
                                 HostLog.Write($"[host] 随包插件安装后重启失败（运行时可能停在旧包状态）：{ex3.Message}");
                             }
                         }
-                    }
-                    else
-                    {
-                        HostLog.Write($"[host] 随包插件安装失败 exit={exitCode}（常见：ERR_PNPM_IGNORED_BUILDS——workspace 已自动修复，下次启动自愈；详情见上方 stderr）");
                     }
                 }
                 catch (Exception ex)

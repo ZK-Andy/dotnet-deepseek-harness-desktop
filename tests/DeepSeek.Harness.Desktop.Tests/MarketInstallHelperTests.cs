@@ -19,6 +19,54 @@ public class MarketInstallHelperTests
         Assert.False(MarketInstallHelper.IsBundleInstalled(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
     }
 
+    [Theory]
+    [InlineData("file:/x/dshmarket.tgz", true)]
+    [InlineData("FILE:/x/dshmarket.tgz", true)] // 大小写不敏感
+    [InlineData("link:../dshmarket", true)]
+    [InlineData("^1.36.0", false)]
+    [InlineData("dshmarket@1.36.0", false)]
+    [InlineData("npm:dshmarket@^1.0.0", false)]
+    [InlineData("github:owner/repo", false)]
+    [InlineData(null, false)]
+    public void IsLocalSpec_ClassifiesSpecShape(string? spec, bool expected)
+    {
+        Assert.Equal(expected, MarketInstallHelper.IsLocalSpec(spec));
+    }
+
+    [Theory]
+    [InlineData("/x/dshmarket.tgz", true)]
+    [InlineData("C:\\x\\dshmarket.tgz", true)] // Windows 路径
+    [InlineData("file:/x/dshmarket.tgz", true)]
+    [InlineData("dshmarket", false)] // 裸包名（归化条目）
+    [InlineData("dshmarket@1.36.0", false)] // registry 回退串
+    [InlineData(null, false)]
+    public void IsPathSpec_ClassifiesPendingSpecShape(string? spec, bool expected)
+    {
+        Assert.Equal(expected, MarketInstallHelper.IsPathSpec(spec));
+    }
+
+    [Fact]
+    public void ReadDependencySpec_ReturnsRawSpec_WhenPresent()
+    {
+        var json = """{"dependencies":{"dshmarket":"file:/x/dshmarket.tgz","other":123}}""";
+        var p = WriteTempFile(json);
+        try
+        {
+            Assert.Equal("file:/x/dshmarket.tgz", MarketInstallHelper.ReadDependencySpec(p, "dshmarket"));
+            Assert.Null(MarketInstallHelper.ReadDependencySpec(p, "other")); // 非字符串值按「形态未知」处理
+            Assert.Null(MarketInstallHelper.ReadDependencySpec(p, "ghost")); // 未装
+        }
+        finally { File.Delete(p); }
+    }
+
+    [Fact]
+    public void ReadDependencySpec_ReturnsNull_WhenFileMissingOrInvalid()
+    {
+        Assert.Null(MarketInstallHelper.ReadDependencySpec(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
+        var p = WriteTempFile("not json");
+        try { Assert.Null(MarketInstallHelper.ReadDependencySpec(p, "dshmarket")); } finally { File.Delete(p); }
+    }
+
     [Fact]
     public void IsBundleInstalled_ReturnsTrue_WhenBothPresent()
     {
