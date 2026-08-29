@@ -15,6 +15,10 @@ public sealed record RuntimeBootstrapOptions
     /// <summary>Node 官方发行目录基址（含尾随 dist 段）。</summary>
     public string NodeDistBaseUrl { get; init; } = "https://nodejs.org/dist";
 
+    /// <summary>Node 发行包多源回落镜像基址（默认 npmmirror；置空字符串 = 仅官方单源，镜像关闭）。
+    /// 镜像仅承担归档下载，摘要仍取自 <see cref="NodeDistBaseUrl"/> 官方（防投毒，ADR reference-alignment 批次三）。</summary>
+    public string NodeMirrorBaseUrl { get; init; } = "https://cdn.npmmirror.com/binaries/node";
+
     /// <summary>dsh 的安装 spec（@latest：内核升级与壳发版解耦，见 ADR）。</summary>
     public string DshSpec { get; init; } = "@deepseek-ai/dsh@latest";
 
@@ -51,6 +55,11 @@ public sealed record RuntimeBootstrapOptions
             if (section.TryGetProperty("NodeDistBaseUrl", out var b) && b.ValueKind == JsonValueKind.String)
             {
                 options = options with { NodeDistBaseUrl = b.GetString()! };
+            }
+
+            if (section.TryGetProperty("NodeMirrorBaseUrl", out var mb) && mb.ValueKind == JsonValueKind.String)
+            {
+                options = options with { NodeMirrorBaseUrl = mb.GetString()! };
             }
 
             if (section.TryGetProperty("DshSpec", out var s) && s.ValueKind == JsonValueKind.String)

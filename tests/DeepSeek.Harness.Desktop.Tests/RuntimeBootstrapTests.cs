@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Http;
 using System.Text;
 using DeepSeek.Harness.Desktop.Services;
 using Ryn.Ipc;
@@ -7,7 +9,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 
 /// <summary>
 /// RuntimeBootstrap 行为：纯函数坐标/校验 + hooks 注入的端到端状态机（下载/安装/验证全 fake，
-/// 对齐 OrphanDshReaper 委托注入风格）。
+/// 对齐 OrphanDshReaper 委托注入风格）。download 路径的摘要契约 = 摘要先行（ADR reference-alignment 批次三）。
 /// </summary>
 public class RuntimeBootstrapTests
 {
@@ -47,7 +49,15 @@ public class RuntimeBootstrapTests
         Assert.Equal(@"C:\plain", RuntimeBootstrap.StripExtendedPrefix(@"C:\plain"));
     }
 
-    // —— hooks 注入的端到端 ——
+    // —— 下载/安装端到端（hooks 注入） ——
+
+    /// <summary>构造一个临时根目录 + 其下 runtime 布局（下载/解压/备份兄弟目录同根，便于整体清理）。</summary>
+    private static (string Root, string RuntimeDir) NewLayout()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "boot-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        return (root, Path.Combine(root, "runtime"));
+    }
 
     /// <summary>构造一个假「解压完成」的 Node 发行目录（node + npm-cli + dsh 入口）。</summary>
     private static void FakeExtractNode(string runtimeDir)
@@ -63,24 +73,24 @@ public class RuntimeBootstrapTests
         File.WriteAllText(Path.Combine(bin, "bin.js"), "// dsh\n");
     }
 
+    /// <summary>构造 happy-path hooks：摘要先行契约——FetchTextAsync 用常量摘要、DownloadFileAsync 写常量字节使其自洽。</summary>
     private static (RuntimeBootstrapHooks Hooks, List<string> Log) HappyHooks(string runtimeDir)
     {
+        const string archiveBytes = "archive-bytes";
         var calls = new List<string>();
-        string? archivePathSeen = null;
+        var fileName = RuntimeBootstrap.NodeArchiveFileName("24.20.0")!;
+        var sha = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(archiveBytes))).ToLowerInvariant();
         var hooks = new RuntimeBootstrapHooks(
             DownloadFileAsync: (url, dest, ct) =>
             {
                 calls.Add($"download:{url}");
-                File.WriteAllText(dest, "archive-bytes");
-                archivePathSeen = dest;
+                File.WriteAllText(dest, archiveBytes);
                 return Task.CompletedTask;
             },
             FetchTextAsync: (url, ct) =>
             {
                 calls.Add($"shasums:{url}");
-                var fileName = RuntimeBootstrap.NodeArchiveFileName("24.20.0")!;
-                var sha = Convert.ToHexString(
-                    System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(archivePathSeen!))).ToLowerInvariant();
                 return Task.FromResult($"{sha}  {fileName}\n");
             },
             ExtractArchiveAsync: (archive, destDir, ct) =>
@@ -118,7 +128,7 @@ public class RuntimeBootstrapTests
     [Fact]
     public async Task RunAsync_DownloadPath_Succeeds_AndVerifiesArtifacts()
     {
-        var runtimeDir = Path.Combine(Path.GetTempPath(), "boot-" + Guid.NewGuid().ToString("N"));
+        var (root, runtimeDir) = NewLayout();
         var (hooks, calls) = HappyHooks(runtimeDir);
         try
         {
@@ -143,24 +153,24 @@ public class RuntimeBootstrapTests
         }
         finally
         {
-            Directory.Delete(runtimeDir, recursive: true);
+            Directory.Delete(root, recursive: true);
         }
     }
 
     [Fact]
     public async Task RunAsync_ShaMismatch_FailsLoud()
     {
-        var runtimeDir = Path.Combine(Path.GetTempPath(), "boot-" + Guid.NewGuid().ToString("N"));
+        var (root, runtimeDir) = NewLayout();
         try
         {
+            var fileName = RuntimeBootstrap.NodeArchiveFileName("24.20.0")!;
             var hooks = new RuntimeBootstrapHooks(
                 DownloadFileAsync: (url, dest, ct) =>
                 {
                     File.WriteAllText(dest, "archive-bytes");
                     return Task.CompletedTask;
                 },
-                FetchTextAsync: (url, ct) =>
-                    Task.FromResult($"deadbeef  {RuntimeBootstrap.NodeArchiveFileName("24.20.0")}\n"),
+                FetchTextAsync: (url, ct) => Task.FromResult($"deadbeef  {fileName}\n"),
                 ExtractArchiveAsync: (archive, destDir, ct) => Task.CompletedTask,
                 RunProcessAsync: (exe, args, ct) => Task.FromResult((0, string.Empty, string.Empty)),
                 ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((null, null)));
@@ -179,7 +189,7 @@ public class RuntimeBootstrapTests
         }
         finally
         {
-            Directory.Delete(runtimeDir, recursive: true);
+            Directory.Delete(root, recursive: true);
         }
     }
 
@@ -243,17 +253,20 @@ public class RuntimeBootstrapTests
     public async Task RunAsync_StepTimeout_FailsAsRetryableError()
     {
         // 步超时（R2 评审 B3）：挂起的下载不再无限 spinner，转人可读失败态走重试页。
-        // StepTimeoutMinutes=0 → CancelAfter 立即触发，测试无需等待
-        var runtimeDir = Path.Combine(Path.GetTempPath(), "boot-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(runtimeDir);
+        // StepTimeoutMinutes=0 → CancelAfter 立即触发，测试无需等待。
+        // 摘要先行：FetchTextAsync 先返回有效摘要，下载（挂起）才因步超时触发。
+        var (root, runtimeDir) = NewLayout();
         try
         {
+            var fileName = RuntimeBootstrap.NodeArchiveFileName("24.20.0")!;
+            var sha = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("archive-bytes"))).ToLowerInvariant();
             var hooks = new RuntimeBootstrapHooks(
                 DownloadFileAsync: async (url, dest, ct) =>
                 {
                     await Task.Delay(Timeout.Infinite, ct);
                 },
-                FetchTextAsync: (url, ct) => Task.FromResult(string.Empty),
+                FetchTextAsync: (url, ct) => Task.FromResult($"{sha}  {fileName}\n"),
                 ExtractArchiveAsync: (archive, destDir, ct) => Task.CompletedTask,
                 RunProcessAsync: (exe, args, ct) => Task.FromResult((0, string.Empty, string.Empty)),
                 ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((null, null)));
@@ -271,7 +284,7 @@ public class RuntimeBootstrapTests
         }
         finally
         {
-            Directory.Delete(runtimeDir, recursive: true);
+            Directory.Delete(root, recursive: true);
         }
     }
 
@@ -310,12 +323,384 @@ public class RuntimeBootstrapTests
             Directory.Delete(runtimeDir, recursive: true);
         }
     }
+
+    // —— batch 3 · 多源回落 ——
+
+    [Fact]
+    public async Task RunAsync_OfficialDownloadFails_FallsBackToMirror()
+    {
+        var (root, runtimeDir) = NewLayout();
+        try
+        {
+            var fileName = RuntimeBootstrap.NodeArchiveFileName("24.20.0")!;
+            var calls = new List<string>();
+            var sha = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("archive-bytes"))).ToLowerInvariant();
+            var hooks = new RuntimeBootstrapHooks(
+                DownloadFileAsync: (url, dest, ct) =>
+                {
+                    calls.Add(url);
+                    // 官方（nodejs.org）失败，镜像（npmmirror）成功；dest 现有字节保留供续传
+                    if (url.Contains("nodejs.org", StringComparison.Ordinal))
+                    {
+                        throw new HttpRequestException("official unreachable");
+                    }
+
+                    File.WriteAllText(dest, "archive-bytes");
+                    return Task.CompletedTask;
+                },
+                FetchTextAsync: (url, ct) => Task.FromResult($"{sha}  {fileName}\n"),
+                ExtractArchiveAsync: (archive, destDir, ct) =>
+                {
+                    var inner = Path.Combine(destDir, "node-v24.20.0-fake");
+                    Directory.CreateDirectory(Path.Combine(inner, "bin"));
+                    File.WriteAllText(Path.Combine(inner, "bin", "node"), "#!/bin/sh\n");
+                    var npmTree = OperatingSystem.IsWindows() ? "node_modules" : "lib";
+                    var npmCli = Path.Combine(inner, npmTree, "node_modules", "npm", "bin", "npm-cli.js");
+                    Directory.CreateDirectory(Path.GetDirectoryName(npmCli)!);
+                    File.WriteAllText(npmCli, "// npm\n");
+                    return Task.CompletedTask;
+                },
+                RunProcessAsync: (exe, args, ct) =>
+                {
+                    if (string.Join(' ', args).Contains("install", StringComparison.Ordinal))
+                    {
+                        FakeExtractNode(runtimeDir);
+                    }
+
+                    return Task.FromResult((0, "v0.1.1-rc.2" + Environment.NewLine, string.Empty));
+                },
+                ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((null, null)));
+
+            var outcome = await RuntimeBootstrap.RunAsync(
+                new RuntimeBootstrapOptions { NodeVersion = "24.20.0" },
+                runtimeDir,
+                _ => { },
+                hooks,
+                CancellationToken.None);
+
+            Assert.True(outcome.Success, outcome.Error);
+            // 官方失败后确实切到镜像（npmmirror）
+            Assert.Contains(calls, c => c.Contains("cdn.npmmirror.com", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_MirrorDisabled_PrimaryOnly_SingleSourceFailureFails()
+    {
+        var (root, runtimeDir) = NewLayout();
+        try
+        {
+            var fileName = RuntimeBootstrap.NodeArchiveFileName("24.20.0")!;
+            var sha = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("archive-bytes"))).ToLowerInvariant();
+            var hooks = new RuntimeBootstrapHooks(
+                DownloadFileAsync: (url, dest, ct) =>
+                    throw new HttpRequestException("single source unreachable"),
+                FetchTextAsync: (url, ct) => Task.FromResult($"{sha}  {fileName}\n"),
+                ExtractArchiveAsync: (archive, destDir, ct) => Task.CompletedTask,
+                RunProcessAsync: (exe, args, ct) => Task.FromResult((0, string.Empty, string.Empty)),
+                ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((null, null)));
+
+            var outcome = await RuntimeBootstrap.RunAsync(
+                new RuntimeBootstrapOptions { NodeMirrorBaseUrl = string.Empty },
+                runtimeDir,
+                _ => { },
+                hooks,
+                CancellationToken.None);
+
+            Assert.False(outcome.Success);
+            Assert.Contains("下载", outcome.Error);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_OfficialDigestUnreachable_FailsLoud_NeverDownloads()
+    {
+        var (root, runtimeDir) = NewLayout();
+        try
+        {
+            var downloaded = false;
+            var hooks = new RuntimeBootstrapHooks(
+                DownloadFileAsync: (url, dest, ct) =>
+                {
+                    downloaded = true;
+                    return Task.CompletedTask;
+                },
+                FetchTextAsync: (url, ct) => throw new HttpRequestException("official shasums unreachable"),
+                ExtractArchiveAsync: (archive, destDir, ct) => Task.CompletedTask,
+                RunProcessAsync: (exe, args, ct) => Task.FromResult((0, string.Empty, string.Empty)),
+                ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((null, null)));
+
+            var outcome = await RuntimeBootstrap.RunAsync(
+                new RuntimeBootstrapOptions(),
+                runtimeDir,
+                _ => { },
+                hooks,
+                CancellationToken.None);
+
+            Assert.False(outcome.Success);
+            Assert.Contains("摘要", outcome.Error);
+            // 无可信摘要 → 绝不用镜像/绝不下载归档（防投毒）
+            Assert.False(downloaded, "官方摘要不可达时不得下载归档");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadWithFallback_PrimaryThrows_UsesNextSource()
+    {
+        var dest = Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
+        var urls = new List<string>();
+        var hooks = new RuntimeBootstrapHooks(
+            DownloadFileAsync: (url, destPath, ct) =>
+            {
+                urls.Add(url);
+                if (url.Contains("primary", StringComparison.Ordinal))
+                {
+                    throw new HttpRequestException("primary fail");
+                }
+
+                File.WriteAllText(destPath, "ok");
+                return Task.CompletedTask;
+            },
+            FetchTextAsync: (url, ct) => Task.FromResult(string.Empty),
+            ExtractArchiveAsync: (archive, destDir, ct) => Task.CompletedTask,
+            RunProcessAsync: (exe, args, ct) => Task.FromResult((0, string.Empty, string.Empty)),
+            ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((null, null)));
+
+        await RuntimeBootstrap.DownloadWithFallbackAsync(
+            new[] { "https://primary", "https://mirror" }, dest, hooks, CancellationToken.None);
+
+        Assert.Equal(new[] { "https://primary", "https://mirror" }, urls);
+        Assert.Equal("ok", File.ReadAllText(dest));
+        File.Delete(dest);
+    }
+
+    [Fact]
+    public async Task DownloadWithFallback_AllFail_Throws()
+    {
+        var dest = Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var hooks = new RuntimeBootstrapHooks(
+                DownloadFileAsync: (url, destPath, ct) => throw new HttpRequestException("fail"),
+                FetchTextAsync: (url, ct) => Task.FromResult(string.Empty),
+                ExtractArchiveAsync: (archive, destDir, ct) => Task.CompletedTask,
+                RunProcessAsync: (exe, args, ct) => Task.FromResult((0, string.Empty, string.Empty)),
+                ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((null, null)));
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => RuntimeBootstrap.DownloadWithFallbackAsync(
+                    new[] { "https://a", "https://b" }, dest, hooks, CancellationToken.None));
+            Assert.Contains("所有候选源均失败", ex.Message);
+        }
+        finally
+        {
+            if (File.Exists(dest))
+            {
+                File.Delete(dest);
+            }
+        }
+    }
+
+    // —— batch 3 · 断点续传（Range） ——
+
+    [Fact]
+    public async Task DownloadResumable_ExistingAnd206_Appends()
+    {
+        var dest = Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(dest, "AA");
+        var handler = new FakeHttpHandler((HttpStatusCode.PartialContent, Encoding.UTF8.GetBytes("BB")));
+        var http = new HttpClient(handler);
+        try
+        {
+            await RuntimeBootstrap.DownloadResumableAsync(http, "https://src/file", dest, CancellationToken.None);
+            Assert.Equal("AABB", File.ReadAllText(dest));
+            Assert.Equal(new[] { "bytes=2-" }, handler.Ranges);
+        }
+        finally
+        {
+            File.Delete(dest);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadResumable_ExistingAnd200_RestartsFromZero()
+    {
+        var dest = Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(dest, "AAAA");
+        var handler = new FakeHttpHandler(
+            (HttpStatusCode.OK, Encoding.UTF8.GetBytes("IGNORED")),
+            (HttpStatusCode.OK, Encoding.UTF8.GetBytes("FULL")));
+        var http = new HttpClient(handler);
+        try
+        {
+            await RuntimeBootstrap.DownloadResumableAsync(http, "https://src/file", dest, CancellationToken.None);
+            // 200（服务端不支持 Range/文件已变）：重头下载覆盖，绝不追加错位字节
+            Assert.Equal("FULL", File.ReadAllText(dest));
+            Assert.Equal(new string?[] { "bytes=4-", null }, handler.Ranges);
+        }
+        finally
+        {
+            File.Delete(dest);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadResumable_ExistingAnd416_RestartsFromZero()
+    {
+        var dest = Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(dest, "AAAA");
+        var handler = new FakeHttpHandler(
+            (HttpStatusCode.RequestedRangeNotSatisfiable, Array.Empty<byte>()),
+            (HttpStatusCode.OK, Encoding.UTF8.GetBytes("FULL")));
+        var http = new HttpClient(handler);
+        try
+        {
+            await RuntimeBootstrap.DownloadResumableAsync(http, "https://src/file", dest, CancellationToken.None);
+            // 416（Range 不可满足=文件疑似已变）：重头下载兜底，正确性由后续 SHA256 兜底
+            Assert.Equal("FULL", File.ReadAllText(dest));
+            Assert.Equal(new string?[] { "bytes=4-", null }, handler.Ranges);
+        }
+        finally
+        {
+            File.Delete(dest);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadResumable_NoExisting_SendsPlainGet()
+    {
+        var dest = Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
+        var handler = new FakeHttpHandler((HttpStatusCode.OK, Encoding.UTF8.GetBytes("FULL")));
+        var http = new HttpClient(handler);
+        try
+        {
+            await RuntimeBootstrap.DownloadResumableAsync(http, "https://src/file", dest, CancellationToken.None);
+            Assert.Equal("FULL", File.ReadAllText(dest));
+            Assert.Equal(new string?[] { null }, handler.Ranges);
+        }
+        finally
+        {
+            File.Delete(dest);
+        }
+    }
+
+    // —— batch 3 · 原子 staging + 锁重试 ——
+
+    [Fact]
+    public void SwapStaging_FreshRuntime_PopulatesRuntimeDir()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "swap-" + Guid.NewGuid().ToString("N"));
+        var staging = Path.Combine(parent, ".staging-x");
+        var runtime = Path.Combine(parent, "runtime");
+        Directory.CreateDirectory(staging);
+        File.WriteAllText(Path.Combine(staging, "node"), "new");
+        try
+        {
+            RuntimeBootstrap.SwapStagingIntoPlace(staging, runtime);
+            Assert.True(File.Exists(Path.Combine(runtime, "node")));
+            Assert.False(Directory.Exists(staging));
+        }
+        finally
+        {
+            if (Directory.Exists(parent))
+            {
+                Directory.Delete(parent, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void SwapStaging_ExistingRuntime_BacksUpAndReplaces()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "swap-" + Guid.NewGuid().ToString("N"));
+        var staging = Path.Combine(parent, ".staging-x");
+        var runtime = Path.Combine(parent, "runtime");
+        Directory.CreateDirectory(staging);
+        Directory.CreateDirectory(runtime);
+        File.WriteAllText(Path.Combine(staging, "node"), "new");
+        File.WriteAllText(Path.Combine(runtime, "node"), "old");
+        try
+        {
+            RuntimeBootstrap.SwapStagingIntoPlace(staging, runtime);
+            Assert.Equal("new", File.ReadAllText(Path.Combine(runtime, "node")));
+            // 旧 runtimeDir 已备份并在成功后清理，不再残留 .backup
+            Assert.Empty(Directory.GetDirectories(parent, ".backup-*"));
+        }
+        finally
+        {
+            if (Directory.Exists(parent))
+            {
+                Directory.Delete(parent, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void WithLockRetry_RetriesOnIOException_ThenSucceeds()
+    {
+        var attempts = 0;
+        RuntimeBootstrap.WithLockRetry(() =>
+        {
+            attempts++;
+            if (attempts <= 2)
+            {
+                throw new IOException("transient lock");
+            }
+        });
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
+    public void WithLockRetry_Exhausts_Throws()
+    {
+        var attempts = 0;
+        Assert.Throws<IOException>(() => RuntimeBootstrap.WithLockRetry(() =>
+        {
+            attempts++;
+            throw new IOException("persistent lock");
+        }));
+        Assert.Equal(RuntimeBootstrap.FileLockRetryCount, attempts);
+    }
+
+    // —— 测试用假 HTTP 处理器：按序出响应、记录 Range/URL ——
+    private sealed class FakeHttpHandler : HttpMessageHandler
+    {
+        private readonly Queue<(HttpStatusCode Status, byte[] Body)> _responses;
+
+        public FakeHttpHandler(params (HttpStatusCode Status, byte[] Body)[] responses) =>
+            _responses = new Queue<(HttpStatusCode, byte[])>(responses);
+
+        public List<string> Urls { get; } = new();
+        public List<string?> Ranges { get; } = new();
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Urls.Add(request.RequestUri!.ToString());
+            Ranges.Add(request.Headers.Range?.ToString());
+            var (status, body) = _responses.Count > 0 ? _responses.Dequeue() : (HttpStatusCode.OK, Array.Empty<byte>());
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new ByteArrayContent(body) });
+        }
+    }
 }
 
 /// <summary>
 /// 真实网络 E2E（env 门控 <c>DSH_TEST_BOOTSTRAP_E2E=1</c> 才执行，否则自跳过）：真下载钉版
 /// Node + 官方 SHASUMS256 校验 + tar 解压 + npm 安装 dsh@latest + 产物验证。验证生产 hooks
-/// 全链（下载/解压/子进程），跑一次约 1-3 分钟、依赖外网与 npm 可达——CI 不默认跑。
+/// 全链（断点续传/多源回落/原子落盘/子进程），跑一次约 1-3 分钟、依赖外网与 npm 可达——CI 不默认跑。
 /// </summary>
 public class RuntimeBootstrapE2ETests
 {
@@ -414,6 +799,7 @@ public class RuntimeBootstrapOptionsTests
             Assert.Equal("24.20.0", options.NodeVersion);
             Assert.Equal("@deepseek-ai/dsh@latest", options.DshSpec);
             Assert.Equal(22, options.MinimumLocalNodeMajor);
+            Assert.Equal("https://cdn.npmmirror.com/binaries/node", options.NodeMirrorBaseUrl);
         }
         finally
         {
@@ -429,7 +815,7 @@ public class RuntimeBootstrapOptionsTests
         try
         {
             File.WriteAllText(Path.Combine(dir, "appsettings.json"), """
-                {"RuntimeBootstrap":{"NodeVersion":"22.0.0","DshSpec":"@deepseek-ai/dsh@0.1.1-rc.2","MinimumLocalNodeMajor":20,"StepTimeoutMinutes":5,"NodeDistBaseUrl":"https://mirror.example/dist"}}
+                {"RuntimeBootstrap":{"NodeVersion":"22.0.0","DshSpec":"@deepseek-ai/dsh@0.1.1-rc.2","MinimumLocalNodeMajor":20,"StepTimeoutMinutes":5,"NodeDistBaseUrl":"https://mirror.example/dist","NodeMirrorBaseUrl":"https://cdn.example.com/node"}}
                 """);
             var options = RuntimeBootstrapOptions.Load(dir);
             Assert.Equal("22.0.0", options.NodeVersion);
@@ -437,6 +823,7 @@ public class RuntimeBootstrapOptionsTests
             Assert.Equal(20, options.MinimumLocalNodeMajor);
             Assert.Equal(5, options.StepTimeoutMinutes);
             Assert.Equal("https://mirror.example/dist", options.NodeDistBaseUrl);
+            Assert.Equal("https://cdn.example.com/node", options.NodeMirrorBaseUrl);
         }
         finally
         {
