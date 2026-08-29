@@ -14,11 +14,94 @@
         h1 { font-size: 1.8em; color: #7c3aed; }
         p { color: #a1a1b5; max-width: 520px; line-height: 1.6; }
         code { background: #1a1a24; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+        /* —— 首启引导（ADR online-first-unbundled-runtime）—— */
+        #bootstrap { display: none; flex-direction: column; align-items: center; gap: 14px; max-width: 560px; }
+        #bootstrap.visible { display: flex; }
+        .step { display: flex; align-items: center; gap: 10px; color: #a1a1b5; font-size: 0.95em; }
+        .step .dot {
+            width: 10px; height: 10px; border-radius: 50%; flex: none;
+            background: #2a2a38; transition: background 0.3s;
+        }
+        .step.active { color: #e6e6ea; }
+        .step.active .dot { background: #7c3aed; animation: pulse 1.2s ease-in-out infinite; }
+        .step.done { color: #6ee7a0; }
+        .step.done .dot { background: #22c55e; animation: none; }
+        .step.failed { color: #ff8f8f; }
+        .step.failed .dot { background: #ef4444; animation: none; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+        #bootError {
+            display: none; color: #ff8f8f; background: #2a1414; border: 1px solid #5a2a2a;
+            border-radius: 8px; padding: 10px 16px; max-width: 520px; word-break: break-all;
+            font-size: 0.9em; line-height: 1.5;
+        }
+        #bootError.visible { display: block; }
+        #bootRetry {
+            display: none; background: #7c3aed; color: #fff; border: none; border-radius: 8px;
+            padding: 10px 32px; font-size: 1em; cursor: pointer;
+        }
+        #bootRetry.visible { display: inline-block; }
+        #bootRetry:hover { background: #8b5cf6; }
+        .spinner {
+            width: 28px; height: 28px; border: 3px solid #2a2a38; border-top-color: #7c3aed;
+            border-radius: 50%; animation: spin 0.9s linear infinite; display: none;
+        }
+        .spinner.visible { display: block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <h1>DeepSeek Harness Desktop</h1>
-    <p>运行时未就绪（<code>dsh web</code> 未在时限内给出 URL）。</p>
-    <p>请检查 <code>DEEPSEEK_API_KEY</code> 与日志，或重启应用。</p>
+    <div id="bootstrap">
+        <div class="spinner visible" id="bootSpinner"></div>
+        <div id="bootSteps">
+            <div class="step" data-step="ProbeLocal"><span class="dot"></span><span>检测本机运行时</span></div>
+            <div class="step" data-step="EnsureNode"><span class="dot"></span><span>获取 Node 运行时</span></div>
+            <div class="step" data-step="ExtractNode"><span class="dot"></span><span>校验并解压</span></div>
+            <div class="step" data-step="InstallDsh"><span class="dot"></span><span>安装 dsh（需联网）</span></div>
+            <div class="step" data-step="VerifyDsh"><span class="dot"></span><span>验证安装结果</span></div>
+        </div>
+        <div id="bootError"></div>
+        <button id="bootRetry" onclick="retryBootstrap()">重试</button>
+    </div>
+    <p id="fallbackText">运行时未就绪（<code>dsh web</code> 未在时限内给出 URL）。</p>
+    <p id="fallbackHint">请检查 <code>DEEPSEEK_API_KEY</code> 与日志，或重启应用。</p>
+    <script>
+        // 首启引导状态机渲染（ADR online-first-unbundled-runtime）：宿主经 CustomEvent 推进度，
+        // 数据一律 textContent 回填（stderr/错误信息是上游不可控输出，绝不 innerHTML 拼接）。
+        var STEP_ORDER = ['ProbeLocal', 'EnsureNode', 'ExtractNode', 'InstallDsh', 'VerifyDsh'];
+
+        function renderBootstrap(detail) {
+            document.getElementById('bootstrap').classList.add('visible');
+            document.getElementById('fallbackText').style.display = 'none';
+            document.getElementById('fallbackHint').style.display = 'none';
+            var failed = detail.failed === true;
+            var ready = detail.step === 'Ready';
+            document.getElementById('bootSpinner').classList.toggle('visible', !failed && !ready);
+            var idx = STEP_ORDER.indexOf(detail.step);
+            var steps = document.querySelectorAll('#bootSteps .step');
+            steps.forEach(function (el, i) {
+                el.classList.remove('active', 'done', 'failed');
+                if (failed && i === idx) { el.classList.add('failed'); return; }
+                if (idx < 0 || i < idx || (ready && i <= idx)) { el.classList.add('done'); }
+                else if (i === idx && !ready) { el.classList.add('active'); }
+            });
+            var errBox = document.getElementById('bootError');
+            if (failed && detail.message) {
+                errBox.textContent = detail.message;
+                errBox.classList.add('visible');
+            } else {
+                errBox.classList.remove('visible');
+            }
+            document.getElementById('bootRetry').classList.toggle('visible', failed);
+        }
+
+        function retryBootstrap() {
+            try { window.__ryn.invoke('desktop.bootstrap.retry', {}); } catch (e) { /* IPC 未就绪时静默 */ }
+        }
+
+        document.addEventListener('dsh-desktop-bootstrap', function (ev) {
+            try { renderBootstrap(ev.detail || {}); } catch (e) { /* 渲染失败不影响宿主引导链路 */ }
+        });
+    </script>
 </body>
 </html>

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using DeepSeek.Harness.Desktop.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Callbacks;
@@ -8,9 +9,12 @@ using Ryn.Plugins.Tray;
 
 namespace DeepSeek.Harness.Desktop;
 
-/// <summary>DeepSeek Harness Desktop 入口：Ryn 桌面壳 + 托管 dsh 运行时 + 崩溃监督。</summary>
-public static class Program
-{
+    /// <summary>DeepSeek Harness Desktop 入口：Ryn 桌面壳 + 托管 dsh 运行时 + 崩溃监督。</summary>
+    public static class Program
+    {
+        /// <summary>引导进度帧（wwwroot 引导页监听 <c>dsh-desktop-bootstrap</c> CustomEvent 渲染）。</summary>
+        internal sealed record BootstrapStateFrame(string Step, string Message, bool Failed);
+
     /// <summary>
     /// 壳启动流程：托管 dsh web（OS 分配端口）→ 解析 `dsh web:` URL → Ryn WebView 加载；
     /// 后台监督 dsh 子进程——崩溃只重启子进程并导航新 URL（不重启桌面进程）；dsh 起不来时降级加载本地 wwwroot。
@@ -45,6 +49,26 @@ public static class Program
         // dev 判定：显式 runtime 覆盖，或定位不到捆绑闭包（dotnet run 的 PATH dsh 回退形态）。
         var updateRuntimeDir = RuntimeLocator.ResolveRuntimeDirectory();
         var bundledClosure = RuntimeLocator.TryLocateBundled(updateRuntimeDir);
+
+        // 首启引导判定（ADR online-first-unbundled-runtime）：捆绑运行时缺失且 PATH dsh 不可用
+        // 时进入引导（下载钉版 Node + registry 安装 dsh）。检测是毫秒级只读探测，同步执行。
+        var bootstrapNeeded = false;
+        if (bundledClosure is null)
+        {
+            var pathVersion = Services.RuntimeVersionGate.ProbeAsync(null, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            bootstrapNeeded = pathVersion is null;
+            Services.HostLog.Write(bootstrapNeeded
+                ? "[bootstrap] 捆绑运行时与 PATH dsh 均未检出，进入首启引导"
+                : $"[bootstrap] PATH dsh 可用（{pathVersion}），跳过首启引导");
+        }
+
+        // 引导共享状态（声明提前：命令路由注册、监督器门控、插件安装门控、后台引导任务共用）。
+        // gate 供引导页 desktop.bootstrap.retry 命令放行重试循环；settled 在引导终态（成功/失败放弃/
+        // 取消）置位——监督器与插件安装都等它，防引导期误拉 dsh 或误装插件。
+        var bootstrapGate = new Services.RuntimeBootstrapGate();
+        TaskCompletionSource? bootstrapSettled = null;
+        CancellationTokenSource? bootstrapCts = null;
         var devRuntimeDir = Environment.GetEnvironmentVariable(DevEnvironment.RuntimeDirEnv);
         var isDev = DevEnvironment.IsDevRuntime(devRuntimeDir, bundledClosure is not null);
         var devAutoIsolated = false;
@@ -152,15 +176,20 @@ public static class Program
         {
             Services.HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
         }
-        var webUrl = host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
-        Services.HostLog.Write($"[host] runtime = {host.RuntimeDescription}");
-        if (webUrl is not null)
+        var webUrl = bootstrapNeeded
+            ? null
+            : host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
+        if (!bootstrapNeeded)
         {
-            Services.HostLog.Write($"[host] dsh web = {webUrl}");
-        }
-        else
-        {
-            Services.HostLog.Write($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', host.StderrTail.TakeLast(8))}");
+            Services.HostLog.Write($"[host] runtime = {host.RuntimeDescription}");
+            if (webUrl is not null)
+            {
+                Services.HostLog.Write($"[host] dsh web = {webUrl}");
+            }
+            else
+            {
+                Services.HostLog.Write($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', host.StderrTail.TakeLast(8))}");
+            }
         }
 
         // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：托盘「退出」与自更新安装路径
@@ -321,6 +350,11 @@ public static class Program
                     closeWindow: () => sp.GetRequiredService<IRynWindow>().Close(),
                     closeGate,
                     Services.HostLog.Write));
+                // 引导重试命令（desktop.bootstrap.retry，ADR online-first-unbundled-runtime）：
+                // wwwroot 引导页的重试按钮 → 闸门放行引导循环。gate 实例在 Main 顶部创建，
+                // 引导任务与路由共用同一实例
+                services.AddSingleton<ICommandRouter>(new Services.BootstrapCommandRouter(
+                    bootstrapGate, Services.HostLog.Write));
                 // 开机自启开关（desktop.autostart.getState/set）
                 services.AddSingleton<ICommandRouter>(new Services.AutostartCommandRouter(log: Services.HostLog.Write));
                 // 关闭最小化到托盘偏好（desktop.closeToTray.getState/set）；available 惰性求值——
@@ -410,6 +444,56 @@ public static class Program
         var windowAccessor = app.Services.GetRequiredService<CurrentWindowAccessor>();
         updateWindow = windowAccessor;
 
+        // 首启引导（ADR online-first-unbundled-runtime）：窗口先亮（wwwroot 引导页），后台任务完成
+        // 检测/下载/安装/验证状态机，成功后绑定运行时、起 dsh 并导航进主界面；失败推错误态等待
+        // 用户重试（desktop.bootstrap.retry 经闸门放行）。引导未落定前监督器/插件安装均被门控
+        // （见各自插入点）——依赖序即插入位。
+        if (bootstrapNeeded)
+        {
+            bootstrapSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            bootstrapCts = new CancellationTokenSource();
+            var bootCt = bootstrapCts.Token;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var runtime = await RunBootstrapWithRetryAsync(bootstrapGate, bootCt);
+                    if (runtime is null)
+                    {
+                        Services.HostLog.Write("[bootstrap] 引导未完成（用户放弃或应用退出）");
+                        return;
+                    }
+
+                    bundledClosure = runtime;
+                    host.BindRuntime(runtime.Value);
+                    var url = await host.StartAsync(timeout: TimeSpan.FromSeconds(60), bootCt);
+                    if (url is null)
+                    {
+                        Services.HostLog.Write($"[bootstrap] 引导完成但 dsh 未在时限内给出 URL。stderr 尾巴：\n{string.Join('\n', host.StderrTail.TakeLast(8))}");
+                        return;
+                    }
+
+                    Services.HostLog.Write($"[host] runtime = {host.RuntimeDescription}");
+                    Services.HostLog.Write($"[host] dsh web = {url}；从引导页导航进入主界面");
+                    webUrl = url;
+                    await windowAccessor.Current.NavigateAsync(url);
+                }
+                catch (OperationCanceledException)
+                {
+                    Services.HostLog.Write("[bootstrap] 引导任务随应用退出取消");
+                }
+                catch (Exception ex)
+                {
+                    // 后台引导任务的兜底收口：任何意外异常都不拖垮壳（窗口仍在，可重试或关闭）
+                    Services.HostLog.Write($"[bootstrap] 引导任务意外失败：{ex.Message}");
+                }
+                finally
+                {
+                    bootstrapSettled.TrySetResult();
+                }
+            });
+        }
+
         // 托盘就绪化（批次三）：装菜单并显示。失败只降级记日志——无托盘环境是合法运行环境；
         // 但下方 hide-to-tray 拦截必须与托盘同 gate：没有召回通道还拦截关窗等于把窗口藏死。
         // 顺序契约：必须先 Show 再 SetMenu——Linux 后端在 Show 前尚未注册 StatusNotifierItem，
@@ -484,7 +568,24 @@ public static class Program
             },
             navigate: url => windowAccessor.Current.NavigateAsync(url),
             log: Services.HostLog.Write);
-        var supervisorTask = Task.Run(() => supervisor.RunAsync(supervisorCts.Token));
+        // 引导期门控：宿主尚无 dsh 进程时 WaitForExitAsync 立即完成，监督器会空转进恢复循环
+        // 并用恢复屏覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
+        var supervisorTask = Task.Run(async () =>
+        {
+            if (bootstrapSettled is not null)
+            {
+                try
+                {
+                    await bootstrapSettled.Task.WaitAsync(supervisorCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+
+            await supervisor.RunAsync(supervisorCts.Token);
+        });
 
         // 「导航已到达」信号（ADR ryn-navigation-callbacks）：由 RynNavigationCallbacks 的
         // WebViewNavigated 回调在内容实际提交后触发，取代 RuntimeSupervisor.onNavigated 的
@@ -581,7 +682,7 @@ public static class Program
         // 覆写页面并重启运行时——先注入必被清掉，而旧 home 用户正是提示的目标受众。
         // 降级形态（webUrl 为空）没有安装任务，信号立即置位保证横幅不被无限推迟。版本探测失败按未知处理只记日志。
         var pluginInstallSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (webUrl is null)
+        if (webUrl is null && !bootstrapNeeded)
         {
             pluginInstallSettled.TrySetResult();
         }
@@ -648,16 +749,41 @@ public static class Program
             }
         });
 
-        // 市场后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装随包插件，装完自动刷新（不阻塞首启）
+        // 随包插件后台预装：窗口先亮（dsh web: 已就绪），再在后台静默安装随包插件，装完自动刷新（不阻塞首启）
         // 对齐 Tauri 的“推荐预设”后台装 + pilot-harness 的随包 theme 已在 node_modules
         // 0.1.10 失败复盘：tgz 为 394B 假包（app）+ pnpm allowBuilds 未开致 ERR_PNPM_IGNORED_BUILDS + 检测/补 bundles 未落地
         // 随包插件：dshmarket（市场）+ dsh-desktop-companion（桌面伴生：外部链接接管等，见 ADR desktop-shell-companion-plugin）
-        if (webUrl is not null)
+        // 引导路径同样进入：等引导落定（bootstrapSettled）后按解析出的运行时目录继续——种子 tgz
+        // 缺失时 dshmarket 自动走 registry 回退 spec（ADR online-first-unbundled-runtime）。
+        if (bootstrapNeeded || webUrl is not null)
         {
             _ = Task.Run(async () =>
             {
                 try
                 {
+                    if (bootstrapSettled is not null)
+                    {
+                        try
+                        {
+                            await bootstrapSettled.Task.WaitAsync(TimeSpan.FromMinutes(15), supervisorCts.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return;
+                        }
+                        catch (TimeoutException)
+                        {
+                            HostLog.Write("[host] 引导迟迟未落定，跳过随包插件安装");
+                            return;
+                        }
+                    }
+
+                    if (webUrl is null)
+                    {
+                        HostLog.Write("[host] 运行时未就绪（引导未产出 URL），跳过随包插件安装");
+                        return;
+                    }
+
                     await Task.Delay(TimeSpan.FromSeconds(3));
 
                     // 开发运行时：仅当 home 已自动隔离（devAutoIsolated）才允许随包安装——
@@ -674,11 +800,13 @@ public static class Program
                     var profilePkg = Path.Combine(profileDir, "package.json");
                     var workspacePath = Path.Combine(profileDir, "pnpm-workspace.yaml");
 
-                    var runtimeDir = RuntimeLocator.ResolveRuntimeDirectory();
-                    var bundled = RuntimeLocator.TryLocateBundled(runtimeDir);
-                    if (bundled is null)
+                    // 统一运行时解析：捆绑目录 → 引导下载目录（ADR online-first-unbundled-runtime 回退序）。
+                    // 种子 tgz 跟随所在目录解析；下载目录无 tgz 时 dshmarket 走 registry 回退 spec，
+                    // companion 无 registry 分发面则自然跳过（批次三补安装器内自带）。
+                    var runtimeDir = RuntimeLocator.TryLocateRuntimeDirectory();
+                    if (runtimeDir is null || RuntimeLocator.TryLocateBundled(runtimeDir) is not { } bundled)
                     {
-                        HostLog.Write("[host] 未找到捆绑运行时，跳过随包插件安装");
+                        HostLog.Write("[host] 未找到可用运行时（捆绑/引导下载均未就位），跳过随包插件安装");
                         return;
                     }
 
@@ -721,12 +849,12 @@ public static class Program
                         {
                             var psi = new System.Diagnostics.ProcessStartInfo
                             {
-                                FileName = bundled.Value.NodeExe,
+                                FileName = bundled.NodeExe,
                                 UseShellExecute = false,
                                 RedirectStandardOutput = true,
                                 RedirectStandardError = true,
                             };
-                            psi.ArgumentList.Add(bundled.Value.DshEntry);
+                            psi.ArgumentList.Add(bundled.DshEntry);
                             psi.ArgumentList.Add("plugin");
                             psi.ArgumentList.Add("--profile");
                             psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
@@ -871,6 +999,7 @@ public static class Program
 
         Services.HostLog.Write("[host] Ryn Run 结束");
         supervisorCts.Cancel();
+        bootstrapCts?.Cancel();
         try
         {
             supervisorTask.Wait(TimeSpan.FromSeconds(2));
@@ -1006,6 +1135,96 @@ public static class Program
                 Path.GetFullPath(a),
                 Path.GetFullPath(b),
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+        /// <summary>
+        /// 推送一条引导进度到引导页（fire-and-forget）。首次推送与页面加载存在竞态
+        /// （EvaluateJavaScriptAsync 在页面未就绪时抛 InvalidOperationException），带有限重试——
+        /// 引导页是引导期唯一 UI，丢弃会让用户对着无反馈的页面。帧 JSON 经 AppJson 源生成通道，
+        /// 与 PushUpdateState 同款 CustomEvent 注入形态。
+        /// </summary>
+        static async Task PushBootstrapStateAsync(CurrentWindowAccessor accessor, string step, string message, bool failed)
+        {
+            var frameJson = JsonSerializer.Serialize(
+                new BootstrapStateFrame(step, message, failed),
+                Services.AppJsonContext.Default.BootstrapStateFrame);
+            var script = "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-bootstrap',{detail:"
+                + JsonSerializer.Serialize(frameJson, Services.AppJsonContext.Default.BootstrapStateFrame)
+                + "}));}catch(e){}})();";
+            for (var attempt = 0; attempt < 15; attempt++)
+            {
+                try
+                {
+                    await accessor.Current.EvaluateJavaScriptAsync(script);
+                    return;
+                }
+                catch (InvalidOperationException)
+                {
+                    // 页面/窗口未就绪：稍后重试
+                }
+                catch (Exception ex)
+                {
+                    Services.HostLog.Write($"[bootstrap] 进度推送失败（放弃）：{ex.Message}");
+                    return;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(400));
+            }
+
+            Services.HostLog.Write("[bootstrap] 进度推送重试耗尽（页面始终未就绪）");
+        }
+
+        /// <summary>
+        /// 引导重试循环：单次尝试（RuntimeBootstrap.RunAsync）→ 成功返回运行时；失败推错误态并等待
+        /// 重试信号（desktop.bootstrap.retry 经 <paramref name="gate"/> 放行）或应用退出
+        /// （<paramref name="ct"/> 取消）。返回 null = 放弃（退出/取消）。
+        /// </summary>
+        async Task<(string NodeExe, string DshEntry)?> RunBootstrapWithRetryAsync(
+            Services.RuntimeBootstrapGate gate, CancellationToken ct)
+        {
+            var options = Services.RuntimeBootstrapOptions.Load(AppContext.BaseDirectory);
+            var runtimeDir = RuntimeLocator.ResolveDownloadedRuntimeDirectory();
+            var hooks = Services.RuntimeBootstrap.CreateDefaultHooks(Services.HostLog.Write);
+            Services.HostLog.Write($"[bootstrap] 引导开始：runtimeDir={runtimeDir} dshSpec={options.DshSpec} node=v{options.NodeVersion}");
+
+            while (true)
+            {
+                gate.Reset();
+                BootstrapOutcome outcome;
+                try
+                {
+                    outcome = await Services.RuntimeBootstrap.RunAsync(
+                        options,
+                        runtimeDir,
+                        progress => _ = PushBootstrapStateAsync(windowAccessor, progress.Step.ToString(), progress.Message, progress.Failed),
+                        hooks,
+                        ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    return null;
+                }
+
+                if (outcome.Success && outcome.Runtime is { } runtime)
+                {
+                    return runtime;
+                }
+
+                var reason = outcome.Error ?? "未知错误";
+                Services.HostLog.Write($"[bootstrap] 引导失败：{reason}（等待用户重试或退出）");
+                await PushBootstrapStateAsync(windowAccessor, "Ready", reason, failed: true);
+
+                // 等重试信号或应用退出；信号与取消都是即时语义事件，200ms 轮询足够
+                while (!gate.IsSignaled && !ct.IsCancellationRequested)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(200), ct);
+                }
+
+                if (ct.IsCancellationRequested)
+                {
+                    return null;
+                }
+            }
+        }
 
         /// <summary>把状态变化推给页面：插件监听 <c>dsh-desktop-update</c> CustomEvent 渲染更新按钮。</summary>
         static void PushUpdateState(CurrentWindowAccessor? accessor, Services.Update.UpdateState state)

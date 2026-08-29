@@ -36,6 +36,7 @@ internal sealed record ExternalLinkOpenerFailedFrame(string Url);
 [JsonSerializable(typeof(Update.UpdateStateMachine.ReadyRecord))]
 [JsonSerializable(typeof(RecoveryPageBuilder.Payload))]
 [JsonSerializable(typeof(ExternalLinkOpenerFailedFrame))]
+[JsonSerializable(typeof(Program.BootstrapStateFrame))]
 internal partial class AppJsonContext : JsonSerializerContext
 {
     /// <summary>JS 字符串字面量（默认编码器全量转义，<c>&lt;</c> 与非 ASCII 均 \u 形态）：
