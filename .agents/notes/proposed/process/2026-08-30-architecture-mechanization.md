@@ -52,14 +52,25 @@ Status: proposed
   - 清完才启用严格阈值（或先宽后紧：初始阈值放宽到「现状 + 10%」，再逐步收紧到 400/80）。
 - **「一次性」语义**：规则全集、工具、阈值、门禁一起定稿落地；存量的拆也纳入本次（而非留到未来）。
 
+### 通道五 · 工作流集成（新增/修复分流 + 先拆再上硬门槛）
+
+- **feature-flow 分流**：把 `.agents/workflows/feature-flow.md` 拆为两条明确路径——
+  - **新增**（高严格度）：ADR 必写（非平凡）→ 架构适配检查（新组件进 `Services/`、组合根不增逻辑、边界经接口）→ 机械化验证 → 单元 + 行为级回归/快照 → 三重审核（feature/跨模块/安全面/IPC/发版）。
+  - **修复**（根因导向、较轻但必经验证）：fail loud 取证 → 复现 → 根因修 → 回归/钉子测试；触碰安全面/IPC/发版/跨模块或非平凡类则三重审核；**不补丁式**（治标不治本不算修复）。
+- **先拆再上 = 硬门槛**：`verify-code-health`（pre-commit/pre-push/CI）以 fail loud 强制——(**a**) 任何 diff 不得把文件/方法**顶过阈值**（F1/F2/F3/F4）；(**b**) 变更触碰**已超阈值**的文件（如 `DesktopBootstrap`）时，须**先把该文件拆到阈值内**（拆分是合并前置、本次变更应让文件缩小而非增长）。超阈值的实际改动直接门禁红，不许并入。
+- **机械化先实施、再引用**：**实施顺序** = 先落地通道一~四（让机械化门禁真实存在）→ 再改 `feature-flow.md` 把机械化门禁设为**强制验证步骤**（门禁含 verify-code-health / NetArchTest / 分析器），并写入「done = 通过全部验证」。
+- **完成定义**：一笔变更算完成 = ADR（需要时）→ 机械化门禁（尺寸/依赖/分析器）→ 测试（含回归）→ 评审（需要时）→ CI 全绿。
+- **债务规则**：不新增未登记债务——`TODO(...)` 带理由 + 计划归还；不改范围外代码（越界记 TODO）。
+
 ### 接入门禁汇总
 
 | 通道 | 产物 | 接入 |
 |---|---|---|
-| 一 尺寸健康闸 | `verify-code-health.py` | pre-commit + pre-push + CI `code-health` job |
+| 一 尺寸健康闸 | `verify-code-health.py` | pre-commit + pre-push + CI `code-health` job（先拆再上硬门槛） |
 | 二 架构测试 | `tests/ArchitectureTests.cs`（NetArchTest） | `dotnet test` → CI build-test |
 | 三 分析器 | `DeepSeek.Harness.Desktop.Analyzers` | csproj 引用 → `dotnet build`（0 警告门禁）+ CI |
 | 四 存量清账 | 拆分/归位 | 与一二三相结的前置 commit |
+| 五 工作流集成 | `feature-flow.md` 新增/修复分流 | 机械化落地后设为强制验证步骤；`done`=通过全部验证 |
 
 ### 不能机器化的（留评审）
 
@@ -73,14 +84,17 @@ R1「组合根只装配」**语义**、R3 完整「边界抽象完备度」、R5
 - **async 尾缀靠 .editorconfig 命名规则**：Roslyn 命名功能是子集、做不了完整 async 尾缀（roslyn#40050 明确）；落败——置通道三自定义分析器。
 - **R1「只装配」做语义门禁**：检测「是不是业务逻辑」需语义分析，误报/过度设计；落败——用组合根尺寸（F3/F4）+ 依赖方向（A4）代理，语义交评审。
 - **存量不拆、新门禁直接放暖通阈值**：阈值放暖到能容纳现状则失去约束价值；落败——存量一次拆清，阈值定真值，宁可先做清账再上闸。
+- **先改 feature-flow 再实施机械化**：feature-flow 会引用尚未存在的门禁，成「空承诺」；落败——先落地机械化门禁（通道一~四）、feature-flow 再引用真门禁（通道五）。
+- **「先拆再上」仅作软提示而非硬门槛**：软提示会被绕过、阻止不了「在超阈值文件里继续加」，恰是「屎山」温床；落败——设硬门槛（diff 顶过阈值即红、触碰超阈值文件须先拆）。
 
 ## Consequences
 
 - 架构规范从「软约束」变 **build/CI 门禁**：违规即红——治「屎山」的结构性根因。R2 杀意大利面、R4 刹住上帝对象、R5 补齐跨切面契约、R3 用代理防边界直漏。
 - 新增：`verify-code-health.py` + `DeepSeek.Harness.Desktop.Analyzers` 工程 + `NetArchTest.Rules` 依赖（测试）+ `tests/ArchitectureTests.cs`；门禁矩阵扩展（code-health job、架构测试、分析器 build 门禁）。
+- **工作流（feature-flow）从「类型无关」变「新增/修复分流」**：新增高严格度、修复根因导向，均必经机械化验证；「先拆再上」为硬门槛——超阈值的 diff 不许并入，触碰超阈值文件须先拆，从流程上堵死「加功能就烂、打补丁继续烂」。
 - 存量：`DesktopBootstrap`/`RuntimeBootstrap`/`HarnessRuntimeHost` 等超大文件按架构规范拆分；A3/D005 等存量违规归位——一次清账，随本方案实施。
-- 文档同步：coding-standards/architecture-standards 的「强制力度」、AGENTS 质量门清单（加 `verify-code-health.py`）、README 测试徽章（架构测试计入总数）。
-- **本 ADR 为 proposed（只定方案，不实施）**：拍板后按 feature-flow 实施（通道一/二 → 三 → 四清账，每步三重审核；`dotnet test`、门禁、CI 全绿）。
+- 文档同步：coding-standards/architecture-standards 的「强制力度」、AGENTS 质量门清单（加 `verify-code-health.py`）、README 测试徽章（架构测试计入总数）、feature-flow 分流。
+- **本 ADR 为 proposed（只定方案，不实施）**：拍板后按 feature-flow 实施（通道一/二 → 三 → 四清账 → ⑤ feature-flow 分流引用，每步三重审核；`dotnet test`、门禁、CI 全绿）。
 
 ## Related
 
