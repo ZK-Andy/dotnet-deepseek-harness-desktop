@@ -40,7 +40,7 @@ public static partial class MarketInstallHelper
                 return;
             }
 
-            var root = JsonNode.Parse(await File.ReadAllTextAsync(profilePkg));
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(profilePkg).ConfigureAwait(false));
             if (root?["dependencies"]?["app"] is not JsonValue app ||
                 !app.TryGetValue<string>(out string? appSpec) ||
                 !appSpec.Contains("dshmarket.tgz", StringComparison.Ordinal))
@@ -49,7 +49,7 @@ public static partial class MarketInstallHelper
             }
 
             root["dependencies"]!.AsObject().Remove("app");
-            await WriteProfilePkgAsync(profilePkg, root);
+            await WriteProfilePkgAsync(profilePkg, root).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is JsonException or IOException or InvalidOperationException)
         {
@@ -163,7 +163,7 @@ public static partial class MarketInstallHelper
                 return false;
             }
 
-            var root = JsonNode.Parse(await File.ReadAllTextAsync(profilePkg));
+            var root = JsonNode.Parse(await File.ReadAllTextAsync(profilePkg).ConfigureAwait(false));
             if (root is null)
             {
                 return false;
@@ -189,7 +189,7 @@ public static partial class MarketInstallHelper
                     // dsh/profile 缺失：不改结构，原样回写（保持既有语义：返回 true）
             }
 
-            await WriteProfilePkgAsync(profilePkg, root);
+            await WriteProfilePkgAsync(profilePkg, root).ConfigureAwait(false);
             return true;
         }
         catch (Exception ex) when (ex is JsonException or IOException or InvalidOperationException)

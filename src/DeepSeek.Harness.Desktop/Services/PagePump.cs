@@ -4,7 +4,7 @@ using Ryn.Core;
 namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
-/// 页面注入辅助（ADR 组合根只装配）：把 JS 注入类操作（横幅/引导进度/插件引导状态/日志回流）
+/// 页面注入辅助（ADR 组合根只装配）：把 JS 注入类操作（横幅/引导进度/插件引导状态/日志回流/自更新状态）
 /// 从组合根（<c>DesktopBootstrap.Startup</c>）抽出为静态单点。均以 <see cref="CurrentWindowAccessor"/>
 /// 为参数（未就绪的重试/丢弃语义在方法内），不依赖组合根实例状态。
 /// </summary>
@@ -128,6 +128,30 @@ internal static class PagePump
         catch (Exception)
         {
             // 页面未就绪/已导航：日志丢失可容忍（吞掉页面上游任何异常，仅丢一行日志）
+        }
+    }
+
+    /// <summary>把自更新状态变化推给页面：插件监听 <c>dsh-desktop-update</c> CustomEvent 渲染更新按钮。
+    /// 窗口未就绪即丢弃（不重试）——自更新状态机每次变化都会经 onTransition 再推，无需逐次送达。
+    /// 保留 <see langword="static"/>，不降级为带重试的推送（自更新靠状态机后续变化补送）。</summary>
+    internal static void PushUpdateState(CurrentWindowAccessor? accessor, Update.UpdateState state)
+    {
+        try
+        {
+            // Current 在窗口未创建/已关闭时抛异常（非返回 null）：启动早期与退出阶段都会走到
+            if (accessor?.Current is null)
+            {
+                return;
+            }
+
+            _ = accessor.Current.EvaluateJavaScriptAsync(
+                "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-update',{detail:"
+                + state.ToJson()
+                + "}));}catch(e){}})();");
+        }
+        catch (InvalidOperationException)
+        {
+            // 窗口尚未就绪：本次推送丢弃，后续状态变化会再推
         }
     }
 }

@@ -240,28 +240,6 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    /// <summary>把状态变化推给页面：插件监听 <c>dsh-desktop-update</c> CustomEvent 渲染更新按钮。</summary>
-    private static void PushUpdateState(CurrentWindowAccessor? accessor, Services.Update.UpdateState state)
-    {
-        try
-        {
-            // Current 在窗口未创建/已关闭时抛异常（非返回 null）：启动早期与退出阶段都会走到
-            if (accessor?.Current is null)
-            {
-                return;
-            }
-
-            _ = accessor.Current.EvaluateJavaScriptAsync(
-                "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-update',{detail:"
-                + state.ToJson()
-                + "}));}catch(e){}})();");
-        }
-        catch (InvalidOperationException)
-        {
-            // 窗口尚未就绪：本次推送丢弃，后续状态变化会再推
-        }
-    }
-
     /// <summary>流式执行器：把 <c>dsh plugin add</c> 的每行输出推给插件引导页日志区。
     /// 双执行器已折叠（原 TODO(executor-fold-killtree)）：统一走
     /// <see cref="Services.PluginProcessRunner.RunStreamingAsync"/>——单一实现、含取消/异常整树击杀

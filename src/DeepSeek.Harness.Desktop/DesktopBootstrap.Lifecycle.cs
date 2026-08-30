@@ -86,7 +86,7 @@ public sealed partial class DesktopBootstrap
                     "[update] " + state.Status
                     + (state.Version is null ? "" : $" {state.Version}")
                     + (state.Message is null ? "" : $"：{state.Message}"));
-                PushUpdateState(_updateWindow, state);
+                Services.PagePump.PushUpdateState(_updateWindow, state);
             });
         Services.HostLog.Write($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}，feed 超时 {updateOptions.FeedTimeoutSeconds}s 下载超时 {updateOptions.DownloadTimeoutMinutes}m");
     }
