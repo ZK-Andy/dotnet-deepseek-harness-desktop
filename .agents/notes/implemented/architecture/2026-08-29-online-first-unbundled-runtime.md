@@ -21,7 +21,7 @@ Status: implemented
 
 ### 首启形态
 
-1. 安装器只带壳 + 自有插件（companion tgz）；体积上限为**自包含 .NET 运行时**（linux-x64 基准 ~88MB，见 [installer-size-retain-self-contained](2026-08-30-installer-size-retain-self-contained.md)）——「降至 10MB 级」仅 framework-dependent 成立，本决策维持 self-contained。
+1. 安装器只带壳 + 自有插件（companion tgz）；体积上限为**自包含 .NET 运行时**（linux-x64：下载 25–39MB / 落盘 ~88MB，见 [installer-size-retain-self-contained](2026-08-30-installer-size-retain-self-contained.md)）——「降至 10MB 级」仅 framework-dependent 成立，本决策维持 self-contained。
 2. 首启引导：壳启动时检测运行时（本机 Node ≥ RuntimeVersionGate 底线则复用，否则下载钉版 Node zip 到 app-data，SHA256 校验）→ `npm install @deepseek-ai/dsh@latest`（npm 随 Node 分发，零额外依赖）→ registry 安装 dshmarket；
 3. 首启 UI：Ryn 加载内置静态进度页（检测/下载/安装/失败重试状态机，fail loud），完成后导航到 dsh URL 进入既有主链路；
 4. 存量升级（v0.3.12 → 新版）：安装器替换安装目录，`resources/runtime` 随之消失，首启检测缺失触发一次性下载。**不做迁移代码**。

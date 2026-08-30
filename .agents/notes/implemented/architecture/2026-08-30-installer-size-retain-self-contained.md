@@ -8,23 +8,23 @@ Status: implemented
 
 2026-08-30 对照参照项目 `dsh-tauri-desk/deepseek-harness-desktop`（v0.9.4）的安装器体积，用户指出「我们的安装器还是有点大，参照只有 5MB（它自己宣称的）」。实测厘清双方真实构成后需拍板：是否为此把 .NET 壳换成 framework-dependent 或 AOT。
 
-**实测基准**（本机 `dotnet publish -c Release -r linux-x64`）：
+**实测基准**（本机 `dotnet publish -c Release -r linux-x64`；安装器下载体积 = 压缩后的 deb/dmg/exe，安装后落盘体积 = publish 目录）：
 
-| 形态 | 体积 | 组成 |
-|---|---|---|
-| 我们 · self-contained（现状） | **88MB** | .NET 运行时 ~80MB（System.Private.CoreLib 15M、libcoreclr 6.8M、libclrjit 4.6M 等）+ Ryn 原生桥 `libsaucer.so` 2.6M + 应用壳 ~8MB |
-| 我们 · framework-dependent | **8.2MB** | Ryn 原生桥 + 应用 dll + wwwroot，无 .NET 运行时 |
-| 参照 · 安装器（v0.9.4） | exe 5.11MB / deb 9.55MB / dmg 7.4–7.9MB / msi 7.43MB | Rust/Tauri 原生二进制 + 系统 WebView；DeepSeek Harness 运行时首启在线下载 |
-| 参照 · AppImage（v0.9.4） | 84.66MB | 该档**捆绑了 DeepSeek Harness 运行时** |
+| 形态 | 安装器下载 | 安装后落盘 | 组成 |
+|---|---|---|---|
+| 我们 · self-contained（现状） | **25–39MB**（压缩） | **~88MB** | .NET 运行时 ~80MB（System.Private.CoreLib 15M、libcoreclr 6.8M、libclrjit 4.6M 等）+ Ryn 原生桥 `libsaucer.so` 2.6M + 应用壳 ~8MB |
+| 我们 · framework-dependent | **~8MB** | ~8.2MB | Ryn 原生桥 + 应用 dll + wwwroot，无 .NET 运行时 |
+| 参照 · 安装器（v0.9.4） | exe 5.11MB / deb 9.55MB / dmg 7.4–7.9MB / msi 7.43MB | 约同 | Rust/Tauri 原生二进制 + 系统 WebView；DeepSeek Harness 运行时首启在线下载 |
+| 参照 · AppImage（v0.9.4） | 84.66MB | — | 该档**捆绑了 DeepSeek Harness 运行时** |
 
-**「5MB」的来源**：参照是 Rust/Tauri，**没有 CLR/JVM 那类「非系统标准、必须单独安装」的托管运行时**；其 Rust std 静态烘焙进二进制，唯一外部依赖是系统标准件（WebKitGTK / GTK / libadwaita / glibc——恰与我们 Ryn 依赖的系统 WebView 库同层，两边都不打包）。所以参照安装器极小。真正的分水岭是 **.NET CLR 这一层**：自包含要随包带（+80MB），framework-dependent 则要系统装（.NET 10 不是任何主流消费 OS 的预装件，门槛比参照的「系统标准件」更重）。
+**「5MB」的来源**：参照是 Rust/Tauri，**没有 CLR/JVM 那类「非系统标准、必须单独安装」的托管运行时**；其 Rust std 静态烘焙进二进制，唯一外部依赖是系统标准件（WebKitGTK / GTK / libadwaita / glibc——恰与我们 Ryn 依赖的系统 WebView 库同层，两边都不打包）。所以参照安装器极小。真正的分水岭是 **.NET CLR 这一层**：自包含要随包带（下载 25–39MB / 落盘 ~88MB），framework-dependent 则要系统装（.NET 10 不是任何主流消费 OS 的预装件，门槛比参照的「系统标准件」更重）。
 
 ## Decision
 
-**维持 self-contained（.NET 运行时随包携带），接受与参照在「运行时携带」上的结构性体积差距。** 安装器体积 ~88MB（linux-x64）为当前形态的诚实基线，不为此转 framework-dependent 或 AOT。
+**维持 self-contained（.NET 运行时随包携带），接受与参照在「运行时携带」上的结构性体积差距。** 安装器下载体积 25–39MB（压后）/ 安装落盘 ~88MB（linux-x64）为当前形态的诚实基线，不为此转 framework-dependent 或 AOT。
 
 - **不追参照的 5MB**：该目标需要对 .NET 而言「外包 CLR」或「用原生 AOT」，两者都引入本 ADR 拒绝的代价（见 Alternatives），与「零环境/下载即用、单一安装器"的既有产品承诺冲突。
-- **修正过时预期**：[online-first-unbundled-runtime](2026-08-29-online-first-unbundled-runtime.md)「首启形态」1 条「体积降至 10MB 级」**只在 framework-dependent 下成立**；维持 self-contained 实际为 ~88MB。该条「10MB 级」表述已在此修正（在线 first 去掉的是 DeepSeek Harness 运行时闭包，不含 .NET CLR）。
+- **修正过时预期**：[online-first-unbundled-runtime](2026-08-29-online-first-unbundled-runtime.md)「首启形态」1 条「体积降至 10MB 级」**只在 framework-dependent 下成立**；维持 self-contained 实际为 25–39MB（下载）/ ~88MB（落盘）。该条「10MB 级」表述已在此修正（在线 first 去掉的是 DeepSeek Harness 运行时闭包，不含 .NET CLR）。
 - **体积约束锚点**：安装器体积的最大项是自包含 .NET 运行时，属平台成本，非打包缺陷；目标从「对齐参照的 5MB」调整为「不冗余携带」（已做到：不捆 DeepSeek Harness 运行时、per-arch 瘦身、无便携 zip）。
 
 ## Alternatives considered
