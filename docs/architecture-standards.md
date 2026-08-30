@@ -39,13 +39,8 @@
 - 组件超 ~400 行、方法超 ~80 行、组合根内含业务逻辑 → **评审/门禁提示**。
 - 定位为「开发完成即检」的**健康检查**，不是「编码规范」——规范不设行数上限（见 [coding-standards.md](coding-standards.md)），避免「方法≤30 当规范」被否的口径冲突。
 
-### R5 · 跨切面行为契约
-- **async/取消**：`async` 方法以 `Async` 结尾；`CancellationToken` 贯通（传入被取消链路）；禁 `async void`；库/非 UI 上下文用 `ConfigureAwait(false)`。
-- **异常策略**：fail loud——缺失/误配置在**最早可解析点**失败；空 `catch` 必须命名所吞异常；`try` 只包一个语句；只捕获能妥善处理的异常。
-- **日志**：统一经 `HostLog`（stdout + `<home>/logs/host.log` 双写）；重要状态迁移/失败原因留痕（对齐可观测性）。
-
-### R6 · 与 coding-standards 的分工
-- 本文件管**组织/结构/契约**（层、依赖方向、边界、行为契约）；[coding-standards.md](coding-standards.md) 管**单段代码怎么写**（格式/命名/惯用，机器强制）。
+### R5 · 与 coding-standards 的分工
+- 本文件管**组织/结构/契约**（层、依赖方向、边界）；[coding-standards.md](coding-standards.md) 管**单段代码怎么写**（格式/命名/惯用，机器强制）+ **行为契约**（async/异常/日志，见其「行为契约」节）。
 - 不重复 coding-standards 已强制的内容；冲突时以各自聚焦面为准。
 
 ## 相关

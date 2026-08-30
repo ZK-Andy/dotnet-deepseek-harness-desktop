@@ -27,11 +27,10 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 ## 编码约定
 
 - **C# 编码规范**：基准见 [docs/coding-standards.md](docs/coding-standards.md)（dotnet/runtime C# Coding Style + Microsoft .NET C# Coding Conventions；仓库根 `.editorconfig` 已落地，IDE/Roslyn 据此格式化与提示；CI/build 门禁按 `.editorconfig` 强制格式与风格——见该文档「强制力度」）。
-- **架构规范**：系统怎么被组织（层/依赖方向/边界/行为契约）见 [docs/architecture-standards.md](docs/architecture-standards.md)；组合根只装配、外部边界经接口、反上帝对象健康闸——非平凡结构变更按此执行。
-- **fail loud**：缺失引用、误配置绝不静默跳过；最迟在最早可解析点失败。
+- **架构规范**：系统怎么被组织（层/依赖方向/边界）见 [docs/architecture-standards.md](docs/architecture-standards.md)；组合根只装配、外部边界经接口、反上帝对象健康闸——非平凡结构变更按此执行。
+- **行为契约**：async/取消、异常、日志约定见 [coding-standards](docs/coding-standards.md)「行为契约」节（fail loud、空 catch 命名、`try` 只包一个语句、`HostLog` 单点等细则单一事实源在彼，不重复）。
 - 可调参数进配置模型（Config/appsettings），禁止硬编码；协议常量与安全不变量保持固定。
 - 跨界 ID 用强类型/Branded，禁止裸 string 跨包传递。
-- 空 `catch` 必须命名它吞掉什么；`try` 只包一个语句。
 - 公共 API 带 XML doc 契约（`<summary>/<param>/<returns>`）。
 - 测试：`dotnet test`（xunit）；覆盖边界、错误路径、事件顺序、并发；**行为级变更必须配套回归/快照**；mock 只用于昂贵/非确定性边界。
 - **DSH 插件命名**：`dsh-<域>-<角色>` 短 token（先例 `dsh-desktop-companion`）；禁止 `-plugin-` 类中缀；注册前查 npm 与 dshmarket 占用。
@@ -81,7 +80,7 @@ scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 | .agents/AGENTS.md | ≤ 300 词 |
 | .agents/notes/README.md | ≤ 800 词 |
 | docs/cookbook.md | ≤ 2500 词 |
-| docs/coding-standards.md | ≤ 500 词 |
+| docs/coding-standards.md | ≤ 1000 词 |
 | docs/architecture-standards.md | ≤ 600 词 |
 
 超限：迁移到其他层（留一行链接）→ 精简 → 才允许提额度（PR 说明理由）。

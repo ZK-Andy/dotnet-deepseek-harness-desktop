@@ -47,6 +47,23 @@
 - 简短说明用单行 `//`；注释独立成行、首字母大写、以句点结尾、`// ` 与正文间一空格。
 - 公共成员用 XML 注释，不用块注释。
 
+## 行为契约（async / 异常 / 日志）
+
+> 跨切面行为约定（代码级）的单一事实源。机器无法完全强制（D001–D003 靠评审/三重审核，见根 `AGENTS.md` 评审检查项）；`dotnet format`/build 门禁兜底格式面。
+
+**async / 取消**
+- `async` 方法以 `Async` 结尾（D001）；非事件处理器禁止 `async void`（D002）。
+- `CancellationToken` 贯通：传入被取消链路，沿异步链逐层传递。
+- 库/非 UI 上下文用 `ConfigureAwait(false)`（桌面壳 UI 上下文除外）。
+
+**异常策略**
+- fail loud：缺失引用、误配置在**最早可解析点**失败，绝不静默跳过。
+- 空 `catch` 必须命名所吞异常（D003，如 `catch (InvalidOperationException) { /* 进程已退出 */ }`）；`try` 只包一个语句。
+- 只捕获能妥善处理的异常，避免 catch 通用 `Exception`。
+
+**日志**
+- 统一经 `HostLog`（stdout + `<home>/logs/host.log` 双写）；重要状态迁移、失败原因必须留痕。
+
 ## 与文档结构的关系
 
 - 规范细化（本文件）；踩坑判别见 [`docs/cookbook.md`](cookbook.md)；架构见 [`docs/architecture.md`](architecture.md)。
