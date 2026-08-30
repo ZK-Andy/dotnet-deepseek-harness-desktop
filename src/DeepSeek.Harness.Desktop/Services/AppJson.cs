@@ -36,7 +36,7 @@ internal sealed record ExternalLinkOpenerFailedFrame(string Url);
 [JsonSerializable(typeof(Update.UpdateStateMachine.ReadyRecord))]
 [JsonSerializable(typeof(RecoveryPageBuilder.Payload))]
 [JsonSerializable(typeof(ExternalLinkOpenerFailedFrame))]
-[JsonSerializable(typeof(Program.BootstrapStateFrame))]
+[JsonSerializable(typeof(BootstrapStateFrame))]
 [JsonSerializable(typeof(PreinstallFrame))]
 internal partial class AppJsonContext : JsonSerializerContext
 {

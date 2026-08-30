@@ -229,7 +229,7 @@ public sealed partial class DesktopBootstrap
         // detail 必须是帧对象本身的 JSON（页面直接读 detail.step 等，无 JSON.parse）——
         // 与 PushUpdateState 的 state.ToJson() 同款形态，禁止二次包字符串
         string frameJson = JsonSerializer.Serialize(
-            new Program.BootstrapStateFrame(step, message, failed),
+            new Services.BootstrapStateFrame(step, message, failed),
             Services.AppJsonContext.Default.BootstrapStateFrame);
         string script = "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-bootstrap',{detail:"
             + frameJson
