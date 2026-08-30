@@ -12,7 +12,7 @@ internal static class PagePump
 {
     /// <summary>窗口就绪后注入横幅：Current 未就绪的 InvalidOperationException 逐秒重试（上限 30 次）；
     /// 其余异常记日志放弃——横幅是增强告知，绝不拖垮启动链路。</summary>
-    internal static async Task ShowBannerWhenReady(CurrentWindowAccessor accessor, string script, CancellationToken ct)
+    internal static async Task ShowBannerWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
     {
         for (int attempt = 0; attempt < 30 && !ct.IsCancellationRequested; attempt++)
         {

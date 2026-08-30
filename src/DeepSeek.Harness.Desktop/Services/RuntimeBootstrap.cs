@@ -83,7 +83,7 @@ public static partial class RuntimeBootstrap
 
             step = BootstrapStep.InstallDsh;
             report(new BootstrapProgress(BootstrapStep.InstallDsh, $"安装 dsh（{options.DshSpec}）"));
-            (int exit, string? stdout, string? stderr) = await WithStepTimeout(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
+            (int exit, string? stdout, string? stderr) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
                 nodePath,
                 [npmCli!, "install", "--prefix", StripExtendedPrefix(runtimeDir), "--no-audit", "--no-fund", "--loglevel=error", options.DshSpec],
                 token)).ConfigureAwait(false);
@@ -101,7 +101,7 @@ public static partial class RuntimeBootstrap
                 return Fail(BootstrapStep.VerifyDsh, $"安装后未找到 dsh 入口（{runtimeDir}）");
             }
 
-            (int vExit, string? vOut, string? vErr) = await WithStepTimeout(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
+            (int vExit, string? vOut, string? vErr) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
                 located.Value.NodeExe, [located.Value.DshEntry, "--version"], token)).ConfigureAwait(false);
             string? version = RuntimeVersionGate.TryParseVersionOutput(vOut);
             if (vExit != 0 || version is null)

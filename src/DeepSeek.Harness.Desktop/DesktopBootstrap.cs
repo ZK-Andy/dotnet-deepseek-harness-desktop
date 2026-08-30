@@ -43,7 +43,7 @@ public sealed partial class DesktopBootstrap
     private bool _previousRunUnclean;
     private CancellationTokenSource _supervisorCts = null!;
     // TODO(navigation-settled-unconsumed): _startupNavigationSettled 只 TrySetResult、无任何消费者
-    // （横幅走 ShowBannerWhenReady 的重试环、恢复走 showRecovery 直注入）。wire-or-cut——要么删字段+接线
+    // （横幅走 ShowBannerWhenReadyAsync 的重试环、恢复走 showRecovery 直注入）。wire-or-cut——要么删字段+接线
     // （零行为变更），要么真接回横幅门控；现状「写信号不读」误导读者。
     private TaskCompletionSource _startupNavigationSettled = null!;
     private RuntimeSupervisor _supervisor = null!;

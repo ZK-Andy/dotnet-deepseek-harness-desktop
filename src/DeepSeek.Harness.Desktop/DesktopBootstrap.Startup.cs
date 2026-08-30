@@ -184,12 +184,6 @@ public sealed partial class DesktopBootstrap
         return "unknown";
     }
 
-    /// <summary>
-    /// 推送一条引导进度到引导页（fire-and-forget）。首次推送与页面加载存在竞态
-    /// （EvaluateJavaScriptAsync 在页面未就绪时抛 InvalidOperationException），带有限重试——
-    /// 引导页是引导期唯一 UI，丢弃会让用户对着无反馈的页面。帧 JSON 经 AppJson 源生成通道，
-    /// 与 PushUpdateState 同款 CustomEvent 注入形态。
-    /// </summary>
     // TODO(retry-push-fold): PushBootstrapStateAsync 与 RetryPushPreinstallAsync 是 15×400ms 重试推送的
     // 逐字节同构（仅日志前缀与脚本不同），可折叠为一个 PushEventToPageWithRetryAsync(accessor, script, logTag)。
     /// <summary>

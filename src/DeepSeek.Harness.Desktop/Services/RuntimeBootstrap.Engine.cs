@@ -93,13 +93,13 @@ public static partial class RuntimeBootstrap
 
     /// <summary>步骤级超时包装：应用退出（appCt）取消仍以 OCE 上抛；仅步超时转异常走失败重试页。</summary>
     private static Task WithStepTimeout(int minutes, CancellationToken appCt, Func<CancellationToken, Task> action) =>
-        WithStepTimeout<object?>(minutes, appCt, async token =>
+        WithStepTimeoutAsync<object?>(minutes, appCt, async token =>
         {
             await action(token).ConfigureAwait(false);
             return null;
         });
 
-    private static async Task<T> WithStepTimeout<T>(int minutes, CancellationToken appCt, Func<CancellationToken, Task<T>> action)
+    private static async Task<T> WithStepTimeoutAsync<T>(int minutes, CancellationToken appCt, Func<CancellationToken, Task<T>> action)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(appCt);
         cts.CancelAfter(TimeSpan.FromMinutes(minutes));
@@ -207,7 +207,7 @@ public static partial class RuntimeBootstrap
         string shasums;
         try
         {
-            shasums = await WithStepTimeout(options.StepTimeoutMinutes, ct,
+            shasums = await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct,
                 token => hooks.FetchTextAsync($"{baseUrl}/{versionDir}/SHASUMS256.txt", token)).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

@@ -28,11 +28,11 @@ Status: implemented
   - `F1` 单文件超 **400 行**；`F2` 单方法超 **80 行**；`F3` 组合根文件（`DesktopBootstrap*.cs`+`Program.cs`）超 **400 行**；`F4` 组合根方法超 **60 行**。
 - `// verify-code-health: ignore` 行内豁免（显式理由，防静默放宽）。
 
-### 通道二 · 架构测试（R2 依赖方向/禁循环 + R3 边界代理 + 两条新 gate）
+### 通道二 · 架构测试（R2 依赖方向/禁循环 + A4 组合根 + 新 gate A5；A1/A3 留评审）
 
 - 引入 `NetArchTest.Rules`，写成 `tests/ArchitectureTests.cs`，随 `dotnet test` → CI。
-- `A1` 层边界（`Services.Update`/`Services.Tray`/`Services` 按既定依赖方向；外层不反向依赖内层）；`A2` 禁命名空间循环依赖；`A3` 边界实现类型（`*Process`/`*Downloader`/`*Client`/注册表/文件系统类）不得被**非组合根**直接实例化/引用；`A4` 组合根不被内层依赖。
-- **新 gate（③）**：`A5` **新类型必须进 `Services/` 或子域**（禁落在根命名空间/`DesktopBootstrap` 组合根——治「新功能塞组合根」）；`A6` **IPC 跨界 ID 用强类型**（禁跨包/事件帧裸 `string` ID，治「裸 string 跨包」）。
+- `A1` 层边界（`Services.Update`/`Services.Tray`/`Services` 按既定依赖方向；外层不反向依赖内层）；`A2` 禁命名空间循环依赖；`A3` 应用层不得直引具体基础设施实现（`*Process`/`*Downloader`/`*Client`/注册表/文件系统类不得被非组合根直接实例化/引用），即 R3 边界抽象；`A4` 组合根不被内层依赖。——`A1`/`A3` 经用户拍板**保留为评审项、不作硬门禁**（见 Consequences A-规则校准：A1 对薄壳过度严格、A3 需接口抽取），`A2`/`A4` 为真实可强制。
+- **新 gate（③）**：`A5` **新类型必须进 `Services/` 或子域**（禁落在根命名空间/`DesktopBootstrap` 组合根——治「新功能塞组合根」）。`A6` **IPC 跨界 ID 用强类型**（禁跨包/事件帧裸 `string` ID，治「裸 string 跨包」）经用户拍板**保留为评审项、不作硬门禁**（见 Consequences A-规则校准），不机器化。
 
 ### 通道三 · 契约扫描脚本（**不建分析器工程**；D001–D003 留评审）
 
@@ -43,9 +43,9 @@ Status: implemented
 
 ### 通道四 · 存量一次清账
 
-- 新门禁一挂即红（`DesktopBootstrap` 873 / `RuntimeBootstrap` 743 / `HarnessRuntimeHost` 534 等超 400；`A3/A5/A6/D004/D005` 存量违规众多）。前置清账：
+- 新门禁一挂即红（`DesktopBootstrap` 873 / `RuntimeBootstrap` 743 / `HarnessRuntimeHost` 534 等超 400；`A5/D004/D005` 存量违规众多）。前置清账：
   - 按 [architecture-standards](../../implemented/process/2026-08-30-architecture-standards.md) 把 `DesktopBootstrap`/`DesktopBootstrap.Startup` 拆到阈值内（组合根去业务、组件化进 `Services/`）。
-  - 其余超阈值文件分层拆分到 ≤400/方法 ≤80；`A3/A5/A6/D004/D005` 存量违规一次归位；异步/异常/日志按迁徙后编码规范刷一遍。
+  - 其余超阈值文件分层拆分到 ≤400/方法 ≤80；`A5/D004/D005` 存量违规一次归位；异步/异常/日志按迁徙后编码规范刷一遍（A3/A6 为评审项，不属本通道机械清账面）。
 - 清完才启用严格阈值（或先宽后紧：初始放宽到「现状+10%」再收紧）。
 
 ### 通道五 · 工作流集成（新增/修复分流 + 先拆再上硬门槛）
@@ -69,7 +69,7 @@ Status: implemented
 |---|---|---|---|
 | 〇 标准重构 | coding-standards(提额)/architecture-standards | 文档 + 预算 + AGENTS | ① |
 | 一 尺寸健康闸 | `verify-code-health.py` | pre-commit + pre-push + CI `code-health` job（先拆再上） | — |
-| 二 架构测试 | `tests/ArchitectureTests.cs`（NetArchTest） | `dotnet test` → CI | +A5/A6 |
+| 二 架构测试 | `tests/ArchitectureTests.cs`（NetArchTest） | `dotnet test` → CI | +A5（A6 留评审，不作门禁） |
 | 三 契约扫描 | `verify-code-conventions.py` | pre-commit + pre-push + CI | **替代分析器工程**；D001–003 留评审 |
 | 四 存量清账 | 拆分/归位 | 与一二三相结的前置 commit | ②执行序 |
 | 五 工作流集成 | `feature-flow.md` 分流 | 机械化落地后设为强制验证步骤 | ② |

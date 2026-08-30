@@ -5,7 +5,7 @@
 1. **定案**：方案讨论收敛 → 写 ADR；Alternatives 强制。同会话内即落地的，proposed→implemented 可折叠——直接以 implemented 格式落档（格式由 verify-adr-format 把关）。
 2. **实现**：按 ADR 范围动 src/tests/scripts；越界想法记 TODO 不顺手做。
 3. **测试**：`dotnet test` 全绿 0 警告；行为级变更必须配套回归/快照。`scripts/**` 变更跑其自带自测或冒烟（如 preflight 假资产冒烟、`package-*.sh --stage-only`）；`.github/workflows/**` 变更必须 dispatch 实跑验证——ci.yml 绿不代表打包流水线绿，表达式错误只有真 runner 能暴露。
-4. **门禁**：三脚本 + build 全绿（pre-commit 会再拦一次）。**架构机械化门禁**（见 ADR [2026-08-30-architecture-mechanization](../notes/implemented/process/2026-08-30-architecture-mechanization.md)）：`verify-code-health.py`（F1–F4 尺寸）+ `verify-code-conventions.py`（D004/D005 契约）+ `dotnet test` 的 `ArchitectureTests`（A1–A5 依赖方向）——**先拆再上**为强制：diff 不得把文件/方法**顶过阈值**；触碰已超阈值文件须**先拆到阈值内**（拆分是合并前置，本次变更应让文件缩小）。
+4. **门禁**：三脚本 + build 全绿（pre-commit 会再拦一次）。**架构机械化门禁**（见 ADR [2026-08-30-architecture-mechanization](../notes/implemented/process/2026-08-30-architecture-mechanization.md)）：`verify-code-health.py`（F1–F4 尺寸）+ `verify-code-conventions.py`（D004/D005 契约）+ `dotnet test` 的 `ArchitectureTests`（A2/A4/A5 依赖方向；A1/A3/A6 为留评审项，不机器化）——**先拆再上**为强制：diff 不得把文件/方法**顶过阈值**；触碰已超阈值文件须**先拆到阈值内**（拆分是合并前置，本次变更应让文件缩小）。
 5. **评审（三重审核执行契约）**：**触发**——改行为/安全面 / IPC 帧契约 / 发版链路 / 跨模块行为，或用户指定的批量事后审核。**纯结构重构（零行为变更，测试+门禁可证）走轻审或简化路径**，不占重三审。契约：
    - **范围 = 单元 diff**：一次只审一个逻辑单元（单个提交/相干子集），评审代理拿精确 `git diff <base>..<head>`（用 `scripts/change-scope.sh` 界定）；**禁止**对整仓/全文件做快照 + 手工 diff（杜绝 `.review_tmp` 式无界深挖）。
    - **父级预消化简报**：主会话先给每个代理一份紧凑清单（改了哪些文件、什么模式、风险点、3–5 条定向检查项 + 指定文件/行），而不是"加载技能 → 审一切"。

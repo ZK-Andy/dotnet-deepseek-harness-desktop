@@ -18,8 +18,16 @@ internal static class PluginProcessRunner
             ?? throw new InvalidOperationException("无法启动 dsh plugin 进程");
         Task<string> stdoutTask = p.StandardOutput.ReadToEndAsync(ct);
         Task<string> stderrTask = p.StandardError.ReadToEndAsync(ct);
-        await p.WaitForExitAsync(ct).ConfigureAwait(false);
-        return (p.ExitCode, await stdoutTask.ConfigureAwait(false), await stderrTask.ConfigureAwait(false));
+        try
+        {
+            await p.WaitForExitAsync(ct).ConfigureAwait(false);
+            return (p.ExitCode, await stdoutTask.ConfigureAwait(false), await stderrTask.ConfigureAwait(false));
+        }
+        catch (Exception)
+        {
+            KillTree(p);
+            throw;
+        }
     }
 
     /// <summary>流式执行器：逐行读 stdout/stderr，每行经 <paramref name="onLine"/> 转发（页面日志回流），
@@ -41,16 +49,23 @@ internal static class PluginProcessRunner
         }
         catch (Exception)
         {
-            try
-            {
-                p.Kill(entireProcessTree: true);
-            }
-            catch (InvalidOperationException)
-            {
-                // 进程已自行退出：无需击杀
-            }
-
+            KillTree(p);
             throw;
+        }
+    }
+
+    /// <summary>取消/异常路径整树击杀进程树：ReadToEndAsync/WaitForExit 的 OCE 会跳过等待，
+    /// using dispose 只关句柄不杀进程——不杀则进程带写权成孤儿（RunAsync/RunStreamingAsync 共用）。
+    /// 已自行退出的进程不重复击杀。调用方在 catch 内负责重抛。</summary>
+    private static void KillTree(System.Diagnostics.Process p)
+    {
+        try
+        {
+            p.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException)
+        {
+            // 进程已自行退出：无需击杀
         }
     }
 

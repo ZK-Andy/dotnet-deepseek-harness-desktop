@@ -313,7 +313,7 @@ public sealed partial class DesktopBootstrap
                     state.Version is not null && !_readyNotified)
                 {
                     _readyNotified = true;
-                    _ = Services.PagePump.ShowBannerWhenReady(
+                    _ = Services.PagePump.ShowBannerWhenReadyAsync(
                         _windowAccessor,
                         Services.Update.UpdateBanner.ReadyScript(state.Version, _uiLocale),
                         _supervisorCts.Token);
@@ -368,7 +368,7 @@ public sealed partial class DesktopBootstrap
                 if (Services.RuntimeVersionGate.IsBelowFloor(detected))
                 {
                     Services.HostLog.Write($"[host] 警告：dsh {detected} 低于支持底线 {Services.RuntimeVersionGate.MinimumVersion}，已提示用户");
-                    await Services.PagePump.ShowBannerWhenReady(_windowAccessor, Services.RuntimeVersionGate.BelowFloorBannerScript(detected, _uiLocale), _supervisorCts.Token);
+                    await Services.PagePump.ShowBannerWhenReadyAsync(_windowAccessor, Services.RuntimeVersionGate.BelowFloorBannerScript(detected, _uiLocale), _supervisorCts.Token);
                 }
             }
             else
@@ -386,7 +386,7 @@ public sealed partial class DesktopBootstrap
             // 上轮非受控退出：提示但不暗示应用故障（用户杀进程也属此类），引导导出诊断
             if (_previousRunUnclean)
             {
-                await Services.PagePump.ShowBannerWhenReady(_windowAccessor, RunMarker.UncleanBannerScript(_uiLocale), _supervisorCts.Token);
+                await Services.PagePump.ShowBannerWhenReadyAsync(_windowAccessor, RunMarker.UncleanBannerScript(_uiLocale), _supervisorCts.Token);
             }
         });
     }
