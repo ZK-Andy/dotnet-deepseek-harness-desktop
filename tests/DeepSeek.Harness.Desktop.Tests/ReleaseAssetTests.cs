@@ -1,5 +1,4 @@
 using DeepSeek.Harness.Desktop.Services.Update;
-using Xunit;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 

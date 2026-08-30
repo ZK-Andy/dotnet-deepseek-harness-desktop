@@ -10,8 +10,9 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
-    <!-- AD0001（分析器异常）抑制：缘由同主工程（StyleCop 1.1.118 新语法崩溃）。 -->
-    <NoWarn>$(NoWarn);AD0001</NoWarn>
+    <!-- AD0001（分析器异常）抑制：缘由同主工程（StyleCop 1.1.118 新语法崩溃）。
+         EnableGenerateDocumentationFile：缘由同主工程（IDE0005 经 format 门禁强制，压制 MSBuild 指导性提示）。 -->
+    <NoWarn>$(NoWarn);AD0001;EnableGenerateDocumentationFile</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

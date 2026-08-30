@@ -1,7 +1,6 @@
 using System.IO.Compression;
 using System.Text;
 using DeepSeek.Harness.Desktop.Services;
-using Xunit;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 

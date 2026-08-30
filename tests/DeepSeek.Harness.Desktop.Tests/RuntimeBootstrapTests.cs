@@ -1,9 +1,7 @@
 using System.Net;
-using System.Net.Http;
 using System.Text;
 using DeepSeek.Harness.Desktop.Services;
 using Ryn.Ipc;
-using Xunit;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 

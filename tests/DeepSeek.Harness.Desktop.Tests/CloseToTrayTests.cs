@@ -1,6 +1,5 @@
 using DeepSeek.Harness.Desktop.Services.Tray;
 using Ryn.Ipc;
-using Xunit;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 

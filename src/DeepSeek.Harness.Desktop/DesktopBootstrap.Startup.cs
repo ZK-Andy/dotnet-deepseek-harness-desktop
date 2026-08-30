@@ -1,10 +1,6 @@
 using System.Runtime.InteropServices;
 using DeepSeek.Harness.Desktop.Services;
-using Microsoft.Extensions.DependencyInjection;
-using Ryn.Callbacks;
 using Ryn.Core;
-using Ryn.Ipc;
-using Ryn.Plugins.Tray;
 
 namespace DeepSeek.Harness.Desktop;
 

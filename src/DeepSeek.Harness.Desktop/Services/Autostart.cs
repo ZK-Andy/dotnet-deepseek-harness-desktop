@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.Win32;
 
 namespace DeepSeek.Harness.Desktop.Services;

@@ -68,6 +68,7 @@ dotnet_sort_system_directives_first = true
 csharp_using_directive_placement = outside_namespace:warning
 dotnet_style_using_directive_placement = outside_namespace:warning
 dotnet_diagnostic.IDE0065.severity = warning
+dotnet_diagnostic.IDE0005.severity = warning  # 移除无谓的 using 指令（孤儿 using 进 build/format 强制门禁）
 
 # ======== 控制块一律带大括号（单行 if 约定） ========
 csharp_prefer_braces = true:warning

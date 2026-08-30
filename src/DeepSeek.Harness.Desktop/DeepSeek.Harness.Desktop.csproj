@@ -14,8 +14,12 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <!-- AD0001（分析器异常）抑制：StyleCop.Analyzers 1.1.118 在 C# 13/14 新语法（record 声明等）
-         上抛异常；受影响的 SA 规则已按 .editorconfig 禁用或降级，崩溃噪音无分析价值。 -->
-    <NoWarn>$(NoWarn);AD0001</NoWarn>
+         上抛异常；受影响的 SA 规则已按 .editorconfig 禁用或降级，崩溃噪音无分析价值。
+         EnableGenerateDocumentationFile：IDE0005（移除无谓 using）已由根 .editorconfig 开启为
+         warning，经 `dotnet format` 门禁强制（见 ci.yml）；MSBuild 侧因未开 GenerateDocumentationFile
+         只报本指导性提示（IDE0005 需该属性才在 build 生效，但开启它会引入 714 个 CS1591 缺 XML 文档
+         warning，不可接受），故压制此提示、让 IDE0005 的唯一强制路径留在 format 门禁。 -->
+    <NoWarn>$(NoWarn);AD0001;EnableGenerateDocumentationFile</NoWarn>
     <!-- 发布产物为 JIT：三条打包流水线均显式 JIT publish（macOS 交叉编需关 AOT），
          此处声明 false 使本地 publish 与发运一致。AOT 兼容（源生成 JSON）保留为裕度，
          周期验证可临时 -p:PublishAot=true。 -->

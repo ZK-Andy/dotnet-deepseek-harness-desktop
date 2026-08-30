@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace DeepSeek.Harness.Desktop.Services.Update;
 

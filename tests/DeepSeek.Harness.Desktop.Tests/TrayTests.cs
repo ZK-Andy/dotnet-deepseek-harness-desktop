@@ -2,9 +2,7 @@ using System.Text;
 using DeepSeek.Harness.Desktop.Services;
 using DeepSeek.Harness.Desktop.Services.Tray;
 using DeepSeek.Harness.Desktop.Services.Update;
-using Ryn.Ipc;
 using Ryn.Plugins.Tray;
-using Xunit;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 
