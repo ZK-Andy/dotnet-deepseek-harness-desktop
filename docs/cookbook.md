@@ -68,6 +68,8 @@
 - **[上游] 设置导航图标统一是宿主行为（2026-08-23 实证）**：dsh `ui-settings-general/SettingsRoot.tsx` 的 `navIcon(id)` 按 section id 白名单硬编码图标（models/agent-presets/plugins），其余一律回退同一齿轮；`settings.section` slot 契约（`SettingsSectionOwnerProps`）无 icon 字段，**插件无法声明自己的图标**。companion「桌面更新」与「通用设置」同为回退态属预期；要差异化只能上游 PR（描述符加 icon 或白名单加 id）。rc.2 前端连 models 等分支都没有（上游工作树更新）。
 - **[上游] dsh `plugin` 经 `spawnSync("pnpm")` 从 PATH 调 pnpm，无捆绑（2026-08-29 源码实证）**：故「桌面捆绑 pnpm」的假设都错——online-first 模型运行时仅 node + npm 装的 `@deepseek-ai/dsh`，无 `pnpm.cjs`；CLI pnpm shim 只能转发用户自装 pnpm（缺则诚实提示），插件安装成败取决于用户 `PATH` 有 pnpm。
 
+- **[上游] dsh 0.1.2-alpha.2 破坏性升级：旧插件崩溃先查 dsh-llm/dsh-settings API 迁移（2026-08-31 实机实证，PR dsh-commandcode-provider#13）**：dsh-llm `CallId`→`ToolCallId`；dsh-settings 的 `installSettingsSection`/`settingsNamespace` 改 `SettingsProvider` 服务（`ctx.inject(['settings'])`+`installSection`，ns 纯字符串）；`dsh-client-runtime`/`dsh-client-ui-primitives` 从 alpha.2 移除（旧客户端加载白屏）。判别：升级后插件树加载失败先查这三处；兼容写法=运行时择取品牌函数+settings 双路径。
+
 ## 产品
 
 - **[产品] GNOME AppIndicator 扩展的空菜单图标 = 死图标（2026-08-24 判读）**：单击路径被 `numMenuItems===0` 短路（连菜单都不弹）、右键 toggle 空菜单不可见、唯双击不查菜单直发 Activate。托盘行为怪异先验「菜单是否真装上」；扩展源码在本机 `/usr/share/gnome-shell/extensions/appindicatorsupport@*/` 可直接读，dbus-monitor 可抓 Activate。
