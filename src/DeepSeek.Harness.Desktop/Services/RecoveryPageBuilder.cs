@@ -12,70 +12,70 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// </summary>
 public static class RecoveryPageBuilder
 {
-	/// <summary>构建覆写当前文档的 JS：先写静态骨架，再以 textContent 回填数据并接线按钮。
-	/// 序列化用默认编码器：<c>&lt;</c> 等与全部非 ASCII 一律 \u 转义——payload 落在脚本字符串
-	/// 里时天然不含可执行 HTML 形态。</summary>
-	/// <param name="reason">人读失败原因（如「运行时进程意外退出」）。</param>
-	/// <param name="stderrTail">子进程 stderr 尾部行（supervisor 已在重启前留证）。</param>
-	public static string BuildScript(string reason, IReadOnlyList<string> stderrTail)
-	{
-		var payload = JsonSerializer.Serialize(new Payload(reason, stderrTail), AppJsonContext.Default.Payload);
+    /// <summary>构建覆写当前文档的 JS：先写静态骨架，再以 textContent 回填数据并接线按钮。
+    /// 序列化用默认编码器：<c>&lt;</c> 等与全部非 ASCII 一律 \u 转义——payload 落在脚本字符串
+    /// 里时天然不含可执行 HTML 形态。</summary>
+    /// <param name="reason">人读失败原因（如「运行时进程意外退出」）。</param>
+    /// <param name="stderrTail">子进程 stderr 尾部行（supervisor 已在重启前留证）。</param>
+    public static string BuildScript(string reason, IReadOnlyList<string> stderrTail)
+    {
+        var payload = JsonSerializer.Serialize(new Payload(reason, stderrTail), AppJsonContext.Default.Payload);
 
-		return new StringBuilder("document.documentElement.innerHTML=")
-			.Append(AppJsonContext.JsString(Skeleton))
-			.Append(";var D=")
-			.Append(payload)
-			.Append(';')
-			.Append(Wire)
-			.ToString();
-	}
+        return new StringBuilder("document.documentElement.innerHTML=")
+            .Append(AppJsonContext.JsString(Skeleton))
+            .Append(";var D=")
+            .Append(payload)
+            .Append(';')
+            .Append(Wire)
+            .ToString();
+    }
 
-	/// <summary>轻量覆写脚本（纯函数可单测）：仅「运行时重启中」静态屏，无数据回填与按钮。
-	/// 用于随包插件安装后的短暂过渡——与崩溃恢复页共用注入通道，不再另养一份内嵌脚本。</summary>
-	public static string BuildRestartingScript()
-	{
-		return "document.documentElement.innerHTML=" + AppJsonContext.JsString(RestartingSkeleton) + ";";
-	}
+    /// <summary>轻量覆写脚本（纯函数可单测）：仅「运行时重启中」静态屏，无数据回填与按钮。
+    /// 用于随包插件安装后的短暂过渡——与崩溃恢复页共用注入通道，不再另养一份内嵌脚本。</summary>
+    public static string BuildRestartingScript()
+    {
+        return "document.documentElement.innerHTML=" + AppJsonContext.JsString(RestartingSkeleton) + ";";
+    }
 
-	/// <summary>恢复页动态数据帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>
-	/// <param name="Reason">人读失败原因。</param>
-	/// <param name="Tail">子进程 stderr 尾部行。</param>
-	internal sealed record Payload(string Reason, IReadOnlyList<string> Tail);
+    /// <summary>恢复页动态数据帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>
+    /// <param name="Reason">人读失败原因。</param>
+    /// <param name="Tail">子进程 stderr 尾部行。</param>
+    internal sealed record Payload(string Reason, IReadOnlyList<string> Tail);
 
-	private const string Skeleton =
-		"<!doctype html><html><head><meta charset=\"utf-8\"><title>DeepSeek Harness Desktop</title><style>" +
-		"body{font-family:system-ui,sans-serif;background:#0f0f13;color:#e6e6ea;display:flex;flex-direction:column;" +
-		"align-items:center;justify-content:center;height:100vh;gap:14px;margin:0}" +
-		".spin{width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#7c3aed;border-radius:50%;animation:r 1s linear infinite}" +
-		"@keyframes r{to{transform:rotate(360deg)}}" +
-		"h2{margin:0;font-size:18px}p{margin:0;color:#b9b9c6}" +
-		"#ddc-tail{max-width:720px;max-height:180px;overflow:auto;background:#17171f;border:1px solid #2a2a3a;border-radius:8px;" +
-		"padding:10px 14px;font:12px/1.5 ui-monospace,monospace;color:#9a9aa8;white-space:pre-wrap;word-break:break-all;display:none}" +
-		".row{display:flex;gap:12px}button{font:14px system-ui,sans-serif;padding:8px 18px;border-radius:8px;cursor:pointer;" +
-		"border:1px solid #3a3a4a;background:#22222e;color:#e6e6ea}button:hover{background:#2a2a38}" +
-		"#ddc-status{color:#7c8cff;min-height:1.2em}</style></head>" +
-		"<body><div class=\"spin\"></div><h2>DeepSeek Harness Desktop</h2>" +
-		"<p id=\"ddc-reason\"></p><div id=\"ddc-tail\"></div><p id=\"ddc-status\"></p>" +
-		"<div class=\"row\"><button id=\"ddc-export\">导出诊断包</button><button id=\"ddc-exit\">退出应用</button></div>" +
-		"<p style=\"font-size:12px;color:#6a6a78\">系统正在自动重试；恢复后本页会自动消失。</p></body></html>";
+    private const string Skeleton =
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>DeepSeek Harness Desktop</title><style>" +
+        "body{font-family:system-ui,sans-serif;background:#0f0f13;color:#e6e6ea;display:flex;flex-direction:column;" +
+        "align-items:center;justify-content:center;height:100vh;gap:14px;margin:0}" +
+        ".spin{width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#7c3aed;border-radius:50%;animation:r 1s linear infinite}" +
+        "@keyframes r{to{transform:rotate(360deg)}}" +
+        "h2{margin:0;font-size:18px}p{margin:0;color:#b9b9c6}" +
+        "#ddc-tail{max-width:720px;max-height:180px;overflow:auto;background:#17171f;border:1px solid #2a2a3a;border-radius:8px;" +
+        "padding:10px 14px;font:12px/1.5 ui-monospace,monospace;color:#9a9aa8;white-space:pre-wrap;word-break:break-all;display:none}" +
+        ".row{display:flex;gap:12px}button{font:14px system-ui,sans-serif;padding:8px 18px;border-radius:8px;cursor:pointer;" +
+        "border:1px solid #3a3a4a;background:#22222e;color:#e6e6ea}button:hover{background:#2a2a38}" +
+        "#ddc-status{color:#7c8cff;min-height:1.2em}</style></head>" +
+        "<body><div class=\"spin\"></div><h2>DeepSeek Harness Desktop</h2>" +
+        "<p id=\"ddc-reason\"></p><div id=\"ddc-tail\"></div><p id=\"ddc-status\"></p>" +
+        "<div class=\"row\"><button id=\"ddc-export\">导出诊断包</button><button id=\"ddc-exit\">退出应用</button></div>" +
+        "<p style=\"font-size:12px;color:#6a6a78\">系统正在自动重试；恢复后本页会自动消失。</p></body></html>";
 
-	private const string Wire =
-		"document.getElementById('ddc-reason').textContent=D.reason;" +
-		"var t=document.getElementById('ddc-tail');" +
-		"if(D.tail&&D.tail.length){D.tail.forEach(function(l){var d=document.createElement('div');d.textContent=l;t.appendChild(d);});t.style.display='block';}" +
-		"function frame(r){try{return (typeof r==='string')?JSON.parse(r):(r||{});}catch(e){return {error:String(e)};}}" +
-		"document.getElementById('ddc-export').onclick=async function(){var s=document.getElementById('ddc-status');" +
-		"s.textContent='正在导出…';this.disabled=true;" +
-		"try{var o=frame(await window.__ryn.invoke('desktop.diagnostics.export',{}));" +
-		"s.textContent=o.path?('已导出：'+o.path):('导出失败：'+(o.error||'未知原因'));}catch(e){s.textContent='导出失败：'+e;}" +
-		"this.disabled=false;};" +
-		"document.getElementById('ddc-exit').onclick=async function(){this.disabled=true;" +
-		"try{await window.__ryn.invoke('desktop.recovery.exit',{});}catch(e){}};";
+    private const string Wire =
+        "document.getElementById('ddc-reason').textContent=D.reason;" +
+        "var t=document.getElementById('ddc-tail');" +
+        "if(D.tail&&D.tail.length){D.tail.forEach(function(l){var d=document.createElement('div');d.textContent=l;t.appendChild(d);});t.style.display='block';}" +
+        "function frame(r){try{return (typeof r==='string')?JSON.parse(r):(r||{});}catch(e){return {error:String(e)};}}" +
+        "document.getElementById('ddc-export').onclick=async function(){var s=document.getElementById('ddc-status');" +
+        "s.textContent='正在导出…';this.disabled=true;" +
+        "try{var o=frame(await window.__ryn.invoke('desktop.diagnostics.export',{}));" +
+        "s.textContent=o.path?('已导出：'+o.path):('导出失败：'+(o.error||'未知原因'));}catch(e){s.textContent='导出失败：'+e;}" +
+        "this.disabled=false;};" +
+        "document.getElementById('ddc-exit').onclick=async function(){this.disabled=true;" +
+        "try{await window.__ryn.invoke('desktop.recovery.exit',{});}catch(e){}};";
 
-	private const string RestartingSkeleton =
-		"<!doctype html><html><head><meta charset=\"utf-8\"><style>" +
-		"body{font-family:system-ui,sans-serif;background:#0f0f13;color:#e6e6ea;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:12px;margin:0}" +
-		".spin{width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#7c3aed;border-radius:50%;animation:r 1s linear infinite}" +
-		"@keyframes r{to{transform:rotate(360deg)}}</style></head>" +
-		"<body><div class=\"spin\"></div><h2>DeepSeek Harness Desktop</h2><p>运行时重启中，正在重新连接…</p></body></html>";
+    private const string RestartingSkeleton =
+        "<!doctype html><html><head><meta charset=\"utf-8\"><style>" +
+        "body{font-family:system-ui,sans-serif;background:#0f0f13;color:#e6e6ea;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:12px;margin:0}" +
+        ".spin{width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#7c3aed;border-radius:50%;animation:r 1s linear infinite}" +
+        "@keyframes r{to{transform:rotate(360deg)}}</style></head>" +
+        "<body><div class=\"spin\"></div><h2>DeepSeek Harness Desktop</h2><p>运行时重启中，正在重新连接…</p></body></html>";
 }

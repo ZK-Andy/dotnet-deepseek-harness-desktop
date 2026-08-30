@@ -10,7 +10,7 @@
 - [Microsoft Learn · .NET C# Coding Conventions](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions)——命名/格式/语言惯用。
 - [Microsoft Learn · .NET Framework Design Guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/)——API/命名/类型设计（面向公共 API）。
 
-仓库根 `.editorconfig` 据此编码（IDE/Roslyn 自动格式化与提示；本仓库未把 `dotnet format` 纳入 CI 门禁，以 `suggestion` 引导为主，既有文件风格优先）。
+仓库根 `.editorconfig` 据此编码；CI 已加 `dotnet format --verify-no-changes` 门禁（见 ADR `csharp-coding-standard`）——代码须符合规范，违规即 fail loud。IDE/Roslyn 依 `.editorconfig` 自动格式化。
 
 ## 关键约定（摘要）
 

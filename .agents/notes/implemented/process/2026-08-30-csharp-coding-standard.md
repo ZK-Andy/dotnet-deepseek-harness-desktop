@@ -17,9 +17,10 @@ Status: implemented
   - [Microsoft .NET C# Coding Conventions](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions)（命名/格式/语言惯用）；
   - [.NET Framework Design Guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/)（公共 API/命名/类型设计）。
 - **落地**：
-  - 仓库根新增 **`.editorconfig`**（基准规则，IDE/Roslyn 自动格式化与提示；**未纳入 CI 门禁**——既有代码未全合规，先以 `suggestion` 引导，避免阻断构建）；
+  - 仓库根新增 **`.editorconfig`**（基准规则，IDE/Roslyn 自动格式化与提示）；
   - 新增 **`docs/coding-standards.md`**（规范摘要 + 关键约定 + 与 cookbook/architecture/AGENTS 的分层关系 = 单一事实源）；
-  - 根 `AGENTS.md`「编码约定」加一行指向该文档 + 字数预算表加 `docs/coding-standards.md ≤ 500 词`；`doc-budgets.manifest.json` 同步。
+  - 根 `AGENTS.md`「编码约定」加一行指向该文档 + 字数预算表加 `docs/coding-standards.md ≤ 500 词`；`doc-budgets.manifest.json` 同步；
+  - **CI 门禁**：ci.yml build-test job 加 `dotnet format --verify-no-changes --severity warn`（ADR 后追加）——既有代码按 `.editorconfig` 一键归一（tab→4 空格等，纯 whitespace），新代码不符即 fail loud。
 - **行数指标不作为规范**：权威规范无此规则；用户拍板——不加行数校验脚本，不把 30/1000 当规范强推（防止"规则无工具兜底、靠人自觉"的假合规）。拆 `Program.cs` 是独立工程问题（见另条），不由此决定。
 
 ## Alternatives considered
@@ -28,13 +29,13 @@ Status: implemented
 - **仅采用 Microsoft docs 约定（样本导向）**：作为基准一并引用，但不能独当生产规范（该约定为文档/示例导向、不限制语言特性）；以 dotnet/runtime 风格为主。
 - **只落 `.editorconfig` 不写文档**：无单一事实源，规范散落在配置里；被否。
 - **只写文档不落 `.editorconfig`**：无强制执行/IDE 引导面；被否。
-- **把 `dotnet format --verify-no-changes` 纳入 CI 门禁**：本次不做（用户选定 B），当既有代码收敛后再评估（见 Consequences）。
+- **只落地 `.editorconfig` + 文档、不配 CI 门禁（用户初选 B）**：后用户改口「加入 CI 门禁」——先按 `.editorconfig` 一键归一既有代码（纯 whitespace），再挂 `dotnet format --verify-no-changes`，新代码不符即 fail loud。此为本 ADR 最终采纳路径（见 Decision）。
 
 ## Consequences
 
 - IDE/Roslyn 依 `.editorconfig` 自动格式化与提示新代码；`dotnet format` 可随时对齐。
 - 既有代码**大部分已符合**规范（file-scoped namespace、`_camelCase` 字段、`readonly`、target-typed `new()`、Nullable/ImplicitUsings 均启用）；少量 `var` 宽松用法属 `suggestion`，不阻断构建。
-- 后续 `Main` 拆分等重构以本规范为准；CI 门禁留待既有代码全量收敛后评估。
+- 后续 `Main` 拆分等重构以本规范为准；CI `dotnet format --verify-no-changes` 门禁已生效——新代码或后续改动不符规范会在 CI 红。
 - doc-budgets 新增 `docs/coding-standards.md`（≤500 词），AGENTS.md 字数预算同步。
 
 ## Related

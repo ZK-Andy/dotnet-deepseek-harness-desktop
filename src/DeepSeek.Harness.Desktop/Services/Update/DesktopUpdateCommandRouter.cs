@@ -45,22 +45,22 @@ public sealed class DesktopUpdateCommandRouter : ICommandRouter
             case "desktop.update.getState":
                 return ValueTask.FromResult(_machine.State.ToJson());
             case "desktop.update.check":
-            {
-                // 检查可能耗时（下载分钟级），立即回当前态，后续靠事件推送
-                var backgroundCt = _backgroundToken?.Invoke() ?? CancellationToken.None;
-                _ = Task.Run(async () =>
                 {
-                    try
+                    // 检查可能耗时（下载分钟级），立即回当前态，后续靠事件推送
+                    var backgroundCt = _backgroundToken?.Invoke() ?? CancellationToken.None;
+                    _ = Task.Run(async () =>
                     {
-                        await _machine.CheckAsync(backgroundCt).ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        _log?.Invoke($"[update] check 失败：{ex.Message}");
-                    }
-                }, backgroundCt);
-                return ValueTask.FromResult(_machine.State.ToJson());
-            }
+                        try
+                        {
+                            await _machine.CheckAsync(backgroundCt).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _log?.Invoke($"[update] check 失败：{ex.Message}");
+                        }
+                    }, backgroundCt);
+                    return ValueTask.FromResult(_machine.State.ToJson());
+                }
             case "desktop.update.install":
                 return RouteInstallAsync(_backgroundToken?.Invoke() ?? CancellationToken.None);
             default:

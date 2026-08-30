@@ -65,6 +65,10 @@ jobs:
           dotnet-version: '10.0.x'
       - name: build
         run: dotnet build dotnet-deepseek-harness-desktop.slnx -c Debug
+      # 编码规范门禁（ADR csharp-coding-standard）：按仓库根 .editorconfig 强制格式/风格。
+      # --verify-no-changes：有差异即 exit 非 0，fail loud；新代码必须符合规范才能过门禁。
+      - name: format (coding standards gate)
+        run: dotnet format dotnet-deepseek-harness-desktop.slnx --verify-no-changes --severity warn
       - name: test with coverage
         run: dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build --collect:"XPlat Code Coverage" --results-directory TestResults -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
       - name: coverage summary

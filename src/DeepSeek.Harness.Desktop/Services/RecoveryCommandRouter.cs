@@ -12,44 +12,44 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// </summary>
 public sealed class RecoveryCommandRouter : ICommandRouter
 {
-	/// <summary>本路由响应的命令名。</summary>
-	public const string CommandName = "desktop.recovery.exit";
+    /// <summary>本路由响应的命令名。</summary>
+    public const string CommandName = "desktop.recovery.exit";
 
-	private readonly Action _closeWindow;
-	private readonly CloseGate _closeGate;
-	private readonly Action<string>? _log;
+    private readonly Action _closeWindow;
+    private readonly CloseGate _closeGate;
+    private readonly Action<string>? _log;
 
-	/// <summary>创建路由。<paramref name="closeWindow"/> 为关窗动作；批准走持有的闸门。</summary>
-	public RecoveryCommandRouter(Action closeWindow, CloseGate closeGate, Action<string>? log = null)
-	{
-		_closeWindow = closeWindow;
-		_closeGate = closeGate;
-		_log = log;
-	}
+    /// <summary>创建路由。<paramref name="closeWindow"/> 为关窗动作；批准走持有的闸门。</summary>
+    public RecoveryCommandRouter(Action closeWindow, CloseGate closeGate, Action<string>? log = null)
+    {
+        _closeWindow = closeWindow;
+        _closeGate = closeGate;
+        _log = log;
+    }
 
-	/// <inheritdoc />
-	public bool CanRoute(string command) => string.Equals(command, CommandName, StringComparison.Ordinal);
+    /// <inheritdoc />
+    public bool CanRoute(string command) => string.Equals(command, CommandName, StringComparison.Ordinal);
 
-	/// <inheritdoc />
-	public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
-	{
-		if (!CanRoute(command))
-		{
-			throw new RynCommandNotFoundException(command);
-		}
+    /// <inheritdoc />
+    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
+    {
+        if (!CanRoute(command))
+        {
+            throw new RynCommandNotFoundException(command);
+        }
 
-		// 先批准再关窗：与托盘退出同一条顺序契约
-		_closeGate.ApproveExit();
-		try
-		{
-			_closeWindow();
-			_log?.Invoke("[host] 恢复页请求退出：已放行关窗");
-		}
-		catch (Exception ex)
-		{
-			_log?.Invoke($"[host] 恢复页退出关窗失败：{ex.Message}");
-		}
+        // 先批准再关窗：与托盘退出同一条顺序契约
+        _closeGate.ApproveExit();
+        try
+        {
+            _closeWindow();
+            _log?.Invoke("[host] 恢复页请求退出：已放行关窗");
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"[host] 恢复页退出关窗失败：{ex.Message}");
+        }
 
-		return ValueTask.FromResult("{}");
-	}
+        return ValueTask.FromResult("{}");
+    }
 }

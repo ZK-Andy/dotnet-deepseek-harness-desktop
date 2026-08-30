@@ -192,7 +192,7 @@ public static class MarketInstallHelper
                 case null when profile is not null:
                     profile["bundles"] = new JsonArray(packageName);
                     break;
-                // dsh/profile 缺失：不改结构，原样回写（保持既有语义：返回 true）
+                    // dsh/profile 缺失：不改结构，原样回写（保持既有语义：返回 true）
             }
 
             await WriteProfilePkgAsync(profilePkg, root);
