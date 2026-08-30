@@ -14,6 +14,7 @@ Checks:
        - starts with `[<stage>] <主题>（<yyyy-mm-dd> <来源>）**：...`
        - the stage must be one of the closed set
        - must carry a `（yyyy-mm-dd ...）` date, a real calendar day, not after today
+         (UTC+1-day tolerance for local/UTC date skew, matching verify-adr-format.py)
        - must have a non-empty topic and non-empty body after the `：`
   3. Unknown / duplicate stage headings, or an entry with a stage that does not
      match its section, are flagged.
@@ -73,8 +74,12 @@ def _validate_entry(line: str, path: Path) -> list[str]:
     except ValueError:
         errors.append(f"{path}: '{date_str}' is not a real calendar date")
         return errors
-    if note_date > datetime.date.today():
-        errors.append(f"{path}: date '{date_str}' is after today ({datetime.date.today()})")
+    # 时区容差：作者本地日期可领先/落后 UTC 至多 1 天（UTC+14 早 / UTC-12 晚），故允许
+    # note_date ≤ today_utc+1。CI runner 是 UTC，作者本地可能已跨到次日——对齐
+    # verify-adr-format.py 先例（97a702f），保留"不晚于今日"意图同时容忍合法时区跨日。
+    today_utc = datetime.datetime.now(datetime.timezone.utc).date()
+    if note_date > today_utc + datetime.timedelta(days=1):
+        errors.append(f"{path}: date '{date_str}' is after today ({today_utc})")
     if note_date.year < 1970:
         errors.append(f"{path}: date '{date_str}' is before the epoch (1970)")
 
@@ -148,8 +153,10 @@ def _self_test() -> int:
     bad_body = f"# Cookbook\n\n{HEADERS}\n\n{bad_entry}\n"
     cases.append((bad_body, 1, "unknown entry stage -> fail"))
 
-    # future date
-    future = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+    # future date: relative to UTC today +2 — always exceeds the +1 tolerance,
+    # so it fails deterministically regardless of local timezone offset.
+    today_utc = datetime.datetime.now(datetime.timezone.utc).date()
+    future = (today_utc + datetime.timedelta(days=2)).isoformat()
     future_body = f"# Cookbook\n\n## 脚本\n\n- **[脚本] 示例主题（{future} 实机）**：正文。\n"
     cases.append((future_body, 1, "future date -> fail"))
 
