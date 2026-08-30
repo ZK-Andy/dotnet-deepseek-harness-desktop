@@ -97,6 +97,17 @@ Status: implemented
 - 文档同步：coding-standards（提额 500→1000）与 architecture-standards 重构、AGENTS 质量门清单（加两个 verify）、README 测试徽章 464→467、feature-flow 分流。
 - **落地结果**：`verify-code-health`/`verify-code-conventions` 全清零、`dotnet test` 467/467 全绿、五 verify 门禁全绿；机制在「report → 清账 → fail 硬门槛 → 工作流集成」执行序完成。
 
+## 三重审核执行契约（落地）
+
+三重审核曾被批量背景子代理卡住（无限期不收敛）。落地契约见 [feature-flow](../../../workflows/feature-flow.md) 步骤 5，要点：
+
+- **范围 = 单元 diff**：一次只审一个逻辑单元（提交/相干子集），用 `git diff <base>..<head>` 界定；禁止整仓/全文件快照 + 手工 diff。
+- **父级预消化简报**：主会话先给每个代理紧凑清单（文件/模式/风险点/定向检查项），非"加载技能→审一切"。
+- **串行 + 有界**：R1→R2→R3 依次，前一个收口才放下一个；每代理设轮次/工具调用上限，到限未收口即中断并返回部分结论。
+- **确定性报告**：`Blocker[]`/`Suggestion[]`（文件:行 + 证据）；主会话逐条裁定，一次收口为 `refactor(review)`。
+- **行为保持第一证据 = 测试 + 门禁**：评审只补测试/门禁盖不住的语义/文档面，不重复全量重验。
+- **纯结构重构走轻审/简化路径**；大批量回溯用 `workflow` 阶段化 fan-out。
+
 ## Related
 
 - [2026-08-30-architecture-standards](../../implemented/process/2026-08-30-architecture-standards.md)（implemented）：本 ADR 对其 R1–R4/R3 做机械化；R5 行为契约迁出（见通道〇）。
