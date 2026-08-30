@@ -13,7 +13,7 @@ Status: implemented
 **共享 home（数据一份）——已落地**：
 
 - `HarnessRuntimeHost.ResolveDshHome()` 优先级：`DSH_DESKTOP_DSH_HOME`（dev 隔离自动写入/用户显式回退）> 生态标准 `DSH_HOME`（与上游同语义：空白视为未设、支持 `~` 前缀）> 规范默认 `~/.dsh`。
-- 启动组装走专属 `profiles/desktop`：spawn 参数与 Program.cs 插件任务的 profile 引用共用单点常量 `HarnessRuntimeHost.DesktopProfileName`。
+- 启动组装走专属 `profiles/desktop`：spawn 参数与 DesktopBootstrap 插件任务的 profile 引用共用单点常量 `HarnessRuntimeHost.DesktopProfileName`。
 - **desktop profile 由壳自举**（实现期发现的关键前置）：上游 app-boot 只对内置模板（web/headless）自动初始化 profile，自定义名在 `package.json` 缺失时直接拒启。`DesktopProfileBootstrap.EnsureProfile` 在首次 spawn 前按上游 `initProfile` 同款三件套自举（清单 + 空 patch 层 + pnpm-workspace），bundles 对齐 web 模板（`dsh-base` + `dsh-web-app`——缺 web-app 则永远出不了 `dsh web:` URL）；幂等且永不覆写已存在文件。随包插件安装完成后补回这两个必需 bundle，防上游 reconcile 重整时丢失桌面 Web UI 层。
 - **破坏性变更是既定代价（已拍板）**：存量私有 home 不做自动迁移、不做兼容层；旧 home 残留由 `LegacyHomeNotice` 探测并在 host.log 留痕（界面横幅已去除，见 bug-fix `2026-08-24-companion-settings-consolidation`）；`DSH_DESKTOP_DSH_HOME` 指回即回退。
 - **启动版本底线检查**（版本偏斜唯一防线）：`RuntimeVersionGate` 只读探测即将执行的 dsh 版本，低于底线（`0.1.1-rc.2`，与闭包钉版同源升级）仅日志+横幅明确提示，不阻断；探测失败按未知处理只记日志。数字段逐段比较，同核预发布后缀不参与（粗粒度足够拦截跨 minor 老运行时）。
@@ -44,3 +44,4 @@ Status: implemented
 - [dev 运行时隔离](../process/2026-08-22-dev-runtime-isolation.md)：dev 隔离守卫保留，本决定仅改变产品态 home；其判定所依赖的捆绑闭包信号在本形态下不受影响。
 - [companion 版本感知升级](../feature/2026-08-22-companion-plugin-version-aware-upgrade.md)：比对逻辑不变；作用对象改为 `profiles/desktop`，tgz 供给渠道不变（随壳本地 tgz）。
 - [online-first 去捆绑运行时](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：**部分取代本篇**——「闭包保留为预览期形态、去捆绑是远期选项」条款与 dev 判定挂账由该 ADR 接管（去捆绑启动后 `IsDevRuntime` 信号重构为前置义务）；共享 home / desktop profile 决定不变。
+- [split-program-main-god-function](../architecture/2026-08-30-split-program-main-god-function.md)（implemented）：本篇的 `Program.cs` 插件任务位置随 P0 拆 Main 迁至 `DesktopBootstrap`。

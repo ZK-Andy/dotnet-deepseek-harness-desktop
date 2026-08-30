@@ -16,7 +16,7 @@ v0.4.0 实机回归（用户应用内自更新 0.3.12→0.4.0 后重启）：**�
 
 **根因**：companion 安装（`EnsureBundledPluginsBeforeSpawnAsync`）的两个执行点都要求特定的运行时形态：
 
-- call site 1（Program.cs，非引导路径）门控 `!bootstrapNeeded && bundledClosure is not null`——要求**捆绑闭包**存在；
+- call site 1（DesktopBootstrap，非引导路径）门控 `!bootstrapNeeded && bundledClosure is not null`——要求**捆绑闭包**存在；
 - call site 2（引导后台任务内）只在**引导**路径运行。
 
 而 online-first 后**捆绑闭包已退役**（`bundledClosure` 恒为 null），用户有 PATH dsh 时既不引导、也无闭包 → **两个执行点都不触发** companion 安装。reconcile 又清理了旧的 companion 引用 → companion 从 profile 消失、无按新位置重装。这是 online-first 去捆绑 + batch-1「spawn 前装」组合引入的回归。
@@ -26,7 +26,7 @@ v0.4.0 实机回归（用户应用内自更新 0.3.12→0.4.0 后重启）：**�
 **companion 安装覆盖所有「运行时已就位」形态（捆绑闭包或 PATH-dsh），不再要求捆绑闭包存在。**
 
 1. `EnsureBundledPluginsBeforeSpawnAsync` 的 `nodeExe`/`dshEntry` 改可空：`null` 时 BuildPsi 用 PATH 上的 `dsh` 命令（`FileName="dsh"`、无 bin.js 入口参数），等价宿主 `HarnessRuntimeHost` spawn 时的 `dsh` 命令解析；非 null 时保持 `node <dshEntry>` 现状。
-2. Program.cs call site 1 门控由 `!bootstrapNeeded && bundledClosure is not null && !devIsolation` 放宽为 `!bootstrapNeeded && !devIsolation`（`!bootstrapNeeded` 即保证运行时已就位：捆绑闭包或 PATH dsh）；实参 `bundledClosure?.NodeExe` / `bundledClosure?.DshEntry`（PATH-dsh 时为 null）。
+2. DesktopBootstrap call site 1 门控由 `!bootstrapNeeded && bundledClosure is not null && !devIsolation` 放宽为 `!bootstrapNeeded && !devIsolation`（`!bootstrapNeeded` 即保证运行时已就位：捆绑闭包或 PATH dsh）；实参 `bundledClosure?.NodeExe` / `bundledClosure?.DshEntry`（PATH-dsh 时为 null）。
 3. dev 显式覆盖共享 home 仍跳过（防串扰），`!(isDev && !devAutoIsolated)` 语义不变。
 
 reconcile 仍正确（清理死引用），本次修复补齐「清理后按新位置重装」的缺口。
@@ -47,3 +47,4 @@ reconcile 仍正确（清理死引用），本次修复补齐「清理后按新�
 
 - [online-first-unbundled-runtime](../architecture/2026-08-29-online-first-unbundled-runtime.md)：去捆绑（`resources/runtime` 退役）是 companion 引用失效的上游诱因。
 - [reference-alignment 批次一](../architecture/2026-08-29-reference-alignment.md)：companion 改 spawn 前安装（batch-1）——其执行点未被 PATH-dsh 覆盖，本 ADR 补齐。
+- [split-program-main-god-function](../architecture/2026-08-30-split-program-main-god-function.md)：本 ADR 的 call site 随 P0 拆 Main 迁至 `DesktopBootstrap`。

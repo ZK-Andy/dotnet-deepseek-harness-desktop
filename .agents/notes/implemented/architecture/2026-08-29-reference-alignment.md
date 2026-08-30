@@ -8,7 +8,7 @@ Status: implemented
 
 2026-08-29 对照参照项目 `dsh-tauri-desk/deepseek-harness-desktop`（Rust/Tauri/React，1381★，v0.9.4）二次审核，确认我方在 batches 一~四（online-first）落地后仍有 5 项与参照的机制/健壮性/UX 不齐：
 
-1. **companion（internal 类插件）仍未 spawn 前安装**——Program.cs 的随包插件装配走「dsh 起来后 后台 3s 装 → `host.Stop()` 重启 dsh → 导航」，而参照 `launch.rs` 明确**所有插件（含 internal）在 spawn dsh 前 ensure 就位、绝不安装后重启**（其 #177 时序原则）。效果 = 首启要两次启动 dsh（第一次无 companion，装完重启加载）。
+1. **companion（internal 类插件）仍未 spawn 前安装**——DesktopBootstrap 的随包插件装配走「dsh 起来后 后台 3s 装 → `host.Stop()` 重启 dsh → 导航」，而参照 `launch.rs` 明确**所有插件（含 internal）在 spawn dsh 前 ensure 就位、绝不安装后重启**（其 #177 时序原则）。效果 = 首启要两次启动 dsh（第一次无 companion，装完重启加载）。
 2. **首启插件引导 UX**——参照有 `preinstall-setup` 引导页（推荐/修复/跳过 chip + 日志回流 + 取消事件）；我方首启只自动装 dshmarket，无用户选择/确认面与日志回流。
 3. **下载健壮性**——参照 `download/` 有断点续传（Range）+ 多源镜像回落（官方→ghfast.top）+ 原子 staging/backup 切换 + Windows 文件锁重试；我方 `RuntimeBootstrap` 仅 `GetAsync→CopyTo` 单源 + SHA256 校验 + 重试，无上述保障。
 4. **CLI shim / PATH 注册**——参照 `service/cli/shim/` 安装后把 `dsh`/`pnpm` 注入用户 PATH（Windows `%LOCALAPPDATA%\bin` shim + HKCU Path + `WM_SETTINGCHANGE`；mac/linux `~/.local/bin` + shell rc 幂等块）；我方无此能力。
@@ -34,9 +34,9 @@ Status: implemented
 - **与批次一 spawn 前安装合流**：companion（internal）保持 spawn 前静默自愈（不出现在勾选清单，对齐参照 `ensure_internal_plugins`）；dshmarket（preset）经引导页勾选后、`StartAsync` 前安装（对齐参照 `ensure_preset_plugins` + `preinstall-setup` UI）。
 - **驱动模型**：引导页经 IPC `desktop.preinstall.choose`（`{"action":"install"|"skip"}`）发决策 → 宿主 `PreinstallChoiceGate`（值携带版 RuntimeBootstrapGate）放行引导循环 → 命中 install 才执行 `EnsureMarketFromRegistryAsync`。决策等待期宿主无 dsh 进程，监督器持续被 `bootstrapSettled` 门控防空转恢复。
 - **安全兜底**：决策等待带 5 分钟超时，超时默认 SKIP（可恢复，dsh 照常起动；不默认装未确认的插件）——避免引导页未触发/用户离席导致壳永久挂在安装前，dsh 永不启动。
-- **日志回流**：经专用 `dsh-desktop-preinstall` CustomEvent（`{kind:decision|installing|log|done}`）推送；安装日志流由 Program.cs 的流式进程执行器逐行转发（companion 安装仍走静默执行器，不触发回流）。
+- **日志回流**：经专用 `dsh-desktop-preinstall` CustomEvent（`{kind:decision|installing|log|done}`）推送；安装日志流由 DesktopBootstrap 的流式进程执行器逐行转发（companion 安装仍走静默执行器，不触发回流）。
 - **状态机呈现**：`BootstrapStep` 增 `PreinstallPlugins`（页面步骤序在 VerifyDsh 后呈现「插件准备」），引导页实际交互由 `dsh-desktop-preinstall` 事件驱动；RuntimeBootstrap 的步骤机仍严格为运行时下载/安装，不在其内混入插件引导。
-- **实现**：`PreinstallChoiceGate`（值携带、可复位）+ `PreinstallCommandRouter` + `PresetPluginCatalog`（present preset 判定；当前仅 dshmarket）+ 流式进程执行器（`RunProcessStreamingAsync` 逐行转发 → `dsh-desktop-preinstall` 日志帧）承载回流；`MarketInstallHelper.EnsureMarketFromRegistryAsync` 签名不变（复用注入的 `runPluginAdd` 委托，靠执行器本身回流）。Program.cs 引导任务接线：BindRuntime → companion 自愈 → 待装 preset 判定 → 引导页决策 → 安装/跳过 → StartAsync。
+- **实现**：`PreinstallChoiceGate`（值携带、可复位）+ `PreinstallCommandRouter` + `PresetPluginCatalog`（present preset 判定；当前仅 dshmarket）+ 流式进程执行器（`RunProcessStreamingAsync` 逐行转发 → `dsh-desktop-preinstall` 日志帧）承载回流；`MarketInstallHelper.EnsureMarketFromRegistryAsync` 签名不变（复用注入的 `runPluginAdd` 委托，靠执行器本身回流）。DesktopBootstrap 引导任务接线：BindRuntime → companion 自愈 → 待装 preset 判定 → 引导页决策 → 安装/跳过 → StartAsync。
 
 ### 批次三 · 下载健壮性（download 对齐）
 
@@ -58,14 +58,14 @@ Status: implemented
 - **pnpm shim**：优先用户自有 pnpm（PATH 排除本 shim 目录）；缺则输出「pnpm 未找到」提示。**online-first 适配偏差**——我方运行时（npm 装 dsh@latest）不捆绑独立 pnpm，参照项目随 zip 发行版内置 `dependencies/pnpm/bin/pnpm.cjs`；故本批次 pnpm shim 只承担「用户 pnpm 转发 + 诚实提示」，不假装自供给 pnpm（见 Alternatives）。
 - 幂等合并、绝不覆盖用户配置；写入前说明路径（workflow 边界），失败仅告警不阻启动。桌面壳只在自己安装/首次登录对账时注册，避免与用户已有 PATH 冲突。
 - dev 显式隔离（`DevEnvironment.IsDevRuntime`）时跳过 dsh shim 注册——避免把开发 home/runtime 烘焙进用户共享的终端 shim（对齐参照 debug 构建不写共享 dsh shim 的原则；Windows 同样遵守）。
-- ✅ **批次四已落地**（2026-08-29；提交 `bec831d` feat + `c8eabb6` docs(adr) + `c428ea2` docs + `6992873` refactor(review)）：`CliShimBuilder`（纯 shim 文本生成，dsh/pnpm × cmd/ps1/sh）+ `CliShimPath`（PATH 幂等合并/rc 幂等块/生成标记识别）+ `CliShimPlanner`（按平台规划 shim 文件与 PATH 增量）+ `CliShimRegistrar`（定位运行时→烘焙→写 shim→注册 PATH；best-effort，失败仅告警；注册表写走 `[SupportedOSPlatform("windows")]` + 原始值读取保型 + `WM_SETTINGCHANGE` 广播；rc 只写已存在文件）。Program.cs 双路径（bundled/PATH-dsh 与引导完成后 `BindRuntime`）运行时就位后各注册一次；dev 隔离时跳过 dsh shim（Windows 亦遵守）。测试 **455/455**、覆盖率 **54.0%**、门禁全绿；三重审核 R1/R2/R3 串行收口（cmd DSH_HOME 注入时序、Windows dev 隔离失效、POSIX 谓词优先级、死 `DSH_NODE`/`RemovePathToken` 退役、注册表原始读保型、rc 补 `.zprofile` 等）。**待续**：批次五（boot 假活看门狗）。
+- ✅ **批次四已落地**（2026-08-29；提交 `bec831d` feat + `c8eabb6` docs(adr) + `c428ea2` docs + `6992873` refactor(review)）：`CliShimBuilder`（纯 shim 文本生成，dsh/pnpm × cmd/ps1/sh）+ `CliShimPath`（PATH 幂等合并/rc 幂等块/生成标记识别）+ `CliShimPlanner`（按平台规划 shim 文件与 PATH 增量）+ `CliShimRegistrar`（定位运行时→烘焙→写 shim→注册 PATH；best-effort，失败仅告警；注册表写走 `[SupportedOSPlatform("windows")]` + 原始值读取保型 + `WM_SETTINGCHANGE` 广播；rc 只写已存在文件）。DesktopBootstrap 双路径（bundled/PATH-dsh 与引导完成后 `BindRuntime`）运行时就位后各注册一次；dev 隔离时跳过 dsh shim（Windows 亦遵守）。测试 **455/455**、覆盖率 **54.0%**、门禁全绿；三重审核 R1/R2/R3 串行收口（cmd DSH_HOME 注入时序、Windows dev 隔离失效、POSIX 谓词优先级、死 `DSH_NODE`/`RemovePathToken` 退役、注册表原始读保型、rc 补 `.zprofile` 等）。**待续**：批次五（boot 假活看门狗）。
 
 ### 批次五 · boot 假活看门狗（PageHealthMonitor 有界恢复）✅
 
 - `PageHealthMonitor` 从「只观测」升级为「观测 + 有界恢复」：连续 Dead 达阈值后，先一次有界刷新（`NavigateAsync` 到记录的当前 dsh web URL）或触发一次有界重载；**有界**——恢复计数达上限即停止并 leave 观测面（防误报重启循环），恢复计数窗口随同成功复位。
 - 对齐参照 `plugin_boot.rs`（Rust 编排层）的「卡 Loading plugins」恢复：探测到「dsh 在跑但页面空白」时，做有界 reload 而非无限轮询。
 - **有意偏差（对齐属「能力等价」而非逐点等同）**：参照经 `plugin_boot.js.inc`（注入 iframe 的信号脚本）精确识别 `#root` 下「HARNESS + Loading plugins」boot 花屏才报 stalled，而我方直接加载 dsh web（非 iframe），探针以「body 无子节点即空白」为 Dead 信号——两者都捕获「dsh 进程在跑但页面没到应用态」的假活形态，信号粒度不同但恢复机致一致（有界 reload + leave 观测面）。
-- ✅ **批次五已落地**（2026-08-29；提交 `2f12e69` feat + `cbbf70e` docs(adr) + `b44c18d` refactor(review)）：`PageHealthTracker.ReArm()`（重置死区，让 reload 后仍空白的页面重新凑满阈值再触发迁移）+ `PageHealthRecovery`（有界恢复预算：预算内允许 reload、耗尽转观测、成功恢复复位窗口，对齐参照 `BoundedReloadGate`）+ `PageHealthMonitor` 增 `HandleTransition`（Dead 迁移处经注入的 reload 委托触发，Alive 复位预算；reload 为 null 保持纯观测向后兼容）+ Program.cs 接线（reload 委托 = `webUrl` 非空时 `windowAccessor.Current.NavigateAsync(webUrl)`；崩溃恢复导航同步刷新 `webUrl`，防 reload 打到崩溃重启旧端口）。测试 **463/463**（+8：`PageHealthRecoveryTests` 7 例 + `PageHealthTracker.ReArm` 1 例）、覆盖率 53.7%、三重审核 R1/R2/R3 串行无 Blocker、门禁全绿。**参照对齐批次全部完成**。
+- ✅ **批次五已落地**（2026-08-29；提交 `2f12e69` feat + `cbbf70e` docs(adr) + `b44c18d` refactor(review)）：`PageHealthTracker.ReArm()`（重置死区，让 reload 后仍空白的页面重新凑满阈值再触发迁移）+ `PageHealthRecovery`（有界恢复预算：预算内允许 reload、耗尽转观测、成功恢复复位窗口，对齐参照 `BoundedReloadGate`）+ `PageHealthMonitor` 增 `HandleTransition`（Dead 迁移处经注入的 reload 委托触发，Alive 复位预算；reload 为 null 保持纯观测向后兼容）+ DesktopBootstrap 接线（reload 委托 = `webUrl` 非空时 `windowAccessor.Current.NavigateAsync(webUrl)`；崩溃恢复导航同步刷新 `webUrl`，防 reload 打到崩溃重启旧端口）。测试 **463/463**（+8：`PageHealthRecoveryTests` 7 例 + `PageHealthTracker.ReArm` 1 例）、覆盖率 53.7%、三重审核 R1/R2/R3 串行无 Blocker、门禁全绿。**参照对齐批次全部完成**。
 
 ## Alternatives considered
 
@@ -103,3 +103,4 @@ Status: implemented
 - [shell-observability-diagnostics](2026-08-24-shell-observability-diagnostics.md)（implemented）：PageHealthMonitor 观测面保留、有界恢复叠加其上。
 - [desktop-shell-companion-plugin](../process/2026-08-21-desktop-shell-companion-plugin.md)（implemented）：companion 供给链与装配，本 ADR 批次一调整其装配时点。
 - 参照项目 `dsh-tauri-desk/deepseek-harness-desktop`（v0.9.4，调研详录 `.plan/journal/2026-08-29-reference-project-key-differences.md`）。
+- [split-program-main-god-function](2026-08-30-split-program-main-god-function.md)（implemented）：本 ADR 各批次的 `Program.cs` 接线随 P0 拆 Main 迁至 `DesktopBootstrap`。

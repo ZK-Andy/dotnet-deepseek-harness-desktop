@@ -12,7 +12,7 @@ online-first 去捆绑转向（`online-first-unbundled-runtime`）批次二已�
 
 - **目录收缩**：`BundledPluginCatalog.All` 收缩为单条目 `dsh-desktop-companion`（`ResolveCompanionSpec`），dshmarket 条目随其 registry 回退形态一并退役。
 - **解析器近死分支退役**：删 `MarketInstallHelper.ResolveMarketSpec`/`MarketRegistrySpec`（其运行时目录 tgz/目录分支唯一生成器已删，只剩 registry 回退——该回退移入引导后无处消费）；`ResolveCompanionSpec` 删运行时目录 tgz/目录回退（批次二已迁入安装器 `resources/plugins`，运行时目录分支为近死）。companion 安装器资源缺失时返回 null（开发用 PATH dsh 由调用方跳过）。
-- **归化/分组机器退役**：`AssemblePending` 删 `NormalizeToRegistry`/`IsLocalSpec`/`IsPathSpec`/`ReadDependencySpec`/`FromRegistry` 分支——这些只服务随包 dshmarket 一个消费者；companion 无语义（无 registry 上游、无 seed 归化）。消费点 `Program.cs` 随之去掉本地/registry 双组 spawn，单组安装。
+- **归化/分组机器退役**：`AssemblePending` 删 `NormalizeToRegistry`/`IsLocalSpec`/`IsPathSpec`/`ReadDependencySpec`/`FromRegistry` 分支——这些只服务随包 dshmarket 一个消费者；companion 无语义（无 registry 上游、无 seed 归化）。消费点 `DesktopBootstrap` 随之去掉本地/registry 双组 spawn，单组安装。
 - **dshmarket 迁入引导**：引导任务在 `BindRuntime` 后、`StartAsync` 前经 dsh CLI 子命令安装市场——`node <dsh-entry> plugin add dshmarket@latest`（写 desktop profile；由 `MarketInstallHelper.EnsureMarketFromRegistryAsync` 封装，非 `RuntimeBootstrap` 状态机步骤）。一次 add 同时承担新装与存量 seed 自愈归化（`dshmarket@latest` 显式 spec 对既存依赖同样强制改写为 registry 形态，等价 `bundled-plugin-registry-normalization` 的归化语义）。此步在 dsh spawn **之前**（对齐 dsh-tauri-desk「插件与核心一起就位」，不启动后再装→重启）。
 - **config reconcile 先于启动**：`DesktopProfileBootstrap` 新增 reconcile——扫描 desktop profile 的 `dependencies`/`dsh.profile.bundles`，删除解析目标已不存在的本地 `file:`/`link:` 引用（被退役的 dshmarket 种子属之），再启动。幂等、fail loud 于结构错误（记日志不阻断）。此为 #177 事故的对齐约束：不允许不可解析 bundle 引用残留。
 
@@ -37,3 +37,4 @@ online-first 去捆绑转向（`online-first-unbundled-runtime`）批次二已�
 - [bundled-plugin-version-aware-catalog](../feature/2026-08-25-bundled-plugin-version-aware-catalog.md)（implemented）：清单机制本体保留（companion 版本感知升级不因收口改变）；随包目录收缩后其多插件通用语义不再被消费。
 - [desktop-shell-companion-plugin](../process/2026-08-21-desktop-shell-companion-plugin.md)（implemented）：companion 随包供给与安装器资源通道的既有决定，本篇不动。
 - [shared-home-desktop-profile](../architecture/2026-08-23-shared-home-desktop-profile.md)（implemented）：desktop profile 自举与 `DesktopProfileBootstrap`，本篇在其上加 reconcile。
+- [split-program-main-god-function](../architecture/2026-08-30-split-program-main-god-function.md)（implemented）：本篇的 `Program.cs` 消费点随 P0 拆 Main 迁至 `DesktopBootstrap`。

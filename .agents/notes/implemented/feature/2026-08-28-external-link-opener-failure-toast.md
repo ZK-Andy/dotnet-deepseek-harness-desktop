@@ -11,7 +11,7 @@ Status: implemented
 给外部链接打开失败补一个**页面级 toast 提示**，让用户知道链接没打开、可手动复制地址到浏览器：
 
 1. **宿主侧**（`Services/RynNavigationCallbacks`）：构造新增可注入的 `Action<string>? notifyLinkFail`（携带失败的 URL）。`OnWebViewNavigating` 里 opener 返回 false **或**抛异常即视为打开失败 → `notifyLinkFail?.Invoke(url)`。委托注入保持本类可单测（对齐 `DesktopTrayCommandRouter._notify` 的模式）。
-2. **Program.cs 接线**：工厂注册 `RynNavigationCallbacks` 时，`notifyLinkFail` 接 `sp.GetRequiredService<IRynWebView>().EmitEvent("desktop.externalLinkOpenerFailed", new ExternalLinkOpenerFailedFrame(url), AppJsonContext.Default.ExternalLinkOpenerFailedFrame)`——把失败经 deferred `IRynWebView` 推给页面（导航回调触发时页面必然已加载，deferred 转发到真实窗口）。
+2. **DesktopBootstrap.RegisterServices 接线**：工厂注册 `RynNavigationCallbacks` 时，`notifyLinkFail` 接 `sp.GetRequiredService<IRynWebView>().EmitEvent("desktop.externalLinkOpenerFailed", new ExternalLinkOpenerFailedFrame(url), AppJsonContext.Default.ExternalLinkOpenerFailedFrame)`——把失败经 deferred `IRynWebView` 推给页面（导航回调触发时页面必然已加载，deferred 转发到真实窗口）。
 3. **AOT 序列化通道**：`Services/AppJson.cs` 新增 `internal sealed record ExternalLinkOpenerFailedFrame(string Url)` 并在 `AppJsonContext` 注册（源生成，漏注册编译期即失败）。
 4. **companion 侧**（`plugins/dsh-desktop-companion/client/client.js`）：`apply(ctx)` 里订阅 `window.__ryn.on('desktop.externalLinkOpenerFailed', ...)`，命中时用纯 DOM 创建一个 `#ddc-linkfail-toast` 浮层（不经 dsh slot 树——它是页面级浮动层），显示标题+URL（无 URL 退化为正文），5s 后淡出。文案进现有 `zh`/`en` 字典（`linkFailTitle`/`linkFailBody`），经 `ctx.locale.bind('desktop-companion')` 随语言切换。companion version `0.0.15 → 0.0.16`（功能变更，随包闭包版本感知升级）。
 5. 打开成功时**不**通知（正常路径零打扰）。
@@ -34,4 +34,5 @@ Status: implemented
 ## Related
 
 - [ryn-navigation-callbacks](../feature/2026-08-28-ryn-navigation-callbacks.md)：导航层外部链接拦截的 ADR，本变更在其失败路径补用户提示。
+- [split-program-main-god-function](../architecture/2026-08-30-split-program-main-god-function.md)：本 ADR 的接线随 P0 拆 Main 迁至 `DesktopBootstrap`。
 - R2 代码审查 N2（外部链接打开失败补 toast 提示）。

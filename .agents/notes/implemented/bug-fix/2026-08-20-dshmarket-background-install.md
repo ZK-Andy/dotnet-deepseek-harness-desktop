@@ -36,3 +36,4 @@ Status: implemented
 
 - [online-first 去捆绑运行时](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：**tgz 供给面随其批次二退役**（`bundle-runtime-ci.sh` curl 官方包进闭包已删）；本篇的辅助机制（allowBuilds 自愈 / app 迁移 / bundles 双保险）仍现行，dshmarket 改由 registry 直装。
 - [参照对齐（插件生命周期）](../../implemented/architecture/2026-08-29-reference-alignment.md)（implemented）：本篇的「**后台 3s 延时安装 + 装后 `host.Stop()` 重启 dsh**」已随其批次一/二退役——companion（internal）与 dshmarket 均改 spawn dsh 前就位（companion 静默自愈、dshmarket 经首启引导页确认/跳过），不再「安装后重启」。
+- [split-program-main-god-function](../architecture/2026-08-30-split-program-main-god-function.md)：本篇所述的 `Program.cs` 后台安装编排随 P0 拆 Main 迁至 `DesktopBootstrap`（其后经 plugin-surface-consolidation 部分改写）。

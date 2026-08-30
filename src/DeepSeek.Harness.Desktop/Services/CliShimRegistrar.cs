@@ -124,7 +124,7 @@ public sealed class CliShimRegistrar
 
     /// <summary>
     /// 执行一次 shim 注册。best-effort——吞掉预期内的异常并返回 false（调用方不因注册失败阻断启动）；
-    /// 绝不抛给上层。调用方（Program.cs）在运行时就位且非 dev 隔离时调用。
+    /// 绝不抛给上层。调用方（DesktopBootstrap.Startup.RegisterCliShim）在运行时就位且非 dev 隔离时调用。
     /// </summary>
     public bool TryRegister(string runtimeDir, string dshHome, bool isDevIsolated)
     {

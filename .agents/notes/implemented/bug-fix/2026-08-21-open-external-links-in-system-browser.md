@@ -13,7 +13,7 @@ Status: implemented
 - **注入点击拦截脚本**（`Services/ExternalLinkClickCatcher.cs`）：`IRynWebView.InjectScriptAsync` 以 READY 注入（覆盖当前及后续每页/崩溃重启后新页），并用 `EvaluateJavaScriptAsync` 对当前已加载页补跑一次。脚本用 capture 阶段 `document.addEventListener('click', …, true)`：命中 `a[href]` 且为**站外 `http(s)`**（非同源）或带 `target="_blank"` 时 `preventDefault()`，再 `window.__ryn.invoke('app.openExternal', { url })` 交给宿主；同源 SPA 导航、`ryn://`、`data:`、`mailto:` 等一律放行。含 window 级幂等标记，避免重复监听。
 - **宿主命令路由**（`Services/ExternalLinkCommandRouter.cs`）：`Ryn.Ipc.ICommandRouter`，`CanRoute` 命中 `app.openExternal`，`RouteAsync` 解析 JSON 载荷（`{ url }`）、用 `ExternalLinkPolicy` 二次校验（仅绝对 http/https)、`Process.Start(UseShellExecute=true)` 交给系统默认浏览器；失败记日志不向 JS 抛错（返回成功帧避免 JS 侧 `catch` 噪声）。打开器经委托注入，测试用假开器避免真弹浏览器。
 - **纯策略**（`Services/ExternalLinkPolicy.cs`）：判定 href 是否应外部打开（绝对 http/https + 非同源或无可参照来源 + 默认端口等价对齐）。
-- **接线**（`Program.cs`）：`ConfigureServices` 注册 `services.AddSingleton<ICommandRouter, ExternalLinkCommandRouter>()`（`RynCommandDispatcher` 自动收集）；build 后后台任务等 `app.WebView` 可达时做一次持久注入 + 当前页补跑（最多重试 60×500ms，不阻塞首启）。
+- **接线**（DesktopBootstrap.RegisterServices）：`ConfigureServices` 注册 `services.AddSingleton<ICommandRouter, ExternalLinkCommandRouter>()`（`RynCommandDispatcher` 自动收集）；build 后后台任务等 `app.WebView` 可达时做一次持久注入 + 当前页补跑（最多重试 60×500ms，不阻塞首启）。
 
 ## Alternatives considered
 
@@ -30,4 +30,4 @@ Status: implemented
 
 ## Superseded by
 
-- [ryn-navigation-callbacks](../feature/2026-08-28-ryn-navigation-callbacks.md)：Ryn 0.32.0 起把外部链接处理从本文的点击层注入脚本迁到宿主导航层（`Ryn.Callbacks` 的 `WebViewNavigating/Navigated`）。本文保留的 `ExternalLinkPolicy`/`ExternalLinkCommandRouter`（`app.openExternal`）两个组件仍存活——导航层拦截后经共享 `SystemBrowser` 打开，router 保留给已发布旧版 companion 与 Ryn 命令面。本文记录的反编译实证（Ryn 0.30 不暴露导航事件）是导航回调方案成立的关键约束背景（Ryn <0.32 无法在导航边界拦截）。
+- [ryn-navigation-callbacks](../feature/2026-08-28-ryn-navigation-callbacks.md)：Ryn 0.32.0 起把外部链接处理从本文的点击层注入脚本迁到宿主导航层（`Ryn.Callbacks` 的 `WebViewNavigating/Navigated`）。本文保留的 `ExternalLinkPolicy`/`ExternalLinkCommandRouter`（`app.openExternal`）两个组件仍存活——导航层拦截后经共享 `SystemBrowser` 打开，router 保留给已发布旧版 companion 与 Ryn 命令面。本文记录的反编译实证（Ryn 0.30 不暴露导航事件）是导航回调方案成立的关键约束背景（Ryn <0.32 无法在导航边界拦截）。本文所述的 `ConfigureServices` 接线随 P0 拆 Main 迁至 DesktopBootstrap（见 [split-program-main-god-function](../architecture/2026-08-30-split-program-main-god-function.md)）。

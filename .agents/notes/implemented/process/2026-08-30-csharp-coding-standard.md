@@ -20,7 +20,7 @@ Status: implemented
   - 仓库根新增 **`.editorconfig`**（基准规则，IDE/Roslyn 自动格式化与提示）；
   - 新增 **`docs/coding-standards.md`**（规范摘要 + 关键约定 + 与 cookbook/architecture/AGENTS 的分层关系 = 单一事实源）；
   - 根 `AGENTS.md`「编码约定」加一行指向该文档 + 字数预算表加 `docs/coding-standards.md ≤ 500 词`；`doc-budgets.manifest.json` 同步；
-  - **CI 门禁 + build 强制**：ci.yml build-test 加 `dotnet format --verify-no-changes --severity warn`；规范升级（1–5 收口，提交 `008ac1a`）：风格规则升 `warning`、csproj 加 `AnalysisLevel latest`+`EnforceCodeStyleInBuild`+`EnableNETAnalyzers`+`StyleCop.Analyzers 1.1.118`+`NoWarn AD0001`，`dotnet format` 全量合规（91 .cs、var→显式类型等）——门禁与 `dotnet build` 现在都强制风格/分析器。
+  - **CI 门禁 + build 强制**：ci.yml build-test 加 `dotnet format --verify-no-changes --severity warn`；规范升级（1–5 收口，提交 `008ac1a`）：风格规则升 `warning`、csproj 加 `AnalysisLevel latest`+`EnforceCodeStyleInBuild`+`EnableNETAnalyzers`+`StyleCop.Analyzers 1.1.118`+`NoWarn AD0001`，`dotnet format` 全量合规（92 .cs、var→显式类型等）——门禁与 `dotnet build` 现在都强制风格/分析器。
 - **行数指标不作为规范**：权威规范无此规则；用户拍板——不加行数校验脚本，不把 30/1000 当规范强推（防止"规则无工具兜底、靠人自觉"的假合规）。拆 `Program.cs` 是独立工程问题（见另条），不由此决定。
 
 ## Alternatives considered
@@ -34,7 +34,7 @@ Status: implemented
 ## Consequences
 
 - IDE/Roslyn 依 `.editorconfig` 自动格式化与提示新代码；`dotnet format` 可随时对齐。
-- 既有代码已**全量合规**（`dotnet format` 自动修 91 .cs：1812 处 var→显式类型、nameof、大括号、using 排序；人工 10 个静态字段改 `s_`；1 处 SA1401）；命名规则经 `required_modifiers` 修正后 100% 合规。
+- 既有代码已**全量合规**（`dotnet format` 自动修 92 .cs：约 1800 处 var→显式类型、nameof、大括号、using 排序——统计时点为 2026-08-30 提交批，含 `008ac1a` 与 `abd4866` 并集；人工 10 个静态字段改 `s_`；1 处 SA1401）；命名规则经 `required_modifiers` 修正后 100% 合规。
 - 后续 `Main` 等重构以本规范为准；CI `dotnet format --verify-no-changes` + `dotnet build`（EnforceCodeStyleInBuild）双重强制——新代码或后续改动不符（含命名违规，format 对 IDE1006 返回 exit 2）会在 CI 红。
 - 已知取舍：StyleCop 元素排序四件套（SA1201/02/04/14）为 `suggestion`（工具链无自动重排修复器、存量 ~310 处）；IDE0051/52 为 `none`（反射/DI 误报）——后续专项。
 - doc-budgets 新增 `docs/coding-standards.md`（≤500 词），AGENTS.md 字数预算同步。

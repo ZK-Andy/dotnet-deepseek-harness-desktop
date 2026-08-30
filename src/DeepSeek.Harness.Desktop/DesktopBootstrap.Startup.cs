@@ -222,6 +222,8 @@ public sealed partial class DesktopBootstrap
     /// 引导页是引导期唯一 UI，丢弃会让用户对着无反馈的页面。帧 JSON 经 AppJson 源生成通道，
     /// 与 PushUpdateState 同款 CustomEvent 注入形态。
     /// </summary>
+    // TODO(retry-push-fold): PushBootstrapStateAsync 与 RetryPushPreinstallAsync 是 15×400ms 重试推送的
+    // 逐字节同构（仅日志前缀与脚本不同），可折叠为一个 PushEventToPageWithRetryAsync(accessor, script, logTag)。
     private static async Task PushBootstrapStateAsync(CurrentWindowAccessor accessor, string step, string message, bool failed)
     {
         // detail 必须是帧对象本身的 JSON（页面直接读 detail.step 等，无 JSON.parse）——
@@ -331,6 +333,9 @@ public sealed partial class DesktopBootstrap
         }
     }
 
+    // TODO(executor-fold-killtree): 与 RunProcessStreamingAsync 双执行器重复，且缺取消/异常整树击杀——
+    // 引导路径传 bootCt，取消时 dsh plugin add 会带 profile 写权成孤儿（流式版注释点名的同一不变量）。
+    // 可折叠为 (psi, ct, onLine=null) => RunProcessStreamingAsync(psi, ct, null)，行为变更需配套回归。
     /// <summary>
     /// 运行一次 <c>dsh plugin add</c> 子进程（写入桌面 profile），供 <see cref="Services.MarketInstallHelper.EnsureMarketFromRegistryAsync"/>
     /// 注入执行。env（DSH_HOME + pnpm store/cache 重定向 + UTF-8 流）已由该 helper 配好；

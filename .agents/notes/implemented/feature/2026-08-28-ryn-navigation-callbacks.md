@@ -24,7 +24,7 @@ Status: implemented
 新增 `Services/RynNavigationCallbacks.cs`，宿主侧 `[RynCallback]` 处理器：
 
 - `[RynCallback(WebViewNavigating)]` 返回 `NavigationDecision`。先看 `context.IsUserInitiated`：宿主程序化导航（崩溃恢复 `NavigateAsync`、SPA 内部重定向）为 false 一律放行——否则恢复流程会被本回调误拦。仅对用户发起的导航，用 `ExternalLinkPolicy.IsExternalHttpLink(context.Url, currentOrigin: _currentOrigin, out _)` 判定：非同源绝对 http(s) → `NavigationDecision.Block` + 经共享 `SystemBrowser` 打开；同源 SPA / `ryn://` / `data:` / 非 http(s) → `NavigationDecision.Allow`。
-  - `currentOrigin` 初始 = `Program.cs` `webUrl` 的 origin（dsh 页面 URL），并在每次 `WebViewNavigated` 刷新为实际到达 URL 的 origin——崩溃恢复可能把端口漂移（ADR child-process-reaping-port-drift），冻结首启 origin 会让漂移后的同源 SPA 路由被误判为外部。`ExternalLinkPolicy` 在 `currentOrigin: null` 时保守地把一切绝对 http(s) 视为外部。
+  - `currentOrigin` 初始 = `DesktopBootstrap` `_webUrl` 的 origin（dsh 页面 URL），并在每次 `WebViewNavigated` 刷新为实际到达 URL 的 origin——崩溃恢复可能把端口漂移（ADR child-process-reaping-port-drift），冻结首启 origin 会让漂移后的同源 SPA 路由被误判为外部。`ExternalLinkPolicy` 在 `currentOrigin: null` 时保守地把一切绝对 http(s) 视为外部。
 - `[RynCallback(WebViewNavigated)]` 刷新 `currentOrigin`、记录导航（`context.Url`）留痕，并回调"导航已到达"信号。
 - 打开器抽共享 `Services/SystemBrowser.cs` 静态 `Open(url)`（Linux `xdg-open` + 重定向输出，其余 `Process.Start(UseShellExecute=true)`）；`ExternalLinkCommandRouter` 与 `RynNavigationCallbacks` 的默认打开器收敛到它，消除两份复制逻辑。
 - `ConfigureServices` 加 `services.AddRynCallbacks();` + `services.AddRynNavigationCallbacks();`（源生成，`Ryn.Callbacks` 命名空间），注册 `IRynCallbackRouter` 单例；再用工厂覆盖源生成的 handler 无参注册（导航回调依赖：opener/log/currentOrigin 初始值经工厂注入）。Ryn 经 `SetWebViewNavigatingHandler` 把它挂到窗口。
@@ -35,7 +35,7 @@ Status: implemented
 
 ### 4. 导航到达信号加固
 
-`Program.cs` 的 `startupNavigationSettled` 从 `supervisor.onNavigated`（`NavigateAsync` 返回即触发）改由 `WebViewNavigated` 回调触发（`RynNavigationCallbacks.SetOnNavigated` 注入一个 `Action` 到该 TCS）。横幅门控由此获得"页面已到达"的权威信号；`RuntimeSupervisor.onNavigated` 参数随之删除（已无调用方，清理 dead path）。
+`DesktopBootstrap` 的 `_startupNavigationSettled` 从 `supervisor.onNavigated`（`NavigateAsync` 返回即触发）改由 `WebViewNavigated` 回调触发（`RynNavigationCallbacks.SetOnNavigated` 注入一个 `Action` 到该 TCS）。横幅门控由此获得"页面已到达"的权威信号；`RuntimeSupervisor.onNavigated` 参数随之删除（已无调用方，清理 dead path）。
 
 ## Alternatives considered
 
@@ -58,5 +58,6 @@ Status: implemented
 
 - [open-external-links-in-system-browser](../bug-fix/2026-08-21-open-external-links-in-system-browser.md)：点击层拦截的原始 ADR，本变更把其外部链接处理迁到导航层。
 - [shell-firstboot-hardening](../bug-fix/2026-08-24-shell-firstboot-hardening.md)：`startupNavigationSettled` 横幅门控的出处，本变更改接 `WebViewNavigated`。
+- [split-program-main-god-function](../architecture/2026-08-30-split-program-main-god-function.md)：本 ADR 的 `Program.cs` 接线随 P0 拆 Main 迁至 `DesktopBootstrap`。
 - Ryn 0.32.0 上游 `Ryn.Callbacks` 源码（v0.32.0 tag）：`IRynCallbackRouter`/`RynCallbackAttribute`/`RynCallbackKind`/`NavigationDecision`/`WebViewNavigatingContext`/`WebViewNavigatedContext`。
 - Ryn 0.32.0 bump 上游调研见 HANDOFF 顶部滚动窗（2026-08-27）。

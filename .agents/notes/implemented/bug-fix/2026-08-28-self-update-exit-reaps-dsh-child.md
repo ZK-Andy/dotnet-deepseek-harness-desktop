@@ -32,7 +32,7 @@ v0.3.11 实机复现：自更新 0.3.6→0.3.11 后，宿主退出时其 dsh 子
 
 ### 缺口 A：自更新兜底强退前先确定性收割
 
-把自更新退出路径的「兜底强退」从裸 `Environment.Exit(0)` 升级为「先收割 dsh，再强退」，与托盘有序退出编排对齐。关键改动（`Program.cs`）：
+把自更新退出路径的「兜底强退」从裸 `Environment.Exit(0)` 升级为「先收割 dsh，再强退」，与托盘有序退出编排对齐。关键改动（DesktopBootstrap/DesktopBootstrap.Startup）：
 
 1. **新增 `Action? updateExitReaper` 持有器**（顶部声明，与 251 行 `orderlyQuit` 同为延迟接线持有器）。`supervisorCts`（446 行）在 install 委托（195 行）声明点之后，C# 闭包无法捕获（CS0841，见 Alternatives），故经此持有器延迟接线；`StartExitFallback`（847 行，晚于全部依赖）在触发时调用它。
 
@@ -82,7 +82,7 @@ v0.3.11 实机复现：自更新 0.3.6→0.3.11 后，宿主退出时其 dsh 子
 ## Testing
 
 - 新增 `OrphanDshReaperTests`（6 用例）：token 匹配→杀；token 不匹配→不杀；token 读不到→不杀；PID 文件缺失→不杀；记录损坏→不杀；杀失败→返回 false 不抛。全部实现「零误杀」决策契约。
-- `StartExitFallback`/`updateExitReaper` 为 `Program.cs` 局部编排（同 `orderlyQuit` 先例，不单测），其正确性由「回收序列 = orderlyQuit 同款三件套」单一职责保证 + 门禁把关。
+- `StartExitFallback`/`updateExitReaper` 为 DesktopBootstrap 局部编排（同 `orderlyQuit` 先例，不单测），其正确性由「回收序列 = orderlyQuit 同款三件套」单一职责保证 + 门禁把关。
 - 行为级验证依赖**实机复测**：自更新 0.3.11→下一版后核对 `ss` 无孤儿（36221/37941 此类残留不再出现）、host.log 无「首选端口被占」漂移告警。
 
 ## Related
@@ -90,3 +90,4 @@ v0.3.11 实机复现：自更新 0.3.6→0.3.11 后，宿主退出时其 dsh 子
 - [子进程收割与端口漂移](2026-08-26-child-process-reaping-port-drift.md)：本决策收口其第 3 点自更新留白；有序退出编排的姊妹决策。
 - [端口记忆按 profile 隔离](2026-08-26-port-memory-per-profile.md)：首启端口持久化与漂移兜底的出处。
 - [GUI 冻结取证探针](../process/2026-08-28-gui-freeze-forensics-probe.md)：本次事故的现场来自探针脚本（`probe-gui-freeze.sh`）与 host.log/install.log 交叉核对。
+- [split-program-main-god-function](../architecture/2026-08-30-split-program-main-god-function.md)：本 ADR 的局部编排随 P0 拆 Main 迁至 `DesktopBootstrap`。

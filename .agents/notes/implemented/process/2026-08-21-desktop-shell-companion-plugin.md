@@ -15,7 +15,7 @@ Status: implemented
   - 过渡共存守卫：仍带旧注入 catcher 的已发布壳上，插件与注入脚本谁先注册谁生效（认领时同时置 `__ryn_externalLinkCatcher` 与 `__dshDesktopCompanionLinks` 双旗，后到者被自身守卫挡下），保证每文档恰好一个处理器；待无任何在发版本携带注入脚本后移除。
 - 服务端半（`lib/index.js`）：inert cordis 入口（占位，self-update 阶段挂路由）。
 - 壳侧删除 `ExternalLinkClickCatcher` 与 Program.cs 注入重试块；保留 `ExternalLinkPolicy`（URL 判定仍在 C#，xunit 覆盖）与 `ExternalLinkCommandRouter`（`ryn.invoke` 的宿主端不变）。
-- 分发复用市场同款链路：`bundle-runtime-ci.sh` 从仓库源码 staging tar 出 `dsh-desktop-companion.tgz`（package/ 前缀，macOS bsdtar 兼容；源码缺失 fail loud）；`MarketInstallHelper` 泛化——`IsBundleInstalled(pkg)`/`EnsureBundlesContainsAsync(pkg)` 取代 dshmarket 专名方法，新增 `ResolveCompanionSpec`（tgz>1K → 闭包目录 → **null**，无 registry 回退）；Program.cs 后台任务改为收集未就位插件列表后单次 `dsh plugin add <spec…>` 多包安装。
+- 分发复用市场同款链路：`bundle-runtime-ci.sh` 从仓库源码 staging tar 出 `dsh-desktop-companion.tgz`（package/ 前缀，macOS bsdtar 兼容；源码缺失 fail loud）；`MarketInstallHelper` 泛化——`IsBundleInstalled(pkg)`/`EnsureBundlesContainsAsync(pkg)` 取代 dshmarket 专名方法，新增 `ResolveCompanionSpec`（tgz>1K → 闭包目录 → **null**，无 registry 回退）；DesktopBootstrap 后台任务改为收集未就位插件列表后单次 `dsh plugin add <spec…>` 多包安装。
 - 开发隔离守卫：检测到 `DSH_DESKTOP_RUNTIME_DIR`（打包产品永不设置）即跳过随包插件安装——开发运行的默认 `DSH_HOME` 与已装正式版共享，否则会把指向工作区的 `file:` 依赖写进共享 profile，导致正式版加载开发插件乃至工作区删除后 web boot 失败。
 
 ## Alternatives considered
@@ -35,3 +35,4 @@ Status: implemented
 
 - [ryn-navigation-callbacks](../feature/2026-08-28-ryn-navigation-callbacks.md)：companion 本文所述的「外部链接 capture 拦截 + `__dshDesktopCompanionLinks`/`__ryn_externalLinkCatcher` 双旗守卫」已随 Ryn 0.32.0 迁到宿主导航层（`Ryn.Callbacks` 的 `WebViewNavigating`），companion `client.js` 不再注入 capture 点击监听。本文的 apply 契约、插件发布链路、`ExternalLinkPolicy`/`ExternalLinkCommandRouter` 仍有效；双旗守卫机制已退役。
 - [online-first 去捆绑运行时](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：本文描述的 tgz 供给链（`bundle-runtime-ci.sh` staging tar → 闭包内 `ResolveCompanionSpec`）随其批次二退役，改为 `build-companion-tgz.sh` 打包现打进安装器 `resources/plugins/`；apply 契约与版本感知升级机制不变。
+- [split-program-main-god-function](../architecture/2026-08-30-split-program-main-god-function.md)：本文所述的 `Program.cs` 后台任务（companion 收集安装）随 P0 拆 Main 迁至 `DesktopBootstrap`。
