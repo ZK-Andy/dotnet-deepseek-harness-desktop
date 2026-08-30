@@ -68,9 +68,12 @@ D005_WHITELIST = {
 }
 
 D004_RE = re.compile(r"Console\.(?:Write|WriteLine|Error\.Write)")
+# Only actual construction/operation forms count — a bare type mention of
+# ProcessStartInfo/HttpClient (e.g. as a parameter type passed between
+# components) is not "直调外部基础设施".
 D005_RE = re.compile(
-    r"\b(?:Process\.Start|new Process\b|ProcessStartInfo|new HttpClient\b|"
-    r"HttpClient|File\.|Directory\.|FileStream)\b")
+    r"\b(?:Process\.Start|new Process\b|new ProcessStartInfo|new HttpClient\b|"
+    r"File\.|Directory\.|FileStream)\b")
 
 # A /path/to/Services/Update/Anything.cs is an Update sub-domain boundary.
 UPDATE_SUBDIR = "/Update/"

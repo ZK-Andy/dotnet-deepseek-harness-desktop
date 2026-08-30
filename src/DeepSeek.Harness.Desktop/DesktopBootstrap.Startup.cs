@@ -62,38 +62,6 @@ public sealed partial class DesktopBootstrap
         });
     }
 
-    /// <summary>窗口就绪后注入横幅：Current 未就绪的 InvalidOperationException 逐秒重试（上限 30 次）；
-    /// 其余异常记日志放弃——横幅是增强告知，绝不拖垮启动链路。</summary>
-    private static async Task ShowBannerWhenReady(CurrentWindowAccessor accessor, string script, CancellationToken ct)
-    {
-        for (int attempt = 0; attempt < 30 && !ct.IsCancellationRequested; attempt++)
-        {
-            try
-            {
-                await accessor.Current.EvaluateJavaScriptAsync(script);
-                return;
-            }
-            catch (InvalidOperationException)
-            {
-                // 窗口尚未创建/已销毁：稍后重试。一次性提示必须送达，与 PushUpdateState 的丢弃策略不同
-            }
-            catch (Exception ex)
-            {
-                Services.HostLog.Write($"[host] 横幅注入失败：{ex.Message}");
-                return;
-            }
-
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(1), ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-        }
-    }
-
     /// <summary>hide-to-tray：先采样窗口态留证，再把窗口藏起来而非销毁。失败只留日志，不拖垮关窗链路。</summary>
     private async Task HideForTrayAsync(IRynWindow window)
     {
@@ -224,39 +192,6 @@ public sealed partial class DesktopBootstrap
     /// </summary>
     // TODO(retry-push-fold): PushBootstrapStateAsync 与 RetryPushPreinstallAsync 是 15×400ms 重试推送的
     // 逐字节同构（仅日志前缀与脚本不同），可折叠为一个 PushEventToPageWithRetryAsync(accessor, script, logTag)。
-    private static async Task PushBootstrapStateAsync(CurrentWindowAccessor accessor, string step, string message, bool failed)
-    {
-        // detail 必须是帧对象本身的 JSON（页面直接读 detail.step 等，无 JSON.parse）——
-        // 与 PushUpdateState 的 state.ToJson() 同款形态，禁止二次包字符串
-        string frameJson = JsonSerializer.Serialize(
-            new Services.BootstrapStateFrame(step, message, failed),
-            Services.AppJsonContext.Default.BootstrapStateFrame);
-        string script = "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-bootstrap',{detail:"
-            + frameJson
-            + "}));}catch(e){}})();";
-        for (int attempt = 0; attempt < 15; attempt++)
-        {
-            try
-            {
-                await accessor.Current.EvaluateJavaScriptAsync(script);
-                return;
-            }
-            catch (InvalidOperationException)
-            {
-                // 页面/窗口未就绪：稍后重试
-            }
-            catch (Exception ex)
-            {
-                Services.HostLog.Write($"[bootstrap] 进度推送失败（放弃）：{ex.Message}");
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(400));
-        }
-
-        Services.HostLog.Write("[bootstrap] 进度推送重试耗尽（页面始终未就绪）");
-    }
-
     /// <summary>
     /// 引导重试循环：单次尝试（RuntimeBootstrap.RunAsync）→ 成功返回运行时；失败推错误态并等待
     /// 重试信号（desktop.bootstrap.retry 经 <paramref name="gate"/> 放行）或应用退出
@@ -279,7 +214,7 @@ public sealed partial class DesktopBootstrap
                 outcome = await Services.RuntimeBootstrap.RunAsync(
                     options,
                     runtimeDir,
-                    progress => _ = PushBootstrapStateAsync(_windowAccessor, progress.Step.ToString(), progress.Message, progress.Failed),
+                    progress => _ = Services.PagePump.PushBootstrapStateAsync(_windowAccessor, progress.Step.ToString(), progress.Message, progress.Failed),
                     hooks,
                     ct);
             }
@@ -296,7 +231,7 @@ public sealed partial class DesktopBootstrap
             string reason = outcome.Error ?? "未知错误";
             Services.HostLog.Write($"[bootstrap] 引导失败：{reason}（等待用户重试或退出）");
             // 推实际失败步骤：进度页据此红色高亮失败环节（推 "Ready" 会让高亮不可达）
-            await PushBootstrapStateAsync(_windowAccessor, outcome.Step.ToString(), reason, failed: true);
+            await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, outcome.Step.ToString(), reason, failed: true);
 
             // 等重试信号或应用退出；信号与取消都是即时语义事件，200ms 轮询足够
             while (!gate.IsSignaled && !ct.IsCancellationRequested)
@@ -341,7 +276,7 @@ public sealed partial class DesktopBootstrap
     private async Task<(int Exit, string Out, string Err)> RunDshPluginAddStreamingAsync(
         System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
     {
-        return await Services.PluginProcessRunner.RunStreamingAsync(psi, ct, line => PushPreinstallLog(_windowAccessor, line));
+        return await Services.PluginProcessRunner.RunStreamingAsync(psi, ct, line => Services.PagePump.PushPreinstallLog(_windowAccessor, line));
     }
 
     /// <summary>
@@ -367,8 +302,8 @@ public sealed partial class DesktopBootstrap
         _preinstallGate.Reset();
         // 步骤高亮：引导页把「插件准备」步点亮（renderBootstrap 按 step 序置 active）。
         // 步骤名经枚举派生（单一事实源），避免与 JS STEP_ORDER 漂移。
-        await PushBootstrapStateAsync(_windowAccessor, Services.BootstrapStep.PreinstallPlugins.ToString(), "可选插件准备", failed: false);
-        await RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("decision", Plugins: pending.ToArray()));
+        await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, Services.BootstrapStep.PreinstallPlugins.ToString(), "可选插件准备", failed: false);
+        await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("decision", Plugins: pending.ToArray()));
         Services.HostLog.Write($"[host] 插件引导：呈现可选插件 {string.Join(", ", pending)}，等待用户决策（5 分钟超时默认跳过）");
 
         PreinstallChoice choice;
@@ -385,15 +320,15 @@ public sealed partial class DesktopBootstrap
         if (choice == PreinstallChoice.Skip)
         {
             Services.HostLog.Write("[host] 插件引导：用户跳过，本次不安装可选插件");
-            await RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("done", Action: "skip", Message: "已跳过插件安装"));
-            await PushBootstrapStateAsync(_windowAccessor, Services.BootstrapStep.Ready.ToString(), "插件准备完成", failed: false);
+            await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("done", Action: "skip", Message: "已跳过插件安装"));
+            await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, Services.BootstrapStep.Ready.ToString(), "插件准备完成", failed: false);
             return;
         }
 
         Services.HostLog.Write("[host] 插件引导：用户确认，开始安装可选插件");
         try
         {
-            await RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("installing", Plugin: Services.PresetPluginCatalog.Market));
+            await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("installing", Plugin: Services.PresetPluginCatalog.Market));
             await Services.MarketInstallHelper.EnsureMarketFromRegistryAsync(
                 runtime.NodeExe,
                 runtime.DshEntry,
@@ -402,74 +337,19 @@ public sealed partial class DesktopBootstrap
                 runPluginAddStreaming,
                 ct);
             bool installed = Services.MarketInstallHelper.IsBundleInstalled(profilePkg, Services.PresetPluginCatalog.Market);
-            await RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame(
+            await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame(
                 "done", Action: "install", Ok: installed, Message: installed ? "安装完成" : "安装未成功（见日志）"));
             Services.HostLog.Write($"[host] 插件引导：可选插件安装{(installed ? "成功" : "未成功")}（{Services.PresetPluginCatalog.Market}）");
         }
         catch (Exception ex)
         {
             Services.HostLog.Write($"[host] 插件安装异常：{ex.Message}");
-            await RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("done", Action: "install", Ok: false, Message: ex.Message));
+            await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("done", Action: "install", Ok: false, Message: ex.Message));
         }
         finally
         {
             // 步骤收尾：无论装/跳/失败，引导页把「插件准备」置 done 后再导航进主界面
-            await PushBootstrapStateAsync(_windowAccessor, Services.BootstrapStep.Ready.ToString(), "插件准备完成", failed: false);
-        }
-    }
-
-    /// <summary>构建 <c>dsh-desktop-preinstall</c> CustomEvent 注入脚本（detail 为帧对象 JSON）。</summary>
-    private static string PreinstallEventScript(Services.PreinstallFrame frame)
-    {
-        string frameJson = JsonSerializer.Serialize(frame, Services.AppJsonContext.Default.PreinstallFrame);
-        return "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-preinstall',{detail:"
-            + frameJson
-            + "}));}catch(e){}})();";
-    }
-
-    /// <summary>推送一条插件引导状态（decision/installing/done）到引导页，带有限重试（同 PushBootstrapStateAsync）。</summary>
-    private static async Task RetryPushPreinstallAsync(CurrentWindowAccessor accessor, Services.PreinstallFrame frame)
-    {
-        string script = PreinstallEventScript(frame);
-        for (int attempt = 0; attempt < 15; attempt++)
-        {
-            try
-            {
-                await accessor.Current.EvaluateJavaScriptAsync(script);
-                return;
-            }
-            catch (InvalidOperationException)
-            {
-                // 页面/窗口未就绪：稍后重试
-            }
-            catch (Exception ex)
-            {
-                Services.HostLog.Write($"[preinstall] 状态推送失败（放弃）：{ex.Message}");
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(400));
-        }
-
-        Services.HostLog.Write("[preinstall] 状态推送重试耗尽（页面始终未就绪）");
-    }
-
-    /// <summary>推送一行安装日志到引导页日志区（fire-and-forget，失败仅丢一行、不阻断主链路）。</summary>
-    private static void PushPreinstallLog(CurrentWindowAccessor accessor, string line)
-    {
-        if (string.IsNullOrWhiteSpace(line))
-        {
-            return;
-        }
-
-        try
-        {
-            _ = accessor.Current.EvaluateJavaScriptAsync(
-                PreinstallEventScript(new Services.PreinstallFrame("log", Line: line)));
-        }
-        catch (Exception)
-        {
-            // 页面未就绪/已导航：日志丢失可容忍（吞掉页面上游任何异常，仅丢一行日志）
+            await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, Services.BootstrapStep.Ready.ToString(), "插件准备完成", failed: false);
         }
     }
 }
