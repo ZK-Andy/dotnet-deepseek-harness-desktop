@@ -53,8 +53,11 @@ jobs:
           for i in $(seq 1 150); do
             resp="$(gh api "repos/$repo/actions/artifacts?per_page=100" --jq "$jq_filter" 2>/dev/null || true)"
             ok=1
-            for want in linux- macos- windows-; do
-              [[ "$resp" == *"${want}"*-packages* ]] || ok=0
+            # 六资产必须逐一就绪——v0.4.0 首发实锤：linux- 宽松通配在 amd64 就绪即放行，
+            # 而 arm64 leg 在慢 runner 上载较晚被漏 → preflight 缺 linux-arm64/aarch64（release 失败）。
+            # 改逐名精确判定；tag 构建产物恒为列表最新（首 100 内），无需分页。
+            for want in linux-amd64-packages linux-arm64-packages macos-arm64-packages macos-x64-packages windows-x64-packages; do
+              [[ " $resp " == *" $want "* ]] || ok=0
             done
             if [[ "$ok" == 1 ]]; then echo "三平台产物就绪: $resp"; exit 0; fi
             check_failed_runs
