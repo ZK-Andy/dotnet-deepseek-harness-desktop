@@ -19,7 +19,7 @@ public static class RecoveryPageBuilder
     /// <param name="stderrTail">子进程 stderr 尾部行（supervisor 已在重启前留证）。</param>
     public static string BuildScript(string reason, IReadOnlyList<string> stderrTail)
     {
-        var payload = JsonSerializer.Serialize(new Payload(reason, stderrTail), AppJsonContext.Default.Payload);
+        string payload = JsonSerializer.Serialize(new Payload(reason, stderrTail), AppJsonContext.Default.Payload);
 
         return new StringBuilder("document.documentElement.innerHTML=")
             .Append(AppJsonContext.JsString(Skeleton))

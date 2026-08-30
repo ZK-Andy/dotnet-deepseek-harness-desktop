@@ -14,8 +14,8 @@ public class SharedHomeContractTests
     [Fact]
     public void ResolveDshHome_DesktopOverride_WinsOverEcosystemAndDefault()
     {
-        var desktop = TempDir("dsh-contract-desktop-");
-        var ecosystem = TempDir("dsh-contract-eco-");
+        string desktop = TempDir("dsh-contract-desktop-");
+        string ecosystem = TempDir("dsh-contract-eco-");
         SetEnv(desktop, ecosystem);
         try
         {
@@ -36,7 +36,7 @@ public class SharedHomeContractTests
         SetEnv(null, "~/ecosystem-dsh-home");
         try
         {
-            var expected = Path.Combine(
+            string expected = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 "ecosystem-dsh-home");
             Assert.Equal(expected, HarnessRuntimeHost.ResolveDshHome());
@@ -54,7 +54,7 @@ public class SharedHomeContractTests
         SetEnv(null, "   ");
         try
         {
-            var expected = Path.Combine(
+            string expected = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 HarnessRuntimeHost.DefaultHomeDirName);
             Assert.Equal(expected, HarnessRuntimeHost.ResolveDshHome());
@@ -71,7 +71,7 @@ public class SharedHomeContractTests
         // 布局契约（v0.3.5 实机事故修正）：端口记忆按 profile 隔离——桌面端与 web 会话
         // 共享 home，home 根的全局记忆曾让两类实例互抢端口（恢复屏循环直至重启电脑）。
         // 旧位置保留仅作迁移回读路径，不再写入。
-        var home = TempDir("dsh-contract-root-");
+        string home = TempDir("dsh-contract-root-");
         SetEnv(home, null);
         try
         {
@@ -98,7 +98,7 @@ public class SharedHomeContractTests
             return;
         }
 
-        var home = TempDir("dsh-contract-e2e-");
+        string home = TempDir("dsh-contract-e2e-");
         SetEnv(home, null);
         Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
         try
@@ -145,7 +145,7 @@ public class SharedHomeContractTests
 
     private static string TempDir(string prefix)
     {
-        var dir = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N"));
+        string dir = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
     }

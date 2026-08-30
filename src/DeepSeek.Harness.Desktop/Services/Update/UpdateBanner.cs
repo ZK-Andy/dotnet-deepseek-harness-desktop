@@ -10,8 +10,8 @@ public static class UpdateBanner
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
     public static string ReadyScript(string version, UiLocale? uiLocale = null)
     {
-        var english = uiLocale?.IsEnglish == true;
-        var text = english
+        bool english = uiLocale?.IsEnglish == true;
+        string text = english
             ? $"New version {version} is ready. Install it in Settings → Desktop Settings."
             : "新版本 " + version + " 已就绪，可在 设置 → 桌面设置 中一键安装。";
         return DesktopBanner.Build(

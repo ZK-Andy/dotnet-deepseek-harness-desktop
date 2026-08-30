@@ -138,7 +138,7 @@ public sealed class PageHealthMonitor
             try
             {
                 await Task.Delay(interval, ct);
-                var raw = await _window.Current.EvaluateJavaScriptAsync(ProbeScript);
+                string raw = await _window.Current.EvaluateJavaScriptAsync(ProbeScript);
                 Record(Parse(raw), ct);
             }
             catch (OperationCanceledException)
@@ -163,7 +163,7 @@ public sealed class PageHealthMonitor
 
     private void Record(PageHealth sample, CancellationToken ct)
     {
-        var transition = _tracker.Record(sample);
+        string? transition = _tracker.Record(sample);
         if (sample != PageHealth.Unknown)
         {
             Snapshot = $"{sample.ToString().ToLowerInvariant()} @ {DateTimeOffset.Now:yyyy-MM-ddTHH:mm:sszzz} (probes {_tracker.ProbeCount})";

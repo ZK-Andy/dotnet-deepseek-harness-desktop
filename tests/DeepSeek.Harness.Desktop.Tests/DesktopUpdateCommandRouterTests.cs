@@ -47,7 +47,7 @@ public class DesktopUpdateCommandRouterTests
         var requestCts = new CancellationTokenSource();
         requestCts.Cancel(); // 恶劣前提：请求 token 已取消——后台任务不受它连坐
         using var backgroundCts = new CancellationTokenSource();
-        var machine = CreateMachine(ct => seen = ct);
+        UpdateStateMachine machine = CreateMachine(ct => seen = ct);
         var router = new DesktopUpdateCommandRouter(machine, backgroundToken: () => backgroundCts.Token);
 
         await router.RouteAsync("desktop.update.check", ReadOnlyMemory<byte>.Empty, null!, requestCts.Token);
@@ -65,7 +65,7 @@ public class DesktopUpdateCommandRouterTests
         CancellationToken? seen = null;
         var requestCts = new CancellationTokenSource();
         requestCts.Cancel();
-        var machine = CreateMachine(ct => seen = ct);
+        UpdateStateMachine machine = CreateMachine(ct => seen = ct);
         var router = new DesktopUpdateCommandRouter(machine);
 
         await router.RouteAsync("desktop.update.check", ReadOnlyMemory<byte>.Empty, null!, requestCts.Token);
@@ -83,7 +83,7 @@ public class DesktopUpdateCommandRouterTests
         requestCts.Cancel(); // 恶劣前提：请求 token 已取消——install 不受它连坐
         using var backgroundCts = new CancellationTokenSource();
         CancellationToken? seen = null;
-        var path = Path.Combine(Path.GetTempPath(), $"upd-{Guid.NewGuid():N}.deb");
+        string path = Path.Combine(Path.GetTempPath(), $"upd-{Guid.NewGuid():N}.deb");
         File.WriteAllBytes(path, [1]);
         var persist = new FakePersistence();
         await persist.SetAsync(new UpdateStateMachine.ReadyRecord("0.3.12", path), CancellationToken.None);

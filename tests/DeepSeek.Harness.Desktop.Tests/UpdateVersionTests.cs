@@ -14,7 +14,7 @@ public class UpdateVersionTests
     [InlineData("1.0", "1.0.0", 0)]
     public void Compare_Segments(string a, string b, int expectedSign)
     {
-        var result = UpdateVersion.Compare(a, b);
+        int result = UpdateVersion.Compare(a, b);
         Assert.Equal(expectedSign, Math.Sign(result));
     }
 

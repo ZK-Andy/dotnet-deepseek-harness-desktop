@@ -19,8 +19,8 @@ public static class CliShimPath
     /// <summary>PATH 值（<paramref name="separator"/> 分隔）是否已含 <paramref name="token"/>（先规整目录分隔符）。</summary>
     public static bool PathContainsToken(string pathValue, string token, string separator, bool caseInsensitive)
     {
-        var tokenNorm = NormalizeTokenForCompare(token, separator, caseInsensitive);
-        foreach (var part in pathValue.Split(separator))
+        string tokenNorm = NormalizeTokenForCompare(token, separator, caseInsensitive);
+        foreach (string part in pathValue.Split(separator))
         {
             if (part.Length == 0)
             {
@@ -49,7 +49,7 @@ public static class CliShimPath
 
     private static string NormalizeTokenForCompare(string part, string separator, bool caseInsensitive)
     {
-        var norm = part.Trim();
+        string norm = part.Trim();
         if (separator == ";")
         {
             norm = norm.TrimEnd('\\');
@@ -90,7 +90,7 @@ public static class CliShimPath
             return rcContent;
         }
 
-        var trimmed = rcContent.TrimEnd();
+        string trimmed = rcContent.TrimEnd();
         return trimmed.Length == 0 ? block.TrimEnd() + "\n"
             : trimmed + "\n\n" + block.TrimEnd() + "\n";
     }

@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Win32;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
@@ -62,7 +63,7 @@ public static class Autostart
 
         if (OperatingSystem.IsWindows())
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+            using RegistryKey? key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\Run");
             return key?.GetValue(AppName) is string;
         }
@@ -73,7 +74,7 @@ public static class Autostart
     /// <summary>启用/停用开机自启；返回生效后的状态。</summary>
     public static bool SetEnabled(bool enabled)
     {
-        var exe = Environment.ProcessPath
+        string exe = Environment.ProcessPath
             ?? throw new InvalidOperationException("无法定位当前可执行文件路径");
 
         if (!enabled)
@@ -84,19 +85,19 @@ public static class Autostart
 
         if (OperatingSystem.IsLinux())
         {
-            var path = LinuxEntryPath();
+            string path = LinuxEntryPath();
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, BuildLinuxDesktopEntry(exe) + "\n");
         }
         else if (OperatingSystem.IsMacOS())
         {
-            var path = MacOSPlistPath();
+            string path = MacOSPlistPath();
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, BuildMacOSPlist(exe) + "\n");
         }
         else if (OperatingSystem.IsWindows())
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
+            using RegistryKey key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\Run");
             key.SetValue(AppName, $"\"{exe}\"");
         }
@@ -112,7 +113,7 @@ public static class Autostart
     {
         if (OperatingSystem.IsLinux())
         {
-            var path = LinuxEntryPath();
+            string path = LinuxEntryPath();
             if (File.Exists(path))
             {
                 File.Delete(path);
@@ -120,7 +121,7 @@ public static class Autostart
         }
         else if (OperatingSystem.IsMacOS())
         {
-            var path = MacOSPlistPath();
+            string path = MacOSPlistPath();
             if (File.Exists(path))
             {
                 File.Delete(path);
@@ -128,7 +129,7 @@ public static class Autostart
         }
         else if (OperatingSystem.IsWindows())
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+            using RegistryKey? key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
             key?.DeleteValue(AppName, throwOnMissingValue: false);
         }

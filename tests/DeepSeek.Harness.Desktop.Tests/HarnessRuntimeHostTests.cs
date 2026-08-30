@@ -27,7 +27,7 @@ public class HarnessRuntimeHostTests
     {
         // rc.8+ 的 dsh web 默认 openBrowser=true，会把 URL 交给 OS 默认浏览器；
         // 桌面壳自渲染内嵌 WebView，必须传 --no-open 避免与桌面窗口重复弹出。
-        var args = HarnessRuntimeHost.BuildDshWebArgs(0);
+        string[] args = HarnessRuntimeHost.BuildDshWebArgs(0);
         Assert.Contains("--no-open", args);
         Assert.Equal(HarnessRuntimeHost.DesktopProfileName, args[1]);
     }
@@ -43,7 +43,7 @@ public class HarnessRuntimeHostTests
     [Fact]
     public void BuildEnrichedPath_MissingLocalBin_AppendsAfterExisting()
     {
-        var enriched = HarnessRuntimeHost.BuildEnrichedPath("/usr/local/bin:/usr/bin", "/home/u", ':');
+        string enriched = HarnessRuntimeHost.BuildEnrichedPath("/usr/local/bin:/usr/bin", "/home/u", ':');
         Assert.Equal("/usr/local/bin:/usr/bin:/home/u/.local/bin", enriched);
     }
 
@@ -58,7 +58,7 @@ public class HarnessRuntimeHostTests
     public void BuildEnrichedPath_SimilarPrefixSegment_DoesNotFalsePositive()
     {
         // /home/u/.local/bin-extra 不是 ~/.local/bin 本尊，不得据此判已含。
-        var enriched = HarnessRuntimeHost.BuildEnrichedPath("/home/u/.local/bin-extra", "/home/u", ':');
+        string enriched = HarnessRuntimeHost.BuildEnrichedPath("/home/u/.local/bin-extra", "/home/u", ':');
         Assert.Equal("/home/u/.local/bin-extra:/home/u/.local/bin", enriched);
     }
 
@@ -71,7 +71,7 @@ public class HarnessRuntimeHostTests
             return;
         }
 
-        var home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
 
@@ -113,7 +113,7 @@ public class HarnessRuntimeHostTests
             return;
         }
 
-        var home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
 
@@ -131,11 +131,11 @@ public class HarnessRuntimeHostTests
             }
 
             Assert.NotNull(first);
-            var exit = host.WaitForExitAsync();
+            Task exit = host.WaitForExitAsync();
             host.Stop(); // 模拟子进程被终止
             await exit.WaitAsync(TimeSpan.FromSeconds(5));
 
-            var restarted = await host.RestartAsync(TimeSpan.FromSeconds(30));
+            Uri? restarted = await host.RestartAsync(TimeSpan.FromSeconds(30));
             host.Stop();
 
             Assert.NotNull(restarted);
@@ -156,7 +156,7 @@ public class HarnessRuntimeHostTests
     [Fact]
     public void PersistPort_ThenLoad_RoundTripsUnderDshHome()
     {
-        var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         try
         {
@@ -180,7 +180,7 @@ public class HarnessRuntimeHostTests
     public void LegacyHomeRootFile_UsedWhenProfileFileMissing()
     {
         // 迁移回读：0.3.5 及之前把端口记忆写在 home 根；升级后首次启动应零感知沿用
-        var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(home, "profiles", "desktop"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         try
@@ -191,7 +191,10 @@ public class HarnessRuntimeHostTests
         finally
         {
             Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
-            if (Directory.Exists(home)) Directory.Delete(home, recursive: true);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
         }
     }
 
@@ -199,7 +202,7 @@ public class HarnessRuntimeHostTests
     public void Persist_WritesProfilePathOnly_LegacyFileUntouched()
     {
         // 写入绝不回流旧位置：跨 profile 争抢不能借尸还魂
-        var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(home);
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         try
@@ -213,7 +216,10 @@ public class HarnessRuntimeHostTests
         finally
         {
             Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
-            if (Directory.Exists(home)) Directory.Delete(home, recursive: true);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
         }
     }
 
@@ -221,7 +227,7 @@ public class HarnessRuntimeHostTests
     public void ProfileFile_MissingButLegacyCorrupt_ReturnsNull()
     {
         // 旧文件损坏同样按无记忆处理，不得抛出阻断启动
-        var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(home);
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         try
@@ -232,14 +238,17 @@ public class HarnessRuntimeHostTests
         finally
         {
             Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
-            if (Directory.Exists(home)) Directory.Delete(home, recursive: true);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
         }
     }
 
     [Fact]
     public void TryLoadPersistedPort_CorruptFile_ReturnsNull()
     {
-        var home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         try
         {
@@ -269,7 +278,7 @@ public class HarnessRuntimeHostTests
             return;
         }
 
-        var home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
 
@@ -296,7 +305,7 @@ public class HarnessRuntimeHostTests
             using var secondHost = new HarnessRuntimeHost();
             try
             {
-                var second = await secondHost.StartAsync(TimeSpan.FromSeconds(30));
+                Uri? second = await secondHost.StartAsync(TimeSpan.FromSeconds(30));
                 secondHost.Stop();
                 Assert.NotNull(second);
                 Assert.Equal(first, second);

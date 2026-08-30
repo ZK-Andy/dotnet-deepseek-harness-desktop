@@ -47,7 +47,7 @@ public sealed class CloseBehaviorPreference
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(filePath));
             return doc.RootElement.ValueKind == JsonValueKind.Object &&
-                   doc.RootElement.TryGetProperty("hideToTrayOnClose", out var v) &&
+                   doc.RootElement.TryGetProperty("hideToTrayOnClose", out JsonElement v) &&
                    v.ValueKind == JsonValueKind.False
                 ? false
                 : true;
@@ -62,13 +62,13 @@ public sealed class CloseBehaviorPreference
     /// <summary>原子落盘（临时文件 + 改名），失败抛出由路由转错误帧。</summary>
     public static void Write(string filePath, bool hideOnClose)
     {
-        var dir = Path.GetDirectoryName(filePath);
+        string? dir = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrEmpty(dir))
         {
             Directory.CreateDirectory(dir);
         }
 
-        var tmp = filePath + ".tmp";
+        string tmp = filePath + ".tmp";
         // 经 AppJsonContext 源生成（AOT 安全）；Load 读方只认 hideToTrayOnClose 键
         File.WriteAllText(tmp, JsonSerializer.Serialize(new PreferencesFile(hideOnClose), AppJsonContext.Default.PreferencesFile));
         File.Move(tmp, filePath, overwrite: true);

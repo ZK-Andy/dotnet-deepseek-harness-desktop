@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -68,7 +69,7 @@ public static class RuntimeBootstrap
     /// <returns>文件名如 node-v24.20.0-linux-x64.tar.xz；不支持的平台返回 null（fail loud）。</returns>
     public static string? NodeArchiveFileName(string nodeVersion)
     {
-        var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
+        string? arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
         {
             System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
             System.Runtime.InteropServices.Architecture.X64 => "x64",
@@ -79,11 +80,11 @@ public static class RuntimeBootstrap
             return null;
         }
 
-        var platform = OperatingSystem.IsLinux() ? $"linux-{arch}"
+        string? platform = OperatingSystem.IsLinux() ? $"linux-{arch}"
             : OperatingSystem.IsMacOS() ? $"darwin-{arch}"
             : OperatingSystem.IsWindows() ? $"win-{arch}"
             : null;
-        var ext = OperatingSystem.IsWindows() ? "zip" : OperatingSystem.IsMacOS() ? "tar.gz" : "tar.xz";
+        string ext = OperatingSystem.IsWindows() ? "zip" : OperatingSystem.IsMacOS() ? "tar.gz" : "tar.xz";
         return platform is null ? null : $"node-v{nodeVersion}-{platform}.{ext}";
     }
 
@@ -95,9 +96,9 @@ public static class RuntimeBootstrap
     /// <summary>从 SHASUMS256.txt 内容提取指定文件名的 sha256（纯函数可单测）；无该行返回 null。</summary>
     public static string? SelectSha256(string shasums, string fileName)
     {
-        foreach (var line in shasums.Split('\n'))
+        foreach (string line in shasums.Split('\n'))
         {
-            var parts = line.Trim().Split("  ", 2);
+            string[] parts = line.Trim().Split("  ", 2);
             if (parts.Length == 2 && parts[1] == fileName)
             {
                 return parts[0].ToLowerInvariant();
@@ -110,8 +111,8 @@ public static class RuntimeBootstrap
     /// <summary>计算文件 SHA256（十六进制小写）。</summary>
     public static async Task<string> Sha256FileAsync(string path, CancellationToken ct)
     {
-        await using var fs = File.OpenRead(path);
-        var hash = await SHA256.HashDataAsync(fs, ct).ConfigureAwait(false);
+        await using FileStream fs = File.OpenRead(path);
+        byte[] hash = await SHA256.HashDataAsync(fs, ct).ConfigureAwait(false);
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
@@ -132,7 +133,7 @@ public static class RuntimeBootstrap
             },
             ExtractArchiveAsync: async (archive, destDir, ct) =>
             {
-                var (exit, _, stderr) = await RunCaptureAsync(
+                (int exit, string _, string? stderr) = await RunCaptureAsync(
                     log, "tar", ["-xf", StripExtendedPrefix(archive), "-C", StripExtendedPrefix(destDir)], ct).ConfigureAwait(false);
                 if (exit != 0)
                 {
@@ -171,7 +172,7 @@ public static class RuntimeBootstrap
             CreateNoWindow = true,
         };
         HarnessRuntimeHost.UseUtf8TextStreams(psi);
-        foreach (var arg in args)
+        foreach (string arg in args)
         {
             psi.ArgumentList.Add(arg);
         }
@@ -185,17 +186,17 @@ public static class RuntimeBootstrap
         }
 
         log?.Invoke($"[bootstrap] run: {psi.FileName} {string.Join(' ', args)}");
-        using var p = System.Diagnostics.Process.Start(psi)
+        using Process p = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException($"无法启动进程 {exe}");
         try
         {
             // 双流并发读：顺序先读 stdout 时 stderr 塞满 pipe buffer（~64KB）会互等死锁
             // （npm 崩溃 full report 可超限）。进程退出后两流必然收尾，收尾读取不再带 ct
-            var stdoutTask = p.StandardOutput.ReadToEndAsync(ct);
-            var stderrTask = p.StandardError.ReadToEndAsync(ct);
+            Task<string> stdoutTask = p.StandardOutput.ReadToEndAsync(ct);
+            Task<string> stderrTask = p.StandardError.ReadToEndAsync(ct);
             await p.WaitForExitAsync(ct).ConfigureAwait(false);
-            var stdout = await stdoutTask.ConfigureAwait(false);
-            var stderr = await stderrTask.ConfigureAwait(false);
+            string stdout = await stdoutTask.ConfigureAwait(false);
+            string stderr = await stderrTask.ConfigureAwait(false);
             return (p.ExitCode, stdout, stderr);
         }
         catch (Exception)
@@ -216,20 +217,20 @@ public static class RuntimeBootstrap
         }
     }
 
-    private static readonly Regex NodeVersionToken = new(
+    private static readonly Regex s_nodeVersionToken = new(
         @"^v(\d+)\.\d+\.\d+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static async Task<(string? NodePath, string? Version)> ProbeLocalNodeAsync(Action<string> log, CancellationToken ct)
     {
         try
         {
-            var (exit, stdout, _) = await RunCaptureAsync(log, "node", ["--version"], ct).ConfigureAwait(false);
+            (int exit, string? stdout, string _) = await RunCaptureAsync(log, "node", ["--version"], ct).ConfigureAwait(false);
             if (exit != 0)
             {
                 return (null, null);
             }
 
-            var m = NodeVersionToken.Match(stdout.Trim());
+            Match m = s_nodeVersionToken.Match(stdout.Trim());
             return m.Success ? ("node", m.Groups[1].Value) : (null, null);
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
@@ -254,14 +255,14 @@ public static class RuntimeBootstrap
     {
         // 每步超时（StepTimeoutMinutes，R2 评审 B3：下载无超时则服务器停滞时无限 spinner 无出路）。
         // 步超时转 InvalidOperationException 走失败重试页；应用退出（parent ct）仍是 OCE 上抛
-        var step = BootstrapStep.EnsureNode;
+        BootstrapStep step = BootstrapStep.EnsureNode;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(runtimeDir))!);
 
             // ① Node 就位：优先已下载（断点重试语义），再本机复用，最后下载钉版
             report(new BootstrapProgress(BootstrapStep.EnsureNode, "检测本机 Node"));
-            var nodePath = TryFindNode(runtimeDir);
+            string? nodePath = TryFindNode(runtimeDir);
             string? npmCli = null;
             if (nodePath is not null)
             {
@@ -270,9 +271,9 @@ public static class RuntimeBootstrap
             }
             else
             {
-                var (localNode, localMajor) = await hooks.ProbeLocalNodeAsync(ct).ConfigureAwait(false);
-                var reuse = localNode is not null &&
-                            int.TryParse(localMajor, out var major) &&
+                (string? localNode, string? localMajor) = await hooks.ProbeLocalNodeAsync(ct).ConfigureAwait(false);
+                bool reuse = localNode is not null &&
+                            int.TryParse(localMajor, out int major) &&
                             major >= options.MinimumLocalNodeMajor;
                 if (reuse)
                 {
@@ -309,7 +310,7 @@ public static class RuntimeBootstrap
             // --loglevel=error 控制输出体积（大依赖树的进度刷屏会被 ReadToEnd 全量缓冲）。
             // npm 前置条件：runtimeDir 必须有 package.json——npm 对无清单目录的 `npm install <pkg>`
             // 是静默 no-op（exit 0 什么都不装，沙箱实证），先落最小清单
-            var packageJson = Path.Combine(runtimeDir, "package.json");
+            string packageJson = Path.Combine(runtimeDir, "package.json");
             if (!File.Exists(packageJson))
             {
                 File.WriteAllText(packageJson, "{\n  \"name\": \"dsh-desktop-runtime\",\n  \"private\": true\n}\n");
@@ -317,7 +318,7 @@ public static class RuntimeBootstrap
 
             step = BootstrapStep.InstallDsh;
             report(new BootstrapProgress(BootstrapStep.InstallDsh, $"安装 dsh（{options.DshSpec}）"));
-            var (exit, stdout, stderr) = await WithStepTimeout(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
+            (int exit, string? stdout, string? stderr) = await WithStepTimeout(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
                 nodePath,
                 [npmCli!, "install", "--prefix", StripExtendedPrefix(runtimeDir), "--no-audit", "--no-fund", "--loglevel=error", options.DshSpec],
                 token)).ConfigureAwait(false);
@@ -329,15 +330,15 @@ public static class RuntimeBootstrap
             // ③ 验证产物入口（对齐 ADR「每步装完验证产物」约束）
             step = BootstrapStep.VerifyDsh;
             report(new BootstrapProgress(BootstrapStep.VerifyDsh, "验证 dsh 产物"));
-            var located = RuntimeLocator.TryLocateBundled(runtimeDir);
+            (string NodeExe, string DshEntry)? located = RuntimeLocator.TryLocateBundled(runtimeDir);
             if (located is null)
             {
                 return Fail(BootstrapStep.VerifyDsh, $"安装后未找到 dsh 入口（{runtimeDir}）");
             }
 
-            var (vExit, vOut, vErr) = await WithStepTimeout(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
+            (int vExit, string? vOut, string? vErr) = await WithStepTimeout(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
                 located.Value.NodeExe, [located.Value.DshEntry, "--version"], token)).ConfigureAwait(false);
-            var version = RuntimeVersionGate.TryParseVersionOutput(vOut);
+            string? version = RuntimeVersionGate.TryParseVersionOutput(vOut);
             if (vExit != 0 || version is null)
             {
                 return Fail(BootstrapStep.VerifyDsh, $"dsh --version 验证失败 exit={vExit}：{vErr.Trim()}");
@@ -389,13 +390,13 @@ public static class RuntimeBootstrap
 
     private static string? TryFindNode(string runtimeDir)
     {
-        var node = Path.Combine(runtimeDir, "node");
+        string node = Path.Combine(runtimeDir, "node");
         if (File.Exists(node))
         {
             return node;
         }
 
-        var nodeExe = Path.Combine(runtimeDir, "node.exe");
+        string nodeExe = Path.Combine(runtimeDir, "node.exe");
         return File.Exists(nodeExe) ? nodeExe : null;
     }
 
@@ -403,13 +404,13 @@ public static class RuntimeBootstrap
     {
         // node 在 PATH 上时布局不定（发行包/包管理器/symlink）；只探测两种主流布局，
         // 找不到 npm-cli 一律视为不可复用——绝不猜测执行
-        var dir = Path.GetDirectoryName(Path.GetFullPath(nodePath));
+        string? dir = Path.GetDirectoryName(Path.GetFullPath(nodePath));
         if (dir is null)
         {
             return null;
         }
 
-        var candidates = new[]
+        string[] candidates = new[]
         {
             // 发行包布局：node 同级的 lib/node_modules（unix）或同级 node_modules（win）
             Path.Combine(dir, NpmCliRelativePath()),
@@ -426,11 +427,11 @@ public static class RuntimeBootstrap
         RuntimeBootstrapHooks hooks,
         CancellationToken ct)
     {
-        var fileName = NodeArchiveFileName(options.NodeVersion)
+        string fileName = NodeArchiveFileName(options.NodeVersion)
             ?? throw new InvalidOperationException("当前平台无对应的 Node 发行包坐标（fail loud）");
-        var baseUrl = options.NodeDistBaseUrl.TrimEnd('/');
-        var versionDir = $"v{options.NodeVersion}";
-        var parent = Path.GetDirectoryName(Path.GetFullPath(runtimeDir))!;
+        string baseUrl = options.NodeDistBaseUrl.TrimEnd('/');
+        string versionDir = $"v{options.NodeVersion}";
+        string parent = Path.GetDirectoryName(Path.GetFullPath(runtimeDir))!;
 
         // 跨崩溃残留：swap 两处 Directory.Move 之间崩溃会留下 .backup-<guid> 旧运行时、解压中断留 .staging-<guid>；
         // 启动下载前最佳努力清扫，避免逐次泄漏（R2 S1）。仅清扫本运行时父目录下的这类瞬时目录
@@ -451,22 +452,22 @@ public static class RuntimeBootstrap
             throw new InvalidOperationException($"获取 Node 发行包官方 SHA256 摘要失败：{ex.Message}", ex);
         }
 
-        var expected = SelectSha256(shasums, fileName)
+        string expected = SelectSha256(shasums, fileName)
             ?? throw new InvalidOperationException($"SHASUMS256.txt 缺少 {fileName} 的摘要，安全中止");
 
         // 归档落确定性命名的 .download 区（runtimeDir 同盘兄弟，跨重试/跨进程续传）；解压与归一落
         // .staging 临时目录，成功再原子 swap 进 runtimeDir。三者与 runtimeDir 同卷（跨卷 Directory.Move
         // 会 Invalid cross-device link，/tmp=tmpfs 的 Linux 发行版上首启必炸）
-        var downloadDir = Path.Combine(parent, $".download-{Path.GetFileName(Path.GetFullPath(runtimeDir))}", versionDir);
+        string downloadDir = Path.Combine(parent, $".download-{Path.GetFileName(Path.GetFullPath(runtimeDir))}", versionDir);
         Directory.CreateDirectory(downloadDir);
-        var archivePath = Path.Combine(downloadDir, fileName);
+        string archivePath = Path.Combine(downloadDir, fileName);
         var candidates = new List<string> { $"{baseUrl}/{versionDir}/{fileName}" };
         if (!string.IsNullOrWhiteSpace(options.NodeMirrorBaseUrl))
         {
             candidates.Add($"{options.NodeMirrorBaseUrl.TrimEnd('/')}/{versionDir}/{fileName}");
         }
 
-        var stagingDir = Path.Combine(parent, $".staging-{Guid.NewGuid():N}");
+        string stagingDir = Path.Combine(parent, $".staging-{Guid.NewGuid():N}");
         try
         {
             report(new BootstrapProgress(BootstrapStep.EnsureNode, $"下载 Node v{options.NodeVersion}"));
@@ -476,7 +477,7 @@ public static class RuntimeBootstrap
             // SHA256 校验：摘要来自官方 SHASUMS256.txt（HTTPS），镜像内容同源由此兜底；缺失摘要属
             // 供应链异常，安全中止。威胁模型边界（ADR）：该校验只防传输损坏，非信任锚（base url 可配置时同源自证）
             report(new BootstrapProgress(BootstrapStep.ExtractNode, "校验 SHA256"));
-            var actual = await Sha256FileAsync(archivePath, ct).ConfigureAwait(false);
+            string actual = await Sha256FileAsync(archivePath, ct).ConfigureAwait(false);
             if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
@@ -484,7 +485,7 @@ public static class RuntimeBootstrap
             }
 
             report(new BootstrapProgress(BootstrapStep.ExtractNode, "解压 Node"));
-            var extractDir = Path.Combine(stagingDir, "extract");
+            string extractDir = Path.Combine(stagingDir, "extract");
             Directory.CreateDirectory(extractDir);
             await WithStepTimeout(options.StepTimeoutMinutes, ct,
                 token => hooks.ExtractArchiveAsync(archivePath, extractDir, token)).ConfigureAwait(false);
@@ -492,10 +493,10 @@ public static class RuntimeBootstrap
             // 归一为捆绑闭包同款扁平布局（RuntimeLocator.TryLocateBundled 的探测形态）于 staging 根：
             // node(.exe) 在根目录、npm 模块树按平台相对路径可达；发行包其余内容（include/share/
             // CHANGELOG 等）随 staging 清理，保持 runtimeDir 与闭包同构
-            var inner = Directory.EnumerateDirectories(extractDir).FirstOrDefault()
+            string inner = Directory.EnumerateDirectories(extractDir).FirstOrDefault()
                 ?? throw new InvalidOperationException("Node 发行包解压结果无内容目录");
-            var nodeRel = OperatingSystem.IsWindows() ? "node.exe" : Path.Combine("bin", "node");
-            var npmTreeRel = OperatingSystem.IsWindows() ? "node_modules" : "lib";
+            string nodeRel = OperatingSystem.IsWindows() ? "node.exe" : Path.Combine("bin", "node");
+            string npmTreeRel = OperatingSystem.IsWindows() ? "node_modules" : "lib";
             MoveInto(stagingDir, Path.Combine(inner, nodeRel), Path.GetFileName(nodeRel));
             MoveInto(stagingDir, Path.Combine(inner, npmTreeRel), npmTreeRel);
             // 发行包其余内容（include/share/CHANGELOG/LICENSE 等）仍留在 extract/<inner>；swap 会把整个
@@ -515,9 +516,9 @@ public static class RuntimeBootstrap
         // 原子就位完成：清理 .download 归档区（含历史半成品，已无续传价值）；Windows 锁重试
         CleanupDirectory(downloadDir);
 
-        var nodePath = TryFindNode(runtimeDir)
+        string nodePath = TryFindNode(runtimeDir)
             ?? throw new InvalidOperationException("归一后未找到 node 可执行（布局异常）");
-        var npmCli = Path.Combine(runtimeDir, NpmCliRelativePath());
+        string npmCli = Path.Combine(runtimeDir, NpmCliRelativePath());
         if (!File.Exists(npmCli))
         {
             throw new InvalidOperationException("归一后未找到 npm-cli.js（布局异常）");
@@ -534,7 +535,7 @@ public static class RuntimeBootstrap
         IReadOnlyList<string> urls, string dest, RuntimeBootstrapHooks hooks, CancellationToken ct)
     {
         var failures = new List<string>();
-        foreach (var url in urls)
+        foreach (string url in urls)
         {
             try
             {
@@ -557,14 +558,14 @@ public static class RuntimeBootstrap
     /// 成功后清理 backup；failed staging 移入时回滚 backup（有界锁重试，fail loud）。</summary>
     internal static void SwapStagingIntoPlace(string stagingDir, string runtimeDir)
     {
-        var parent = Path.GetDirectoryName(Path.GetFullPath(runtimeDir))!;
+        string parent = Path.GetDirectoryName(Path.GetFullPath(runtimeDir))!;
         if (!Directory.Exists(runtimeDir))
         {
             MoveWithLockRetry(stagingDir, runtimeDir);
             return;
         }
 
-        var backup = Path.Combine(parent, $".backup-{Guid.NewGuid():N}");
+        string backup = Path.Combine(parent, $".backup-{Guid.NewGuid():N}");
         MoveWithLockRetry(runtimeDir, backup);
         try
         {
@@ -618,9 +619,9 @@ public static class RuntimeBootstrap
             return;
         }
 
-        foreach (var dir in Directory.EnumerateDirectories(parent))
+        foreach (string dir in Directory.EnumerateDirectories(parent))
         {
-            var name = Path.GetFileName(dir);
+            string name = Path.GetFileName(dir);
             if (name.StartsWith(".staging-", StringComparison.Ordinal) ||
                 name.StartsWith(".backup-", StringComparison.Ordinal))
             {
@@ -640,12 +641,12 @@ public static class RuntimeBootstrap
     /// 文件已变）重头写、416（Range 不可满足）重头兜底——正确性由后续 SHA256 校验兜底。</summary>
     internal static async Task DownloadResumableAsync(HttpClient http, string url, string dest, CancellationToken ct)
     {
-        var existing = File.Exists(dest) ? new FileInfo(dest).Length : 0L;
+        long existing = File.Exists(dest) ? new FileInfo(dest).Length : 0L;
         if (existing > 0)
         {
             using var rangeReq = new HttpRequestMessage(HttpMethod.Get, url);
             rangeReq.Headers.Range = new RangeHeaderValue(existing, null);
-            using var rangeResp = await http.SendAsync(rangeReq, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            using HttpResponseMessage rangeResp = await http.SendAsync(rangeReq, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             if (rangeResp.StatusCode == HttpStatusCode.PartialContent)
             {
                 await CopyResponseBodyAsync(rangeResp, dest, append: true, ct).ConfigureAwait(false);
@@ -655,7 +656,7 @@ public static class RuntimeBootstrap
         }
 
         using var fullReq = new HttpRequestMessage(HttpMethod.Get, url);
-        using var fullResp = await http.SendAsync(fullReq, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        using HttpResponseMessage fullResp = await http.SendAsync(fullReq, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
         fullResp.EnsureSuccessStatusCode();
         await CopyResponseBodyAsync(fullResp, dest, append: false, ct).ConfigureAwait(false);
     }
@@ -663,7 +664,7 @@ public static class RuntimeBootstrap
     /// <summary>把响应体写入 dest（append=true 追加、false 覆盖创建）。</summary>
     private static async Task CopyResponseBodyAsync(HttpResponseMessage resp, string dest, bool append, CancellationToken ct)
     {
-        await using var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using Stream src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         await using var dst = new FileStream(dest, append ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None);
         await src.CopyToAsync(dst, ct).ConfigureAwait(false);
     }
@@ -672,7 +673,7 @@ public static class RuntimeBootstrap
     internal const int FileLockRetryCount = 10;
 
     /// <summary>文件锁重试间隔。</summary>
-    private static readonly TimeSpan FileLockRetryDelay = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan s_fileLockRetryDelay = TimeSpan.FromMilliseconds(200);
 
     /// <summary>带锁重试的目录/文件移动（rename），对 IO 瞬时锁有界重试。</summary>
     internal static void MoveWithLockRetry(string source, string dest)
@@ -705,7 +706,7 @@ public static class RuntimeBootstrap
     /// 次后上抛（fail loud）。</summary>
     internal static void WithLockRetry(Action action)
     {
-        for (var attempt = 1; ; attempt++)
+        for (int attempt = 1; ; attempt++)
         {
             try
             {
@@ -714,7 +715,7 @@ public static class RuntimeBootstrap
             }
             catch (IOException) when (attempt < FileLockRetryCount)
             {
-                Thread.Sleep(FileLockRetryDelay);
+                Thread.Sleep(s_fileLockRetryDelay);
             }
         }
     }
@@ -727,7 +728,7 @@ public static class RuntimeBootstrap
             throw new InvalidOperationException($"Node 发行包缺少 {fileName}（布局异常）");
         }
 
-        var dst = Path.Combine(targetDir, fileName);
+        string dst = Path.Combine(targetDir, fileName);
         if (Directory.Exists(dst))
         {
             Directory.Delete(dst, recursive: true);

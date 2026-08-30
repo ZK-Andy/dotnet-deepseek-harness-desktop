@@ -70,7 +70,7 @@ public static class LauncherActivation
 
         try
         {
-            var socket = BindWithStaleRecovery(path, log);
+            Socket? socket = BindWithStaleRecovery(path, log);
             if (socket is null)
             {
                 return false;
@@ -109,12 +109,12 @@ public static class LauncherActivation
                 return false;
             }
 
-            var payload = System.Text.Encoding.UTF8.GetBytes(ShowCommand + "\n");
+            byte[] payload = System.Text.Encoding.UTF8.GetBytes(ShowCommand + "\n");
             socket.Send(payload);
             socket.ReceiveTimeout = (int)timeout.TotalMilliseconds;
-            var buffer = new byte[64];
-            var read = socket.Receive(buffer);
-            var ack = System.Text.Encoding.UTF8.GetString(buffer, 0, read).Trim();
+            byte[] buffer = new byte[64];
+            int read = socket.Receive(buffer);
+            string ack = System.Text.Encoding.UTF8.GetString(buffer, 0, read).Trim();
             return ack == AckResponse;
         }
         catch (Exception)
@@ -230,7 +230,7 @@ public sealed class PrimaryListener : IDisposable
         {
             try
             {
-                var client = await _socket.AcceptAsync(ct).ConfigureAwait(false);
+                Socket client = await _socket.AcceptAsync(ct).ConfigureAwait(false);
                 _ = Task.Run(() => ServeAsync(client), CancellationToken.None);
             }
             catch (OperationCanceledException)
@@ -270,9 +270,9 @@ public sealed class PrimaryListener : IDisposable
             using (client)
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                var buffer = new byte[256];
-                var read = await client.ReceiveAsync(buffer, cts.Token).ConfigureAwait(false);
-                var command = System.Text.Encoding.UTF8.GetString(buffer, 0, read).Trim();
+                byte[] buffer = new byte[256];
+                int read = await client.ReceiveAsync(buffer, cts.Token).ConfigureAwait(false);
+                string command = System.Text.Encoding.UTF8.GetString(buffer, 0, read).Trim();
                 // 到达性留痕：昨晚实机「launcher 唤起无响应但无任何日志」——连接到达与否
                 // 必须可判（区别于「到达但处理卡死」）
                 _log?.Invoke($"[host] 单实例请求：{command}");
@@ -282,7 +282,7 @@ public sealed class PrimaryListener : IDisposable
                     return;
                 }
 
-                var ack = System.Text.Encoding.UTF8.GetBytes(LauncherActivation.AckResponse);
+                byte[] ack = System.Text.Encoding.UTF8.GetBytes(LauncherActivation.AckResponse);
                 await client.SendAsync(ack, cts.Token).ConfigureAwait(false);
             }
 

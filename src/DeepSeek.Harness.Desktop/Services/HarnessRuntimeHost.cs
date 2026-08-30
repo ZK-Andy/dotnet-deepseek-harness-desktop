@@ -103,8 +103,8 @@ public sealed class HarnessRuntimeHost : IDisposable
     {
         try
         {
-            var path = ResolvePidFilePath();
-            var dir = Path.GetDirectoryName(path);
+            string path = ResolvePidFilePath();
+            string? dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir))
             {
                 Directory.CreateDirectory(dir);
@@ -132,7 +132,7 @@ public sealed class HarnessRuntimeHost : IDisposable
     /// （存量升级零感知）；两处均缺失/损坏/不可读 → null（回退 OS 分配）。</summary>
     internal static int? TryLoadPersistedPort()
     {
-        var newPath = ResolvePortFilePath();
+        string newPath = ResolvePortFilePath();
         if (File.Exists(newPath))
         {
             // 新位置存在（含损坏/不可读）：不回读旧版——避免陈旧的 home 根端口记忆劫持当前 profile
@@ -151,8 +151,8 @@ public sealed class HarnessRuntimeHost : IDisposable
                 return null;
             }
 
-            var text = File.ReadAllText(path).Trim();
-            return int.TryParse(text, out var port) && port is > 0 and <= 65535 ? port : null;
+            string text = File.ReadAllText(path).Trim();
+            return int.TryParse(text, out int port) && port is > 0 and <= 65535 ? port : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -168,8 +168,8 @@ public sealed class HarnessRuntimeHost : IDisposable
     {
         try
         {
-            var path = ResolvePortFilePath();
-            var dir = Path.GetDirectoryName(path);
+            string path = ResolvePortFilePath();
+            string? dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir))
             {
                 Directory.CreateDirectory(dir);
@@ -204,13 +204,13 @@ public sealed class HarnessRuntimeHost : IDisposable
     /// </summary>
     public static string ResolveDshHome()
     {
-        var desktop = Environment.GetEnvironmentVariable(HomeOverrideEnv);
+        string? desktop = Environment.GetEnvironmentVariable(HomeOverrideEnv);
         if (!string.IsNullOrWhiteSpace(desktop))
         {
             return Path.GetFullPath(ExpandHome(desktop));
         }
 
-        var ecosystem = Environment.GetEnvironmentVariable(EcosystemHomeEnv);
+        string? ecosystem = Environment.GetEnvironmentVariable(EcosystemHomeEnv);
         if (!string.IsNullOrWhiteSpace(ecosystem))
         {
             return Path.GetFullPath(ExpandHome(ecosystem));
@@ -291,7 +291,7 @@ public sealed class HarnessRuntimeHost : IDisposable
                 _log);
         }
 
-        var preferred = _port ?? TryLoadPersistedPort();
+        int? preferred = _port ?? TryLoadPersistedPort();
         Uri? url = await StartCoreAsync(preferred, timeout, ct);
         if (url is null && preferred is not null)
         {
@@ -336,8 +336,8 @@ public sealed class HarnessRuntimeHost : IDisposable
     /// </remarks>
     internal static string BuildEnrichedPath(string? currentPath, string home, char separator)
     {
-        var localBin = Path.Combine(home, ".local", "bin");
-        var existing = currentPath ?? string.Empty;
+        string localBin = Path.Combine(home, ".local", "bin");
+        string existing = currentPath ?? string.Empty;
         if (existing.Split(separator).Contains(localBin))
         {
             return existing;
@@ -355,7 +355,7 @@ public sealed class HarnessRuntimeHost : IDisposable
             return null;
         }
 
-        var home = ResolveDshHome();
+        string home = ResolveDshHome();
         Directory.CreateDirectory(home);
 
         var psi = new ProcessStartInfo
@@ -376,7 +376,7 @@ public sealed class HarnessRuntimeHost : IDisposable
             psi.FileName = "dsh";
         }
 
-        foreach (var arg in BuildDshWebArgs(port))
+        foreach (string arg in BuildDshWebArgs(port))
         {
             psi.ArgumentList.Add(arg);
         }
@@ -390,7 +390,7 @@ public sealed class HarnessRuntimeHost : IDisposable
         // GUI 会话的 PATH 不含 ~/.local/bin：MCP stdio 等下游按命令名拉取外部进程时
         // 解析不到用户级命令（ADR gui-path-enrichment）。追加而非前置，不改系统优先级。
         psi.Environment["PATH"] = BuildEnrichedPath(
-            psi.Environment.TryGetValue("PATH", out var currentPath) ? currentPath : null,
+            psi.Environment.TryGetValue("PATH", out string? currentPath) ? currentPath : null,
             home,
             Path.PathSeparator);
 
@@ -398,7 +398,7 @@ public sealed class HarnessRuntimeHost : IDisposable
         // systemd 收养孤儿占端口。给本次 spawn 的 dsh 注入唯一 token（经环境变量），并把 pid+token
         // 落盘；下次冷启动清扫时靠 /proc/<pid>/environ 复验 token 才杀——PID 复用指向无关进程时
         // 读不到本 token，绝不误杀。跨平台可测核心见 <see cref="OrphanDshReaper"/>。
-        var spawnToken = Guid.NewGuid().ToString("N");
+        string spawnToken = Guid.NewGuid().ToString("N");
         psi.Environment["DSH_DESKTOP_SPAWN_TOKEN"] = spawnToken;
 
         _process = Process.Start(psi)
@@ -442,7 +442,7 @@ public sealed class HarnessRuntimeHost : IDisposable
                 return;
             }
 
-            var uri = HarnessUrlParser.TryParse(e.Data);
+            Uri? uri = HarnessUrlParser.TryParse(e.Data);
             if (uri is not null)
             {
                 tcs.TrySetResult(uri);

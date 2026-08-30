@@ -14,7 +14,7 @@ public class TrayMenuBuildTests
     [Fact]
     public void BuildItems_WithUpdateStack_ContainsAllEntries()
     {
-        var items = TrayMenuActions.BuildItems(includeUpdateItem: true);
+        List<TrayMenuItem> items = TrayMenuActions.BuildItems(includeUpdateItem: true);
 
         Assert.Equal(4, items.Count);
         Assert.Equal(TrayMenuActions.ShowItemId, items[0].Id);
@@ -29,7 +29,7 @@ public class TrayMenuBuildTests
     [Fact]
     public void BuildItems_WithoutUpdateStack_OmitsCheckEntry_KeepsSeparatorAndQuit()
     {
-        var items = TrayMenuActions.BuildItems(includeUpdateItem: false);
+        List<TrayMenuItem> items = TrayMenuActions.BuildItems(includeUpdateItem: false);
 
         Assert.Equal(3, items.Count);
         Assert.DoesNotContain(items, i => i.Id == TrayMenuActions.CheckUpdateItemId);
@@ -43,14 +43,14 @@ public class TrayMenuBuildTests
         // 托盘双语（ADR host-ui-locale）：en 出英文，zh/缺省出中文（对齐 dsh 兜底方向）
         var en = new UiLocale();
         en.Set("en");
-        var english = TrayMenuActions.BuildItems(includeUpdateItem: true, en);
+        List<TrayMenuItem> english = TrayMenuActions.BuildItems(includeUpdateItem: true, en);
         Assert.Equal("Show Main Window", english[0].Label);
         Assert.Equal("Check for Updates", english[1].Label);
         Assert.Equal("Quit", english[3].Label);
 
         var zh = new UiLocale();
         zh.Set("zh-CN");
-        var chinese = TrayMenuActions.BuildItems(includeUpdateItem: true, zh);
+        List<TrayMenuItem> chinese = TrayMenuActions.BuildItems(includeUpdateItem: true, zh);
         Assert.Equal("显示主窗", chinese[0].Label);
         Assert.Equal("检查更新", chinese[1].Label);
         Assert.Equal("退出", chinese[3].Label);
@@ -167,9 +167,9 @@ public class DesktopTrayCommandRouterTests
     public async Task Quit_ApprovesGateBeforeClosing_OrderContract()
     {
         var gate = new CloseGate();
-        var (router, calls) = MakeRouter(gate);
+        (DesktopTrayCommandRouter? router, List<string>? calls) = MakeRouter(gate);
 
-        var frame = await Route(router, """{"event":"tray.menuItemClicked","data":"quit"}""");
+        string frame = await Route(router, """{"event":"tray.menuItemClicked","data":"quit"}""");
 
         Assert.Equal(new[] { "close:released" }, calls);
         Assert.False(gate.ShouldCancelClose);
@@ -179,7 +179,7 @@ public class DesktopTrayCommandRouterTests
     [Fact]
     public async Task ShowMainWindow_TriggersShow_Only()
     {
-        var (router, calls) = MakeRouter(new CloseGate());
+        (DesktopTrayCommandRouter? router, List<string>? calls) = MakeRouter(new CloseGate());
 
         await Route(router, """{"event":"tray.clicked"}""");
 
@@ -191,7 +191,7 @@ public class DesktopTrayCommandRouterTests
     {
         // 成功路径留痕契约：托盘事件到达性排查此前只有失败分支可查
         var logs = new List<string>();
-        var (router, _) = MakeRouter(new CloseGate(), logs: logs);
+        (DesktopTrayCommandRouter? router, List<string> _) = MakeRouter(new CloseGate(), logs: logs);
 
         await Route(router, """{"event":"tray.clicked"}""");
 
@@ -201,9 +201,9 @@ public class DesktopTrayCommandRouterTests
     [Fact]
     public async Task CheckUpdate_WithoutUpdateStack_NoSideEffect_AcceptedFrame()
     {
-        var (router, calls) = MakeRouter(new CloseGate());
+        (DesktopTrayCommandRouter? router, List<string>? calls) = MakeRouter(new CloseGate());
 
-        var frame = await Route(router, """{"event":"tray.menuItemClicked","data":"check-update"}""");
+        string frame = await Route(router, """{"event":"tray.menuItemClicked","data":"check-update"}""");
 
         Assert.Empty(calls);
         Assert.Equal("{}", frame);
@@ -216,9 +216,9 @@ public class DesktopTrayCommandRouterTests
     [InlineData("""not-json""")]
     public async Task IgnoredEvents_ReturnNullFrame_NoWindowActions(string body)
     {
-        var (router, calls) = MakeRouter(new CloseGate());
+        (DesktopTrayCommandRouter? router, List<string>? calls) = MakeRouter(new CloseGate());
 
-        var frame = await Route(router, body);
+        string frame = await Route(router, body);
 
         Assert.Empty(calls);
         Assert.Equal("null", frame);
@@ -230,7 +230,7 @@ public class DesktopTrayCommandRouterTests
         // 事件到达性留痕契约（本轮日志收口）：任何托盘事件都必须在日志里留到达痕，
         // 「事件到没到」从此与「到了被忽略/处理卡死」可区分
         var logs = new List<string>();
-        var (router, _) = MakeRouter(new CloseGate(), logs: logs);
+        (DesktopTrayCommandRouter? router, List<string> _) = MakeRouter(new CloseGate(), logs: logs);
 
         await Route(router, """{"event":"tray.menuItemClicked","data":"unknown-item"}""");
 
@@ -242,7 +242,7 @@ public class DesktopTrayCommandRouterTests
     {
         // 到达 + 忽略双痕：未知条目不再静默——忽略原因可见（排查盲区最后一环）
         var logs = new List<string>();
-        var (router, _) = MakeRouter(new CloseGate(), logs: logs);
+        (DesktopTrayCommandRouter? router, List<string> _) = MakeRouter(new CloseGate(), logs: logs);
 
         await Route(router, """{"event":"tray.menuItemClicked","data":"bogus-item"}""");
 
@@ -255,7 +255,7 @@ public class DesktopTrayCommandRouterTests
     {
         // 检查更新的受理与装载状态都要有痕：无状态机时打「栈未装载」，有栈时打「已受理」
         var logs = new List<string>();
-        var (router, _) = MakeRouter(new CloseGate(), logs: logs);
+        (DesktopTrayCommandRouter? router, List<string> _) = MakeRouter(new CloseGate(), logs: logs);
 
         await Route(router, """{"event":"tray.menuItemClicked","data":"check-update"}""");
 
@@ -270,7 +270,7 @@ public class TrayCheckFeedbackTests
     [Fact]
     public void UpToDate_PromptsAlreadyLatest()
     {
-        var message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.UpToDate, Current: "9.9.9"));
+        string? message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.UpToDate, Current: "9.9.9"));
 
         Assert.Equal("已是最新版本", message);
     }
@@ -278,7 +278,7 @@ public class TrayCheckFeedbackTests
     [Fact]
     public void Ready_IncludesTargetVersion_AndInstallHint()
     {
-        var message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.Ready, Version: "1.2.3"));
+        string? message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.Ready, Version: "1.2.3"));
 
         Assert.Contains("1.2.3", message);
         Assert.Contains("桌面设置", message);
@@ -287,7 +287,7 @@ public class TrayCheckFeedbackTests
     [Fact]
     public void Error_IncludesReason()
     {
-        var message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.Error, Message: "网络不可达"));
+        string? message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.Error, Message: "网络不可达"));
 
         Assert.Contains("检查更新失败", message);
         Assert.Contains("网络不可达", message);

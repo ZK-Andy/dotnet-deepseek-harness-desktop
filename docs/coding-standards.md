@@ -10,7 +10,14 @@
 - [Microsoft Learn · .NET C# Coding Conventions](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions)——命名/格式/语言惯用。
 - [Microsoft Learn · .NET Framework Design Guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/)——API/命名/类型设计（面向公共 API）。
 
-仓库根 `.editorconfig` 据此编码；CI 已加 `dotnet format --verify-no-changes` 门禁（见 ADR `csharp-coding-standard`）——代码须符合规范，违规即 fail loud。IDE/Roslyn 依 `.editorconfig` 自动格式化。
+仓库根 `.editorconfig` 为全量规则载体（落地见 ADR `csharp-coding-standard`）；IDE/Roslyn 依其自动格式化与提示。
+
+## 强制力度（哪些会被门禁拦下）
+
+- **CI 门禁**（ci.yml build-test）：`dotnet format --verify-no-changes --severity warn`——按 `.editorconfig` 校验，任何本配置会修掉的格式/风格差异（含已升 warning 的风格规则）即 fail loud。
+- **build 门禁**：主/测试 csproj 开 `EnforceCodeStyleInBuild` + `AnalysisLevel=latest` + .NET 分析器；风格规则（`var`/命名/`this.`/语言关键字/`using` 位置/目标类型 `new()`/大括号）与 CA 规则（`nameof()` 用 CA1507、类型 static/sealed 用 CA1052/CA1813）按 warning 在编译期报告，`dotnet build` 保持 0 警告。
+- **StyleCop.Analyzers（1.1.118）**：仅启用与规范一致的子集为 warning（显式访问级别 SA1400、字段私有 SA1401、禁连续空行 SA1507/SA1508），其余按类别禁用（见 `.editorconfig` SA 段；一切命名交 IDE1006）。
+- **IDE 提示级（不阻断 build/CI）**：惯用偏好（初始化器/自动属性/插值/集合表达式）；可空放宽点（CS8618/CS8625）。命名规则为 warning 且存量已全部合规（`_`/`s_`/PascalCase）；`dotnet build` 不报告命名规则（编译器不读命名约定，见 MS 文档）、`dotnet format` 无法自动改名（上游 `NamingStyleCodeFixProvider` 限制），新代码靠 IDE1006 提示守住，CI 门禁对命名违规 exit 2（fail loud）。元素排序（SA1201/SA1202/SA1204/SA1214）为 suggestion：工具链无自动重排，存量未逐文件重排，新代码按标准顺序书写即可。
 
 ## 关键约定（摘要）
 

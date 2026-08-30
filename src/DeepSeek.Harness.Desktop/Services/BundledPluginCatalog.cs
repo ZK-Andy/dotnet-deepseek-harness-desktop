@@ -39,7 +39,7 @@ public static class BundledPluginCatalog
         Action<string> log)
     {
         var pending = new List<(string Package, string Spec)>();
-        foreach (var entry in catalog)
+        foreach (Entry entry in catalog)
         {
             string? spec;
             try
@@ -69,8 +69,8 @@ public static class BundledPluginCatalog
 
             try
             {
-                var bundledVersion = PluginVersionCheck.ReadBundledVersion(spec);
-                var installedVersion = PluginVersionCheck.ReadInstalledVersion(profileDir, entry.Package);
+                string bundledVersion = PluginVersionCheck.ReadBundledVersion(spec);
+                string? installedVersion = PluginVersionCheck.ReadInstalledVersion(profileDir, entry.Package);
                 if (PluginVersionCheck.NeedsUpgrade(installedVersion, bundledVersion))
                 {
                     log($"[host] 随包插件升级：{entry.Package} {installedVersion ?? "(不可读)"} → {bundledVersion}");

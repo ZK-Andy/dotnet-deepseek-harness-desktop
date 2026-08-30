@@ -9,7 +9,7 @@ public class HarnessUrlParserTests
     [Fact]
     public void TryParse_PrefixedLine_ReturnsUri()
     {
-        var uri = HarnessUrlParser.TryParse("dsh web: http://127.0.0.1:41989");
+        Uri? uri = HarnessUrlParser.TryParse("dsh web: http://127.0.0.1:41989");
         Assert.NotNull(uri);
         Assert.Equal("http://127.0.0.1:41989/", uri!.ToString());
     }

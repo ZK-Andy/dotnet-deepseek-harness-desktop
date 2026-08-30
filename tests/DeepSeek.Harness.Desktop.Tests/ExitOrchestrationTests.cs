@@ -9,7 +9,7 @@ public class ExitOrchestrationTests
 {
     private sealed class Recorder
     {
-        public readonly List<string> Steps = new();
+        public List<string> Steps { get; } = new();
         public Action Step(string name) => () => Steps.Add(name);
     }
 

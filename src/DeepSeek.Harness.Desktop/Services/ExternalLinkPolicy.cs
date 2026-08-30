@@ -9,7 +9,7 @@ namespace DeepSeek.Harness.Desktop.Services;
 public static class ExternalLinkPolicy
 {
     /// <summary>http/https scheme 集合（OrdinalIgnoreCase）。</summary>
-    private static readonly HashSet<string> HttpSchemes = new(StringComparer.OrdinalIgnoreCase) { "http", "https" };
+    private static readonly HashSet<string> s_httpSchemes = new(StringComparer.OrdinalIgnoreCase) { "http", "https" };
 
     /// <summary>
     /// href 是否应交给系统默认浏览器外部打开。
@@ -27,7 +27,7 @@ public static class ExternalLinkPolicy
         }
 
         // 绝对 URL（相对 href 是站内资源，交给 SPA/页面）
-        if (!Uri.TryCreate(href, UriKind.Absolute, out var absolute) || !HttpSchemes.Contains(absolute.Scheme))
+        if (!Uri.TryCreate(href, UriKind.Absolute, out Uri? absolute) || !s_httpSchemes.Contains(absolute.Scheme))
         {
             return false;
         }
@@ -47,7 +47,7 @@ public static class ExternalLinkPolicy
     /// <summary>判断 <paramref name="url"/> 是否与 <paramref name="origin"/>（如 <c>http://127.0.0.1:41449</c>）同源。</summary>
     private static bool SameOrigin(Uri url, string origin)
     {
-        if (!Uri.TryCreate(origin, UriKind.Absolute, out var baseUri) || baseUri.Scheme != url.Scheme)
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out Uri? baseUri) || baseUri.Scheme != url.Scheme)
         {
             return false;
         }

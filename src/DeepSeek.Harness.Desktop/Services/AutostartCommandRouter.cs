@@ -34,8 +34,8 @@ public sealed class AutostartCommandRouter : ICommandRouter
                 case "desktop.autostart.getState":
                     return ValueTask.FromResult(Frame(Autostart.IsEnabled()));
                 case "desktop.autostart.set":
-                    var enabled = ParseEnabled(args);
-                    var now = Autostart.SetEnabled(enabled);
+                    bool enabled = ParseEnabled(args);
+                    bool now = Autostart.SetEnabled(enabled);
                     _log?.Invoke($"[host] 开机自启已{(now ? "启用" : "停用")}");
                     return ValueTask.FromResult(Frame(now));
                 default:
@@ -52,7 +52,7 @@ public sealed class AutostartCommandRouter : ICommandRouter
     private static bool ParseEnabled(ReadOnlyMemory<byte> args)
     {
         using var doc = JsonDocument.Parse(Encoding.UTF8.GetString(args.Span));
-        return doc.RootElement.TryGetProperty("enabled", out var e) &&
+        return doc.RootElement.TryGetProperty("enabled", out JsonElement e) &&
                e.ValueKind == JsonValueKind.True;
     }
 

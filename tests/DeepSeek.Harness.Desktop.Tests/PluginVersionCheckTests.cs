@@ -9,7 +9,7 @@ public class PluginVersionCheckTests
     /// <summary>内存构造 gzip+tar 包：自命名临时路径，条目构造委托给共享 <see cref="TestTarGz"/>。</summary>
     private static string WriteTgz(params (string EntryName, string Content)[] entries)
     {
-        var p = Path.Combine(Path.GetTempPath(), "pvc-" + Guid.NewGuid().ToString("N") + ".tgz");
+        string p = Path.Combine(Path.GetTempPath(), "pvc-" + Guid.NewGuid().ToString("N") + ".tgz");
         TestTarGz.Write(p, entries);
         return p;
     }
@@ -17,14 +17,14 @@ public class PluginVersionCheckTests
     [Fact]
     public void ReadBundledVersion_FromTgz_ReturnsVersion()
     {
-        var p = WriteTgz(("package/package.json", """{"name":"dsh-desktop-companion","version":"0.0.2"}"""));
+        string p = WriteTgz(("package/package.json", """{"name":"dsh-desktop-companion","version":"0.0.2"}"""));
         try { Assert.Equal("0.0.2", PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
     }
 
     [Fact]
     public void ReadBundledVersion_FromTgz_IgnoresOtherEntriesAndDotSlashPrefix()
     {
-        var p = WriteTgz(
+        string p = WriteTgz(
             ("package/lib/index.js", "export {};"),
             ("./package/package.json", """{"version":"1.2.3"}"""));
         try { Assert.Equal("1.2.3", PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
@@ -33,14 +33,14 @@ public class PluginVersionCheckTests
     [Fact]
     public void ReadBundledVersion_TgzWithoutPackageJson_Throws()
     {
-        var p = WriteTgz(("package/lib/index.js", "export {};"));
+        string p = WriteTgz(("package/lib/index.js", "export {};"));
         try { Assert.Throws<InvalidDataException>(() => PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
     }
 
     [Fact]
     public void ReadBundledVersion_CorruptTgz_Throws()
     {
-        var p = Path.Combine(Path.GetTempPath(), "pvc-bad-" + Guid.NewGuid().ToString("N") + ".tgz");
+        string p = Path.Combine(Path.GetTempPath(), "pvc-bad-" + Guid.NewGuid().ToString("N") + ".tgz");
         File.WriteAllBytes(p, new byte[] { 0x00, 0x01, 0x02, 0x03 });
         try { Assert.ThrowsAny<Exception>(() => PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
     }
@@ -59,7 +59,7 @@ public class PluginVersionCheckTests
     [InlineData("not json")]
     public void ReadBundledVersion_BadVersionField_Throws(string json)
     {
-        var p = WriteTgz(("package/package.json", json));
+        string p = WriteTgz(("package/package.json", json));
         try
         {
             Assert.ThrowsAny<Exception>(() => PluginVersionCheck.ReadBundledVersion(p));
@@ -73,7 +73,7 @@ public class PluginVersionCheckTests
     [Fact]
     public void ReadBundledVersion_DirectoryForm_ReadsPackageJson()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "pvc-dir-" + Guid.NewGuid().ToString("N"));
+        string dir = Path.Combine(Path.GetTempPath(), "pvc-dir-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
@@ -88,8 +88,8 @@ public class PluginVersionCheckTests
 
     private static string NewProfileWithInstalledPlugin(string? versionJson)
     {
-        var profileDir = Path.Combine(Path.GetTempPath(), "pvc-prof-" + Guid.NewGuid().ToString("N"));
-        var pkgDir = Path.Combine(profileDir, "node_modules", "dsh-desktop-companion");
+        string profileDir = Path.Combine(Path.GetTempPath(), "pvc-prof-" + Guid.NewGuid().ToString("N"));
+        string pkgDir = Path.Combine(profileDir, "node_modules", "dsh-desktop-companion");
         Directory.CreateDirectory(pkgDir);
         if (versionJson is not null)
         {
@@ -102,7 +102,7 @@ public class PluginVersionCheckTests
     [Fact]
     public void ReadInstalledVersion_InstalledCopy_ReturnsVersion()
     {
-        var dir = NewProfileWithInstalledPlugin("""{"version":"0.0.1"}""");
+        string dir = NewProfileWithInstalledPlugin("""{"version":"0.0.1"}""");
         try
         {
             Assert.Equal("0.0.1", PluginVersionCheck.ReadInstalledVersion(dir, "dsh-desktop-companion"));
@@ -119,7 +119,7 @@ public class PluginVersionCheckTests
     [InlineData("corrupt json")]
     public void ReadInstalledVersion_UnknownOrBroken_ReturnsNull(string? json)
     {
-        var dir = NewProfileWithInstalledPlugin(json);
+        string dir = NewProfileWithInstalledPlugin(json);
         try
         {
             Assert.Null(PluginVersionCheck.ReadInstalledVersion(dir, "dsh-desktop-companion"));

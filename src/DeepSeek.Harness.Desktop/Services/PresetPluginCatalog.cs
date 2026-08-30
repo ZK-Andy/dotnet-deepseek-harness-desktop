@@ -26,7 +26,7 @@ public static class PresetPluginCatalog
     public static List<string> PendingForFirstBoot(string profilePkg, Action<string>? log = null)
     {
         var pending = new List<string>();
-        foreach (var pkg in All)
+        foreach (string pkg in All)
         {
             if (!MarketInstallHelper.IsBundleInstalled(profilePkg, pkg))
             {

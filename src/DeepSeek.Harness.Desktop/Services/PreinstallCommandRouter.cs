@@ -37,7 +37,7 @@ public sealed class PreinstallCommandRouter : ICommandRouter
             throw new RynCommandNotFoundException(command);
         }
 
-        var choice = ParseChoice(args);
+        PreinstallChoice choice = ParseChoice(args);
         _log?.Invoke($"[host] 插件引导：用户{(choice == PreinstallChoice.Install ? "确认安装" : "跳过")}");
         _gate.Set(choice);
         return ValueTask.FromResult("{}");
@@ -50,7 +50,7 @@ public sealed class PreinstallCommandRouter : ICommandRouter
         {
             using var doc = JsonDocument.Parse(Encoding.UTF8.GetString(args.Span));
             if (doc.RootElement.ValueKind == JsonValueKind.Object &&
-                doc.RootElement.TryGetProperty("action", out var a) &&
+                doc.RootElement.TryGetProperty("action", out JsonElement a) &&
                 a.ValueKind == JsonValueKind.String &&
                 string.Equals(a.GetString(), "skip", StringComparison.Ordinal))
             {

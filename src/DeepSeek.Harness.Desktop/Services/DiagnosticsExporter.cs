@@ -43,7 +43,7 @@ public static class DiagnosticsExporter
     /// <paramref name="healthSnapshot"/> 导出时刻惰性求值，收录页面健康观测最新快照。</summary>
     public static DiagnosticsExportResult ExportWithFallback(string home, string appVersion, Action<string>? log = null, Func<string?>? healthSnapshot = null)
     {
-        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        string documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         return ExportWithFallback(home, appVersion, documents, log, healthSnapshot);
     }
 
@@ -71,8 +71,8 @@ public static class DiagnosticsExporter
     /// <summary>回退导出：<c>&lt;home&gt;/diagnostics/</c>，原因留痕 host.log。</summary>
     private static DiagnosticsExportResult ExportToFallback(string home, string appVersion, string reason, Action<string>? log, Func<string?>? healthSnapshot = null)
     {
-        var fallback = Path.Combine(home, "diagnostics");
-        var result = Export(home, fallback, appVersion, healthSnapshot);
+        string fallback = Path.Combine(home, "diagnostics");
+        DiagnosticsExportResult result = Export(home, fallback, appVersion, healthSnapshot);
         log?.Invoke($"[host] {reason}，诊断包已回退到 {fallback}");
         return result;
     }
@@ -86,16 +86,16 @@ public static class DiagnosticsExporter
     public static DiagnosticsExportResult Export(string home, string outputDirectory, string appVersion, Func<string?>? healthSnapshot = null)
     {
         Directory.CreateDirectory(outputDirectory);
-        var zipPath = Path.Combine(
+        string zipPath = Path.Combine(
             outputDirectory,
             $"dsh-desktop-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
 
         var included = new List<string>();
-        using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        using (ZipArchive zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
         {
-            foreach (var (relative, entry) in IncludedFiles)
+            foreach ((string? relative, string? entry) in IncludedFiles)
             {
-                var source = Path.Combine(home, relative.Replace('/', Path.DirectorySeparatorChar));
+                string source = Path.Combine(home, relative.Replace('/', Path.DirectorySeparatorChar));
                 if (!File.Exists(source))
                 {
                     continue;
@@ -105,7 +105,7 @@ public static class DiagnosticsExporter
                 included.Add(entry);
             }
 
-            var stateEntry = zip.CreateEntry("state/state.txt");
+            ZipArchiveEntry stateEntry = zip.CreateEntry("state/state.txt");
             using (var writer = new StreamWriter(stateEntry.Open(), new UTF8Encoding(false)))
             {
                 writer.Write(BuildStateText(appVersion, home, healthSnapshot?.Invoke()));

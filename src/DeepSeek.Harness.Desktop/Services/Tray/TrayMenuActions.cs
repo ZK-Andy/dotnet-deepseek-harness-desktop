@@ -44,7 +44,7 @@ public static class TrayMenuActions
     /// 订阅方重建菜单（ADR host-ui-locale）；非 <c>en*</c> 一律中文（对齐 dsh 字典兜底方向）。</param>
     public static List<TrayMenuItem> BuildItems(bool includeUpdateItem, UiLocale? uiLocale = null)
     {
-        var english = uiLocale?.IsEnglish == true;
+        bool english = uiLocale?.IsEnglish == true;
         var items = new List<TrayMenuItem>
         {
             new() { Id = ShowItemId, Label = english ? "Show Main Window" : "显示主窗" },
@@ -77,7 +77,7 @@ public static class TrayMenuActions
             return null;
         }
 
-        var id = data?.Trim();
+        string? id = data?.Trim();
         // 容忍 JSON 字符串形态的载荷（原生直传形态 `"show"`），与中继明文形态等效
         if (id is ['"', .., '"'])
         {

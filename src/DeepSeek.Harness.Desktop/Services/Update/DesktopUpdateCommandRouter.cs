@@ -47,7 +47,7 @@ public sealed class DesktopUpdateCommandRouter : ICommandRouter
             case "desktop.update.check":
                 {
                     // 检查可能耗时（下载分钟级），立即回当前态，后续靠事件推送
-                    var backgroundCt = _backgroundToken?.Invoke() ?? CancellationToken.None;
+                    CancellationToken backgroundCt = _backgroundToken?.Invoke() ?? CancellationToken.None;
                     _ = Task.Run(async () =>
                     {
                         try

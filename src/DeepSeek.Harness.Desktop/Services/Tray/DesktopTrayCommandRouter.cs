@@ -1,4 +1,6 @@
 using System.Text;
+using System.Text.Json;
+using DeepSeek.Harness.Desktop.Services.Update;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Services.Tray;
@@ -67,12 +69,12 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
             using var doc = System.Text.Json.JsonDocument.Parse(Encoding.UTF8.GetString(args.Span));
             if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
             {
-                if (doc.RootElement.TryGetProperty("event", out var ev) && ev.ValueKind == System.Text.Json.JsonValueKind.String)
+                if (doc.RootElement.TryGetProperty("event", out JsonElement ev) && ev.ValueKind == System.Text.Json.JsonValueKind.String)
                 {
                     payload.Event = ev.GetString();
                 }
 
-                if (doc.RootElement.TryGetProperty("data", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.String)
+                if (doc.RootElement.TryGetProperty("data", out JsonElement d) && d.ValueKind == System.Text.Json.JsonValueKind.String)
                 {
                     payload.Data = d.GetString();
                 }
@@ -85,10 +87,10 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
 
         // 事件到达性留痕（无论解析结果）：实机「托盘操作全无响应且无日志」证明到达阶段是
         // 排查盲区——先分清「事件到没到」再谈解析。载荷截断防长串刷爆 host.log。
-        var payloadLog = payload.Data is null ? "(null)" : (payload.Data.Length <= 120 ? payload.Data : payload.Data[..120] + "…");
+        string payloadLog = payload.Data is null ? "(null)" : (payload.Data.Length <= 120 ? payload.Data : payload.Data[..120] + "…");
         _log?.Invoke($"[tray] 事件到达：{payload.Event ?? "(null)"} 载荷={payloadLog}");
 
-        var action = TrayMenuActions.TryResolve(payload.Event, payload.Data);
+        TrayAction? action = TrayMenuActions.TryResolve(payload.Event, payload.Data);
         switch (action)
         {
             case TrayAction.ShowMainWindow:
@@ -102,8 +104,8 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
                     {
                         try
                         {
-                            var result = await machine.CheckAsync(cancellationToken);
-                            var message = TrayCheckFeedback.Message(result);
+                            UpdateState result = await machine.CheckAsync(cancellationToken);
+                            string? message = TrayCheckFeedback.Message(result);
                             _log?.Invoke(
                                 message is not null
                                     ? $"[tray] 检查更新完成：{result.Status} {result.Version ?? ""}（通知：{message}）"

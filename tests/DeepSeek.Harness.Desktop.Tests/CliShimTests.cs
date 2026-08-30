@@ -41,7 +41,7 @@ public class CliShimBuilderTests
     [Fact]
     public void DshCmd_Bakes_Runtime_And_Home()
     {
-        var content = CliShimBuilder.BuildDshCmd(Runtime, DshHome);
+        string content = CliShimBuilder.BuildDshCmd(Runtime, DshHome);
         Assert.Contains("dsh command shim (generated)", content);
         Assert.Contains(@"/home/test/.dsh-desktop/runtime", content);
         Assert.Contains("/home/test/.dsh", content);
@@ -53,7 +53,7 @@ public class CliShimBuilderTests
     [Fact]
     public void DshCmd_Escapes_Percent_In_Baked_Path()
     {
-        var content = CliShimBuilder.BuildDshCmd(@"C:\Users\100%test\runtime", DshHome);
+        string content = CliShimBuilder.BuildDshCmd(@"C:\Users\100%test\runtime", DshHome);
         Assert.Contains(@"100%%test", content);
         Assert.DoesNotContain(@"set ""RUNTIME_DIR=C:\Users\100%test\runtime""", content);
     }
@@ -61,9 +61,9 @@ public class CliShimBuilderTests
     [Fact]
     public void DshCmd_Prefers_User_Dsh_Before_Runtime_Launch()
     {
-        var content = CliShimBuilder.BuildDshCmd(Runtime, DshHome);
-        var userAt = content.IndexOf("USER_DSH", StringComparison.Ordinal);
-        var launchAt = content.IndexOf(@"""%NODE%""", StringComparison.Ordinal);
+        string content = CliShimBuilder.BuildDshCmd(Runtime, DshHome);
+        int userAt = content.IndexOf("USER_DSH", StringComparison.Ordinal);
+        int launchAt = content.IndexOf(@"""%NODE%""", StringComparison.Ordinal);
         Assert.True(userAt >= 0 && launchAt > 0 && userAt < launchAt, "user dsh precedence must precede bundled launch");
     }
 
@@ -71,10 +71,10 @@ public class CliShimBuilderTests
     public void DshCmd_Injects_DshHome_Only_In_Bundled_Path()
     {
         // DSH_HOME/telemetry 必须在用户 dsh 早退（call "%USER_DSH%"）之后注入，避免污染用户自己的 dsh 环境
-        var content = CliShimBuilder.BuildDshCmd(Runtime, DshHome);
-        var userExitAt = content.IndexOf("call \"%USER_DSH%\"", StringComparison.Ordinal);
-        var homeAt = content.IndexOf("set \"DSH_HOME=", StringComparison.Ordinal);
-        var telemetryAt = content.IndexOf("set \"DSH_TELEMETRY_DISABLED=1\"", StringComparison.Ordinal);
+        string content = CliShimBuilder.BuildDshCmd(Runtime, DshHome);
+        int userExitAt = content.IndexOf("call \"%USER_DSH%\"", StringComparison.Ordinal);
+        int homeAt = content.IndexOf("set \"DSH_HOME=", StringComparison.Ordinal);
+        int telemetryAt = content.IndexOf("set \"DSH_TELEMETRY_DISABLED=1\"", StringComparison.Ordinal);
         Assert.True(userExitAt >= 0 && homeAt > userExitAt && telemetryAt > userExitAt,
             "DSH_HOME/telemetry must be injected only after the user-dsh early-exit (bundled path)");
     }
@@ -82,12 +82,12 @@ public class CliShimBuilderTests
     [Fact]
     public void DshPs1_Bakes_And_Prefers_User_Dsh()
     {
-        var content = CliShimBuilder.BuildDshPs1(Runtime, DshHome);
+        string content = CliShimBuilder.BuildDshPs1(Runtime, DshHome);
         Assert.Contains(Runtime, content);
         Assert.Contains(DshHome, content);
         Assert.Contains("Get-Command dsh -All", content);
-        var userAt = content.IndexOf("$userDsh", StringComparison.Ordinal);
-        var dshHomeAt = content.IndexOf("$env:DSH_HOME = $dshHome", StringComparison.Ordinal);
+        int userAt = content.IndexOf("$userDsh", StringComparison.Ordinal);
+        int dshHomeAt = content.IndexOf("$env:DSH_HOME = $dshHome", StringComparison.Ordinal);
         Assert.True(userAt >= 0 && dshHomeAt >= 0 && userAt < dshHomeAt,
             "user dsh precedence must precede DSH_HOME injection (bundled-only)");
     }
@@ -95,12 +95,12 @@ public class CliShimBuilderTests
     [Fact]
     public void DshSh_Bakes_And_Prefers_User_Dsh()
     {
-        var content = CliShimBuilder.BuildDshSh(Runtime, DshHome);
+        string content = CliShimBuilder.BuildDshSh(Runtime, DshHome);
         Assert.Contains(Runtime, content);
         Assert.Contains(DshHome, content);
         Assert.Contains(@"exec ""$dir/dsh"" ""$@""", content);
-        var userAt = content.IndexOf(@"""$dir/dsh""", StringComparison.Ordinal);
-        var homeAt = content.IndexOf("export DSH_HOME", StringComparison.Ordinal);
+        int userAt = content.IndexOf(@"""$dir/dsh""", StringComparison.Ordinal);
+        int homeAt = content.IndexOf("export DSH_HOME", StringComparison.Ordinal);
         Assert.True(userAt >= 0 && homeAt >= 0 && userAt < homeAt,
             "user dsh precedence must precede DSH_HOME export");
     }
@@ -128,7 +128,7 @@ public class CliShimPathTests
     public void MergePathToken_Is_Idempotent_CaseInsensitive()
     {
         const string sep = ";";
-        var merged = CliShimPath.MergePathToken(@"C:\Users\x\bin", @"C:\USERS\X\BIN", sep, caseInsensitive: true);
+        string merged = CliShimPath.MergePathToken(@"C:\Users\x\bin", @"C:\USERS\X\BIN", sep, caseInsensitive: true);
         Assert.Equal(@"C:\Users\x\bin", merged);
         // 未含 token 时追加
         Assert.Equal(
@@ -146,7 +146,7 @@ public class CliShimPathTests
     [Fact]
     public void MergePathToken_Empty_Path_Returns_Token()
     {
-        var merged = CliShimPath.MergePathToken("", "/home/x/bin", ":", caseInsensitive: false);
+        string merged = CliShimPath.MergePathToken("", "/home/x/bin", ":", caseInsensitive: false);
         Assert.Equal("/home/x/bin", merged);
     }
 
@@ -160,20 +160,20 @@ public class CliShimPathTests
     [Fact]
     public void EnsureShellRcBlock_Is_Idempotent()
     {
-        var block = CliShimPath.BuildShellExportBlock("/home/x/.local/bin", ":");
-        var once = CliShimPath.EnsureShellRcBlock("", block);
+        string block = CliShimPath.BuildShellExportBlock("/home/x/.local/bin", ":");
+        string once = CliShimPath.EnsureShellRcBlock("", block);
         Assert.Contains(CliShimPath.RcBeginMarker, once);
         Assert.Contains(CliShimPath.RcEndMarker, once);
 
-        var twice = CliShimPath.EnsureShellRcBlock(once, block);
+        string twice = CliShimPath.EnsureShellRcBlock(once, block);
         Assert.Equal(once, twice);
     }
 
     [Fact]
     public void EnsureShellRcBlock_Appends_After_Existing_Content()
     {
-        var block = CliShimPath.BuildShellExportBlock("/home/x/.local/bin", ":");
-        var result = CliShimPath.EnsureShellRcBlock("# existing\n", block);
+        string block = CliShimPath.BuildShellExportBlock("/home/x/.local/bin", ":");
+        string result = CliShimPath.EnsureShellRcBlock("# existing\n", block);
         Assert.StartsWith("# existing", result);
         Assert.Contains(CliShimPath.RcBeginMarker, result);
     }
@@ -199,7 +199,7 @@ public class CliShimPlannerTests
     [Fact]
     public void Windows_Setup_Emits_Cmd_Ps1_And_Semicolon_Sep()
     {
-        var setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: true, writeDshShim: true);
+        CliShimSetup setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: true, writeDshShim: true);
         Assert.Equal(4, setup.Files.Count);
         Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("dsh.cmd"));
         Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("dsh.ps1"));
@@ -212,7 +212,7 @@ public class CliShimPlannerTests
     [Fact]
     public void Windows_Dev_Setup_Skips_Dsh_Shim()
     {
-        var setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: true, writeDshShim: false);
+        CliShimSetup setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: true, writeDshShim: false);
         Assert.DoesNotContain(setup.Files, f => f.TargetPath.EndsWith("dsh.cmd"));
         Assert.DoesNotContain(setup.Files, f => f.TargetPath.EndsWith("dsh.ps1"));
         Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm.cmd"));
@@ -222,7 +222,7 @@ public class CliShimPlannerTests
     [Fact]
     public void Unix_Setup_Emits_Dsh_And_Sh_Block()
     {
-        var setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: false, writeDshShim: true);
+        CliShimSetup setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: false, writeDshShim: true);
         Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("dsh") && f.Executable);
         Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm") && f.Executable);
         Assert.Equal(":", setup.PathSeparator);
@@ -233,7 +233,7 @@ public class CliShimPlannerTests
     [Fact]
     public void Unix_Dev_Setup_Skips_Dsh_Shim()
     {
-        var setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: false, writeDshShim: false);
+        CliShimSetup setup = CliShimPlanner.BuildSetup(Runtime, Home, Bin, isWindows: false, writeDshShim: false);
         Assert.DoesNotContain(setup.Files, f => f.TargetPath.EndsWith("dsh"));
         Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm"));
     }
@@ -241,7 +241,7 @@ public class CliShimPlannerTests
     [Fact]
     public void DecideShimWrite_Preserves_User_File()
     {
-        var action = CliShimPlanner.DecideShimWrite(exists: true, isGeneratedShim: false, isSymlink: false);
+        ShimWriteAction action = CliShimPlanner.DecideShimWrite(exists: true, isGeneratedShim: false, isSymlink: false);
         Assert.Equal(ShimWriteAction.PreserveUserFile, action);
     }
 
@@ -255,7 +255,7 @@ public class CliShimPlannerTests
     [Fact]
     public void DecideShimWrite_Removes_Dangling_Symlink()
     {
-        var action = CliShimPlanner.DecideShimWrite(exists: false, isGeneratedShim: false, isSymlink: true);
+        ShimWriteAction action = CliShimPlanner.DecideShimWrite(exists: false, isGeneratedShim: false, isSymlink: true);
         Assert.Equal(ShimWriteAction.RemoveDanglingSymlinkThenWrite, action);
     }
 }
@@ -272,7 +272,7 @@ public class CliShimRegistrarTests : IDisposable
 
     public CliShimRegistrarTests()
     {
-        var root = Path.Combine(Path.GetTempPath(), "dsh-cli-shim-" + Guid.NewGuid().ToString("N"));
+        string root = Path.Combine(Path.GetTempPath(), "dsh-cli-shim-" + Guid.NewGuid().ToString("N"));
         _binDir = Path.Combine(root, "bin");
         _rcHome = Path.Combine(root, "rc");
         _runtime = Path.Combine(root, "runtime");
@@ -299,11 +299,11 @@ public class CliShimRegistrarTests : IDisposable
     public void TryRegister_Writes_Shims_And_Rc()
     {
         var reg = new CliShimRegistrar(_ => { });
-        var ok = reg.TryRegister(_runtime, _home, isDevIsolated: false);
+        bool ok = reg.TryRegister(_runtime, _home, isDevIsolated: false);
 
         Assert.True(ok);
-        var dshShim = Path.Combine(_binDir, IsWindows() ? "dsh.cmd" : "dsh");
-        var pnpmShim = Path.Combine(_binDir, IsWindows() ? "pnpm.cmd" : "pnpm");
+        string dshShim = Path.Combine(_binDir, IsWindows() ? "dsh.cmd" : "dsh");
+        string pnpmShim = Path.Combine(_binDir, IsWindows() ? "pnpm.cmd" : "pnpm");
         Assert.True(File.Exists(dshShim), "dsh shim written");
         Assert.True(File.Exists(pnpmShim), "pnpm shim written");
         Assert.Contains(CliShimBuilder.GeneratedMarker, File.ReadAllText(dshShim));
@@ -316,7 +316,7 @@ public class CliShimRegistrarTests : IDisposable
         reg.TryRegister(_runtime, _home, isDevIsolated: false);
         reg.TryRegister(_runtime, _home, isDevIsolated: false);
 
-        var rc = File.ReadAllText(Path.Combine(_rcHome, ".bashrc"));
+        string rc = File.ReadAllText(Path.Combine(_rcHome, ".bashrc"));
         Assert.Equal(1, Count(rc, CliShimPath.RcBeginMarker));
     }
 
@@ -326,16 +326,16 @@ public class CliShimRegistrarTests : IDisposable
         var reg = new CliShimRegistrar(_ => { });
         reg.TryRegister(_runtime, _home, isDevIsolated: true);
 
-        var dshShim = Path.Combine(_binDir, IsWindows() ? "dsh.cmd" : "dsh");
+        string dshShim = Path.Combine(_binDir, IsWindows() ? "dsh.cmd" : "dsh");
         Assert.False(File.Exists(dshShim), "dev must skip dsh shim");
-        var pnpmShim = Path.Combine(_binDir, IsWindows() ? "pnpm.cmd" : "pnpm");
+        string pnpmShim = Path.Combine(_binDir, IsWindows() ? "pnpm.cmd" : "pnpm");
         Assert.True(File.Exists(pnpmShim), "pnpm shim still written in dev");
     }
 
     [Fact]
     public void TryRegister_Preserves_User_Shim_File()
     {
-        var dshShim = Path.Combine(_binDir, IsWindows() ? "dsh.cmd" : "dsh");
+        string dshShim = Path.Combine(_binDir, IsWindows() ? "dsh.cmd" : "dsh");
         Directory.CreateDirectory(_binDir);
         File.WriteAllText(dshShim, "#!/bin/sh\necho my real dsh\n");
 
@@ -347,8 +347,8 @@ public class CliShimRegistrarTests : IDisposable
 
     private static int Count(string text, string needle)
     {
-        var c = 0;
-        for (var i = text.IndexOf(needle, StringComparison.Ordinal); i >= 0; i = text.IndexOf(needle, i + needle.Length, StringComparison.Ordinal))
+        int c = 0;
+        for (int i = text.IndexOf(needle, StringComparison.Ordinal); i >= 0; i = text.IndexOf(needle, i + needle.Length, StringComparison.Ordinal))
         {
             c++;
         }

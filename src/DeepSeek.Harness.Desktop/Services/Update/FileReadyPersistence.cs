@@ -18,10 +18,10 @@ public sealed class FileReadyPersistence(string dir) : UpdateStateMachine.IPersi
             }
 
             using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(_path, cancellationToken).ConfigureAwait(false));
-            var root = doc.RootElement;
+            JsonElement root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.String ||
-                !root.TryGetProperty("assetPath", out var asset) || asset.ValueKind != JsonValueKind.String)
+                !root.TryGetProperty("version", out JsonElement version) || version.ValueKind != JsonValueKind.String ||
+                !root.TryGetProperty("assetPath", out JsonElement asset) || asset.ValueKind != JsonValueKind.String)
             {
                 return null;
             }
@@ -40,7 +40,7 @@ public sealed class FileReadyPersistence(string dir) : UpdateStateMachine.IPersi
     {
         Directory.CreateDirectory(dir);
         // 经 AppJsonContext 源生成（AOT 安全）；键名 version/assetPath 与 GetAsync 读方及历史文件互认
-        var json = JsonSerializer.Serialize(record, AppJsonContext.Default.ReadyRecord);
+        string json = JsonSerializer.Serialize(record, AppJsonContext.Default.ReadyRecord);
         await File.WriteAllTextAsync(_path, json, cancellationToken).ConfigureAwait(false);
     }
 

@@ -10,9 +10,9 @@ public class LauncherActivationTests
     [Fact]
     public void SocketPath_DevSuffix_IsolatesDevFromProd()
     {
-        var dir = NewDir();
-        var prod = LauncherActivation.SocketPath(dir, "app", isDev: false);
-        var dev = LauncherActivation.SocketPath(dir, "app", isDev: true);
+        string dir = NewDir();
+        string prod = LauncherActivation.SocketPath(dir, "app", isDev: false);
+        string dev = LauncherActivation.SocketPath(dir, "app", isDev: true);
 
         Assert.Equal(Path.Combine(dir, "app.sock"), prod);
         Assert.Equal(Path.Combine(dir, "app.dev.sock"), dev);
@@ -24,7 +24,7 @@ public class LauncherActivationTests
     {
         // 临时目录回退的跨用户隔离：Linux/macOS 带 uid 数字后缀，同用户两次调用稳定；
         // Windows 不启用 socket 仲裁（平台边界），恒空串
-        var suffix = LauncherActivation.FallbackUidSuffix();
+        string suffix = LauncherActivation.FallbackUidSuffix();
         if (OperatingSystem.IsWindows())
         {
             Assert.Empty(suffix);
@@ -38,7 +38,7 @@ public class LauncherActivationTests
     [Fact]
     public async Task PrimaryThenNotify_SecondaryGetsAck_AndCallbackFires()
     {
-        var path = NewSocketPath();
+        string path = NewSocketPath();
         var fired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Assert.True(LauncherActivation.TryBindPrimary(
             path,
@@ -48,7 +48,7 @@ public class LauncherActivationTests
                 return Task.CompletedTask;
             },
             null,
-            out var listener));
+            out PrimaryListener? listener));
         using (listener)
         {
             // 二启视角：地址被占 → 通知可达且收到应答
@@ -60,8 +60,8 @@ public class LauncherActivationTests
     [Fact]
     public async Task TryBindPrimary_SecondBindWhileAlive_ReturnsFalse()
     {
-        var path = NewSocketPath();
-        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out var first));
+        string path = NewSocketPath();
+        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? first));
         using (first)
         {
             await Task.Delay(50); // 给 accept loop 起来留一拍，模拟稳态
@@ -72,18 +72,18 @@ public class LauncherActivationTests
     [Fact]
     public void NotifyPrimary_NoListener_ReturnsFalse()
     {
-        var path = Path.Combine(NewDir(), "absent.sock");
+        string path = Path.Combine(NewDir(), "absent.sock");
         Assert.False(LauncherActivation.NotifyPrimary(path, TimeSpan.FromMilliseconds(500)));
     }
 
     [Fact]
     public async Task StaleSocketFile_SelfHeals_AndRebinds()
     {
-        var path = NewSocketPath();
+        string path = NewSocketPath();
         // 崩溃残留形态：文件存在但对端不存在（探活必败）
         File.WriteAllText(path, "stale");
 
-        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out var listener));
+        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? listener));
         using (listener)
         {
             await Task.Delay(50);
@@ -96,12 +96,12 @@ public class LauncherActivationTests
     [Fact]
     public void Listener_Dispose_UnlinksSocket_AndAllowsRebind()
     {
-        var path = NewSocketPath();
-        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out var listener));
+        string path = NewSocketPath();
+        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? listener));
         listener!.Dispose();
 
         Assert.False(File.Exists(path)); // unlink 清理
-        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out var rebound));
+        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? rebound));
         using (rebound)
         {
             Assert.True(File.Exists(path)); // 已重建为活 socket
@@ -113,8 +113,8 @@ public class LauncherActivationTests
     {
         // 双击托盘退出会二次进入退出编排：Dispose 必须幂等，
         // 不得以 ObjectDisposedException 在路由层炸出误导性「退出关窗失败」
-        var path = NewSocketPath();
-        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out var listener));
+        string path = NewSocketPath();
+        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? listener));
         listener!.Dispose();
         listener.Dispose(); // 第二次必须安全
 
@@ -129,14 +129,14 @@ public class LauncherActivationTests
             return; // UDS 仲裁仅 Unix 启用
         }
 
-        var dir = NewDir();
-        var path = Path.Combine(dir, "instance.sock");
+        string dir = NewDir();
+        string path = Path.Combine(dir, "instance.sock");
         File.WriteAllText(path, "stale");
         var dirInfo = new DirectoryInfo(dir);
 
         // root 会无视目录写位：先探针判定权限模型是否生效，未生效则本用例无断言意义
         dirInfo.UnixFileMode = UnixFileMode.UserRead | UnixFileMode.UserExecute;
-        var permsEnforced = !TryDelete(path);
+        bool permsEnforced = !TryDelete(path);
         dirInfo.UnixFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
         try
         {
@@ -158,7 +158,7 @@ public class LauncherActivationTests
         {
             // 残留清不掉 → 降级为主实例无监听照常启动（true + null listener）；
             // 绝不返回 false 让调用方误判「有存活主实例」而陪葬成零实例
-            Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out var listener));
+            Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? listener));
             Assert.Null(listener);
         }
         finally
@@ -172,7 +172,7 @@ public class LauncherActivationTests
     [InlineData("")]
     public async Task Serve_IgnoresForeignPayload_KeepsListening(string payload)
     {
-        var path = NewSocketPath();
+        string path = NewSocketPath();
         var fired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Assert.True(LauncherActivation.TryBindPrimary(
             path,
@@ -182,7 +182,7 @@ public class LauncherActivationTests
                 return Task.CompletedTask;
             },
             null,
-            out var listener));
+            out PrimaryListener? listener));
         using (listener)
         {
             SendRaw(path, payload); // 垃圾输入：不应误触发回调也不应断链
@@ -218,7 +218,7 @@ public class LauncherActivationTests
 
     private static string NewDir()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "dsh-launcher-" + Guid.NewGuid().ToString("N"));
+        string dir = Path.Combine(Path.GetTempPath(), "dsh-launcher-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
     }

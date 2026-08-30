@@ -27,7 +27,7 @@ public sealed class UiLocale
     public void Set(string locale)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(locale);
-        var previous = _locale;
+        string previous = _locale;
         _locale = locale.Trim();
         if (!string.Equals(previous, _locale, StringComparison.Ordinal))
         {
@@ -38,9 +38,9 @@ public sealed class UiLocale
     /// <summary>OS locale 兜底探测：Unix 读环境变量族，Windows 读 CurrentUICulture；失败回中文（本产品主要受众）。</summary>
     private static string DetectOsLocale()
     {
-        foreach (var key in (string[])["LC_ALL", "LC_MESSAGES", "LANG"])
+        foreach (string key in (string[])["LC_ALL", "LC_MESSAGES", "LANG"])
         {
-            var value = Environment.GetEnvironmentVariable(key);
+            string? value = Environment.GetEnvironmentVariable(key);
             if (!string.IsNullOrWhiteSpace(value))
             {
                 return value;

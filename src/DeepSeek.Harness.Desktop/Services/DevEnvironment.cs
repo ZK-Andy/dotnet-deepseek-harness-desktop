@@ -45,8 +45,8 @@ public static class DevEnvironment
     {
         if (!string.IsNullOrWhiteSpace(runtimeDir))
         {
-            var resources = Path.GetDirectoryName(Path.GetFullPath(runtimeDir));
-            var root = resources is null ? null : Path.GetDirectoryName(resources);
+            string? resources = Path.GetDirectoryName(Path.GetFullPath(runtimeDir));
+            string? root = resources is null ? null : Path.GetDirectoryName(resources);
             if (root is not null)
             {
                 return Path.Combine(root, ".cache", "dev-home");
@@ -58,7 +58,7 @@ public static class DevEnvironment
             return null;
         }
 
-        var current = Path.GetFullPath(baseDirectory);
+        string current = Path.GetFullPath(baseDirectory);
         while (true)
         {
             if (Directory.Exists(Path.Combine(current, ".git")))
@@ -66,7 +66,7 @@ public static class DevEnvironment
                 return Path.Combine(current, ".cache", "dev-home");
             }
 
-            var parent = Path.GetDirectoryName(current);
+            string? parent = Path.GetDirectoryName(current);
             if (parent == current || parent is null)
             {
                 return null;

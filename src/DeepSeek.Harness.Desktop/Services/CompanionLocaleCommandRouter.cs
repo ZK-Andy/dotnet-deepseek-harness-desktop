@@ -45,7 +45,7 @@ public sealed class CompanionLocaleCommandRouter : ICommandRouter
         {
             using var doc = JsonDocument.Parse(Encoding.UTF8.GetString(args.Span));
             if (doc.RootElement.ValueKind == JsonValueKind.Object &&
-                doc.RootElement.TryGetProperty("locale", out var localeProp) &&
+                doc.RootElement.TryGetProperty("locale", out JsonElement localeProp) &&
                 localeProp.ValueKind == JsonValueKind.String)
             {
                 locale = localeProp.GetString();
@@ -69,7 +69,7 @@ public sealed class CompanionLocaleCommandRouter : ICommandRouter
     /// <summary>宽松合法性：字母段（- 分隔）形态即可，具体语言分支由 <see cref="UiLocale.IsEnglish"/> 判。</summary>
     private static bool IsPlausibleLocale(string locale)
     {
-        foreach (var part in locale.Split('-'))
+        foreach (string part in locale.Split('-'))
         {
             if (part.Length is < 2 or > 8 || !part.All(char.IsAsciiLetterOrDigit))
             {

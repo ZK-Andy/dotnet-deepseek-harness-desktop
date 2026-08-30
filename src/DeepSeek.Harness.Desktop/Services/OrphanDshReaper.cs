@@ -35,7 +35,7 @@ public static class OrphanDshReaper
                 return null;
             }
 
-            var lines = File.ReadAllLines(pidPath);
+            string[] lines = File.ReadAllLines(pidPath);
             if (lines.Length < 2)
             {
                 return null;
@@ -60,14 +60,14 @@ public static class OrphanDshReaper
     /// <remarks>判定唯一依据 = token 复验匹配；任何无法复验的情形都按「不杀」处理，保证零误杀。</remarks>
     public static bool Reap(string pidPath, Func<int, string?> readToken, Action<int> killTree, Action<string>? log = null)
     {
-        var record = ReadSpawnRecord(pidPath);
+        (int Pid, string Token)? record = ReadSpawnRecord(pidPath);
         if (record is null)
         {
             return false;
         }
 
-        var (pid, token) = record.Value;
-        var current = readToken(pid);
+        (int pid, string? token) = record.Value;
+        string? current = readToken(pid);
         if (current != token)
         {
             // PID 复用指向无关进程 / 进程已死 / 非 Linux 读不到环境——一律不杀，漂移告警兜底
@@ -99,7 +99,7 @@ public static class OrphanDshReaper
 
         try
         {
-            var environ = File.ReadAllText($"/proc/{pid}/environ");
+            string environ = File.ReadAllText($"/proc/{pid}/environ");
             return environ.Split('\0')
                 .Select(kv => kv.Split('=', 2))
                 .Where(parts => parts.Length == 2 && parts[0] == TokenEnv)

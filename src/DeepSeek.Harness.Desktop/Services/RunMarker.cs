@@ -20,11 +20,11 @@ public static class RunMarker
     /// <returns>本轮 owner token；<see cref="RunMarkerResult.PreviousRunUnclean"/> 指示上轮是否非受控退出。</returns>
     public static RunMarkerResult Acquire(string home)
     {
-        var dir = Path.Combine(home, "logs");
+        string dir = Path.Combine(home, "logs");
         Directory.CreateDirectory(dir);
-        var path = MarkerPath(home);
+        string path = MarkerPath(home);
 
-        var previousUnclean = false;
+        bool previousUnclean = false;
         if (File.Exists(path))
         {
             previousUnclean = true;
@@ -37,10 +37,10 @@ public static class RunMarker
             }
         }
 
-        var token = Guid.NewGuid().ToString("N");
-        var temp = path + $".tmp-{token}";
+        string token = Guid.NewGuid().ToString("N");
+        string temp = path + $".tmp-{token}";
         // 经 AppJsonContext 源生成（AOT 安全）；Release 读方只认 token 键
-        var json = JsonSerializer.Serialize(
+        string json = JsonSerializer.Serialize(
             new MarkerFile(token, Environment.ProcessId, DateTimeOffset.Now),
             AppJsonContext.Default.MarkerFile);
         File.WriteAllText(temp, json);
@@ -56,14 +56,14 @@ public static class RunMarker
     {
         try
         {
-            var path = MarkerPath(home);
+            string path = MarkerPath(home);
             if (!File.Exists(path))
             {
                 return false;
             }
 
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            var existing = doc.RootElement.TryGetProperty("token", out var t) &&
+            string? existing = doc.RootElement.TryGetProperty("token", out JsonElement t) &&
                            t.ValueKind == JsonValueKind.String
                 ? t.GetString()
                 : null;
@@ -87,7 +87,7 @@ public static class RunMarker
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
     public static string UncleanBannerScript(UiLocale? uiLocale = null)
     {
-        var english = uiLocale?.IsEnglish == true;
+        bool english = uiLocale?.IsEnglish == true;
         return DesktopBanner.Build(
             "dsh-desktop-run-marker-banner",
             english

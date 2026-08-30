@@ -42,17 +42,17 @@ public static class DesktopProfileBootstrap
     /// <returns>本次是否新写了 profile 清单（package.json）——仅用于启动日志。</returns>
     public static bool EnsureProfile(string dshHome)
     {
-        var dir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        string dir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
         Directory.CreateDirectory(dir);
 
-        var manifestPath = Path.Combine(dir, "package.json");
-        var createdManifest = false;
+        string manifestPath = Path.Combine(dir, "package.json");
+        bool createdManifest = false;
         if (!File.Exists(manifestPath))
         {
             // 形态对齐上游 initProfile：private 工作区清单 + 有序 bundles 列表。
             // 手拼 JSON（字段全为自有常量，无转义面；缩进排版须与上游模板逐字对齐，紧凑源生成给不了）
-            var bundles = string.Join(", ", InitialBundles.Select(b => "\"" + b + "\""));
-            var json =
+            string bundles = string.Join(", ", InitialBundles.Select(b => "\"" + b + "\""));
+            string json =
                 "{\n" +
                 "  \"name\": \"dsh-profile-" + HarnessRuntimeHost.DesktopProfileName + "\",\n" +
                 "  \"private\": true,\n" +
@@ -67,13 +67,13 @@ public static class DesktopProfileBootstrap
             createdManifest = true;
         }
 
-        var patchPath = Path.Combine(dir, "cordis.patch.yml");
+        string patchPath = Path.Combine(dir, "cordis.patch.yml");
         if (!File.Exists(patchPath))
         {
             File.WriteAllText(patchPath, PatchTemplate);
         }
 
-        var workspacePath = Path.Combine(dir, "pnpm-workspace.yaml");
+        string workspacePath = Path.Combine(dir, "pnpm-workspace.yaml");
         if (!File.Exists(workspacePath))
         {
             File.WriteAllText(workspacePath, PnpmWorkspaceTemplate);
@@ -94,8 +94,8 @@ public static class DesktopProfileBootstrap
     /// <returns>本次移除的不可解析引用条目数。</returns>
     public static int ReconcileProfile(string dshHome, Action<string> log)
     {
-        var dir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
-        var manifestPath = Path.Combine(dir, "package.json");
+        string dir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        string manifestPath = Path.Combine(dir, "package.json");
         if (!File.Exists(manifestPath))
         {
             return 0;
@@ -119,9 +119,9 @@ public static class DesktopProfileBootstrap
         }
 
         var removable = new List<(string Name, string Spec)>();
-        foreach (var (name, value) in deps)
+        foreach ((string? name, JsonNode? value) in deps)
         {
-            if (value is JsonValue v && v.TryGetValue<string>(out var spec) && IsDeadLocalPath(spec, dir))
+            if (value is JsonValue v && v.TryGetValue<string>(out string? spec) && IsDeadLocalPath(spec, dir))
             {
                 removable.Add((name, spec));
             }
@@ -132,14 +132,14 @@ public static class DesktopProfileBootstrap
             return 0;
         }
 
-        foreach (var (name, _) in removable)
+        foreach ((string? name, string _) in removable)
         {
             deps.Remove(name);
         }
 
         // bundles 若存在但非数组（损坏态）：整体放弃移除，避免写回「dependencies 已删、bundles 残留」的
         // 半 reconcile 状态——半写会把不可解析引用留在 bundles，反而违背 reconcile 的初衷。
-        var profileNode = root["dsh"]?["profile"];
+        JsonNode? profileNode = root["dsh"]?["profile"];
         if (profileNode is JsonObject profile && profile["bundles"] is not null && profile["bundles"] is not JsonArray)
         {
             log($"[host] 桌面 profile reconcile 放弃（bundles 结构损坏，非数组）：{manifestPath}");
@@ -148,11 +148,11 @@ public static class DesktopProfileBootstrap
 
         if (root["dsh"]?["profile"]?["bundles"] is JsonArray bundles)
         {
-            foreach (var (name, _) in removable)
+            foreach ((string? name, string _) in removable)
             {
                 var matches = bundles.Where(b =>
-                    b is JsonValue v && v.TryGetValue<string>(out var s) && s == name).ToList();
-                foreach (var m in matches)
+                    b is JsonValue v && v.TryGetValue<string>(out string? s) && s == name).ToList();
+                foreach (JsonNode? m in matches)
                 {
                     bundles.Remove(m);
                 }
@@ -160,7 +160,7 @@ public static class DesktopProfileBootstrap
         }
 
         MarketInstallHelper.WriteProfilePkg(manifestPath, root);
-        foreach (var (name, spec) in removable)
+        foreach ((string? name, string? spec) in removable)
         {
             log($"[host] 桌面 profile reconcile：移除不可解析插件引用 {name}（{spec}）");
         }
@@ -187,7 +187,7 @@ public static class DesktopProfileBootstrap
             return false;
         }
 
-        var full = Path.IsPathRooted(target)
+        string full = Path.IsPathRooted(target)
             ? target
             : Path.Combine(profileDir, target);
         return !File.Exists(full) && !Directory.Exists(full);

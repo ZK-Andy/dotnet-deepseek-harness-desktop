@@ -101,7 +101,7 @@ public class PageHealthTrackerTests
         Assert.Equal(PageHealth.Unknown, t.Current);
 
         // 复位后需全新凑满 3 次 Dead 才再迁移，且 ProbeCount 不重置（诊断累计）
-        var probesBefore = t.ProbeCount;
+        int probesBefore = t.ProbeCount;
         Assert.Null(t.Record(PageHealth.Dead));
         Assert.Null(t.Record(PageHealth.Dead));
         Assert.Equal("页面健康：连续 3 次探针为空（dead）", t.Record(PageHealth.Dead));

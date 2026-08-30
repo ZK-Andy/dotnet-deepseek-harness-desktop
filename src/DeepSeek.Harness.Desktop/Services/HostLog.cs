@@ -13,7 +13,7 @@ internal static class HostLog
 
     /// <summary>进程内写锁：supervisor/IPC/后台安装/更新任务多线程并发追加，无锁时 File.AppendAllText
     /// 撞锁的 IOException 兜底只进 stdout（桌面形态不可见）——事故高发期恰好丢日志。</summary>
-    private static readonly object FileGate = new();
+    private static readonly object s_fileGate = new();
 
     /// <summary>写一条诊断日志（时间戳前缀；目录不存在则创建；超限先滚动）。</summary>
     public static void Write(string msg) => Write(HarnessRuntimeHost.ResolveDshHome(), msg);
@@ -28,9 +28,9 @@ internal static class HostLog
         Console.WriteLine(msg);
         try
         {
-            var dir = Path.Combine(home, "logs");
-            var path = Path.Combine(dir, "host.log");
-            lock (FileGate)
+            string dir = Path.Combine(home, "logs");
+            string path = Path.Combine(dir, "host.log");
+            lock (s_fileGate)
             {
                 Directory.CreateDirectory(dir);
                 RotateIfNeeded(path);
@@ -51,7 +51,7 @@ internal static class HostLog
             return;
         }
 
-        var old = logPath + ".old";
+        string old = logPath + ".old";
         File.Delete(old);
         File.Move(logPath, old);
     }

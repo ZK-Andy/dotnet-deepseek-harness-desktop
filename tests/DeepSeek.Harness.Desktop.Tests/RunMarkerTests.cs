@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using DeepSeek.Harness.Desktop.Services;
 using Xunit;
 
@@ -9,7 +10,7 @@ public class HostLogRotationTests
 {
     private static string NewDir()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "dsh-logrot-" + Guid.NewGuid().ToString("N"));
+        string dir = Path.Combine(Path.GetTempPath(), "dsh-logrot-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
     }
@@ -17,10 +18,10 @@ public class HostLogRotationTests
     [Fact]
     public void RotateIfNeeded_OverLimit_RollsToOld_AndClearsCurrent()
     {
-        var dir = NewDir();
+        string dir = NewDir();
         try
         {
-            var log = Path.Combine(dir, "host.log");
+            string log = Path.Combine(dir, "host.log");
             File.WriteAllBytes(log, new byte[HostLog.MaxBytes + 1]);
 
             HostLog.RotateIfNeeded(log);
@@ -42,7 +43,7 @@ public class HostLogRotationTests
     [Fact]
     public void RotateIfNeeded_MissingFile_NoOp()
     {
-        var dir = NewDir();
+        string dir = NewDir();
         try
         {
             HostLog.RotateIfNeeded(Path.Combine(dir, "host.log"));
@@ -61,10 +62,10 @@ public class RunMarkerTests
     [Fact]
     public void Acquire_FreshHome_NoUnclean_WritesMarker()
     {
-        var home = NewDir();
+        string home = NewDir();
         try
         {
-            var result = RunMarker.Acquire(home);
+            RunMarkerResult result = RunMarker.Acquire(home);
             Assert.False(result.PreviousRunUnclean);
             Assert.True(File.Exists(RunMarker.MarkerPath(home)));
             Assert.Contains(result.Token, File.ReadAllText(RunMarker.MarkerPath(home)));
@@ -78,11 +79,11 @@ public class RunMarkerTests
     [Fact]
     public void Acquire_AfterUnreleasedAcquire_DetectsUncleanExit()
     {
-        var home = NewDir();
+        string home = NewDir();
         try
         {
-            var first = RunMarker.Acquire(home);
-            var second = RunMarker.Acquire(home); // 上轮未 Release = 非受控退出
+            RunMarkerResult first = RunMarker.Acquire(home);
+            RunMarkerResult second = RunMarker.Acquire(home); // 上轮未 Release = 非受控退出
             Assert.True(second.PreviousRunUnclean);
             Assert.NotEqual(first.Token, second.Token);
         }
@@ -95,10 +96,10 @@ public class RunMarkerTests
     [Fact]
     public void Release_OwnerTokenRemoves_MismatchedTokenKeeps()
     {
-        var home = NewDir();
+        string home = NewDir();
         try
         {
-            var marker = RunMarker.Acquire(home);
+            RunMarkerResult marker = RunMarker.Acquire(home);
             Assert.False(RunMarker.Release(home, "not-the-owner"));
             Assert.True(File.Exists(RunMarker.MarkerPath(home)));
             Assert.True(RunMarker.Release(home, marker.Token));
@@ -118,11 +119,11 @@ public class RunMarkerTests
             return; // 符号链接行为按 Linux 断言
         }
 
-        var home = NewDir();
+        string home = NewDir();
         try
         {
-            var outside = Path.Combine(Path.GetTempPath(), "dsh-marker-outside-" + Guid.NewGuid().ToString("N") + ".txt");
-            var dir = Path.Combine(home, "logs");
+            string outside = Path.Combine(Path.GetTempPath(), "dsh-marker-outside-" + Guid.NewGuid().ToString("N") + ".txt");
+            string dir = Path.Combine(home, "logs");
             Directory.CreateDirectory(dir);
             File.WriteAllText(outside, "victim");
             File.CreateSymbolicLink(RunMarker.MarkerPath(home), outside);
@@ -143,12 +144,12 @@ public class RunMarkerTests
     [Fact]
     public void Acquire_MarkerFile_HasParseableContractKeys()
     {
-        var home = NewDir();
+        string home = NewDir();
         try
         {
-            var result = RunMarker.Acquire(home);
+            RunMarkerResult result = RunMarker.Acquire(home);
             using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(RunMarker.MarkerPath(home)));
-            var root = doc.RootElement;
+            JsonElement root = doc.RootElement;
             Assert.Equal(result.Token, root.GetProperty("token").GetString());
             Assert.Equal(Environment.ProcessId, root.GetProperty("pid").GetInt32());
             Assert.True(DateTimeOffset.TryParse(root.GetProperty("startedAt").GetString(), out _));
@@ -161,7 +162,7 @@ public class RunMarkerTests
 
     private static string NewDir()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "dsh-marker-" + Guid.NewGuid().ToString("N"));
+        string dir = Path.Combine(Path.GetTempPath(), "dsh-marker-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
     }
@@ -172,7 +173,7 @@ public class RunMarkerTests
         // 宿主横幅双语（ADR host-ui-locale）：en 出英文文案与 OK 按钮
         var en = new UiLocale();
         en.Set("en");
-        var script = RunMarker.UncleanBannerScript(en);
+        string script = RunMarker.UncleanBannerScript(en);
         Assert.Contains("did not exit cleanly", script);
         Assert.Contains("textContent=\"OK\"", script);
         Assert.DoesNotContain("上次运行未正常退出", script);

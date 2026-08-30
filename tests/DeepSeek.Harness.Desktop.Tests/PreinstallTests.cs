@@ -116,7 +116,7 @@ public class PreinstallTests
 
     private static string WriteProfileJson(string content)
     {
-        var p = Path.Combine(Path.GetTempPath(), "preinstall-" + Guid.NewGuid().ToString("N") + ".json");
+        string p = Path.Combine(Path.GetTempPath(), "preinstall-" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(p, content);
         return p;
     }
@@ -124,14 +124,14 @@ public class PreinstallTests
     [Fact]
     public void Pending_ReturnsMarket_WhenFileMissing()
     {
-        var missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        string missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Assert.Equal(["dshmarket"], PresetPluginCatalog.PendingForFirstBoot(missing));
     }
 
     [Fact]
     public void Pending_ReturnsMarket_WhenNotInstalled()
     {
-        var p = WriteProfileJson("""{"dependencies":{},"dsh":{"profile":{"bundles":["web-app"]}}}""");
+        string p = WriteProfileJson("""{"dependencies":{},"dsh":{"profile":{"bundles":["web-app"]}}}""");
         try
         {
             Assert.Equal(["dshmarket"], PresetPluginCatalog.PendingForFirstBoot(p));
@@ -142,7 +142,7 @@ public class PreinstallTests
     [Fact]
     public void Pending_ReturnsEmpty_WhenMarketInstalled()
     {
-        var p = WriteProfileJson("""{"dependencies":{"dshmarket":"^1.36.0"},"dsh":{"profile":{"bundles":["dshmarket","web-app"]}}}""");
+        string p = WriteProfileJson("""{"dependencies":{"dshmarket":"^1.36.0"},"dsh":{"profile":{"bundles":["dshmarket","web-app"]}}}""");
         try
         {
             Assert.Empty(PresetPluginCatalog.PendingForFirstBoot(p));
@@ -154,7 +154,7 @@ public class PreinstallTests
     public void Pending_ReturnsMarket_WhenDepButNoBundle()
     {
         // registry 安装后 bundles 未补写（异常路径）：按未就位处理，引导页重新呈现
-        var p = WriteProfileJson("""{"dependencies":{"dshmarket":"^1.36.0"},"dsh":{"profile":{"bundles":["web-app"]}}}""");
+        string p = WriteProfileJson("""{"dependencies":{"dshmarket":"^1.36.0"},"dsh":{"profile":{"bundles":["web-app"]}}}""");
         try
         {
             Assert.Equal(["dshmarket"], PresetPluginCatalog.PendingForFirstBoot(p));
@@ -197,7 +197,7 @@ public class PreinstallTests
     public void Frame_HostileLine_EscapesForJs()
     {
         const string hostile = "</script>init";
-        var json = JsonSerializer.Serialize(new PreinstallFrame("log", Line: hostile), AppJsonContext.Default.PreinstallFrame);
+        string json = JsonSerializer.Serialize(new PreinstallFrame("log", Line: hostile), AppJsonContext.Default.PreinstallFrame);
         Assert.DoesNotContain('<', json);
         Assert.Equal(hostile, JsonDocument.Parse(json).RootElement.GetProperty("line").GetString());
     }
@@ -206,7 +206,7 @@ public class PreinstallTests
     public void Frame_ChineseMessage_RoundTrips_WithEscapedJson()
     {
         var frame = new PreinstallFrame("done", Action: "install", Ok: false, Message: "安装未成功");
-        var json = JsonSerializer.Serialize(frame, AppJsonContext.Default.PreinstallFrame);
+        string json = JsonSerializer.Serialize(frame, AppJsonContext.Default.PreinstallFrame);
         Assert.Contains("\\u", json);
         Assert.Equal("安装未成功", JsonDocument.Parse(json).RootElement.GetProperty("message").GetString());
     }

@@ -33,46 +33,46 @@ public sealed record RuntimeBootstrapOptions
     {
         try
         {
-            var path = Path.Combine(baseDirectory, "appsettings.json");
+            string path = Path.Combine(baseDirectory, "appsettings.json");
             if (!File.Exists(path))
             {
                 return new RuntimeBootstrapOptions();
             }
 
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            if (!doc.RootElement.TryGetProperty("RuntimeBootstrap", out var section) ||
+            if (!doc.RootElement.TryGetProperty("RuntimeBootstrap", out JsonElement section) ||
                 section.ValueKind != JsonValueKind.Object)
             {
                 return new RuntimeBootstrapOptions();
             }
 
             var options = new RuntimeBootstrapOptions();
-            if (section.TryGetProperty("NodeVersion", out var v) && v.ValueKind == JsonValueKind.String)
+            if (section.TryGetProperty(nameof(NodeVersion), out JsonElement v) && v.ValueKind == JsonValueKind.String)
             {
                 options = options with { NodeVersion = v.GetString()! };
             }
 
-            if (section.TryGetProperty("NodeDistBaseUrl", out var b) && b.ValueKind == JsonValueKind.String)
+            if (section.TryGetProperty(nameof(NodeDistBaseUrl), out JsonElement b) && b.ValueKind == JsonValueKind.String)
             {
                 options = options with { NodeDistBaseUrl = b.GetString()! };
             }
 
-            if (section.TryGetProperty("NodeMirrorBaseUrl", out var mb) && mb.ValueKind == JsonValueKind.String)
+            if (section.TryGetProperty(nameof(NodeMirrorBaseUrl), out JsonElement mb) && mb.ValueKind == JsonValueKind.String)
             {
                 options = options with { NodeMirrorBaseUrl = mb.GetString()! };
             }
 
-            if (section.TryGetProperty("DshSpec", out var s) && s.ValueKind == JsonValueKind.String)
+            if (section.TryGetProperty(nameof(DshSpec), out JsonElement s) && s.ValueKind == JsonValueKind.String)
             {
                 options = options with { DshSpec = s.GetString()! };
             }
 
-            if (section.TryGetProperty("MinimumLocalNodeMajor", out var m) && m.ValueKind == JsonValueKind.Number)
+            if (section.TryGetProperty(nameof(MinimumLocalNodeMajor), out JsonElement m) && m.ValueKind == JsonValueKind.Number)
             {
                 options = options with { MinimumLocalNodeMajor = m.GetInt32() };
             }
 
-            if (section.TryGetProperty("StepTimeoutMinutes", out var t) && t.ValueKind == JsonValueKind.Number)
+            if (section.TryGetProperty(nameof(StepTimeoutMinutes), out JsonElement t) && t.ValueKind == JsonValueKind.Number)
             {
                 options = options with { StepTimeoutMinutes = t.GetInt32() };
             }

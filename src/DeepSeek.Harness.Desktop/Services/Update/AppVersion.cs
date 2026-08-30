@@ -8,7 +8,7 @@ public static class AppVersion
     /// <summary>读取入口程序集的 InformationalVersion；缺失时返回 <c>0.0.0</c>（视为永不满足升级比较）。</summary>
     public static string Current()
     {
-        var informational = Assembly.GetEntryAssembly()
+        string? informational = Assembly.GetEntryAssembly()
             ?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
         if (string.IsNullOrEmpty(informational))
@@ -17,7 +17,7 @@ public static class AppVersion
         }
 
         // InformationalVersion 可能带 SourceRevisionId 后缀（+sha），取主版本段
-        var plus = informational.IndexOf('+');
+        int plus = informational.IndexOf('+');
         return plus < 0 ? informational : informational[..plus];
     }
 }

@@ -71,7 +71,7 @@ public sealed class RynNavigationCallbacks
         }
 
         // 只对绝对 http(s) 且非当前页同源的导航走外部；放行同源 SPA 路由与非 http(s) scheme
-        if (!ExternalLinkPolicy.IsExternalHttpLink(context.Url.ToString(), _currentOrigin, out var url))
+        if (!ExternalLinkPolicy.IsExternalHttpLink(context.Url.ToString(), _currentOrigin, out Uri? url))
         {
             return NavigationDecision.Allow;
         }

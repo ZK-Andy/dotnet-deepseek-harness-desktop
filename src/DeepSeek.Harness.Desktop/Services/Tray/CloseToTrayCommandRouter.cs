@@ -42,7 +42,7 @@ public sealed class CloseToTrayCommandRouter : ICommandRouter
                 case "desktop.closeToTray.getState":
                     return ValueTask.FromResult(Frame());
                 case "desktop.closeToTray.set":
-                    var enabled = ParseEnabled(args);
+                    bool enabled = ParseEnabled(args);
                     _preference.Set(enabled);
                     _log?.Invoke($"[host] 关闭最小化到托盘已{(enabled ? "开启" : "关闭")}");
                     return ValueTask.FromResult(Frame());
@@ -69,7 +69,7 @@ public sealed class CloseToTrayCommandRouter : ICommandRouter
     private static bool ParseEnabled(ReadOnlyMemory<byte> args)
     {
         using var doc = JsonDocument.Parse(Encoding.UTF8.GetString(args.Span));
-        return doc.RootElement.TryGetProperty("enabled", out var e) &&
+        return doc.RootElement.TryGetProperty("enabled", out JsonElement e) &&
                e.ValueKind == JsonValueKind.True;
     }
 }

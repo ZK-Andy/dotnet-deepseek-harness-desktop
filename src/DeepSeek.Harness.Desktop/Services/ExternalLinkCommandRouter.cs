@@ -48,7 +48,7 @@ public sealed class ExternalLinkCommandRouter : ICommandRouter
         {
             using var doc = JsonDocument.Parse(body);
             if (doc.RootElement.ValueKind == JsonValueKind.Object &&
-                doc.RootElement.TryGetProperty("url", out var urlProp) &&
+                doc.RootElement.TryGetProperty("url", out JsonElement urlProp) &&
                 urlProp.ValueKind == JsonValueKind.String)
             {
                 href = urlProp.GetString();

@@ -19,13 +19,13 @@ public static class PluginVersionCheck
             return ReadPackageJsonVersion(Path.Combine(spec, "package.json"));
         }
 
-        using var fs = File.OpenRead(spec);
+        using FileStream fs = File.OpenRead(spec);
         using var gz = new GZipStream(fs, CompressionMode.Decompress);
         using var reader = new TarReader(gz);
         while (reader.GetNextEntry() is { } entry)
         {
             // GNU tar 从 package/ 目录打包得 package/package.json；部分 tar 写 ./package/… 前缀
-            var name = entry.Name;
+            string name = entry.Name;
             if (name != "package/package.json" && name != "./package/package.json")
             {
                 continue;
@@ -47,7 +47,7 @@ public static class PluginVersionCheck
     /// <returns>副本缺失、JSON 损坏或无有效 version 时返回 <see langword="null"/>（未知 → 调用方按需重装修复）。</returns>
     public static string? ReadInstalledVersion(string profileDir, string packageName)
     {
-        var pkgJson = Path.Combine(profileDir, "node_modules", packageName, "package.json");
+        string pkgJson = Path.Combine(profileDir, "node_modules", packageName, "package.json");
         try
         {
             if (!File.Exists(pkgJson))
@@ -81,13 +81,13 @@ public static class PluginVersionCheck
     private static string? TryExtractVersion(string text)
     {
         using var doc = JsonDocument.Parse(text);
-        if (!doc.RootElement.TryGetProperty("version", out var v) ||
+        if (!doc.RootElement.TryGetProperty("version", out JsonElement v) ||
             v.ValueKind != JsonValueKind.String)
         {
             return null;
         }
 
-        var version = v.GetString();
+        string? version = v.GetString();
         return string.IsNullOrWhiteSpace(version) ? null : version;
     }
 }

@@ -46,7 +46,7 @@ public class RuntimeVersionGateTests
     [Fact]
     public void BelowFloorBannerScript_MentionsDetectedAndFloorVersions()
     {
-        var script = RuntimeVersionGate.BelowFloorBannerScript("0.1.0-rc.8");
+        string script = RuntimeVersionGate.BelowFloorBannerScript("0.1.0-rc.8");
         Assert.Contains("0.1.0-rc.8", script);
         Assert.Contains(RuntimeVersionGate.MinimumVersion, script);
         Assert.Contains("var id='dsh-desktop-version-floor-banner'", script);
@@ -58,7 +58,7 @@ public class RuntimeVersionGateTests
         // 宿主横幅双语（ADR host-ui-locale）：en 出英文文案与 OK 按钮
         var en = new UiLocale();
         en.Set("en");
-        var script = RuntimeVersionGate.BelowFloorBannerScript("0.1.0-rc.8", en);
+        string script = RuntimeVersionGate.BelowFloorBannerScript("0.1.0-rc.8", en);
         Assert.Contains("below the minimum supported", script);
         Assert.Contains("textContent=\"OK\"", script);
         Assert.DoesNotContain("低于桌面支持的最低版本", script);

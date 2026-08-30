@@ -10,7 +10,7 @@ namespace DeepSeek.Harness.Desktop.Services.Update;
 public sealed record ReleaseMeta(string Version, string AssetName, string AssetUrl, string? Sha256Url)
 {
     /// <summary>各 RID+包类型的资产文件名后缀（发布命名契约，见 release.yml/package 脚本；rpm 架构名与 deb 不同）。</summary>
-    private static readonly Dictionary<string, string> RidKindSuffixes = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, string> s_ridKindSuffixes = new(StringComparer.Ordinal)
     {
         ["linux-x64:deb"] = "_linux-amd64.deb",
         ["linux-x64:rpm"] = "_linux-x86_64.rpm",
@@ -26,8 +26,8 @@ public sealed record ReleaseMeta(string Version, string AssetName, string AssetU
     /// <returns>解析失败（无匹配资产）返回 null，由调用方转 Error。</returns>
     public static ReleaseMeta? Pick(string version, IEnumerable<string> hrefs, string rid, string repository, string? pkgKind = null)
     {
-        var suffixKey = rid.StartsWith("linux", StringComparison.Ordinal) ? $"{rid}:{pkgKind}" : rid;
-        if (!RidKindSuffixes.TryGetValue(suffixKey, out var suffix))
+        string suffixKey = rid.StartsWith("linux", StringComparison.Ordinal) ? $"{rid}:{pkgKind}" : rid;
+        if (!s_ridKindSuffixes.TryGetValue(suffixKey, out string? suffix))
         {
             return null;
         }
@@ -35,10 +35,10 @@ public sealed record ReleaseMeta(string Version, string AssetName, string AssetU
         const string downloadSegment = "/releases/download/";
         // href 为站内绝对路径（/owner/repo/releases/download/...）；只认本仓库段——
         // repository 参数同时充当防御校验（页面被替换/缓存串仓时不拿他仓资产当更新装）
-        var repoSegment = "/" + repository.Trim('/');
+        string repoSegment = "/" + repository.Trim('/');
         string? asset = null;
         string? sha = null;
-        foreach (var raw in hrefs)
+        foreach (string raw in hrefs)
         {
             if (!raw.Contains(downloadSegment, StringComparison.Ordinal) ||
                 !raw.StartsWith(repoSegment + "/", StringComparison.Ordinal))
@@ -47,7 +47,7 @@ public sealed record ReleaseMeta(string Version, string AssetName, string AssetU
             }
 
             // 归一化为绝对 URL（与 expanded_assets 页同主机，见 ReleaseMetaClient.ExpandedAssetsUrl）
-            var href = raw.StartsWith("/", StringComparison.Ordinal) ? $"https://github.com{raw}" : raw;
+            string href = raw.StartsWith("/", StringComparison.Ordinal) ? $"https://github.com{raw}" : raw;
             if (asset is null && href.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
             {
                 asset = href;
@@ -87,18 +87,18 @@ public sealed partial class ReleaseMetaClient
         // 检查链路起点与终点留痕：状态机的 Checking/Error 态给出结论，此处的耗时/无结果
         // 细节专供「检查挂起/超时/无 release」类实机现象的定位（无日志时无法区分网络黑洞
         // 与解析失败）
-        var startedAt = Environment.TickCount64;
+        long startedAt = Environment.TickCount64;
         _log?.Invoke($"[update] 检查：{_options.Repository}（rid={rid} kind={pkgKind ?? "n/a"} feed 超时={_options.FeedTimeoutSeconds}s）");
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(_options.FeedTimeoutSeconds));
-        var version = await FetchLatestStableTagAsync(cts.Token).ConfigureAwait(false);
+        string? version = await FetchLatestStableTagAsync(cts.Token).ConfigureAwait(false);
         if (version is null)
         {
             _log?.Invoke($"[update] 检查完成：无稳定 release（{Environment.TickCount64 - startedAt}ms）");
             return null;
         }
 
-        var html = await _http.GetStringAsync(ExpandedAssetsUrl(version), cts.Token).ConfigureAwait(false);
+        string html = await _http.GetStringAsync(ExpandedAssetsUrl(version), cts.Token).ConfigureAwait(false);
         var hrefs = AssetHrefRegex().Matches(html).Select(m => m.Groups["href"].Value).ToList();
         var meta = ReleaseMeta.Pick(version, hrefs, rid, _options.Repository, pkgKind);
         _log?.Invoke(
@@ -111,14 +111,14 @@ public sealed partial class ReleaseMetaClient
     /// <summary>atom 里按出现顺序取第一个稳定版 tag（不含 <c>-</c> 预发布段）；全是预发布则回退首个。</summary>
     public async Task<string?> FetchLatestStableTagAsync(CancellationToken cancellationToken)
     {
-        var atom = await _http.GetStringAsync($"https://github.com/{_options.Repository}/releases.atom", cancellationToken).ConfigureAwait(false);
+        string atom = await _http.GetStringAsync($"https://github.com/{_options.Repository}/releases.atom", cancellationToken).ConfigureAwait(false);
         var tags = TagRegex().Matches(atom).Select(m => m.Groups["tag"].Value).Distinct().ToList();
         if (tags.Count == 0)
         {
             return null;
         }
 
-        foreach (var tag in tags)
+        foreach (string? tag in tags)
         {
             if (!tag.Contains('-'))
             {

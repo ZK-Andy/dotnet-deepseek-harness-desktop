@@ -12,7 +12,7 @@ namespace DeepSeek.Harness.Desktop.Services.Update;
 public static class UpdateInstaller
 {
     /// <summary>pkexec 授权窗口的最长观察时间：超时视为授权通过、安装进行中。</summary>
-    private static readonly TimeSpan LaunchObserveWindow = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan s_launchObserveWindow = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// 启动安装流程。Linux 下等待授权窗口：快速非零退出（用户取消/拒绝）抛
@@ -24,14 +24,14 @@ public static class UpdateInstaller
     /// 成败结论状态机 Error 态已打，但「授权窗口是否通过/安装进程是否展开」的中间过程只有这里能留痕。</param>
     public static async Task LaunchAsync(string assetPath, string workDir, string expectedSha256, CancellationToken cancellationToken, Action<string>? log = null)
     {
-        var exePath = Environment.ProcessPath
+        string exePath = Environment.ProcessPath
             ?? throw new InvalidOperationException("无法定位当前可执行文件路径");
         if (OperatingSystem.IsLinux())
         {
-            log?.Invoke($"[update] 安装：派生 pkexec（包 {Path.GetFileName(assetPath)}，观察窗口 {LaunchObserveWindow.TotalSeconds:0}s）");
-            using var p = await LaunchLinuxAsync(assetPath, workDir, exePath, expectedSha256).ConfigureAwait(false);
+            log?.Invoke($"[update] 安装：派生 pkexec（包 {Path.GetFileName(assetPath)}，观察窗口 {s_launchObserveWindow.TotalSeconds:0}s）");
+            using Process p = await LaunchLinuxAsync(assetPath, workDir, exePath, expectedSha256).ConfigureAwait(false);
             using var observe = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            observe.CancelAfter(LaunchObserveWindow);
+            observe.CancelAfter(s_launchObserveWindow);
             try
             {
                 await p.WaitForExitAsync(observe.Token).ConfigureAwait(false);
@@ -65,7 +65,7 @@ public static class UpdateInstaller
     /// <summary>按安装包扩展名生成包管理器命令（纯函数，可单测）。</summary>
     public static string InstallCommandFor(string assetPath)
     {
-        var ext = Path.GetExtension(assetPath).ToLowerInvariant();
+        string ext = Path.GetExtension(assetPath).ToLowerInvariant();
         return ext switch
         {
             ".deb" => $"dpkg -i '{EscapeSingle(assetPath)}'",
@@ -90,8 +90,8 @@ public static class UpdateInstaller
     /// </remarks>
     public static string BuildLinuxScript(string installCommand, string logPath, int processId, string exePath, IReadOnlyDictionary<string, string> relayEnv, string assetPath, string assetSha256)
     {
-        var pairs = string.Join(" ", relayEnv.Select(kv => $"{kv.Key}='{EscapeSingle(kv.Value)}'"));
-        var home = relayEnv.TryGetValue("HOME", out var h) && h.Length > 0 ? h : "/";
+        string pairs = string.Join(" ", relayEnv.Select(kv => $"{kv.Key}='{EscapeSingle(kv.Value)}'"));
+        string home = relayEnv.TryGetValue("HOME", out string? h) && h.Length > 0 ? h : "/";
         return $"""
             #!/bin/sh
             # root 侧命令解析固定系统路径：pkexec env 透传的 PATH 来自用户会话（含 ~/.local/bin
@@ -133,14 +133,14 @@ public static class UpdateInstaller
         // expectedSha256 由调用方在安装时点自 release SHA256SUMS 重取冻结（与下载校验同源、
         // 经 HTTPS 直达仓库）：本进程与 ready 记录均在用户空间，任何落盘哈希都可被同权限改写，
         // 唯有 release 侧值不可——root 侧复验对照它（TOCTOU 防线，见 BuildLinuxScript remarks）
-        var installCmd = InstallCommandFor(assetPath);
-        var logPath = Path.Combine(workDir, "install.log");
+        string installCmd = InstallCommandFor(assetPath);
+        string logPath = Path.Combine(workDir, "install.log");
         // pkexec 会重置环境：显式透传 GUI 会话变量（否则拉起的新版窗口起不来）、开发隔离
         // 变量（否则重启后的实例丢掉 DSH_HOME 隔离）、.NET 运行时定位（DOTNET_ROOT 缺失时
         // apphost 报 ".NET location: Not found"——实机教训）与 XDG 基目录族（用户自定义过
         // XDG_* 时，二代实例缺了会把状态写去默认 HOME 甚至 root 侧）。空值不透传：以「空串」
         // 到达与「未设置」对 glib/libsoup 不是一回事——空串会把正确的默认解析顶掉。
-        var passthrough = new[]
+        string[] passthrough = new[]
         {
             "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
             "PATH", "HOME", "USER", "LOGNAME", "SHELL",
@@ -149,16 +149,16 @@ public static class UpdateInstaller
             DevEnvironment.HomeOverrideEnv,
         };
         var relayEnv = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var key in passthrough)
+        foreach (string? key in passthrough)
         {
-            var value = Environment.GetEnvironmentVariable(key);
+            string? value = Environment.GetEnvironmentVariable(key);
             if (!string.IsNullOrEmpty(value))
             {
                 relayEnv[key] = value;
             }
         }
 
-        var script = BuildLinuxScript(installCmd, logPath, Environment.ProcessId, exePath, relayEnv, assetPath, expectedSha256);
+        string script = BuildLinuxScript(installCmd, logPath, Environment.ProcessId, exePath, relayEnv, assetPath, expectedSha256);
         // 脚本经 argv 内联传递（sh -c），root 不读用户可写文件——install.sh 落盘形态已废弃
         var psi = new ProcessStartInfo
         {
@@ -166,7 +166,7 @@ public static class UpdateInstaller
             UseShellExecute = false,
         };
         psi.ArgumentList.Add("env");
-        foreach (var kv in relayEnv)
+        foreach (KeyValuePair<string, string> kv in relayEnv)
         {
             psi.ArgumentList.Add($"{kv.Key}={kv.Value}");
         }
@@ -180,7 +180,7 @@ public static class UpdateInstaller
     private static void LaunchWindows(string assetPath)
     {
         // Inno Setup：/SILENT 静默、/CLOSEAPPLICATIONS 等文件解锁、/RESTARTAPPLICATIONS 装完自动拉起
-        using var p = Process.Start(new ProcessStartInfo
+        using Process p = Process.Start(new ProcessStartInfo
         {
             FileName = assetPath,
             Arguments = "/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS",

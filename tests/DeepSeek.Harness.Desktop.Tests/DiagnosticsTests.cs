@@ -11,8 +11,8 @@ public class DiagnosticsExporterTests
     [Fact]
     public void Export_WhitelistedEntriesOnly_SensitiveExcluded()
     {
-        var home = NewDir();
-        var outDir = NewDir();
+        string home = NewDir();
+        string outDir = NewDir();
         try
         {
             // home 内同时布置「应收录」与「必须排除」的文件
@@ -24,10 +24,10 @@ public class DiagnosticsExporterTests
             WriteFile(home, "profiles/desktop/package.json", "{}");
             WriteFile(home, "storages/workspace.json", "{}");
 
-            var result = DiagnosticsExporter.Export(home, outDir, appVersion: "9.9.9-test");
+            DiagnosticsExportResult result = DiagnosticsExporter.Export(home, outDir, appVersion: "9.9.9-test");
 
             Assert.True(File.Exists(result.ZipPath));
-            using var zip = ZipFile.OpenRead(result.ZipPath);
+            using ZipArchive zip = ZipFile.OpenRead(result.ZipPath);
             var names = zip.Entries.Select(e => e.FullName).ToHashSet();
 
             Assert.Contains("logs/host.log", names);
@@ -36,7 +36,7 @@ public class DiagnosticsExporterTests
 
             var stateReader = new StreamReader(
                 zip.GetEntry("state/state.txt")!.Open(), Encoding.UTF8);
-            var state = stateReader.ReadToEnd();
+            string state = stateReader.ReadToEnd();
             Assert.Contains("9.9.9-test", state);
             Assert.Contains(home, state);
 
@@ -44,7 +44,7 @@ public class DiagnosticsExporterTests
             Assert.DoesNotContain(".credentials.yaml", names);
             Assert.DoesNotContain("sessions/session.json", names);
             Assert.DoesNotContain("profiles/desktop/package.json", names);
-            foreach (var entry in zip.Entries)
+            foreach (ZipArchiveEntry entry in zip.Entries)
             {
                 using var reader = new StreamReader(entry.Open());
                 Assert.DoesNotContain("SECRET-", reader.ReadToEnd());
@@ -69,13 +69,13 @@ public class DiagnosticsExporterTests
         [Fact]
         public void EmptyDocuments_FallsBackToHomeDiagnostics_WithLog()
         {
-            var home = NewDir();
+            string home = NewDir();
             var logs = new List<string>();
             try
             {
                 WriteFile(home, "logs/host.log", "line");
 
-                var result = DiagnosticsExporter.ExportWithFallback(
+                DiagnosticsExportResult result = DiagnosticsExporter.ExportWithFallback(
                     home, appVersion: "0.3.1-test", documentsDirectory: "", log: logs.Add);
 
                 Assert.StartsWith(Path.Combine(home, "diagnostics"), result.ZipPath);
@@ -91,14 +91,14 @@ public class DiagnosticsExporterTests
         [Fact]
         public void UnwritableDocuments_FallsBackToHomeDiagnostics_WithReason()
         {
-            var home = NewDir();
+            string home = NewDir();
             // 文档目录指向一个常规文件：CreateDirectory 必败，异常落在回退过滤内
-            var fileAsDir = Path.Combine(home, "documents-file");
+            string fileAsDir = Path.Combine(home, "documents-file");
             File.WriteAllText(fileAsDir, "x");
             var logs = new List<string>();
             try
             {
-                var result = DiagnosticsExporter.ExportWithFallback(
+                DiagnosticsExportResult result = DiagnosticsExporter.ExportWithFallback(
                     home, appVersion: "0.3.1-test", documentsDirectory: fileAsDir, log: logs.Add);
 
                 Assert.StartsWith(Path.Combine(home, "diagnostics"), result.ZipPath);
@@ -113,14 +113,14 @@ public class DiagnosticsExporterTests
 
         private static string NewDir()
         {
-            var dir = Path.Combine(Path.GetTempPath(), "dsh-diag-fallback-" + Guid.NewGuid().ToString("N"));
+            string dir = Path.Combine(Path.GetTempPath(), "dsh-diag-fallback-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(dir);
             return dir;
         }
 
         private static void WriteFile(string root, string relative, string content)
         {
-            var path = Path.Combine(root, relative);
+            string path = Path.Combine(root, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, content);
         }
@@ -128,14 +128,14 @@ public class DiagnosticsExporterTests
 
     private static string NewDir()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "dsh-diag-" + Guid.NewGuid().ToString("N"));
+        string dir = Path.Combine(Path.GetTempPath(), "dsh-diag-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
     }
 
     private static void WriteFile(string root, string relative, string content)
     {
-        var path = Path.Combine(root, relative);
+        string path = Path.Combine(root, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
     }
@@ -156,20 +156,20 @@ public class DesktopDiagnosticsCommandRouterTests
     [Fact]
     public async Task RouteAsync_Success_ReturnsPathFrame_AndWritesZip()
     {
-        var home = NewDir();
-        var outDir = NewDir();
+        string home = NewDir();
+        string outDir = NewDir();
         try
         {
             var router = new DesktopDiagnosticsCommandRouter(
                 home: home, outputDirectory: outDir, appVersion: "1.2.3-test", log: _ => { });
-            var frame = await router.RouteAsync(
+            string frame = await router.RouteAsync(
                 "desktop.diagnostics.export",
                 ReadOnlyMemory<byte>.Empty,
                 services: null!,
                 CancellationToken.None);
 
             Assert.Contains("\"path\":", frame);
-            var path = System.Text.Json.JsonDocument.Parse(frame).RootElement.GetProperty("path").GetString();
+            string? path = System.Text.Json.JsonDocument.Parse(frame).RootElement.GetProperty("path").GetString();
             Assert.NotNull(path);
             Assert.True(File.Exists(path));
         }
@@ -184,7 +184,7 @@ public class DesktopDiagnosticsCommandRouterTests
     public async Task RouteAsync_Failure_ReturnsErrorFrame_NotThrow()
     {
         // 输出目录指向一个常规文件：Directory.CreateDirectory 必败 → error 帧
-        var fileAsDir = Path.Combine(NewDir(), "not-a-dir");
+        string fileAsDir = Path.Combine(NewDir(), "not-a-dir");
         File.WriteAllText(fileAsDir, "x");
         try
         {
@@ -195,7 +195,7 @@ public class DesktopDiagnosticsCommandRouterTests
                 appVersion: "0.0.0-test",
                 log: msg => logs.Add(msg));
 
-            var frame = await router.RouteAsync(
+            string frame = await router.RouteAsync(
                 "desktop.diagnostics.export",
                 ReadOnlyMemory<byte>.Empty,
                 services: null!,
@@ -212,7 +212,7 @@ public class DesktopDiagnosticsCommandRouterTests
 
     private static string NewDir()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "dsh-diag-router-" + Guid.NewGuid().ToString("N"));
+        string dir = Path.Combine(Path.GetTempPath(), "dsh-diag-router-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
     }

@@ -26,7 +26,7 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 
 ## 编码约定
 
-- **C# 编码规范**：基准见 [docs/coding-standards.md](docs/coding-standards.md)（dotnet/runtime C# Coding Style + Microsoft .NET C# Coding Conventions；仓库根 `.editorconfig` 已落地，IDE/Roslyn 据此格式化与提示）。
+- **C# 编码规范**：基准见 [docs/coding-standards.md](docs/coding-standards.md)（dotnet/runtime C# Coding Style + Microsoft .NET C# Coding Conventions；仓库根 `.editorconfig` 已落地，IDE/Roslyn 据此格式化与提示；CI/build 门禁按 `.editorconfig` 强制格式与风格——见该文档「强制力度」）。
 - **fail loud**：缺失引用、误配置绝不静默跳过；最迟在最早可解析点失败。
 - 可调参数进配置模型（Config/appsettings），禁止硬编码；协议常量与安全不变量保持固定。
 - 跨界 ID 用强类型/Branded，禁止裸 string 跨包传递。

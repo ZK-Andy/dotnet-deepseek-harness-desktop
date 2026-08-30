@@ -79,7 +79,7 @@ public class ReleaseAssetTests
     [Fact]
     public void ParseSha256_HandlesStandardAndBinaryFormats()
     {
-        var sums = "abc123def456abc123def456abc123def456abc123def456abc123def456abc1  app_0.1.20_linux-amd64.deb\n" +
+        string sums = "abc123def456abc123def456abc123def456abc123def456abc123def456abc1  app_0.1.20_linux-amd64.deb\n" +
                    "fff000fff000fff000fff000fff000fff000fff000fff000fff000fff000fff1 *app_0.1.20_windows-x64-setup.exe\n" +
                    "short other-file.deb";
         Assert.Equal("abc123def456abc123def456abc123def456abc123def456abc123def456abc1",
@@ -92,17 +92,17 @@ public class ReleaseAssetTests
     [Fact]
     public void DownloadLock_ExclusiveAcrossInstances()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
+        string dir = Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
-            using var first = InstallerDownloader.TryAcquireDownloadLock(dir);
+            using FileStream? first = InstallerDownloader.TryAcquireDownloadLock(dir);
             Assert.NotNull(first);
             // 第二实例拿不到锁（防双写 .part 损坏）
             Assert.Null(InstallerDownloader.TryAcquireDownloadLock(dir));
             // 释放后可再次获取（进程死亡自动释放的语义等价）
             first?.Dispose();
-            using var second = InstallerDownloader.TryAcquireDownloadLock(dir);
+            using FileStream? second = InstallerDownloader.TryAcquireDownloadLock(dir);
             Assert.NotNull(second);
         }
         finally { Directory.Delete(dir, true); }

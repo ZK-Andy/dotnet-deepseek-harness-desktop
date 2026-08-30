@@ -36,15 +36,15 @@ public class UpdateStateMachineTests
         Action<string, string, CancellationToken>? install = null,
         List<UpdateState>? transitions = null)
     {
-        var persist = persistence ?? new FakePersistence();
-        var dl = downloads ?? [];
+        FakePersistence persist = persistence ?? new FakePersistence();
+        List<string> dl = downloads ?? [];
         return new UpdateStateMachine(
             currentVersion: current,
             check: ct => Task.FromResult(check(persist.Record?.Version)),
             download: (meta, ct) =>
             {
                 // 落一个真实临时文件：install 阶段会校验资产存在性
-                var path = Path.Combine(Path.GetTempPath(), meta.AssetName);
+                string path = Path.Combine(Path.GetTempPath(), meta.AssetName);
                 File.WriteAllBytes(path, [1]);
                 dl.Add(meta.Version);
                 return Task.FromResult(path);
@@ -63,7 +63,7 @@ public class UpdateStateMachineTests
     {
         var persist = new FakePersistence();
         await persist.SetAsync(new UpdateStateMachine.ReadyRecord(Current, "/tmp/x.deb"), CancellationToken.None);
-        var machine = Create(Current, _ => null, persistence: persist);
+        UpdateStateMachine machine = Create(Current, _ => null, persistence: persist);
 
         await machine.StartAsync(CancellationToken.None);
 
@@ -75,12 +75,12 @@ public class UpdateStateMachineTests
     public async Task Start_RestoresReady_FromPersistence_WhenAssetExists()
     {
         var persist = new FakePersistence();
-        var path = Path.Combine(Path.GetTempPath(), $"upd-{Guid.NewGuid():N}.deb");
+        string path = Path.Combine(Path.GetTempPath(), $"upd-{Guid.NewGuid():N}.deb");
         File.WriteAllBytes(path, [1]);
         try
         {
             await persist.SetAsync(new UpdateStateMachine.ReadyRecord("0.1.21", path), CancellationToken.None);
-            var machine = Create(Current, _ => throw new InvalidOperationException("不应触发网络检查"), persistence: persist);
+            UpdateStateMachine machine = Create(Current, _ => throw new InvalidOperationException("不应触发网络检查"), persistence: persist);
 
             await machine.StartAsync(CancellationToken.None);
 
@@ -93,7 +93,7 @@ public class UpdateStateMachineTests
     [Fact]
     public async Task Check_NoUpdate_GoesUpToDate()
     {
-        var machine = Create(Current, _ => null);
+        UpdateStateMachine machine = Create(Current, _ => null);
 
         await machine.StartAsync(CancellationToken.None);
 
@@ -103,7 +103,7 @@ public class UpdateStateMachineTests
     [Fact]
     public async Task Check_OlderRelease_GoesUpToDate()
     {
-        var machine = Create(Current, _ => Meta("0.1.19"));
+        UpdateStateMachine machine = Create(Current, _ => Meta("0.1.19"));
 
         await machine.CheckAsync(CancellationToken.None);
 
@@ -114,7 +114,7 @@ public class UpdateStateMachineTests
     public async Task Check_NewVersion_DownloadsAndGoesReady()
     {
         var downloads = new List<string>();
-        var machine = Create(Current, _ => Meta("0.1.21"), downloads: downloads);
+        UpdateStateMachine machine = Create(Current, _ => Meta("0.1.21"), downloads: downloads);
 
         await machine.StartAsync(CancellationToken.None);
 
@@ -126,7 +126,7 @@ public class UpdateStateMachineTests
     [Fact]
     public async Task DownloadFailure_GoesError_ThenRecheckRecovers()
     {
-        var fail = true;
+        bool fail = true;
         var persist = new FakePersistence();
         var machine = new UpdateStateMachine(
             currentVersion: Current,
@@ -148,7 +148,7 @@ public class UpdateStateMachineTests
     [Fact]
     public async Task Install_RejectsWhenNotReady()
     {
-        var machine = Create(Current, _ => null);
+        UpdateStateMachine machine = Create(Current, _ => null);
 
         await machine.StartAsync(CancellationToken.None);
         await Assert.ThrowsAsync<InvalidOperationException>(() => machine.InstallAsync(CancellationToken.None));
@@ -158,7 +158,7 @@ public class UpdateStateMachineTests
     public async Task Install_FromReady_TransitionsInstalling_AndFallsBackOnError()
     {
         string? installedAt = null;
-        var machine = Create(Current, _ => Meta("0.1.21"),
+        UpdateStateMachine machine = Create(Current, _ => Meta("0.1.21"),
             install: (assetPath, version, _) => installedAt = $"{assetPath}@{version}");
         await machine.CheckAsync(CancellationToken.None);
         Assert.Equal(UpdateStatus.Ready, machine.State.Status);
@@ -173,7 +173,7 @@ public class UpdateStateMachineTests
     [Fact]
     public async Task Install_Failure_ReturnsToReady_AndThrows()
     {
-        var machine = Create(Current, _ => Meta("0.1.21"),
+        UpdateStateMachine machine = Create(Current, _ => Meta("0.1.21"),
             install: (assetPath, version, _) => throw new PlatformNotSupportedException("macOS 不支持"));
         await machine.CheckAsync(CancellationToken.None);
         Assert.Equal(UpdateStatus.Ready, machine.State.Status);
@@ -187,15 +187,15 @@ public class UpdateStateMachineTests
     public async Task Subscribe_ReceivesTransitions_AndUnsubscribes()
     {
         var seen = new List<UpdateStatus>();
-        var machine = Create(Current, _ => null);
-        using var sub = machine.Subscribe(s => seen.Add(s.Status));
+        UpdateStateMachine machine = Create(Current, _ => null);
+        using IDisposable sub = machine.Subscribe(s => seen.Add(s.Status));
 
         await machine.StartAsync(CancellationToken.None);
         sub.Dispose();
 
         Assert.Contains(UpdateStatus.Idle, seen);
         Assert.Contains(UpdateStatus.Checking, seen);
-        var afterCount = seen.Count;
+        int afterCount = seen.Count;
         await machine.StartAsync(CancellationToken.None);
         Assert.Equal(afterCount, seen.Count);
     }
@@ -205,12 +205,12 @@ public class UpdateStateMachineTests
     {
         // 降级残留/旧 home 的记录：版本低于当前且资产在——必须清除重查，而不是给降级安装建议
         var persist = new FakePersistence();
-        var path = Path.Combine(Path.GetTempPath(), $"upd-{Guid.NewGuid():N}.deb");
+        string path = Path.Combine(Path.GetTempPath(), $"upd-{Guid.NewGuid():N}.deb");
         File.WriteAllBytes(path, [1]);
         try
         {
             await persist.SetAsync(new UpdateStateMachine.ReadyRecord("0.1.19", path), CancellationToken.None);
-            var machine = Create(Current, _ => null, persistence: persist);
+            UpdateStateMachine machine = Create(Current, _ => null, persistence: persist);
 
             await machine.StartAsync(CancellationToken.None);
 
@@ -225,12 +225,12 @@ public class UpdateStateMachineTests
     {
         // ready.json 里的版本串损坏：不卡死启动，清除后正常检查
         var persist = new FakePersistence();
-        var path = Path.Combine(Path.GetTempPath(), $"upd-{Guid.NewGuid():N}.deb");
+        string path = Path.Combine(Path.GetTempPath(), $"upd-{Guid.NewGuid():N}.deb");
         File.WriteAllBytes(path, [1]);
         try
         {
             await persist.SetAsync(new UpdateStateMachine.ReadyRecord("garbage-version", path), CancellationToken.None);
-            var machine = Create(Current, _ => null, persistence: persist);
+            UpdateStateMachine machine = Create(Current, _ => null, persistence: persist);
 
             await machine.StartAsync(CancellationToken.None);
 
@@ -244,7 +244,7 @@ public class UpdateStateMachineTests
     public async Task Check_ConcurrentCalls_RunSingleCheck()
     {
         // 并发去重：判空与占位在同一临界区内，两个并发调用只执行一次检查
-        var count = 0;
+        int count = 0;
         var tcs = new TaskCompletionSource<ReleaseMeta?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var machine = new UpdateStateMachine(
             currentVersion: Current,
@@ -255,15 +255,15 @@ public class UpdateStateMachineTests
             },
             download: (meta, ct) =>
             {
-                var path = Path.Combine(Path.GetTempPath(), $"conc-{Guid.NewGuid():N}.deb");
+                string path = Path.Combine(Path.GetTempPath(), $"conc-{Guid.NewGuid():N}.deb");
                 File.WriteAllBytes(path, [1]);
                 return Task.FromResult(path);
             },
             install: (assetPath, version, ct) => Task.CompletedTask,
             persistence: new FakePersistence());
 
-        var first = machine.CheckAsync(CancellationToken.None);
-        var second = machine.CheckAsync(CancellationToken.None);
+        Task<UpdateState> first = machine.CheckAsync(CancellationToken.None);
+        Task<UpdateState> second = machine.CheckAsync(CancellationToken.None);
         tcs.SetResult(Meta("0.1.21"));
         await Task.WhenAll(first, second);
 
@@ -275,7 +275,7 @@ public class UpdateStateMachineTests
     public async Task CheckAsync_TransitionsCarryCurrentVersion()
     {
         var states = new List<UpdateState>();
-        var machine = Create(Current, _ => null, transitions: states);
+        UpdateStateMachine machine = Create(Current, _ => null, transitions: states);
 
         await machine.CheckAsync(CancellationToken.None);
 

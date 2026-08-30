@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>Linux 安装路径中最危险的一段（root 脚本）做内容级回归：包命令、降权拉起链、变量透传。</summary>
 public class UpdateInstallerTests
 {
-    private static readonly Dictionary<string, string> FullEnv = new()
+    private static readonly Dictionary<string, string> s_fullEnv = new()
     {
         ["DISPLAY"] = ":0",
         ["XAUTHORITY"] = "/run/user/1000/gdm/Xauthority",
@@ -31,9 +31,9 @@ public class UpdateInstallerTests
     public void BuildLinuxScript_VerifiesPackageHashAsRoot_BeforeInstall()
     {
         // TOCTOU 防线：装包前 root 侧按授权时刻冻结的哈希复验包内容，防下载校验后被换包
-        var script = Build(FullEnv);
-        var verifyAt = script.IndexOf("sha256sum -c --status", StringComparison.Ordinal);
-        var installAt = script.IndexOf("dpkg -i", StringComparison.Ordinal);
+        string script = Build(s_fullEnv);
+        int verifyAt = script.IndexOf("sha256sum -c --status", StringComparison.Ordinal);
+        int installAt = script.IndexOf("dpkg -i", StringComparison.Ordinal);
         Assert.True(verifyAt >= 0, "缺 root 侧哈希复验");
         Assert.True(installAt > verifyAt, "复验必须先于装包");
         Assert.Contains("abcdef0123456789", script);
@@ -44,8 +44,8 @@ public class UpdateInstallerTests
     public void BuildLinuxScript_RefusesSymlinkLog()
     {
         // root 只向用户可写目录追加日志；symlink 重定向必须在装包前拒绝
-        var script = Build(FullEnv);
-        var guardAt = script.IndexOf("is a symlink", StringComparison.Ordinal);
+        string script = Build(s_fullEnv);
+        int guardAt = script.IndexOf("is a symlink", StringComparison.Ordinal);
         Assert.True(guardAt >= 0, "缺 symlink 守卫");
         Assert.True(script.IndexOf("dpkg -i", StringComparison.Ordinal) > guardAt, "symlink 守卫必须先于装包");
     }
@@ -54,7 +54,7 @@ public class UpdateInstallerTests
     public void BuildLinuxScript_InlineWithoutInstallShFile()
     {
         // 脚本经 sh -c 内联（root 不读用户可写文件），不再出现 install.sh 落盘路径
-        var script = Build(FullEnv);
+        string script = Build(s_fullEnv);
         Assert.DoesNotContain("install.sh", script);
     }
 
@@ -77,7 +77,7 @@ public class UpdateInstallerTests
     [Fact]
     public void BuildLinuxScript_ContainsFullRelayChain()
     {
-        var script = Build(FullEnv);
+        string script = Build(s_fullEnv);
 
         // 等待环：基于进程号
         Assert.Contains("while kill -0 4242 2>/dev/null; do sleep 0.3; done", script);
@@ -100,7 +100,7 @@ public class UpdateInstallerTests
     public void BuildLinuxScript_EmptyEnvValues_OmittedNotSetEmpty()
     {
         var env = new Dictionary<string, string> { ["DISPLAY"] = ":1" };
-        var script = Build(env);
+        string script = Build(env);
 
         // 提供的变量以字面量出现，未提供的不得以空串写入二代实例环境
         Assert.Contains("env DISPLAY=':1' $RUN_PREFIX nohup", script);
@@ -112,7 +112,7 @@ public class UpdateInstallerTests
     [Fact]
     public void BuildLinuxScript_NoEnvAtAll_PairsRegionCollapsesToRunPrefix()
     {
-        var script = Build(new Dictionary<string, string>());
+        string script = Build(new Dictionary<string, string>());
 
         Assert.Contains("-- env  $RUN_PREFIX nohup", script);
         Assert.Contains("cd '/'", script);
@@ -126,7 +126,7 @@ public class UpdateInstallerTests
             ["HOME"] = "/ho'me",
             ["DSH_DESKTOP_DSH_HOME"] = "dsh ho'me",
         };
-        var script = UpdateInstaller.BuildLinuxScript(
+        string script = UpdateInstaller.BuildLinuxScript(
             installCommand: "dpkg -i '/tmp/a'\\''b.deb'",
             logPath: "/x/l'og/install.log",
             processId: 1,

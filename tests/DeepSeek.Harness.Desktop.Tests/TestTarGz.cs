@@ -9,14 +9,14 @@ internal static class TestTarGz
     /// <summary>把若干条目写入 <paramref name="path"/> 指定的 gzip+tar 包。</summary>
     public static string Write(string path, params (string EntryName, string Content)[] entries)
     {
-        using (var fs = File.Create(path))
+        using (FileStream fs = File.Create(path))
         using (var gz = new GZipStream(fs, CompressionMode.Compress))
         using (var writer = new TarWriter(gz))
         {
-            foreach (var (name, content) in entries)
+            foreach ((string? name, string? content) in entries)
             {
                 var entry = new PaxTarEntry(TarEntryType.RegularFile, name);
-                var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(content);
                 entry.DataStream = new MemoryStream(bytes);
                 writer.WriteEntry(entry);
             }

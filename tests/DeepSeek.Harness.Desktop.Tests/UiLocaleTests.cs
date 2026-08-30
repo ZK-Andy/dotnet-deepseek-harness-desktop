@@ -10,7 +10,7 @@ public class UiLocaleTests
     public void Set_NewValue_UpdatesAndFiresChanged()
     {
         var ui = new UiLocale();
-        var fired = 0;
+        int fired = 0;
         ui.Changed += () => fired++;
 
         ui.Set("en");

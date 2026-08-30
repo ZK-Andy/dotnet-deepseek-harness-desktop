@@ -52,7 +52,7 @@ public class SecretMaskerTests
     [Fact]
     public void Combined_Line_AllLayersApply()
     {
-        var masked = SecretMasker.Mask("POST /auth?token=aaaa1111bbbb2222 Cookie: sid=z; key=\"apiKey\":\"sk-x12345678\"");
+        string? masked = SecretMasker.Mask("POST /auth?token=aaaa1111bbbb2222 Cookie: sid=z; key=\"apiKey\":\"sk-x12345678\"");
         Assert.DoesNotContain("aaaa1111", masked);
         Assert.DoesNotContain("sid=z", masked);
         Assert.DoesNotContain("sk-x12345678", masked);

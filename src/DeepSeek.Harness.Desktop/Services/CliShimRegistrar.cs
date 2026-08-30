@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
@@ -109,7 +110,7 @@ public sealed class CliShimRegistrar
     /// 经 <c>DSH_DESKTOP_CLI_BIN_DIR</c> 可覆盖，供 dev/测试隔离）。</summary>
     public static string ResolveBinDir()
     {
-        var fromEnv = Environment.GetEnvironmentVariable("DSH_DESKTOP_CLI_BIN_DIR");
+        string? fromEnv = Environment.GetEnvironmentVariable("DSH_DESKTOP_CLI_BIN_DIR");
         if (!string.IsNullOrWhiteSpace(fromEnv))
         {
             return Path.GetFullPath(fromEnv);
@@ -129,10 +130,10 @@ public sealed class CliShimRegistrar
     {
         try
         {
-            var binDir = ResolveBinDir();
+            string binDir = ResolveBinDir();
             Directory.CreateDirectory(binDir);
-            var setup = CliShimPlanner.BuildSetup(runtimeDir, dshHome, binDir, OperatingSystem.IsWindows(), writeDshShim: !isDevIsolated);
-            foreach (var file in setup.Files)
+            CliShimSetup setup = CliShimPlanner.BuildSetup(runtimeDir, dshHome, binDir, OperatingSystem.IsWindows(), writeDshShim: !isDevIsolated);
+            foreach (CliShimFile file in setup.Files)
             {
                 WriteShimFile(file);
             }
@@ -158,11 +159,11 @@ public sealed class CliShimRegistrar
     /// <summary>写单个 shim 文件：悬空符号链接先移除；本应用生成/不存在则写；用户文件保留。</summary>
     private static void WriteShimFile(CliShimFile file)
     {
-        var target = file.TargetPath;
-        var exists = File.Exists(target);
-        var isSymlink = SymlinkTarget(target) is not null;
-        var existing = exists ? SafeRead(target) : null;
-        var isGenerated = CliShimPath.IsGeneratedShim(existing);
+        string target = file.TargetPath;
+        bool exists = File.Exists(target);
+        bool isSymlink = SymlinkTarget(target) is not null;
+        string? existing = exists ? SafeRead(target) : null;
+        bool isGenerated = CliShimPath.IsGeneratedShim(existing);
 
         switch (CliShimPlanner.DecideShimWrite(exists, isGenerated, isSymlink))
         {
@@ -198,8 +199,8 @@ public sealed class CliShimRegistrar
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void RegisterWindowsPath(CliShimSetup setup)
     {
-        var (current, expand) = ReadUserEnvPath();
-        var merged = CliShimPath.MergePathToken(current, setup.BinDir, ";", caseInsensitive: true);
+        (string? current, bool expand) = ReadUserEnvPath();
+        string merged = CliShimPath.MergePathToken(current, setup.BinDir, ";", caseInsensitive: true);
         if (string.Equals(current, merged, StringComparison.Ordinal))
         {
             return;
@@ -216,15 +217,15 @@ public sealed class CliShimRegistrar
             return;
         }
 
-        foreach (var rc in ShellRcPaths())
+        foreach (string? rc in ShellRcPaths())
         {
             if (rc is null)
             {
                 continue;
             }
 
-            var content = SafeRead(rc) ?? string.Empty;
-            var updated = CliShimPath.EnsureShellRcBlock(content, setup.ShellRcBlock);
+            string content = SafeRead(rc) ?? string.Empty;
+            string updated = CliShimPath.EnsureShellRcBlock(content, setup.ShellRcBlock);
             if (!string.Equals(content, updated, StringComparison.Ordinal))
             {
                 File.WriteAllText(rc, updated);
@@ -236,15 +237,15 @@ public sealed class CliShimRegistrar
     /// rc home 经 <c>DSH_DESKTOP_CLI_RC_HOME</c> 可覆盖，供测试隔离，默认用户主目录）。</summary>
     private static IEnumerable<string?> ShellRcPaths()
     {
-        var home = Environment.GetEnvironmentVariable("DSH_DESKTOP_CLI_RC_HOME");
+        string? home = Environment.GetEnvironmentVariable("DSH_DESKTOP_CLI_RC_HOME");
         if (string.IsNullOrWhiteSpace(home))
         {
             home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         }
 
-        foreach (var name in new[] { ".bashrc", ".zshrc", ".profile", ".bash_profile", ".zprofile", ".zlogin" })
+        foreach (string? name in new[] { ".bashrc", ".zshrc", ".profile", ".bash_profile", ".zprofile", ".zlogin" })
         {
-            var path = Path.Combine(home, name);
+            string path = Path.Combine(home, name);
             if (File.Exists(path))
             {
                 yield return path;
@@ -261,14 +262,14 @@ public sealed class CliShimRegistrar
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static (string Value, bool Expand) ReadUserEnvPath()
     {
-        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Environment");
+        using RegistryKey? key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Environment");
         if (key is null)
         {
             return (string.Empty, true);
         }
 
-        var raw = key.GetValue("Path", defaultValue: string.Empty, Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string ?? string.Empty;
-        var expand = IsExpandString(key);
+        string raw = key.GetValue("Path", defaultValue: string.Empty, Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string ?? string.Empty;
+        bool expand = IsExpandString(key);
         return (raw, expand);
     }
 
@@ -289,7 +290,7 @@ public sealed class CliShimRegistrar
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void WriteUserEnvPath(string value, bool expand)
     {
-        using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Environment");
+        using RegistryKey key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Environment");
         key.SetValue("Path", value, expand
             ? Microsoft.Win32.RegistryValueKind.ExpandString
             : Microsoft.Win32.RegistryValueKind.String);
@@ -302,7 +303,7 @@ public sealed class CliShimRegistrar
         if (OperatingSystem.IsWindows())
         {
             _ = SendMessageTimeoutW(
-                HWND_BROADCAST,
+                s_hwndBroadcast,
                 WM_SETTINGCHANGE,
                 IntPtr.Zero,
                 "Environment",
@@ -313,7 +314,7 @@ public sealed class CliShimRegistrar
     }
 
     private const int WM_SETTINGCHANGE = 0x001A;
-    private static readonly IntPtr HWND_BROADCAST = new(0xFFFF);
+    private static readonly IntPtr s_hwndBroadcast = new(0xFFFF);
     private const uint SMTO_ABORTIFHUNG = 0x0002;
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -356,7 +357,7 @@ public sealed class CliShimRegistrar
             return;
         }
 
-        var mode = File.GetUnixFileMode(path);
+        UnixFileMode mode = File.GetUnixFileMode(path);
         File.SetUnixFileMode(path, mode | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
     }
 }

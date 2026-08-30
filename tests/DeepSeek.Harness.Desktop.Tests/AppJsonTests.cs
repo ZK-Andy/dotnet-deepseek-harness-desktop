@@ -18,7 +18,7 @@ public class AppJsonTests
     public void Error_HostileMessage_RoundTrips()
     {
         const string hostile = "引号\"与反斜杠\\与<script>";
-        var parsed = JsonDocument.Parse(AppJsonContext.Error(hostile)).RootElement;
+        JsonElement parsed = JsonDocument.Parse(AppJsonContext.Error(hostile)).RootElement;
         Assert.Equal(hostile, parsed.GetProperty("error").GetString());
     }
 
@@ -37,7 +37,7 @@ public class AppJsonTests
     {
         // 恢复页/横幅脚本嵌值的安全边界：裸 <script> 绝不以可执行形态出现在脚本字符串里；
         // 默认编码器输出大写 \u 形态（断言别用小写）
-        var js = AppJsonContext.JsString("</script>运");
+        string js = AppJsonContext.JsString("</script>运");
         Assert.DoesNotContain('<', js);
         Assert.Contains("\\u003C", js);
         Assert.Contains("\\u8FD0", js);

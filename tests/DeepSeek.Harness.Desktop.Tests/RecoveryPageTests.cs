@@ -11,7 +11,7 @@ public class RecoveryPageBuilderTests
     [Fact]
     public void Script_ContainsSkeleton_Buttons_AndPayload()
     {
-        var script = RecoveryPageBuilder.BuildScript("运行时进程意外退出", new[] { "line-1", "line-2" });
+        string script = RecoveryPageBuilder.BuildScript("运行时进程意外退出", new[] { "line-1", "line-2" });
 
         Assert.Contains("ddc-reason", script);
         Assert.Contains("ddc-tail", script);
@@ -26,7 +26,7 @@ public class RecoveryPageBuilderTests
     public void StderrLines_Escaped_NotRawHtml_InjectionSafe()
     {
         const string evil = "</div><script>alert(1)</script><img src=x onerror=alert(2)>";
-        var script = RecoveryPageBuilder.BuildScript("reason", new[] { evil });
+        string script = RecoveryPageBuilder.BuildScript("reason", new[] { evil });
 
         // 恶意行必须以 JSON 字符串转义形态存在（< → \u003C），不存在裸 <script>
         Assert.DoesNotContain("<script>alert(1)</script>", script);
@@ -39,7 +39,7 @@ public class RecoveryPageBuilderTests
     [Fact]
     public void EmptyTail_TailHidden_NoCrash()
     {
-        var script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>());
+        string script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>());
 
         Assert.Contains("D.tail&&D.tail.length", script);
     }
@@ -62,9 +62,9 @@ public class RecoveryCommandRouterTests
     public async Task Exit_ApprovesGateBeforeClosing_OrderContract()
     {
         var gate = new CloseGate();
-        var (router, calls) = MakeRouter(gate);
+        (RecoveryCommandRouter? router, List<string>? calls) = MakeRouter(gate);
 
-        var frame = await router.RouteAsync(
+        string frame = await router.RouteAsync(
             Services.RecoveryCommandRouter.CommandName,
             System.Text.Encoding.UTF8.GetBytes("{}"),
             null!,
@@ -79,7 +79,7 @@ public class RecoveryCommandRouterTests
     [Fact]
     public async Task UnknownCommand_Throws()
     {
-        var (router, _) = MakeRouter(new CloseGate());
+        (RecoveryCommandRouter? router, List<string> _) = MakeRouter(new CloseGate());
 
         await Assert.ThrowsAsync<Ryn.Ipc.RynCommandNotFoundException>(() =>
             router.RouteAsync("desktop.other", ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None).AsTask());

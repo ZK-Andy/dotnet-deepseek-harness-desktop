@@ -48,7 +48,7 @@ public static class MarketInstallHelper
 
             var root = JsonNode.Parse(await File.ReadAllTextAsync(profilePkg));
             if (root?["dependencies"]?["app"] is not JsonValue app ||
-                !app.TryGetValue<string>(out var appSpec) ||
+                !app.TryGetValue<string>(out string? appSpec) ||
                 !appSpec.Contains("dshmarket.tgz", StringComparison.Ordinal))
             {
                 return;
@@ -73,8 +73,8 @@ public static class MarketInstallHelper
                 return;
             }
 
-            var text = File.ReadAllText(workspacePath);
-            var original = text;
+            string text = File.ReadAllText(workspacePath);
+            string original = text;
             if (text.Contains("set this to true or false"))
             {
                 text = text.Replace(": set this to true or false", ": true");
@@ -96,8 +96,8 @@ public static class MarketInstallHelper
                 text = text.Replace("esbuild: set this to true or false", "esbuild: true");
             }
 
-            var required = new[] { "@deepseek-ai/dsh-subprocess-local", "@google/genai", "koffi", "node-pty", "protobufjs" };
-            foreach (var pkg in required)
+            string[] required = new[] { "@deepseek-ai/dsh-subprocess-local", "@google/genai", "koffi", "node-pty", "protobufjs" };
+            foreach (string? pkg in required)
             {
                 if (!text.Contains(pkg))
                 {
@@ -127,7 +127,7 @@ public static class MarketInstallHelper
     {
         if (!string.IsNullOrWhiteSpace(installerPluginsDir))
         {
-            var packaged = Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz");
+            string packaged = Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz");
             if (IsUsableTgz(packaged, minBytes: 1024))
             {
                 return packaged;
@@ -175,7 +175,7 @@ public static class MarketInstallHelper
                 return false;
             }
 
-            var profile = root["dsh"]?["profile"];
+            JsonNode? profile = root["dsh"]?["profile"];
             switch (profile?["bundles"])
             {
                 case JsonArray bundles:
@@ -222,8 +222,8 @@ public static class MarketInstallHelper
     /// <summary>同目录临时文件 + 原子替换写文本（失败清理临时文件；目标不可写时抛，由调用方决定 fail-safe）。</summary>
     private static void AtomicWriteFile(string path, string text)
     {
-        var dir = Path.GetDirectoryName(path) ?? ".";
-        var temp = Path.Combine(dir, $".{Path.GetFileName(path)}.tmp-{Guid.NewGuid():N}");
+        string dir = Path.GetDirectoryName(path) ?? ".";
+        string temp = Path.Combine(dir, $".{Path.GetFileName(path)}.tmp-{Guid.NewGuid():N}");
         try
         {
             File.WriteAllText(temp, text);
@@ -250,7 +250,7 @@ public static class MarketInstallHelper
 
     /// <summary>构造 bundles 数组条目与包名的等值谓词（非字符串条目视为不等）。</summary>
     private static Func<JsonNode?, bool> BundleEntryEquals(string packageName) =>
-        b => b is JsonValue v && v.TryGetValue<string>(out var s) && s == packageName;
+        b => b is JsonValue v && v.TryGetValue<string>(out string? s) && s == packageName;
 
     /// <summary><c>dsh.profile.bundles</c> 是否已含 <paramref name="packageName"/>；结构缺失视为不含。</summary>
     private static bool BundlesContain(JsonNode root, string packageName)
@@ -286,7 +286,7 @@ public static class MarketInstallHelper
         CancellationToken ct)
     {
         // dshmarket 依赖树含原生构建；pnpm 11 默认拒绝，须先放行 allowBuilds（与随包安装同款自愈）
-        var workspacePath = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName, "pnpm-workspace.yaml");
+        string workspacePath = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName, "pnpm-workspace.yaml");
         EnsureWorkspaceAllowBuilds(workspacePath);
 
         System.Diagnostics.ProcessStartInfo BuildPsi(bool relaxPolicy)
@@ -319,7 +319,7 @@ public static class MarketInstallHelper
             => await runPluginAdd(BuildPsi(relaxPolicy), ct).ConfigureAwait(false);
 
         log($"[host] 引导：registry 安装市场（{MarketSpec}）");
-        var (exitCode, outText, errText) = await RunAsync(relaxPolicy: false).ConfigureAwait(false);
+        (int exitCode, string? outText, string? errText) = await RunAsync(relaxPolicy: false).ConfigureAwait(false);
         log($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
         if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
         {
@@ -334,7 +334,7 @@ public static class MarketInstallHelper
             return;
         }
 
-        var profilePkg = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
+        string profilePkg = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
         if (await EnsureBundlesContainsAsync(profilePkg, "dshmarket").ConfigureAwait(false))
         {
             log("[host] 已补写 bundles dshmarket");
@@ -365,9 +365,9 @@ public static class MarketInstallHelper
         Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> runPluginAdd,
         CancellationToken ct)
     {
-        var profileDir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
-        var profilePkg = Path.Combine(profileDir, "package.json");
-        var pending = BundledPluginCatalog.AssemblePending(
+        string profileDir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        List<(string Package, string Spec)> pending = BundledPluginCatalog.AssemblePending(
             BundledPluginCatalog.All, installerPluginsDir, profilePkg, profileDir, log);
         if (pending.Count == 0)
         {
@@ -378,7 +378,7 @@ public static class MarketInstallHelper
         await CleanupBogusAppDependencyAsync(profilePkg).ConfigureAwait(false);
         EnsureWorkspaceAllowBuilds(Path.Combine(profileDir, "pnpm-workspace.yaml"));
 
-        foreach (var (pkg, spec) in pending)
+        foreach ((string? pkg, string? spec) in pending)
         {
             System.Diagnostics.ProcessStartInfo BuildPsi(bool relaxPolicy)
             {
@@ -415,7 +415,7 @@ public static class MarketInstallHelper
                 => await runPluginAdd(BuildPsi(relaxPolicy), ct).ConfigureAwait(false);
 
             log($"[host] 随包插件安装（{pkg}）spec={spec}");
-            var (exitCode, outText, errText) = await RunAsync(relaxPolicy: false).ConfigureAwait(false);
+            (int exitCode, string? outText, string? errText) = await RunAsync(relaxPolicy: false).ConfigureAwait(false);
             log($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
             if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
             {
@@ -437,7 +437,7 @@ public static class MarketInstallHelper
         }
 
         // 桌面核心不变量：reconcile 无论怎么重整 bundles，web-app 层绝不能丢（丢了下次启动就没有 Web UI）
-        foreach (var builtin in DesktopProfileBootstrap.InitialBundles)
+        foreach (string builtin in DesktopProfileBootstrap.InitialBundles)
         {
             if (await EnsureBundlesContainsAsync(profilePkg, builtin).ConfigureAwait(false))
             {

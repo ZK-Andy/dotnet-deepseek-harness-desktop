@@ -28,36 +28,36 @@ public sealed record UpdateOptions
     {
         try
         {
-            var path = Path.Combine(baseDirectory, "appsettings.json");
+            string path = Path.Combine(baseDirectory, "appsettings.json");
             if (!File.Exists(path))
             {
                 return new UpdateOptions();
             }
 
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            if (!doc.RootElement.TryGetProperty("Update", out var section) ||
+            if (!doc.RootElement.TryGetProperty("Update", out JsonElement section) ||
                 section.ValueKind != JsonValueKind.Object)
             {
                 return new UpdateOptions();
             }
 
             var options = new UpdateOptions();
-            if (section.TryGetProperty("Repository", out var repo) && repo.ValueKind == JsonValueKind.String)
+            if (section.TryGetProperty(nameof(Repository), out JsonElement repo) && repo.ValueKind == JsonValueKind.String)
             {
                 options = options with { Repository = repo.GetString()! };
             }
 
-            if (section.TryGetProperty("FeedTimeoutSeconds", out var feed) && feed.ValueKind == JsonValueKind.Number)
+            if (section.TryGetProperty(nameof(FeedTimeoutSeconds), out JsonElement feed) && feed.ValueKind == JsonValueKind.Number)
             {
                 options = options with { FeedTimeoutSeconds = feed.GetInt32() };
             }
 
-            if (section.TryGetProperty("DownloadTimeoutMinutes", out var dl) && dl.ValueKind == JsonValueKind.Number)
+            if (section.TryGetProperty(nameof(DownloadTimeoutMinutes), out JsonElement dl) && dl.ValueKind == JsonValueKind.Number)
             {
                 options = options with { DownloadTimeoutMinutes = dl.GetInt32() };
             }
 
-            if (section.TryGetProperty("UpdatesDirName", out var dir) && dir.ValueKind == JsonValueKind.String)
+            if (section.TryGetProperty(nameof(UpdatesDirName), out JsonElement dir) && dir.ValueKind == JsonValueKind.String)
             {
                 options = options with { UpdatesDirName = dir.GetString()! };
             }

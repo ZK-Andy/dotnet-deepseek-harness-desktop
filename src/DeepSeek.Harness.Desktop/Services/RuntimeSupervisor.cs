@@ -45,7 +45,7 @@ public sealed class RuntimeSupervisor
 
             _log?.Invoke("[supervisor] dsh 子进程退出，执行恢复…");
             // 子进程死前 stderr 只存内存尾巴，随进程消失——趁恢复前落盘留证
-            var stderrTail = _host.StderrTail;
+            IReadOnlyList<string> stderrTail = _host.StderrTail;
             if (stderrTail.Count > 0)
             {
                 _log?.Invoke($"[supervisor] 子进程 stderr 尾部：\n{string.Join('\n', stderrTail.TakeLast(8))}");
@@ -54,7 +54,7 @@ public sealed class RuntimeSupervisor
             try
             {
                 await _showRecovery();
-                var url = await _host.RestartAsync(_restartTimeout, ct);
+                Uri? url = await _host.RestartAsync(_restartTimeout, ct);
                 if (url is not null)
                 {
                     _log?.Invoke($"[supervisor] 重启成功 → {url}");
@@ -87,14 +87,14 @@ public sealed class RuntimeSupervisor
 
     private async Task AwaitChildExitOrCancelAsync(CancellationToken ct)
     {
-        var exit = _host.WaitForExitAsync();
+        Task exit = _host.WaitForExitAsync();
         if (exit.IsCompleted)
         {
             return;
         }
 
         var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var reg = ct.Register(() => cancelTcs.TrySetResult());
+        using CancellationTokenRegistration reg = ct.Register(() => cancelTcs.TrySetResult());
         await Task.WhenAny(exit, cancelTcs.Task);
     }
 }

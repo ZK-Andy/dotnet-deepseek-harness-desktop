@@ -12,7 +12,7 @@ public static class RuntimeLocator
     /// <summary>解析捆绑运行时目录：优先环境变量 <see cref="BundledDirEnv"/>，否则应用目录下 resources/runtime。</summary>
     public static string ResolveRuntimeDirectory()
     {
-        var fromEnv = Environment.GetEnvironmentVariable(BundledDirEnv);
+        string? fromEnv = Environment.GetEnvironmentVariable(BundledDirEnv);
         if (!string.IsNullOrWhiteSpace(fromEnv))
         {
             return Path.GetFullPath(fromEnv);
@@ -27,7 +27,7 @@ public static class RuntimeLocator
     /// </summary>
     public static string ResolveDownloadedRuntimeDirectory()
     {
-        var fromEnv = Environment.GetEnvironmentVariable(DownloadDirEnv);
+        string? fromEnv = Environment.GetEnvironmentVariable(DownloadDirEnv);
         if (!string.IsNullOrWhiteSpace(fromEnv))
         {
             return Path.GetFullPath(fromEnv);
@@ -43,13 +43,13 @@ public static class RuntimeLocator
     /// 此处显式双查——缺失该分支时 Windows 捆绑运行时永远定位不到，属潜伏 bug 已修复）。</summary>
     private static string? TryFindNodeFile(string runtimeDir)
     {
-        var node = Path.Combine(runtimeDir, "node");
+        string node = Path.Combine(runtimeDir, "node");
         if (File.Exists(node))
         {
             return node;
         }
 
-        var nodeExe = Path.Combine(runtimeDir, "node.exe");
+        string nodeExe = Path.Combine(runtimeDir, "node.exe");
         return File.Exists(nodeExe) ? nodeExe : null;
     }
 
@@ -59,8 +59,8 @@ public static class RuntimeLocator
     /// <remarks>与 pilot-harness 一致：整棵 node_modules 随包收入，入口从 node_modules 解析。</remarks>
     public static (string NodeExe, string DshEntry)? TryLocateBundled(string runtimeDir)
     {
-        var node = TryFindNodeFile(runtimeDir);
-        var bin = Path.Combine(runtimeDir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
+        string? node = TryFindNodeFile(runtimeDir);
+        string bin = Path.Combine(runtimeDir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
         return node is not null && File.Exists(bin) ? (node, bin) : null;
     }
 
@@ -69,14 +69,14 @@ public static class RuntimeLocator
     /// 等种子解析的必要输入，单返回目录可同时服务两个消费面。</summary>
     public static string? TryLocateRuntimeDirectory()
     {
-        var runtimeDir = ResolveRuntimeDirectory();
+        string runtimeDir = ResolveRuntimeDirectory();
         if (TryLocateBundled(runtimeDir) is not null)
         {
             return runtimeDir;
         }
 
         // 下载目录未就位时不创建目录（只读探测）
-        var downloadDir = ResolveDownloadedRuntimeDirectory();
+        string downloadDir = ResolveDownloadedRuntimeDirectory();
         return Directory.Exists(downloadDir) && TryLocateBundled(downloadDir) is not null ? downloadDir : null;
     }
 }

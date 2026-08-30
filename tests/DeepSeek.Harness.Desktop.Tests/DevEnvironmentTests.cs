@@ -32,7 +32,7 @@ public class DevEnvironmentTests
     [Fact]
     public void DeriveDefaultDevHome_PrefersRuntimeDirTwoLevelsUp()
     {
-        var runtimeDir = Path.Combine("/mnt/work/repo", "resources", "runtime");
+        string runtimeDir = Path.Combine("/mnt/work/repo", "resources", "runtime");
         // runtime 目录形态优先，即使 baseDirectory 也可用
         Assert.Equal(Path.Combine("/mnt/work/repo", ".cache", "dev-home"),
             DevEnvironment.DeriveDefaultDevHome(runtimeDir, "/elsewhere/bin"));
@@ -41,8 +41,8 @@ public class DevEnvironmentTests
     [Fact]
     public void DeriveDefaultDevHome_WalksUpToGitRoot_FromBaseDirectory()
     {
-        var root = Path.Combine(Path.GetTempPath(), "devenv-" + Guid.NewGuid().ToString("N"));
-        var binDir = Path.Combine(root, "src", "App", "bin", "Debug", "net10.0");
+        string root = Path.Combine(Path.GetTempPath(), "devenv-" + Guid.NewGuid().ToString("N"));
+        string binDir = Path.Combine(root, "src", "App", "bin", "Debug", "net10.0");
         Directory.CreateDirectory(binDir);
         Directory.CreateDirectory(Path.Combine(root, ".git"));
         try
@@ -56,8 +56,8 @@ public class DevEnvironmentTests
     [Fact]
     public void DeriveDefaultDevHome_ReturnsNull_WhenNoGitAncestor()
     {
-        var root = Path.Combine(Path.GetTempPath(), "devenv-" + Guid.NewGuid().ToString("N"));
-        var binDir = Path.Combine(root, "bin");
+        string root = Path.Combine(Path.GetTempPath(), "devenv-" + Guid.NewGuid().ToString("N"));
+        string binDir = Path.Combine(root, "bin");
         Directory.CreateDirectory(binDir);
         try
         {

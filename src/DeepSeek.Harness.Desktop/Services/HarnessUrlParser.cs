@@ -15,13 +15,13 @@ public static class HarnessUrlParser
             return null;
         }
 
-        var idx = line.IndexOf(UrlPrefix, StringComparison.Ordinal);
+        int idx = line.IndexOf(UrlPrefix, StringComparison.Ordinal);
         if (idx < 0)
         {
             return null;
         }
 
-        var candidate = line[(idx + UrlPrefix.Length)..].Trim();
-        return Uri.TryCreate(candidate, UriKind.Absolute, out var uri) ? uri : null;
+        string candidate = line[(idx + UrlPrefix.Length)..].Trim();
+        return Uri.TryCreate(candidate, UriKind.Absolute, out Uri? uri) ? uri : null;
     }
 }

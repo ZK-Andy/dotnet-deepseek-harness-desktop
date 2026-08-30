@@ -21,9 +21,9 @@ public class ExternalLinkCommandRouterTests
     {
         string? opened = null;
         var router = new ExternalLinkCommandRouter(opener: url => { opened = url; return true; });
-        var body = Encoding.UTF8.GetBytes("""{"url":"https://x.com/foo/status/123"}""");
+        byte[] body = Encoding.UTF8.GetBytes("""{"url":"https://x.com/foo/status/123"}""");
 
-        var result = await router.RouteAsync(
+        string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,
             body,
             services: null!,
@@ -46,7 +46,7 @@ public class ExternalLinkCommandRouterTests
         bool opened = false;
         var router = new ExternalLinkCommandRouter(opener: _ => { opened = true; return true; });
 
-        var result = await router.RouteAsync(
+        string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,
             Encoding.UTF8.GetBytes(body),
             services: null!,
@@ -61,7 +61,7 @@ public class ExternalLinkCommandRouterTests
     {
         var router = new ExternalLinkCommandRouter(opener: _ => false);
 
-        var result = await router.RouteAsync(
+        string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,
             Encoding.UTF8.GetBytes("""{"url":"https://example.com"}"""),
             services: null!,
@@ -75,7 +75,7 @@ public class ExternalLinkCommandRouterTests
     {
         var router = new ExternalLinkCommandRouter(opener: _ => throw new InvalidOperationException("no browser"));
 
-        var result = await router.RouteAsync(
+        string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,
             Encoding.UTF8.GetBytes("""{"url":"https://example.com"}"""),
             services: null!,

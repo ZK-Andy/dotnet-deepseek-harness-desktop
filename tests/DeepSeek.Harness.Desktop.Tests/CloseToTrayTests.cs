@@ -9,7 +9,7 @@ public class CloseBehaviorPreferenceTests
 {
     private static string TempPath()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "ddc-close-tests", Guid.NewGuid().ToString("N"));
+        string dir = Path.Combine(Path.GetTempPath(), "ddc-close-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, CloseBehaviorPreference.FileName);
     }
@@ -24,7 +24,7 @@ public class CloseBehaviorPreferenceTests
     [Fact]
     public void CorruptFile_FallsBackToTrue()
     {
-        var path = TempPath();
+        string path = TempPath();
         File.WriteAllText(path, "{not-json");
         Assert.True(new CloseBehaviorPreference(path).HideOnClose);
     }
@@ -32,7 +32,7 @@ public class CloseBehaviorPreferenceTests
     [Fact]
     public void SetFalse_PersistsAndSurvivesReload()
     {
-        var path = TempPath();
+        string path = TempPath();
         var pref = new CloseBehaviorPreference(path);
         pref.Set(false);
         Assert.False(pref.HideOnClose);
@@ -43,7 +43,7 @@ public class CloseBehaviorPreferenceTests
     [Fact]
     public void SetTrue_WritesExplicitTrue()
     {
-        var path = TempPath();
+        string path = TempPath();
         new CloseBehaviorPreference(path).Set(true);
         Assert.Contains("\"hideToTrayOnClose\":true", File.ReadAllText(path));
     }
@@ -66,10 +66,10 @@ public class CloseToTrayCommandRouterTests
     [Fact]
     public async Task GetState_ReturnsEnabledAndAvailability()
     {
-        var path = Path.Combine(Path.GetTempPath(), "ddc-close-tests", Guid.NewGuid().ToString("N"),
+        string path = Path.Combine(Path.GetTempPath(), "ddc-close-tests", Guid.NewGuid().ToString("N"),
             CloseBehaviorPreference.FileName);
         var router = new CloseToTrayCommandRouter(new CloseBehaviorPreference(path), () => false);
-        var frame = await router.RouteAsync("desktop.closeToTray.getState", ReadOnlyMemory<byte>.Empty,
+        string frame = await router.RouteAsync("desktop.closeToTray.getState", ReadOnlyMemory<byte>.Empty,
             null!, CancellationToken.None);
         // 缺省 true；available=false 时客户端禁用开关
         Assert.Equal("""{"enabled":true,"available":false}""", frame);
@@ -78,14 +78,14 @@ public class CloseToTrayCommandRouterTests
     [Fact]
     public async Task SetFalse_PersistsPreference()
     {
-        var path = Path.Combine(Path.GetTempPath(), "ddc-close-tests", Guid.NewGuid().ToString("N"),
+        string path = Path.Combine(Path.GetTempPath(), "ddc-close-tests", Guid.NewGuid().ToString("N"),
             CloseBehaviorPreference.FileName);
         var router = new CloseToTrayCommandRouter(new CloseBehaviorPreference(path), () => true);
         await router.RouteAsync("desktop.closeToTray.set",
             System.Text.Encoding.UTF8.GetBytes("{\"enabled\":false}"), null!, CancellationToken.None);
         Assert.False(new CloseBehaviorPreference(path).HideOnClose);
 
-        var frame = await router.RouteAsync("desktop.closeToTray.getState", ReadOnlyMemory<byte>.Empty,
+        string frame = await router.RouteAsync("desktop.closeToTray.getState", ReadOnlyMemory<byte>.Empty,
             null!, CancellationToken.None);
         Assert.Equal("""{"enabled":false,"available":true}""", frame);
     }

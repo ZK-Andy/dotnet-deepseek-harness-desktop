@@ -14,7 +14,7 @@ public class ExternalLinkPolicyTests
     [InlineData("https://github.com/anysearch-team/anysearch-dsh", true)]
     public void IsExternalHttpLink_ExternalAbsoluteHttp_ReturnsTrue(string href, bool expected)
     {
-        Assert.Equal(expected, ExternalLinkPolicy.IsExternalHttpLink(href, Origin, out var url));
+        Assert.Equal(expected, ExternalLinkPolicy.IsExternalHttpLink(href, Origin, out Uri? url));
         if (expected)
         {
             Assert.NotNull(url);

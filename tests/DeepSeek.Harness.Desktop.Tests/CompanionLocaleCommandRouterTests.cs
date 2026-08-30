@@ -16,7 +16,7 @@ public class CompanionLocaleCommandRouterTests
     public async Task ValidLocale_UpdatesUiLocale()
     {
         var ui = new UiLocale();
-        var fired = 0;
+        int fired = 0;
         ui.Changed += () => fired++;
         var router = new CompanionLocaleCommandRouter(ui);
 
@@ -36,7 +36,7 @@ public class CompanionLocaleCommandRouterTests
     public async Task InvalidPayload_Ignored_ReturnsNull(string json)
     {
         var ui = new UiLocale();
-        var before = ui.Current;
+        string before = ui.Current;
         var router = new CompanionLocaleCommandRouter(ui);
 
         Assert.Equal("null", await Route(router, json));
@@ -48,7 +48,7 @@ public class CompanionLocaleCommandRouterTests
     {
         var ui = new UiLocale();
         ui.Set("en");
-        var fired = 0;
+        int fired = 0;
         ui.Changed += () => fired++;
         var router = new CompanionLocaleCommandRouter(ui);
 

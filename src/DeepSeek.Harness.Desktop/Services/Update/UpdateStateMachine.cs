@@ -87,7 +87,7 @@ public sealed class UpdateStateMachine
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var ready = await _persistence.GetAsync(cancellationToken).ConfigureAwait(false);
+        ReadyRecord? ready = await _persistence.GetAsync(cancellationToken).ConfigureAwait(false);
         if (ready is not null && ShouldClearReady(ready.Version))
         {
             await _persistence.ClearAsync(cancellationToken).ConfigureAwait(false);
@@ -170,7 +170,7 @@ public sealed class UpdateStateMachine
         Transition(new UpdateState(UpdateStatus.Checking));
         try
         {
-            var meta = await _check(cancellationToken).ConfigureAwait(false);
+            ReleaseMeta? meta = await _check(cancellationToken).ConfigureAwait(false);
             if (meta is null || UpdateVersion.Compare(meta.Version, _currentVersion) <= 0)
             {
                 await _persistence.ClearAsync(cancellationToken).ConfigureAwait(false);
@@ -179,7 +179,7 @@ public sealed class UpdateStateMachine
             }
 
             Transition(new UpdateState(UpdateStatus.Downloading, meta.Version));
-            var path = await _download(meta, cancellationToken).ConfigureAwait(false);
+            string path = await _download(meta, cancellationToken).ConfigureAwait(false);
             await _persistence.SetAsync(new ReadyRecord(meta.Version, path), cancellationToken).ConfigureAwait(false);
             Transition(new UpdateState(UpdateStatus.Ready, meta.Version));
         }
@@ -206,8 +206,8 @@ public sealed class UpdateStateMachine
             throw new InvalidOperationException("Update is not ready to install");
         }
 
-        var version = _state.Version;
-        var record = await _persistence.GetAsync(cancellationToken).ConfigureAwait(false);
+        string version = _state.Version;
+        ReadyRecord? record = await _persistence.GetAsync(cancellationToken).ConfigureAwait(false);
         if (record is null || !File.Exists(record.AssetPath))
         {
             await _persistence.ClearAsync(cancellationToken).ConfigureAwait(false);
@@ -232,7 +232,7 @@ public sealed class UpdateStateMachine
     {
         // Current 由状态机单点补齐：页面任何状态帧都带当前版本，更新页免二次查询；
         // 状态存取与全部回调（推送/订阅者）统一发补齐后的帧，避免内外不一致
-        var effective = next.Current is null && _currentVersion is not null
+        UpdateState effective = next.Current is null && _currentVersion is not null
             ? next with { Current = _currentVersion }
             : next;
         _state = effective;
@@ -247,7 +247,7 @@ public sealed class UpdateStateMachine
             Services.HostLog.Write($"[update] 状态推送回调失败：{ex.Message}");
         }
 
-        foreach (var listener in _listeners)
+        foreach (Action<UpdateState> listener in _listeners)
         {
             try
             {

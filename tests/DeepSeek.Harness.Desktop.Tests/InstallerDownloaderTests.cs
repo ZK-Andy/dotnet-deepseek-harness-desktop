@@ -37,10 +37,10 @@ public class InstallerDownloaderTests
     public async Task AssetHttpError_ThrowsAndLeavesNoPart()
     {
         // GetStreamAsync 对非 2xx 不抛——404 必须显式转 HttpRequestException，且不留 .part 半成品
-        var dir = TempDir();
+        string dir = TempDir();
         try
         {
-            var dl = Downloader(_ => new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("nope") });
+            InstallerDownloader dl = Downloader(_ => new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("nope") });
 
             await Assert.ThrowsAsync<HttpRequestException>(
                 () => dl.DownloadAsync(Meta(), dir, TimeSpan.FromSeconds(30), CancellationToken.None));
@@ -54,12 +54,12 @@ public class InstallerDownloaderTests
     public async Task MissingShaFile_RefusesToInstall()
     {
         // release 未附 SHA256SUMS.txt：宁可拒装不装坏包（ADR 强校验立场）
-        var dir = TempDir();
+        string dir = TempDir();
         try
         {
-            var dl = Downloader(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("payload") });
+            InstallerDownloader dl = Downloader(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("payload") });
 
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            InvalidOperationException ex = await Assert.ThrowsAsync<InvalidOperationException>(
                 () => dl.DownloadAsync(Meta(shaUrl: null), dir, TimeSpan.FromSeconds(30), CancellationToken.None));
 
             Assert.Contains("SHA256SUMS", ex.Message);
@@ -72,14 +72,14 @@ public class InstallerDownloaderTests
     [Fact]
     public async Task HashMismatch_ThrowsAndDeletesPart()
     {
-        var dir = TempDir();
+        string dir = TempDir();
         try
         {
-            var dl = Downloader(req =>
+            InstallerDownloader dl = Downloader(req =>
             {
                 if (req.RequestUri!.AbsoluteUri == ShaUrl)
                 {
-                    var wrong = new string('a', 64);
+                    string wrong = new('a', 64);
                     return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent($"{wrong}  {Asset}\n") };
                 }
 
@@ -97,10 +97,10 @@ public class InstallerDownloaderTests
     [Fact]
     public async Task MissingSumEntry_Throws()
     {
-        var dir = TempDir();
+        string dir = TempDir();
         try
         {
-            var dl = Downloader(req =>
+            InstallerDownloader dl = Downloader(req =>
             {
                 if (req.RequestUri!.AbsoluteUri == ShaUrl)
                 {
@@ -110,7 +110,7 @@ public class InstallerDownloaderTests
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("payload") };
             });
 
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            InvalidOperationException ex = await Assert.ThrowsAsync<InvalidOperationException>(
                 () => dl.DownloadAsync(Meta(), dir, TimeSpan.FromSeconds(30), CancellationToken.None));
 
             Assert.Contains("无", ex.Message);
@@ -122,22 +122,22 @@ public class InstallerDownloaderTests
     [Fact]
     public async Task Success_MovesAtomically_AndCleansPart()
     {
-        var dir = TempDir();
+        string dir = TempDir();
         try
         {
             const string payload = "PAYLOAD-CONTENT";
-            var dl = Downloader(req =>
+            InstallerDownloader dl = Downloader(req =>
             {
                 if (req.RequestUri!.AbsoluteUri == ShaUrl)
                 {
-                    var hex = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+                    string hex = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
                     return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent($"{hex}  {Asset}\n") };
                 }
 
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(payload) };
             });
 
-            var dest = await dl.DownloadAsync(Meta(), dir, TimeSpan.FromSeconds(30), CancellationToken.None);
+            string dest = await dl.DownloadAsync(Meta(), dir, TimeSpan.FromSeconds(30), CancellationToken.None);
 
             Assert.Equal(Path.Combine(dir, Asset), dest);
             Assert.Equal(payload, File.ReadAllText(dest));

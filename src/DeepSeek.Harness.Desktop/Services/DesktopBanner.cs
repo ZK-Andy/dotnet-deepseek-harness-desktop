@@ -25,7 +25,7 @@ public static class DesktopBanner
     /// <param name="okLabel">确认按钮文案（宿主按注入时刻 locale 选择，ADR host-ui-locale）。</param>
     public static string Build(string id, string text, Palette palette, string okLabel = "知道了")
     {
-        var known = string.Join(",", KnownIds.Select(k => "'" + k + "'"));
+        string known = string.Join(",", KnownIds.Select(k => "'" + k + "'"));
         return "(function(){" +
                "var id='" + id + "';" +
                "if(document.getElementById(id))return;" +

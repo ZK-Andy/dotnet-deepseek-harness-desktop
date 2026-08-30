@@ -8,7 +8,7 @@ public class MarketInstallHelperTests
 {
     private static string WriteTempFile(string content)
     {
-        var p = Path.Combine(Path.GetTempPath(), "market-" + Guid.NewGuid().ToString("N") + ".json");
+        string p = Path.Combine(Path.GetTempPath(), "market-" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(p, content);
         return p;
     }
@@ -22,37 +22,37 @@ public class MarketInstallHelperTests
     [Fact]
     public void IsBundleInstalled_ReturnsTrue_WhenBothPresent()
     {
-        var json = """
+        string json = """
             {"dependencies":{"dshmarket":"1.15.0"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","dshmarket"]}}}
             """;
-        var p = WriteTempFile(json);
+        string p = WriteTempFile(json);
         try { Assert.True(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
     [Fact]
     public void IsBundleInstalled_ReturnsFalse_WhenBundlesMissing()
     {
-        var json = """
+        string json = """
             {"dependencies":{"dshmarket":"1.15.0"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}
             """;
-        var p = WriteTempFile(json);
+        string p = WriteTempFile(json);
         try { Assert.False(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
     [Fact]
     public void IsBundleInstalled_ReturnsFalse_WhenDepsMissing()
     {
-        var json = """
+        string json = """
             {"dependencies":{},"dsh":{"profile":{"bundles":["dshmarket"]}}}
             """;
-        var p = WriteTempFile(json);
+        string p = WriteTempFile(json);
         try { Assert.False(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
     [Fact]
     public void IsBundleInstalled_ReturnsFalse_WhenInvalidJson()
     {
-        var p = WriteTempFile("not json");
+        string p = WriteTempFile("not json");
         try { Assert.False(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
@@ -60,10 +60,10 @@ public class MarketInstallHelperTests
     public void IsBundleInstalled_PerPackage_Independent()
     {
         // 市场已就位、伴生未装：市场判定 true、伴生判定 false（互不误判）
-        var json = """
+        string json = """
             {"dependencies":{"dshmarket":"1.15.0"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","dshmarket"]}}}
             """;
-        var p = WriteTempFile(json);
+        string p = WriteTempFile(json);
         try
         {
             Assert.True(MarketInstallHelper.IsBundleInstalled(p, "dshmarket"));
@@ -75,14 +75,14 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task CleanupBogusApp_RemovesOnlyAppWithTgz()
     {
-        var json = """
+        string json = """
             {"dependencies":{"app":"file:/tmp/dshmarket.tgz","keep":"1.0.0"},"dsh":{"profile":{"bundles":[]}}}
             """;
-        var p = WriteTempFile(json);
+        string p = WriteTempFile(json);
         try
         {
             await MarketInstallHelper.CleanupBogusAppDependencyAsync(p);
-            var after = File.ReadAllText(p);
+            string after = File.ReadAllText(p);
             Assert.DoesNotContain("\"app\"", after);
             Assert.Contains("\"keep\"", after);
         }
@@ -92,8 +92,8 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task CleanupBogusApp_NoOp_WhenNoApp()
     {
-        var json = """{"dependencies":{"keep":"1.0.0"}}""";
-        var p = WriteTempFile(json);
+        string json = """{"dependencies":{"keep":"1.0.0"}}""";
+        string p = WriteTempFile(json);
         try
         {
             await MarketInstallHelper.CleanupBogusAppDependencyAsync(p);
@@ -111,9 +111,9 @@ public class MarketInstallHelperTests
     [Fact]
     public void EnsureWorkspaceAllowBuilds_AddsEsbuild_WhenMissing()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "ws-" + Guid.NewGuid().ToString("N"));
+        string dir = Path.Combine(Path.GetTempPath(), "ws-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, "pnpm-workspace.yaml");
+        string path = Path.Combine(dir, "pnpm-workspace.yaml");
         Assert.False(File.Exists(path));
         try
         {
@@ -133,9 +133,9 @@ public class MarketInstallHelperTests
     [Fact]
     public void ResolveCompanionSpec_PrefersInstallerPluginsDir()
     {
-        var plugins = Path.Combine(Path.GetTempPath(), "pl-" + Guid.NewGuid().ToString("N"));
+        string plugins = Path.Combine(Path.GetTempPath(), "pl-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(plugins);
-        var packagedTgz = Path.Combine(plugins, "dsh-desktop-companion.tgz");
+        string packagedTgz = Path.Combine(plugins, "dsh-desktop-companion.tgz");
         File.WriteAllBytes(packagedTgz, new byte[2 * 1024]);
         try
         {
@@ -156,11 +156,11 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task EnsureBundles_AddsWhenMissing()
     {
-        var json = """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""";
-        var p = WriteTempFile(json);
+        string json = """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""";
+        string p = WriteTempFile(json);
         try
         {
-            var added = await MarketInstallHelper.EnsureBundlesContainsAsync(p, "dshmarket");
+            bool added = await MarketInstallHelper.EnsureBundlesContainsAsync(p, "dshmarket");
             Assert.True(added);
             Assert.Contains("dshmarket", File.ReadAllText(p));
         }
@@ -170,13 +170,13 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task EnsureBundles_AppendsSecondPackage_KeepsFirst()
     {
-        var json = """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","dshmarket"]}}}""";
-        var p = WriteTempFile(json);
+        string json = """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","dshmarket"]}}}""";
+        string p = WriteTempFile(json);
         try
         {
-            var added = await MarketInstallHelper.EnsureBundlesContainsAsync(p, "dsh-desktop-companion");
+            bool added = await MarketInstallHelper.EnsureBundlesContainsAsync(p, "dsh-desktop-companion");
             Assert.True(added);
-            var after = File.ReadAllText(p);
+            string after = File.ReadAllText(p);
             Assert.Contains("dshmarket", after);
             Assert.Contains("dsh-desktop-companion", after);
             // 再补写一次应幂等
@@ -188,11 +188,11 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task EnsureBundles_NoOpWhenPresent()
     {
-        var json = """{"dsh":{"profile":{"bundles":["dshmarket"]}}}""";
-        var p = WriteTempFile(json);
+        string json = """{"dsh":{"profile":{"bundles":["dshmarket"]}}}""";
+        string p = WriteTempFile(json);
         try
         {
-            var added = await MarketInstallHelper.EnsureBundlesContainsAsync(p, "dshmarket");
+            bool added = await MarketInstallHelper.EnsureBundlesContainsAsync(p, "dshmarket");
             Assert.False(added);
         }
         finally { File.Delete(p); }
@@ -207,10 +207,10 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task EnsureMarketFromRegistry_BuildsCorrectArgsAndEnv_AndBackfillsBundles()
     {
-        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName));
-        var workspace = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "pnpm-workspace.yaml");
-        var profilePkg = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
+        string workspace = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "pnpm-workspace.yaml");
+        string profilePkg = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
         // profile 清单：bundles 尚缺 dshmarket → 装后应补写。
         File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
         // workspace 尚缺 allowBuilds → helper 应先放行。
@@ -224,7 +224,11 @@ public class MarketInstallHelperTests
         {
             capturedPsi = psi;
             args.Clear();
-            foreach (var a in psi.ArgumentList) args.Add(a);
+            foreach (string a in psi.ArgumentList)
+            {
+                args.Add(a);
+            }
+
             return (0, "installed", string.Empty);
         }
 
@@ -253,13 +257,13 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task EnsureMarketFromRegistry_RetriesOnMinimumReleaseAge_Dropcap()
     {
-        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName));
-        var profilePkg = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
+        string profilePkg = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
         File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
 
-        var relaxSeen = false;
-        var runs = 0;
+        bool relaxSeen = false;
+        int runs = 0;
         var logs = new List<string>();
 
         async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
@@ -293,11 +297,11 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task EnsureBundledPluginsBeforeSpawn_InstallsCompanion_AndBackfillsBundles()
     {
-        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
-        var profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
         Directory.CreateDirectory(profileDir);
-        var profilePkg = Path.Combine(profileDir, "package.json");
-        var installerPluginsDir = Path.Combine(home, "plugins");
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        string installerPluginsDir = Path.Combine(home, "plugins");
         Directory.CreateDirectory(installerPluginsDir);
         // ResolveCompanionSpec 要求 >1K 的 tgz（防 0.1.10 假包）；profile 不含 companion → AssemblePending 返回待装。
         File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
@@ -310,7 +314,11 @@ public class MarketInstallHelperTests
         {
             capturedPsi = psi;
             args.Clear();
-            foreach (var a in psi.ArgumentList) args.Add(a);
+            foreach (string a in psi.ArgumentList)
+            {
+                args.Add(a);
+            }
+
             return (0, "installed", string.Empty);
         }
 
@@ -340,17 +348,17 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task EnsureBundledPluginsBeforeSpawn_NoRun_WhenCompanionInstalled()
     {
-        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
-        var profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
         Directory.CreateDirectory(profileDir);
-        var profilePkg = Path.Combine(profileDir, "package.json");
-        var installerPluginsDir = Path.Combine(home, "plugins");
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        string installerPluginsDir = Path.Combine(home, "plugins");
         Directory.CreateDirectory(installerPluginsDir);
         File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
         // companion 已就位（dependencies + bundles 双含）→ AssemblePending 返回空 → 不 spawn。
         File.WriteAllText(profilePkg, """{"dependencies":{"dsh-desktop-companion":"file:./plugins/dsh-desktop-companion.tgz"},"dsh":{"profile":{"bundles":["dsh-desktop-companion","@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app"]}}}""");
 
-        var runs = 0;
+        int runs = 0;
         var logs = new List<string>();
         async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
@@ -374,17 +382,17 @@ public class MarketInstallHelperTests
     [Fact]
     public async Task EnsureBundledPluginsBeforeSpawn_RetriesOnMinimumReleaseAge_Dropcap()
     {
-        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
-        var profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
         Directory.CreateDirectory(profileDir);
-        var profilePkg = Path.Combine(profileDir, "package.json");
-        var installerPluginsDir = Path.Combine(home, "plugins");
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        string installerPluginsDir = Path.Combine(home, "plugins");
         Directory.CreateDirectory(installerPluginsDir);
         File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
         File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
 
-        var relaxSeen = false;
-        var runs = 0;
+        bool relaxSeen = false;
+        int runs = 0;
         var logs = new List<string>();
         async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
@@ -417,11 +425,11 @@ public class MarketInstallHelperTests
     {
         // v0.4.0 实机回归：PATH-dsh 运行时（无捆绑闭包、无引导）nodeExe/dshEntry 双 null →
         // 用 PATH 上的 dsh 命令（等价宿主 spawn），无 bin.js 入口参数。companion 仍须安装并补写 bundles。
-        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
-        var profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
         Directory.CreateDirectory(profileDir);
-        var profilePkg = Path.Combine(profileDir, "package.json");
-        var installerPluginsDir = Path.Combine(home, "plugins");
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        string installerPluginsDir = Path.Combine(home, "plugins");
         Directory.CreateDirectory(installerPluginsDir);
         File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
         File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
@@ -432,7 +440,11 @@ public class MarketInstallHelperTests
         {
             capturedPsi = psi;
             args.Clear();
-            foreach (var a in psi.ArgumentList) args.Add(a);
+            foreach (string a in psi.ArgumentList)
+            {
+                args.Add(a);
+            }
+
             return (0, "installed", string.Empty);
         }
 

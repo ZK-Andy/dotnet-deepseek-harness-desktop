@@ -1,7 +1,14 @@
 # .editorconfig — DeepSeek.Harness.Desktop C# 编码规范
 # 基准 = dotnet/runtime C# Coding Style + Microsoft .NET C# Coding Conventions（见 docs/coding-standards.md）。
-# 作用：IDE/Roslyn 据此自动格式化与提示；`dotnet format` 可自动对齐（本仓库当前未把 dotnet format 放入 CI 门禁，
-# 本文件以「IDE 引导 + suggestion」为主，不因既有代码未全合规而阻断构建）。既有文件风格优先于本文件规则。
+# 强制模型：
+#   - 风格规则（var/命名/this./关键字/using 位置/目标类型 new()/花括号）severity = warning：
+#     CI 门禁 `dotnet format --verify-no-changes --severity warn` 与 build（EnforceCodeStyleInBuild）
+#     同时强制，IDE 同步提示；违规即 fail loud。
+#   - dotnet/runtime 规则 10（var）：仅当类型在 RHS 显式命名（new/显式转型）时许可 var，
+#     其余一律显式类型——IDE0007（用 var）与 IDE0008（用显式类型）双向 warning。
+#   - .NET 分析器（CA）随 AnalysisLevel=latest 生效：个别有价值规则显式 warning（如 CA1507 nameof）。
+#   - StyleCop.Analyzers：类别整体 none 后按条启用与标准一致的规则（见下方 SA 段）。StyleCop
+#     全开与 _camelCase/s_ 字段、this. 避免等既有契约冲突，且文件头/逐成员文档等噪音规则无强制价值。
 
 root = true
 
@@ -15,7 +22,8 @@ tab_width = 4
 trim_trailing_whitespace = true
 
 [*.{cs,csx}]
-# —— Allman 花括号：开括号独立成行 ——
+
+# ======== 格式（Allman 花括号：开括号独立成行） ========
 csharp_new_line_before_open_brace = all
 csharp_new_line_before_open_brace_types = all
 csharp_new_line_before_open_brace_control_blocks = all
@@ -26,32 +34,55 @@ csharp_new_line_before_open_brace_lambda = all
 csharp_new_line_before_open_brace_generic_type_constraints = all
 
 # —— namespace：文件作用域声明（namespace X;） ——
-csharp_style_namespace_declaration = file_scoped:suggestion
+csharp_style_namespace_declaration = file_scoped:warning
+dotnet_diagnostic.IDE0161.severity = warning
 
-# —— 语言关键字优先于 BCL 类型（int 而非 Int32；string 而非 String） ——
-csharp_style_predefined_type_for_locals_parameters_members = true:suggestion
-csharp_style_predefined_type_for_member_access = true:suggestion
-csharp_style_predefined_type_for_declaration = true:suggestion
-dotnet_diagnostic.IDE0049.severity = suggestion
+# ======== 语言关键字优先于 BCL 类型（int 而非 Int32；string 而非 String） ========
+csharp_style_predefined_type_for_locals_parameters_members = true:warning
+csharp_style_predefined_type_for_member_access = true:warning
+csharp_style_predefined_type_for_declaration = true:warning
+dotnet_diagnostic.IDE0049.severity = warning
 
-# —— 避免多余的 this. 限定 ——
-dotnet_diagnostic.IDE0003.severity = suggestion
+# ======== 避免多余的 this. 限定 ========
+# 注意：与 StyleCop SA1101（要求 this. 前缀）相反，SA1101 已按类别 none（见 SA 段）。
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+dotnet_diagnostic.IDE0003.severity = warning
 
-# —— var：仅在类型于右侧显式命名（new/显式转型）时使用（dotnet/runtime 规则 10） ——
-csharp_style_var_when_type_is_apparent = true:suggestion
-csharp_style_var_when_type_is_not_apparent = false:suggestion
-csharp_style_var_for_built_in_types = false:suggestion
-csharp_style_var_elsewhere = false:suggestion
+# ======== var：dotnet/runtime 规则 10 —— 类型在 RHS 显式命名（new/显式转型）才用 var ========
+csharp_style_var_when_type_is_apparent = true:warning
+csharp_style_var_when_type_is_not_apparent = false:warning
+csharp_style_var_for_built_in_types = false:warning
+csharp_style_var_elsewhere = false:warning
+dotnet_diagnostic.IDE0007.severity = warning
+dotnet_diagnostic.IDE0008.severity = warning
 
-# —— 目标类型 new()：类型在左侧显式命名时可用 ——
-csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
+# ======== 目标类型 new()：类型在左侧显式命名时可用 ========
+csharp_style_implicit_object_creation_when_type_is_apparent = true:warning
+dotnet_diagnostic.IDE0090.severity = warning
 
-# —— using：置于 namespace 之外、按字母序（System.* 置顶） ——
+# ======== using：置于 namespace 之外、按字母序（System.* 置顶） ========
 dotnet_sort_system_directives_first = true
-csharp_using_directive_placement = outside_namespace:suggestion
-dotnet_style_using_directive_placement = outside_namespace:suggestion
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_style_using_directive_placement = outside_namespace:warning
+dotnet_diagnostic.IDE0065.severity = warning
 
-# —— 惯用风格：行为/语言偏好 ——
+# ======== 控制块一律带大括号（单行 if 约定） ========
+csharp_prefer_braces = true:warning
+dotnet_diagnostic.IDE0011.severity = warning
+
+# ======== nameof() 而非字符串字面量 ========
+dotnet_diagnostic.CA1507.severity = warning
+
+# ======== 类型设计：static/sealed（审计项「类型 static/sealed」的强制载体） ========
+dotnet_diagnostic.CA1052.severity = warning   # 静态持有者类型应声明 static/NotInheritable
+dotnet_diagnostic.CA1813.severity = warning   # 特性类应 sealed（避免无谓派生面）
+
+# ======== 惯用风格（IDE 提示级，保持 suggestion，不强制） ========
+# 对象/集合初始化器、自动属性、插值简化、条件表达式、简单 using、主构造函数、集合表达式：
+# 属偏好类规则，强制收益低且自动改写面大，交由 IDE 提示即足够。
 dotnet_style_object_initializer = true:suggestion
 dotnet_style_collection_initializer = true:suggestion
 dotnet_style_prefer_auto_properties = true:suggestion
@@ -61,37 +92,48 @@ csharp_prefer_simple_using_statement = true:suggestion
 csharp_style_prefer_primary_constructors = true:suggestion
 csharp_style_prefer_collection_expression = true:suggestion
 
-# —— 空引用：启用可空上下文，公共 API 用 XML doc（IDE0060/参数文档提示级） ——
+# ======== 死代码/未使用参数：none ========
+# DI / 回调 / 反射密集的桌面壳中误报多；且 dotnet format 的「删除成员/参数」自动修复会
+# 改变语义（违背功能零变更），交 IDE 人工判断。
+dotnet_diagnostic.IDE0051.severity = none
+dotnet_diagnostic.IDE0052.severity = none
+
+# ======== 空引用（可空上下文）：保持提示级 ========
+# CS8618/CS8625 为编译器可空诊断；升 warning 会把既有可空放宽点变成构建告警，维持 suggestion。
 dotnet_diagnostic.CS8618.severity = suggestion
 dotnet_diagnostic.CS8625.severity = suggestion
 
 # ======== 命名约定（dotnet/runtime） ========
-dotnet_naming_rule.private_fields_begin_with_underscore.severity = suggestion
-dotnet_naming_rule.private_fields_begin_with_underscore.symbols = private_fields
-dotnet_naming_rule.private_fields_begin_with_underscore.style = underscore_prefix
+# 符号命中多条规则时按「规则特异性」取优（属性约束越多越优；文件顺序无关，见 MS 命名规则文档），
+# 故用 required_modifiers（const/static）约束区分：常量 → PascalCase；私有静态字段 → s_camelCase；
+# 私有实例字段 → _camelCase。规则名数字前缀仅为可读性。
+dotnet_naming_rule.01_constants_are_pascal_case.severity = warning
+dotnet_naming_rule.01_constants_are_pascal_case.symbols = constants
+dotnet_naming_rule.01_constants_are_pascal_case.style = pascal_case
+dotnet_naming_symbols.constants.applicable_kinds = field
+dotnet_naming_symbols.constants.required_modifiers = const
+
+dotnet_naming_rule.02_private_static_fields_begin_with_s_underscore.severity = warning
+dotnet_naming_rule.02_private_static_fields_begin_with_s_underscore.symbols = private_static_fields
+dotnet_naming_rule.02_private_static_fields_begin_with_s_underscore.style = s_underscore_prefix
+dotnet_naming_symbols.private_static_fields.applicable_kinds = field
+dotnet_naming_symbols.private_static_fields.applicable_accessibilities = private
+dotnet_naming_symbols.private_static_fields.required_modifiers = static
+
+dotnet_naming_rule.03_private_fields_begin_with_underscore.severity = warning
+dotnet_naming_rule.03_private_fields_begin_with_underscore.symbols = private_fields
+dotnet_naming_rule.03_private_fields_begin_with_underscore.style = underscore_prefix
 dotnet_naming_symbols.private_fields.applicable_kinds = field
 dotnet_naming_symbols.private_fields.applicable_accessibilities = private
 
-dotnet_naming_rule.private_static_fields_begin_with_s_underscore.severity = suggestion
-dotnet_naming_rule.private_static_fields_begin_with_s_underscore.symbols = private_static_fields
-dotnet_naming_rule.private_static_fields_begin_with_s_underscore.style = s_underscore_prefix
-dotnet_naming_symbols.private_static_fields.applicable_kinds = field
-dotnet_naming_symbols.private_static_fields.applicable_accessibilities = private
-
-dotnet_naming_rule.constants_are_pascal_case.severity = suggestion
-dotnet_naming_rule.constants_are_pascal_case.symbols = constants
-dotnet_naming_rule.constants_are_pascal_case.style = pascal_case
-dotnet_naming_symbols.constants.applicable_kinds = field
-dotnet_naming_symbols.constants.modifiers = const
-
-dotnet_naming_rule.methods_are_pascal_case.severity = suggestion
-dotnet_naming_rule.methods_are_pascal_case.symbols = methods
-dotnet_naming_rule.methods_are_pascal_case.style = pascal_case
+dotnet_naming_rule.04_methods_are_pascal_case.severity = warning
+dotnet_naming_rule.04_methods_are_pascal_case.symbols = methods
+dotnet_naming_rule.04_methods_are_pascal_case.style = pascal_case
 dotnet_naming_symbols.methods.applicable_kinds = method
 
-dotnet_naming_rule.types_are_pascal_case.severity = suggestion
-dotnet_naming_rule.types_are_pascal_case.symbols = types
-dotnet_naming_rule.types_are_pascal_case.style = pascal_case
+dotnet_naming_rule.05_types_are_pascal_case.severity = warning
+dotnet_naming_rule.05_types_are_pascal_case.symbols = types
+dotnet_naming_rule.05_types_are_pascal_case.style = pascal_case
 dotnet_naming_symbols.types.applicable_kinds = class, struct, interface, enum
 
 # 命名风格定义
@@ -100,3 +142,37 @@ dotnet_naming_style.underscore_prefix.capitalization = camel_case
 dotnet_naming_style.s_underscore_prefix.required_prefix = s_
 dotnet_naming_style.s_underscore_prefix.capitalization = camel_case
 dotnet_naming_style.pascal_case.capitalization = pascal_case
+
+# ======== StyleCop.Analyzers（SA 规则） ========
+# 总体策略：类别整体 none——StyleCop 全开与既有契约冲突（SA1309/1310/1311 禁 _/s_ 前缀、
+# SA1101 要 this.、SA1633 要文件头、SA1600 系列要逐成员文档），且间距/文档类噪音规则无强制价值。
+# 命名交 IDE1006（上方 dotnet_naming_rule），本段只保留与标准一致、有强制价值的规则为 warning。
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.DocumentationRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.LayoutRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.MaintainabilityRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.NamingRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.OrderingRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.ReadabilityRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.SpacingRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.SpecialRules.severity = none
+# AD0001（分析器异常）= none：StyleCop.Analyzers 1.1.118 在 C# 13/14 新语法（record 声明等）
+# 上抛异常（KeyNotFoundException/NullReferenceException）——受影响的规则（SA1201/SA1500/
+# SA1502）本就按值禁用（none/suggestion），其分析结果无意义，故抑制崩溃噪音告警。
+dotnet_diagnostic.AD0001.severity = none
+
+# 保留为 warning（与标准一致的强制点；.editorconfig 按条覆盖类别 none）：
+dotnet_diagnostic.SA0001.severity = none      # 「XML 文档分析被关闭」的项目级噪音告警（文档规则本就全部 none）
+dotnet_diagnostic.SA1201.severity = suggestion # 元素顺序：字段/常量置顶 —— IDE 提示级（降级理由见下）
+dotnet_diagnostic.SA1202.severity = suggestion # 同种类元素按访问级别排序 —— IDE 提示级
+dotnet_diagnostic.SA1204.severity = suggestion # 静态元素先于实例元素 —— IDE 提示级
+dotnet_diagnostic.SA1214.severity = suggestion # readonly 字段先于非 readonly 字段 —— IDE 提示级
+dotnet_diagnostic.SA1400.severity = warning   # 显式访问级别（MaintainabilityRules）
+dotnet_diagnostic.SA1401.severity = warning   # 字段必须私有；public 字段禁用（MaintainabilityRules）
+dotnet_diagnostic.SA1507.severity = warning   # 禁止连续空行（LayoutRules）
+dotnet_diagnostic.SA1508.severity = warning   # 结束花括号前不得有空行（LayoutRules）
+#
+# SA1201/SA1202/SA1204/SA1214 降为 suggestion 的理由：StyleCop.Analyzers 1.1.118 的
+# 重排代码修复（ReorderCodeFixProvider）不被 dotnet format 应用（实测「未找到关联的代码修复」），
+# 仓库现状有 ~310 处成员顺序违规；手动重排全部成员组是纯机械大 diff，且与进行中的
+# Program.cs/DesktopBootstrap 拆分重构冲突。保留为 IDE 提示级，新代码按标准顺序书写即可，
+# 待工具链可自动重排（或后续专项 PR）再升 warning。

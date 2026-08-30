@@ -21,16 +21,16 @@ public static class RuntimeVersionGate
     /// <summary>版本探测时限：<c>dsh --version</c> 是毫秒级调用，超时按未知处理而非阻塞启动。</summary>
     public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(8);
 
-    private static readonly Regex VersionToken = new(
+    private static readonly Regex s_versionToken = new(
         @"v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>从 <c>--version</c> 输出提取首个版本 token（如 <c>0.1.1-rc.2</c>，容忍 <c>v</c> 前缀）；无匹配返回 null。</summary>
     public static string? TryParseVersionOutput(string output)
     {
-        foreach (var line in output.Split('\n'))
+        foreach (string line in output.Split('\n'))
         {
-            var match = VersionToken.Match(line.Trim());
+            Match match = s_versionToken.Match(line.Trim());
             if (match.Success)
             {
                 return match.Value.TrimStart('v', 'V');
@@ -51,8 +51,8 @@ public static class RuntimeVersionGate
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
     public static string BelowFloorBannerScript(string detectedVersion, UiLocale? uiLocale = null)
     {
-        var english = uiLocale?.IsEnglish == true;
-        var text = english
+        bool english = uiLocale?.IsEnglish == true;
+        string text = english
             ? $"Current dsh runtime version {detectedVersion} is below the minimum supported by this desktop ({MinimumVersion}); data or behavior may be incompatible. Upgrade dsh, or use the bundled runtime."
             : "当前 dsh 运行时版本 " + detectedVersion +
               " 低于桌面支持的最低版本 " + MinimumVersion +
@@ -94,8 +94,8 @@ public static class RuntimeVersionGate
 
             psi.ArgumentList.Add("--version");
 
-            using var p = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 dsh --version 进程");
-            var stdout = await p.StandardOutput.ReadToEndAsync(cts.Token).WaitAsync(cts.Token).ConfigureAwait(false);
+            using Process p = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 dsh --version 进程");
+            string stdout = await p.StandardOutput.ReadToEndAsync(cts.Token).WaitAsync(cts.Token).ConfigureAwait(false);
             await p.WaitForExitAsync(cts.Token).ConfigureAwait(false);
             return TryParseVersionOutput(stdout);
         }

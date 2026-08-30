@@ -25,26 +25,26 @@ public sealed class InstallerDownloader
     public async Task<string> DownloadAsync(ReleaseMeta meta, string destDir, TimeSpan timeout, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(destDir);
-        var destPath = Path.Combine(destDir, meta.AssetName);
-        var partPath = destPath + ".part";
+        string destPath = Path.Combine(destDir, meta.AssetName);
+        string partPath = destPath + ".part";
 
-        using var lockFs = TryAcquireDownloadLock(destDir)
+        using FileStream lockFs = TryAcquireDownloadLock(destDir)
             ?? throw new InvalidOperationException("另一实例正在下载更新，请稍候后再试");
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(timeout);
-        var startedAt = Environment.TickCount64;
+        long startedAt = Environment.TickCount64;
         _log?.Invoke($"[update] 下载开始：{meta.AssetName}（目标目录 {destDir}，超时 {timeout.TotalMinutes:0}m）");
         try
         {
-            await using (var target = File.Create(partPath))
+            await using (FileStream target = File.Create(partPath))
             {
                 // GetStreamAsync 对非 2xx 不抛（404/500 会把错误页当安装包写满 .part，只报误导的校验失败），
                 // 必须显式 EnsureSuccessStatusCode
-                using var response = await _http
+                using HttpResponseMessage response = await _http
                     .GetAsync(meta.AssetUrl, HttpCompletionOption.ResponseHeadersRead, cts.Token)
                     .ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
-                await using var source = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+                await using Stream source = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
                 await source.CopyToAsync(target, cts.Token).ConfigureAwait(false);
             }
 
@@ -74,14 +74,14 @@ public sealed class InstallerDownloader
     /// <summary>下载 SHA256SUMS.txt，找目标文件名的行比对哈希；找不到对应行视为无法校验——fail loud 拒装。</summary>
     public async Task VerifySha256Async(string filePath, string assetName, string sha256Url, CancellationToken cancellationToken)
     {
-        var sums = await _http.GetStringAsync(sha256Url, cancellationToken).ConfigureAwait(false);
-        var expected = ParseSha256(sums, assetName);
+        string sums = await _http.GetStringAsync(sha256Url, cancellationToken).ConfigureAwait(false);
+        string? expected = ParseSha256(sums, assetName);
         if (expected is null)
         {
             throw new InvalidOperationException($"SHA256SUMS 中无 {assetName} 条目");
         }
 
-        var actual = await ComputeSha256Async(filePath, cancellationToken).ConfigureAwait(false);
+        string actual = await ComputeSha256Async(filePath, cancellationToken).ConfigureAwait(false);
         if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
         {
             File.Delete(filePath);
@@ -100,8 +100,8 @@ public sealed class InstallerDownloader
     /// </remarks>
     public async Task<string> FetchSha256Async(string repository, string version, string assetName, CancellationToken cancellationToken)
     {
-        var url = $"https://github.com/{repository}/releases/download/{Uri.EscapeDataString(version)}/SHA256SUMS.txt";
-        var sums = await _http.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+        string url = $"https://github.com/{repository}/releases/download/{Uri.EscapeDataString(version)}/SHA256SUMS.txt";
+        string sums = await _http.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
         return ParseSha256(sums, assetName)
             ?? throw new InvalidOperationException($"安装时复核失败：SHA256SUMS 中无 {assetName} 条目（{version}）");
     }
@@ -109,18 +109,18 @@ public sealed class InstallerDownloader
     /// <summary>解析 SHA256SUMS 文本（格式 <c>&lt;hex&gt;  &lt;name&gt;</c>），返回目标文件的哈希。</summary>
     public static string? ParseSha256(string sumsContent, string assetName)
     {
-        foreach (var line in sumsContent.Split('\n'))
+        foreach (string line in sumsContent.Split('\n'))
         {
-            var trimmed = line.Trim();
-            var space = trimmed.IndexOf(' ');
+            string trimmed = line.Trim();
+            int space = trimmed.IndexOf(' ');
             if (space <= 0)
             {
                 continue;
             }
 
-            var hex = trimmed[..space];
+            string hex = trimmed[..space];
             // 标准格式为「<hex>␣␣<name>」双空格；二进制标记为「<hex>␣*<name>」——两种都接受
-            var name = trimmed[(space + 1)..].TrimStart('*', ' ');
+            string name = trimmed[(space + 1)..].TrimStart('*', ' ');
             if (name == assetName && hex.Length == 64 && hex.All(Uri.IsHexDigit))
             {
                 return hex;
@@ -151,8 +151,8 @@ public sealed class InstallerDownloader
     /// <summary>流式计算文件 SHA-256（安装包百 MB 级，不整读内存）。</summary>
     public static async Task<string> ComputeSha256Async(string filePath, CancellationToken cancellationToken)
     {
-        await using var fs = File.OpenRead(filePath);
-        var bytes = await SHA256.HashDataAsync(fs, cancellationToken).ConfigureAwait(false);
+        await using FileStream fs = File.OpenRead(filePath);
+        byte[] bytes = await SHA256.HashDataAsync(fs, cancellationToken).ConfigureAwait(false);
         return Convert.ToHexString(bytes);
     }
 }

@@ -25,7 +25,7 @@ public class RynNavigationCallbacksTests
             log: null,
             currentOrigin: "http://127.0.0.1:41449");
 
-        var decision = handler.OnWebViewNavigating(Navigating(url));
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating(url));
 
         Assert.Equal(NavigationDecision.Block, decision);
         Assert.Single(opened);
@@ -44,7 +44,7 @@ public class RynNavigationCallbacksTests
             log: null,
             currentOrigin: "http://127.0.0.1:41449");
 
-        var decision = handler.OnWebViewNavigating(Navigating(url));
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating(url));
 
         Assert.Equal(NavigationDecision.Allow, decision);
         Assert.Empty(opened);
@@ -63,7 +63,7 @@ public class RynNavigationCallbacksTests
             log: null,
             currentOrigin: "http://127.0.0.1:41449");
 
-        var decision = handler.OnWebViewNavigating(Navigating(url));
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating(url));
 
         Assert.Equal(NavigationDecision.Allow, decision);
         Assert.Empty(opened);
@@ -78,7 +78,7 @@ public class RynNavigationCallbacksTests
             log: null,
             currentOrigin: "http://127.0.0.1:41449");
 
-        var decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
 
         Assert.Equal(NavigationDecision.Block, decision);
     }
@@ -93,7 +93,7 @@ public class RynNavigationCallbacksTests
             log: null,
             currentOrigin: null);
 
-        var decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
 
         Assert.Equal(NavigationDecision.Block, decision);
         Assert.Single(opened);
@@ -103,7 +103,7 @@ public class RynNavigationCallbacksTests
     [Fact]
     public void Navigated_InvokesOnNavigatedCallback()
     {
-        var calls = 0;
+        int calls = 0;
         var handler = new RynNavigationCallbacks();
         handler.SetOnNavigated(() => calls++);
 
@@ -125,7 +125,7 @@ public class RynNavigationCallbacksTests
             currentOrigin: origin);
 
         // IsUserInitiated=false：宿主程序化导航（恢复/重定向）放行，即使目标是站外或漂移后的端口
-        var decision = handler.OnWebViewNavigating(Navigating(url, userInitiated: false));
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating(url, userInitiated: false));
 
         Assert.Equal(NavigationDecision.Allow, decision);
         Assert.Empty(opened);
@@ -145,7 +145,7 @@ public class RynNavigationCallbacksTests
         handler.OnWebViewNavigated(new WebViewNavigatedContext(new Uri("http://127.0.0.1:9999/")));
 
         // 新 origin 上的同源链接 → 放行（不再是外部）
-        var decision = handler.OnWebViewNavigating(Navigating("http://127.0.0.1:9999/app"));
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating("http://127.0.0.1:9999/app"));
 
         Assert.Equal(NavigationDecision.Allow, decision);
         Assert.Empty(opened);
@@ -162,7 +162,7 @@ public class RynNavigationCallbacksTests
             currentOrigin: "http://127.0.0.1:41449",
             notifyLinkFail: url => notified.Add(url));
 
-        var decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
 
         Assert.Equal(NavigationDecision.Block, decision);
         Assert.Single(notified);
@@ -180,7 +180,7 @@ public class RynNavigationCallbacksTests
             currentOrigin: "http://127.0.0.1:41449",
             notifyLinkFail: url => notified.Add(url));
 
-        var decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
 
         Assert.Equal(NavigationDecision.Block, decision);
         Assert.Single(notified);

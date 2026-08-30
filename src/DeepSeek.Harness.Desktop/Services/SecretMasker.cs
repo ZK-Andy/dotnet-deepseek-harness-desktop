@@ -43,13 +43,13 @@ internal static partial class SecretMasker
 
         // 层序刻意安排：结构化遮罩先行（保留键名与上下文），头行整值兜底殿后——
         // 它会吞掉行内自冒号起的全部剩余内容，必须最后执行
-        var masked = UrlSecretKey().Replace(message, "$1$2=***");
+        string masked = UrlSecretKey().Replace(message, "$1$2=***");
         masked = QuotedAssignment().Replace(masked, "$1$2***$2");
         masked = SkToken().Replace(masked, "sk-***");
         masked = HexToken().Replace(masked, "***");
         masked = HeaderLine().Replace(masked, static m =>
         {
-            var colon = m.Value.IndexOf(':');
+            int colon = m.Value.IndexOf(':');
             return m.Value[..(colon + 1)] + " ***";
         });
         return masked;
