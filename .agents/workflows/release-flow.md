@@ -22,4 +22,4 @@
 - preflight 的资产矩阵/体积下限在 `scripts/release-preflight.sh`（下限 15MB，当前实测包体 26-36MB）；体积随壳变化须同 PR 调整该值。
 - 同名 tag 重打不会让已装客户端重新自更新（feed 按版本号判定）——宁跳版本号也不重打已发布的 tag（v0.3.4 三次重打被迫出 v0.3.5 的教训）。
 - 改 `plugins/dsh-desktop-companion` 必须 bump version，否则版本感知升级静默不触发。
-- `scripts/release-notes.sh` 只映射 `feat/fix/perf/docs/chore|build|ci`，**`refactor`/`style` 提交被静默丢弃**——发行含这两类时正文会漏该部分（v0.4.1 教训：P0 refactor `9c6a0cb` / 编码规范 `abd4866`/`008ac1a` / refactor(review) `e50c5f4` 未入正文「构建 · CI · 其他」，仅剩 bump）。修法：补 `refactor`/`style` → 「构建 · CI · 其他」映射。
+- `scripts/release-notes.sh` 的类型映射必须覆盖全部 conventional commit 类型（feat/fix/perf/docs/chore/build/ci/**refactor/style**），并跑 `bash scripts/release-notes.sh --self-test` 断言全类型有归属 bucket——漏一类发行正文就静默少一节（v0.4.1 教训：P0 refactor `9c6a0cb` / 编码规范 `abd4866`/`008ac1a` / refactor(review) `e50c5f4` 曾未入「构建 · CI · 其他」）。映射集中在 `type_bucket`，改它须同步自测。
