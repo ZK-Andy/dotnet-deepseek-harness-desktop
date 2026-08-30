@@ -21,7 +21,7 @@
          周期验证可临时 -p:PublishAot=true。 -->
     <PublishAot>false</PublishAot>
     <!-- 自更新比较基准；发布时 CI 以 -p:Version=$(tag 去前缀) 覆盖 -->
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
