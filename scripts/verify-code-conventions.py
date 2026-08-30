@@ -123,7 +123,7 @@ def _violations(abspath: Path, rel: Path) -> list[str]:
     d005_hits = 0
     for lineno, raw in enumerate(text.splitlines(), 1):
         code = _strip_comments_line(raw, in_block)
-        if IGNORE_MARK in code:
+        if IGNORE_MARK in code or IGNORE_MARK in raw:
             continue
         if D004_RE.search(code):
             d004_hits += 1
@@ -185,6 +185,17 @@ def _self_test() -> int:
             print("  ok: D005 whitelisted infra file not flagged")
         else:
             print(f"  ✗ infra file flagged: {inf}")
+            failed = 1
+
+        # ignore marker on the same line suppresses that line's D005.
+        (root / "Ignored.cs").write_text(
+            "public class I { bool Has(string p) => File.Exists(p); } // verify-code-conventions: ignore 组合根装配：配置面\n",
+            encoding="utf-8")
+        inf = _scan(root)
+        if not any("Ignored.cs" in r for r in inf):
+            print("  ok: D005 ignore marker suppresses a line")
+        else:
+            print(f"  ✗ ignore marker not honored: {inf}")
             failed = 1
 
     if failed == 0:

@@ -18,7 +18,7 @@ public sealed partial class DesktopBootstrap
     {
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 trayReady）
         _iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
-        _trayAvailable = File.Exists(_iconPath);
+        _trayAvailable = File.Exists(_iconPath); // verify-code-conventions: ignore 组合根装配：icon 存在性探测是配置面，非业务/领域直调
 
         _app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
@@ -39,7 +39,7 @@ public sealed partial class DesktopBootstrap
                 opts.Height = 800;
                 opts.ApplicationId = DevEnvironment.ApplicationIdFor(
                     "io.github.ZK-Andy.dotnet-deepseek-harness-desktop", _isDev);
-                if (File.Exists(_iconPath))
+                if (File.Exists(_iconPath)) // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 {
                     opts.IconPath = _iconPath;
                 }
@@ -48,7 +48,7 @@ public sealed partial class DesktopBootstrap
                     Services.HostLog.Write($"[host] icon 缺失：{_iconPath}");
                 }
 
-                Services.HostLog.Write($"[host] Ryn opts: Url={(_webUrl is not null ? _webUrl.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(_iconPath) ? _iconPath : "missing")}");
+                Services.HostLog.Write($"[host] Ryn opts: Url={(_webUrl is not null ? _webUrl.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(_iconPath) ? _iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 // WebView 调试器默认关闭（正式打包无调试窗口）；开发期设 DSH_DEVTOOLS=1 开启。
                 opts.DevTools = Environment.GetEnvironmentVariable("DSH_DEVTOOLS") == "1";
             })

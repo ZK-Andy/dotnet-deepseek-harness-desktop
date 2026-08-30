@@ -45,7 +45,7 @@ public sealed partial class DesktopBootstrap
         }
 
         var updateOptions = Services.Update.UpdateOptions.Load(AppContext.BaseDirectory);
-        var updateHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        var updateHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan }; // verify-code-conventions: ignore 组合根装配：自更新子域的 HttpClient 由组合根构造注入（属装配）
         string updatesDir = Path.Combine(HarnessRuntimeHost.ResolveDshHome(), updateOptions.UpdatesDirName);
         string? updatePkgKind = Services.Update.UpdatePlatform.DetectCurrentPackageKind();
         _updateMachine = new Services.Update.UpdateStateMachine(
