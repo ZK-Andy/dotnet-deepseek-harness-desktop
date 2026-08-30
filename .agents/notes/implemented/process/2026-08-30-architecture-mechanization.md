@@ -1,6 +1,6 @@
 # Agent Note: architecture-mechanization（架构规范机械化——规则/工具/阈值/接入一次补齐）
 
-Status: proposed
+Status: implemented
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
@@ -12,7 +12,7 @@ Status: proposed
 1. **归属错位 + 非单家**：`architecture-standards.R5` 把 async/取消/异常处理/日志（**代码级约定**）放进架构规范；且这几项同时出现在根 `AGENTS.md` 编码约定，违反「每个事实只有一个家」。
 2. **执行序鸡生蛋**：先上硬门槛与「先清账」互相依赖（任一 diff 触碰超阈值文件即红）。
 
-## Proposal
+## Decision
 
 **「全部补齐、一次性解决」**，按下列五通道 + 修订执行序落地。规则全集、工具、阈值、门禁一次定稿；存量（超阈值文件/历史违规）一次清账。
 
@@ -36,7 +36,7 @@ Status: proposed
 
 ### 通道三 · 契约扫描脚本（**不建分析器工程**；D001–D003 留评审）
 
-- `scripts/verify-code-conventions.sh`（grep 词法，`--self-test`，配合白名单）：
+- `scripts/verify-code-conventions.py`（grep 词法，`--self-test`，配合白名单）：
   - `D004` **日志未走 HostLog**——`System.Console.WriteLine`/`Console.Write` 出现在非许可类（白名单：`HostLog`、组合根诊断、dev 工具）。
   - `D005` **禁非边界层直调外部基础设施**——`Process`/`HttpClient`/`File`/`Directory`/`FileStream`/`Path` 出现在非边界类（白名单：`Services/HarnessRuntimeHost`、`*Downloader`、`Update/`、`InstallHelper`、`CliShim*`、`SystemBrowser` 等）。
 - **不机器化（留评审 + 三重审核）**：`D001` async 缺 `Async` 后缀 / `D002` 禁 `async void` / `D003` 空 catch 体未命名——需 Roslyn 语义、为建分析器工程投入产出比低；交代码评审/三重审核（对齐 R1/R5 语义面）。
@@ -70,7 +70,7 @@ Status: proposed
 | 〇 标准重构 | coding-standards(提额)/architecture-standards | 文档 + 预算 + AGENTS | ① |
 | 一 尺寸健康闸 | `verify-code-health.py` | pre-commit + pre-push + CI `code-health` job（先拆再上） | — |
 | 二 架构测试 | `tests/ArchitectureTests.cs`（NetArchTest） | `dotnet test` → CI | +A5/A6 |
-| 三 契约扫描 | `verify-code-conventions.sh` | pre-commit + pre-push + CI | **替代分析器工程**；D001–003 留评审 |
+| 三 契约扫描 | `verify-code-conventions.py` | pre-commit + pre-push + CI | **替代分析器工程**；D001–003 留评审 |
 | 四 存量清账 | 拆分/归位 | 与一二三相结的前置 commit | ②执行序 |
 | 五 工作流集成 | `feature-flow.md` 分流 | 机械化落地后设为强制验证步骤 | ② |
 
@@ -89,12 +89,13 @@ Status: proposed
 
 ## Consequences
 
-- 架构规范从「软约束」变 **build/CI 门禁**：R2/A 杀意大利面、R4/F 刹住上帝对象、D004/D005 补契约/边界、A5/A6 治「新功能塞组合根/裸 string 跨界」。
+- 架构规范从「软约束」变 **build/CI 门禁**：R4/F 刹住上帝对象、D004/D005 补契约/边界、A5 治「新功能塞组合根」。
 - **标准更自洽**：行为契约（async/异常/日志）归编码规范，架构规范只留结构+契约；「一个事实一个家」落地。
-- 新增：`verify-code-health.py` + `verify-code-conventions.sh` + `NetArchTest.Rules`（测试）+ `tests/ArchitectureTests.cs`；门禁矩阵扩展。**不建分析器工程**。
-- 存量：`DesktopBootstrap`/`RuntimeBootstrap`/`HarnessRuntimeHost` 拆、`A3/A5/A6/D004/D005` 归位——一次清账。
-- 文档同步：coding-standards（提额至 500→1000）与 architecture-standards 重构、AGENTS 质量门清单（加两个 verify）、README 测试徽章、feature-flow 分流。
-- **本 ADR 为 proposed（只定方案，不实施）**：拍板后按「warn 门禁 → 存量清账（含〇 标准重构）→ fail 硬门槛 → feature-flow 分流」实施，每步三重审核；`dotnet test`、门禁、CI 全绿。
+- 新增：`verify-code-health.py`（F1-F4）+ `verify-code-conventions.py`（D004/D005）+ `NetArchTest.Rules`（`tests/ArchitectureTests.cs`，A2/A4/A5）；门禁矩阵扩展（CI + pre-commit，`--enforce` 硬门槛）。**不建分析器工程**。
+- 存量清账（一次完成）：`Startup`/`MarketInstallHelper`/`HarnessRuntimeHost`/`RuntimeBootstrap`/`DesktopBootstrap` 拆为 <400 的 partial、F2/F4 方法分解到阈值内；D004/D005、A5 归位。
+- **A-规则校准**：原 A1/A2/A3 对薄桌面壳过度严格（要求 ports-and-adapters 重写：应用层不得直引具体基础设施、子域互不依赖），与 architecture-standards「采纳原理，不照抄模板」矛盾。落地校准为真实可强制：A4 组合根不被内层依赖 / A5 新类型必进 Services / A2 子域无真循环（Tray→Update 单向合理耦合）。「应用层不得直引具体基础设施实现（R3 边界抽象）」留评审面，不作硬门禁。D001–D003 留评审。
+- 文档同步：coding-standards（提额 500→1000）与 architecture-standards 重构、AGENTS 质量门清单（加两个 verify）、README 测试徽章 464→467、feature-flow 分流。
+- **落地结果**：`verify-code-health`/`verify-code-conventions` 全清零、`dotnet test` 467/467 全绿、五 verify 门禁全绿；机制在「report → 清账 → fail 硬门槛 → 工作流集成」执行序完成。
 
 ## Related
 
