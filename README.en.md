@@ -96,7 +96,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 # without a PATH dsh the first-launch bootstrap runs, which needs network)
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# tests (463/463)
+# tests (464/464)
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # webview devtools (default off)
@@ -109,7 +109,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program + Services/ (runtime supervision, self-update, system tray, single-instance activation, diagnostics)
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 463/463
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 464/464
 ├── scripts/                        # gates + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```

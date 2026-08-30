@@ -96,7 +96,7 @@
 # 运行（开发环境必须带 DSH_DESKTOP_DEV=1——dev 隔离 home 与单实例后缀；无 PATH dsh 时走首启引导，需网络）
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# 测试（463/463）
+# 测试（464/464）
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # WebView 调试器（默认关）
@@ -109,7 +109,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn 壳：Program + Services/（运行时监督、自更新、系统托盘、单实例仲裁、诊断导出等）
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 463/463
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 464/464
 ├── scripts/                        # 门禁 + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```
