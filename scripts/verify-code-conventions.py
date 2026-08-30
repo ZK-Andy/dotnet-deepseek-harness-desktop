@@ -39,10 +39,14 @@ D004_WHITELIST = {"HostLog.cs", "Program.cs"}
 # must NOT directly use the scanned infrastructure primitives.
 D005_WHITELIST = {
     "HarnessRuntimeHost.cs",
+    "HarnessRuntimeHost.Paths.cs",
     "RuntimeBootstrap.cs",
+    "RuntimeBootstrap.Engine.cs",
+    "RuntimeBootstrap.Pure.cs",
     "RuntimeLocator.cs",
     "RuntimeVersionGate.cs",
     "MarketInstallHelper.cs",
+    "MarketInstallHelper.Json.cs",
     "SystemBrowser.cs",
     "LauncherActivation.cs",
     "HostLog.cs",
