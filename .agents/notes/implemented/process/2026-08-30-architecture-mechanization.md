@@ -96,6 +96,7 @@ Status: implemented
 - **A-规则校准（用户拍板保留为评审项）**：原 A1/A2/A3 对薄桌面壳过度严格（要求 ports-and-adapters 重写：应用层不得直引具体基础设施、子域互不依赖），与 architecture-standards「采纳原理，不照抄模板」矛盾。落地校准为真实可强制：A4 组合根不被内层依赖 / A5 新类型必进 Services / A2 子域无真循环（Tray→Update 单向合理耦合）。**A3（应用层不得直引具体基础设施实现，R3 边界抽象）与 A6（IPC 跨界 ID 强类型）保留为评审项、不作硬门禁**（前者需接口抽取、后者未达量产）——留评审/AI 兜底。D001–D003 留评审。
 - 文档同步：coding-standards（提额 500→1000）与 architecture-standards 重构、AGENTS 质量门清单（加两个 verify）、README 测试徽章 464→467、feature-flow 分流。
 - **落地结果**：`verify-code-health`/`verify-code-conventions` 全清零、`dotnet test` 467/467 全绿、五 verify 门禁全绿；机制在「report → 清账 → fail 硬门槛 → 工作流集成」执行序完成。
+- **留评审项补审确认（2026-08-30，对本 ADR 实施链 `641525e^..cf4306f` 三重审核 R1/R2/R3 串行）**：R1 组合根只装配 / R2 D001–D003+IPC 强类型 **无代码 Blocker**（留评审项代码达标：IPC 帧全走 `AppJsonContext` 源生成、无 async void、空 catch 均注释命名所吞）；R3 文档一致性 **1 Blocker**（A6 门禁/留评审口径在本文档内部互斥、与 shipped 现实矛盾——本文档已修）+ 4 Suggestion（已修）。后续评审仍按 AGENTS 评审检查项持续核对 D001–D003/R1/R3/IPC，不作一次性勾销。
 
 ## 三重审核执行契约（落地）
 
