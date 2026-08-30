@@ -333,77 +333,15 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    // TODO(executor-fold-killtree): 与 RunProcessStreamingAsync 双执行器重复，且缺取消/异常整树击杀——
-    // 引导路径传 bootCt，取消时 dsh plugin add 会带 profile 写权成孤儿（流式版注释点名的同一不变量）。
-    // 可折叠为 (psi, ct, onLine=null) => RunProcessStreamingAsync(psi, ct, null)，行为变更需配套回归。
-    /// <summary>
-    /// 运行一次 <c>dsh plugin add</c> 子进程（写入桌面 profile），供 <see cref="Services.MarketInstallHelper.EnsureMarketFromRegistryAsync"/>
-    /// 注入执行。env（DSH_HOME + pnpm store/cache 重定向 + UTF-8 流）已由该 helper 配好；
-    /// 这里只负责 spawn、双流并发读、取消传递。
-    /// </summary>
-    private async Task<(int Exit, string Out, string Err)> RunDshPluginAddAsync(
-        System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
-    {
-        using var p = System.Diagnostics.Process.Start(psi);
-        if (p is null)
-        {
-            throw new InvalidOperationException("无法启动 dsh plugin 进程");
-        }
-
-        Task<string> stdoutTask = p.StandardOutput.ReadToEndAsync(ct);
-        Task<string> stderrTask = p.StandardError.ReadToEndAsync(ct);
-        await p.WaitForExitAsync(ct).ConfigureAwait(false);
-        return (p.ExitCode, await stdoutTask.ConfigureAwait(false), await stderrTask.ConfigureAwait(false));
-    }
-
-    /// <summary>
-    /// 流式版 <c>dsh plugin add</c> 执行器（ADR reference-alignment 批次二）：逐行读 stdout/stderr，
-    /// 把每行经 <paramref name="onLine"/> 转发（插件引导页日志回流用），同时累积完整输出供调用方
-    /// 判定。与 <see cref="RunDshPluginAddAsync"/> 同为测试友好形态；此处 onLine 是 fire-and-forget
-    /// 的页面推送，绝不抛入执行器（推送失败只丢一行日志，不影响安装主链路）。
-    /// 取消/异常路径整树击杀（对齐 <c>RuntimeBootstrap.RunCaptureAsync</c> 防御不变量）：
-    /// <c>WaitForExitAsync</c>/<c>ReadLineAsync</c> 的 OCE 会跳过等待，using dispose 只关句柄
-    /// 不杀进程——<c>dsh plugin add</c> 会带着 profile 写权成孤儿，后续引导批次与新进程竞写。
-    /// </summary>
-    private static async Task<(int Exit, string Out, string Err)> RunProcessStreamingAsync(
-        System.Diagnostics.ProcessStartInfo psi, CancellationToken ct, Action<string>? onLine)
-    {
-        using var p = System.Diagnostics.Process.Start(psi);
-        if (p is null)
-        {
-            throw new InvalidOperationException("无法启动 dsh plugin 进程");
-        }
-
-        var outSb = new System.Text.StringBuilder();
-        var errSb = new System.Text.StringBuilder();
-
-        try
-        {
-            Task[] tasks = new[] { Program.PumpAsync(p.StandardOutput, outSb, onLine, ct), Program.PumpAsync(p.StandardError, errSb, onLine, ct) };
-            await p.WaitForExitAsync(ct).ConfigureAwait(false);
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-            return (p.ExitCode, outSb.ToString(), errSb.ToString());
-        }
-        catch (Exception)
-        {
-            try
-            {
-                p.Kill(entireProcessTree: true);
-            }
-            catch (InvalidOperationException)
-            {
-                // 进程已自行退出：无需击杀
-            }
-
-            throw;
-        }
-    }
-
-    /// <summary>流式执行器：把 <c>dsh plugin add</c> 的每行输出推给插件引导页日志区。</summary>
+    /// <summary>流式执行器：把 <c>dsh plugin add</c> 的每行输出推给插件引导页日志区。
+    /// 双执行器已折叠（原 TODO(executor-fold-killtree)）：统一走
+    /// <see cref="Services.PluginProcessRunner.RunStreamingAsync"/>——单一实现、含取消/异常整树击杀
+    /// （对齐 <c>RuntimeBootstrap.RunCaptureAsync</c> 防御不变量），引导路径传 bootCt 取消时
+    /// 不再让 dsh plugin add 带 profile 写权成孤儿。</summary>
     private async Task<(int Exit, string Out, string Err)> RunDshPluginAddStreamingAsync(
         System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
     {
-        return await RunProcessStreamingAsync(psi, ct, line => PushPreinstallLog(_windowAccessor, line));
+        return await Services.PluginProcessRunner.RunStreamingAsync(psi, ct, line => PushPreinstallLog(_windowAccessor, line));
     }
 
     /// <summary>

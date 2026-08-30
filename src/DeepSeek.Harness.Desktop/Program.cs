@@ -42,17 +42,4 @@ public static class Program
             return 1;
         }
     }
-
-    /// <summary>逐行泵出进程流（测试可注入内存流验证行转发与累积；生产经进程的 stdout/stderr 由
-    /// DesktopBootstrap.RunProcessStreamingAsync 调用）。取消由调用方经 <paramref name="ct"/> 传递。</summary>
-    internal static async Task PumpAsync(
-        System.IO.StreamReader reader, System.Text.StringBuilder sb, Action<string>? onLine, CancellationToken ct)
-    {
-        string? line;
-        while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) is not null)
-        {
-            sb.AppendLine(line);
-            onLine?.Invoke(line);
-        }
-    }
 }

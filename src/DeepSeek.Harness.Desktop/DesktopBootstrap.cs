@@ -264,7 +264,7 @@ public sealed partial class DesktopBootstrap
                     HarnessRuntimeHost.ResolveDshHome(),
                     Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
                     Services.HostLog.Write,
-                    RunDshPluginAddAsync,
+                    Services.PluginProcessRunner.RunAsync,
                     CancellationToken.None).GetAwaiter().GetResult();
             }
             catch (Exception ex)
@@ -540,7 +540,7 @@ public sealed partial class DesktopBootstrap
                             HarnessRuntimeHost.ResolveDshHome(),
                             Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
                             Services.HostLog.Write,
-                            RunDshPluginAddAsync,
+                            Services.PluginProcessRunner.RunAsync,
                             bootCt);
                     }
                     catch (Exception ex)

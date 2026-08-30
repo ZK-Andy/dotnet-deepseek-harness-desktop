@@ -60,6 +60,8 @@ D005_WHITELIST = {
     "CliShimPlanner.cs",
     "CliShimPath.cs",
     "CliShimRegistrar.cs",
+    # process-spawn boundary (extracted from compose root, ADR 组合根只装配)
+    "PluginProcessRunner.cs",
     # settings/legacy persistence boundary (read-only file I/O)
     "LegacyHomeNotice.cs",
     "CloseBehaviorPreference.cs",

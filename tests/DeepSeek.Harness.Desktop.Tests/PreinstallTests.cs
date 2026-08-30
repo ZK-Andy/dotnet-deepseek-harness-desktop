@@ -220,7 +220,7 @@ public class PreinstallTests
         var seen = new List<string>();
         using var ms = new MemoryStream(Encoding.UTF8.GetBytes("alpha\nbeta\ngamma\n"));
         using var reader = new StreamReader(ms);
-        await Program.PumpAsync(reader, sb, seen.Add, CancellationToken.None);
+        await PluginProcessRunner.PumpAsync(reader, sb, seen.Add, CancellationToken.None);
         Assert.Equal("alpha\nbeta\ngamma\n", sb.ToString());
         Assert.Equal(["alpha", "beta", "gamma"], seen);
     }
@@ -232,7 +232,7 @@ public class PreinstallTests
         var seen = new List<string>();
         using var ms = new MemoryStream(Encoding.UTF8.GetBytes("a\nb"));
         using var reader = new StreamReader(ms);
-        await Program.PumpAsync(reader, sb, seen.Add, CancellationToken.None);
+        await PluginProcessRunner.PumpAsync(reader, sb, seen.Add, CancellationToken.None);
         Assert.Equal(["a", "b"], seen);
     }
 }
