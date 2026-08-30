@@ -53,6 +53,7 @@ Status: proposed
 - `feature-flow.md` 拆两条：**新增**（ADR 必写 → 架构适配检查 → 机械化验证 → 单元+行为级回归 → 三重审核）；**修复**（fail loud 取证 → 复现→根因→回归/钉子；触安全面/IPC/发版/跨模块或非平凡类则三重审核；不补丁式）。
 - **先拆再上 = 硬门槛**：`verify-code-health` fail loud 强制——(a) diff 不得把文件/方法**顶过阈值**（F1–F4）;(b) 触碰已超阈值文件须**先拆到阈值内**（拆分是合并前置、本次变更应让文件缩小）。
 - **done = 通过全部验证**：ADR（需要时）→ 机械化门禁（尺寸/依赖/契约）→ 测试（含回归）→ 评审（需要时）→ CI 全绿。
+- **AI 兜底评审（补 upstream 技能缺口）**：上游 dsh-code-review 为 DSH 仓库通用清单、不含本项目规则；故「留评审」的 D001–D003 与 R1/R3/IPC 语义，须由评审代理**显式补审**——在根 `AGENTS.md`「评审检查项（AI 兜底）」+ feature-flow 步骤 5 引用中列出，评审代理按 coding-standards/architecture-standards 核对（详见工艺落地时更新 [feature-flow](../../../workflows/feature-flow.md) 步骤 5）。
 - **债务规则**：不新增未登记债务（`TODO(...)` 带理由+计划归还）；不改范围外代码。
 
 ### 执行顺序（修订，解鸡生蛋）

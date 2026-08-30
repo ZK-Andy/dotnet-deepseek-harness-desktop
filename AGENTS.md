@@ -36,6 +36,17 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 - 测试：`dotnet test`（xunit）；覆盖边界、错误路径、事件顺序、并发；**行为级变更必须配套回归/快照**；mock 只用于昂贵/非确定性边界。
 - **DSH 插件命名**：`dsh-<域>-<角色>` 短 token（先例 `dsh-desktop-companion`）；禁止 `-plugin-` 类中缀；注册前查 npm 与 dshmarket 占用。
 
+## 评审检查项（AI 兜底）
+
+以下**「留评审/语义」规则机器无法强制**（机械化门禁未覆盖），由三重审核代理在**仓库约定**下额外执行——上游 dsh-code-review 技能只含通用清单、不含本项目规则，须显式补审（见 [feature-flow](.agents/workflows/feature-flow.md) 步骤 5）：
+
+- **D001–D003**：`async` 方法名应含 `Async` 尾缀；非事件处理器的 `void` `async` 方法；`catch` 空体须命名所吞（[coding-standards](docs/coding-standards.md) 行为契约）。
+- **R1 组合根只装配**：`DesktopBootstrap`/`DesktopBootstrap.Startup` 不得夹带业务/领域逻辑（[architecture-standards](docs/architecture-standards.md) R1）。
+- **R3 边界抽象完备**：外部交互（Ryn/native、dsh 进程、companion IPC、文件/网络、更新 feed、注册表/rc）是否都经接口、未直漏进业务层（R3）。
+- **IPC 强类型**：跨界/事件帧 ID 不用裸 `string` 跨包；帧形状经 `AppJsonContext` 源生成（R3）。
+
+评审代理按上述清单核对；发现即作 blocker 或 suggestion。
+
 ## GitHub 调研纪律（强制）
 
 调研 GitHub 项目一律 gh CLI；禁以 web 检索开局、禁全量克隆作首选。六步配方见 [.agents/workflows/github-research.md](.agents/workflows/github-research.md)。
