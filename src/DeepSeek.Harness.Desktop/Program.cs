@@ -200,15 +200,18 @@ public static class Program
             Services.HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
         }
         // 对齐参照（dsh-tauri-desk launch.rs）：随包插件（companion）在 spawn dsh 前安装，绝不
-        // 「启动后 3s 装 → 重启」。此路径为 bundled/PATH-dsh 且非引导；引导路径在后台任务内、
-        // BindRuntime 后同样 spawn 前安装。dev 显式覆盖共享 home 时跳过（防串扰）。
-        if (!bootstrapNeeded && bundledClosure is not null && !(isDev && !devAutoIsolated))
+        // 「启动后 3s 装 → 重启」。覆盖两种运行时：捆绑闭包（node <dshEntry>）与 PATH-dsh（dsh 命令，
+        // bundledClosure 为 null 时 nodeExe/dshEntry 传 null，EnsureBundledPluginsBeforeSpawnAsync 内
+        // 回退到 PATH 上的 dsh）。v0.4.0 实机回归：旧门控要求 bundledClosure is not null，漏了「有 PATH
+        // dsh、无捆绑闭包」——online-first 升级存量用户（v0.3.x companion 是 file: resources/runtime 引用、
+        // 已被 reconcile 移除）时 companion 永不重新安装。dev 显式覆盖共享 home 时跳过（防串扰）。
+        if (!bootstrapNeeded && !(isDev && !devAutoIsolated))
         {
             try
             {
                 Services.MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                    bundledClosure.Value.NodeExe,
-                    bundledClosure.Value.DshEntry,
+                    bundledClosure?.NodeExe,
+                    bundledClosure?.DshEntry,
                     HarnessRuntimeHost.ResolveDshHome(),
                     Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
                     Services.HostLog.Write,

@@ -348,16 +348,17 @@ public static class MarketInstallHelper
     /// （缺 companion 不阻塞 dsh 起动，下次启动自愈）。与 <see cref="EnsureMarketFromRegistryAsync"/>
     /// 同为注入 <paramref name="runPluginAdd"/> 的测试友好形态——生产用真实 spawn，测试用 fake 断言参数/环境。
     /// </summary>
-    /// <param name="nodeExe">运行时的 node 可执行。</param>
-    /// <param name="dshEntry">运行时 dsh bin.js 入口。</param>
+    /// <param name="nodeExe">运行时的 node 可执行；<see langword="null"/> 时用 PATH 上的 <c>dsh</c> 命令
+    /// （PATH-dsh 运行时形态，等价宿主 <c>HarnessRuntimeHost</c> spawn 时的 <c>dsh</c> 命令解析）。</param>
+    /// <param name="dshEntry">运行时 dsh bin.js 入口；<paramref name="nodeExe"/> 为 null（PATH dsh）时无入口参数。</param>
     /// <param name="dshHome">共享 DSH_HOME。</param>
     /// <param name="installerPluginsDir">安装器自带插件资源目录（resources/plugins）；开发/引导形态可 null。</param>
     /// <param name="log">诊断日志出口。</param>
     /// <param name="runPluginAdd">执行一次 <c>dsh plugin add</c> 的注入委托。</param>
     /// <param name="ct">取消令牌。</param>
     public static async Task EnsureBundledPluginsBeforeSpawnAsync(
-        string nodeExe,
-        string dshEntry,
+        string? nodeExe,
+        string? dshEntry,
         string dshHome,
         string? installerPluginsDir,
         Action<string> log,
@@ -383,12 +384,17 @@ public static class MarketInstallHelper
             {
                 var psi = new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = nodeExe,
+                    // nodeExe 为 null = PATH-dsh 运行时：用 PATH 上的 dsh 命令（等价宿主 spawn 的 dsh），
+                    // 不再有独立入口参数；为非 null 时仍是 node <dshEntry>。
+                    FileName = nodeExe is null ? "dsh" : nodeExe,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                 };
-                psi.ArgumentList.Add(dshEntry);
+                if (dshEntry is not null)
+                {
+                    psi.ArgumentList.Add(dshEntry);
+                }
                 psi.ArgumentList.Add("plugin");
                 psi.ArgumentList.Add("--profile");
                 psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);

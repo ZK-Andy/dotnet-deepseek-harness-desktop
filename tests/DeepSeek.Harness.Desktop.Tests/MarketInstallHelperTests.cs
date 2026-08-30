@@ -411,4 +411,47 @@ public class MarketInstallHelperTests
             Directory.Delete(home, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_PathDsh_UsesDshCommand_WhenNoBundledRuntime()
+    {
+        // v0.4.0 实机回归：PATH-dsh 运行时（无捆绑闭包、无引导）nodeExe/dshEntry 双 null →
+        // 用 PATH 上的 dsh 命令（等价宿主 spawn），无 bin.js 入口参数。companion 仍须安装并补写 bundles。
+        var home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        var profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        Directory.CreateDirectory(profileDir);
+        var profilePkg = Path.Combine(profileDir, "package.json");
+        var installerPluginsDir = Path.Combine(home, "plugins");
+        Directory.CreateDirectory(installerPluginsDir);
+        File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
+        File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
+
+        System.Diagnostics.ProcessStartInfo? capturedPsi = null;
+        var args = new List<string>();
+        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            capturedPsi = psi;
+            args.Clear();
+            foreach (var a in psi.ArgumentList) args.Add(a);
+            return (0, "installed", string.Empty);
+        }
+
+        try
+        {
+            await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                null, null, home, installerPluginsDir, _ => { }, RunFake, CancellationToken.None);
+
+            Assert.NotNull(capturedPsi);
+            Assert.Equal("dsh", capturedPsi!.FileName);
+            // 参数形状：dsh plugin --profile desktop add <companion tgz>（无 bin.js 入口）
+            Assert.Equal(
+                ["plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz")],
+                args);
+            Assert.Contains("dsh-desktop-companion", File.ReadAllText(profilePkg));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
 }
