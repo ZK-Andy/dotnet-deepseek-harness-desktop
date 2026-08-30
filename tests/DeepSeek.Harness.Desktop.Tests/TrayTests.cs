@@ -9,6 +9,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>托盘菜单构造：条目集合随自更新栈有无变化，分隔线与退出恒在。</summary>
 public class TrayMenuBuildTests
 {
+    /// <summary>验证带自更新栈的菜单装配出 4 项：显示主窗、检查更新、分隔线、退出，且顺序与中文文案固定。</summary>
     [Fact]
     public void BuildItems_WithUpdateStack_ContainsAllEntries()
     {
@@ -24,6 +25,7 @@ public class TrayMenuBuildTests
         Assert.Equal("退出", items[3].Label);
     }
 
+    /// <summary>验证无自更新栈时菜单仅 3 项：「检查更新」被剔除，分隔线与退出仍保留且位置正确。</summary>
     [Fact]
     public void BuildItems_WithoutUpdateStack_OmitsCheckEntry_KeepsSeparatorAndQuit()
     {
@@ -35,6 +37,7 @@ public class TrayMenuBuildTests
         Assert.Equal(TrayMenuActions.QuitItemId, items[2].Id);
     }
 
+    /// <summary>验证 en/en-GB 输出英文文案，zh-CN、未知语言（fr）与不传 locale 均回退中文，对齐 dsh 兜底方向。</summary>
     [Fact]
     public void BuildItems_LocalizesEnglish_KeepsChineseDefault()
     {
@@ -63,6 +66,7 @@ public class TrayMenuBuildTests
 /// <summary>托盘事件解析：事件名/条目 id 到宿主动作的映射，坏载荷一律忽略。</summary>
 public class TrayActionResolveTests
 {
+    /// <summary>验证已知菜单条目 id 经 tray.menuItemClicked 事件一一映射到对应的宿主动作。</summary>
     [Theory]
     [InlineData(TrayMenuActions.ShowItemId, TrayAction.ShowMainWindow)]
     [InlineData(TrayMenuActions.CheckUpdateItemId, TrayAction.CheckUpdate)]
@@ -72,6 +76,7 @@ public class TrayActionResolveTests
         Assert.Equal(expected, TrayMenuActions.TryResolve(TrayMenuActions.MenuItemClickedEvent, id));
     }
 
+    /// <summary>验证图标点击事件无论载荷为 null 还是任意字符串，都映射到显示主窗动作。</summary>
     [Fact]
     public void IconClicked_MapsToShowMainWindow_RegardlessOfPayload()
     {
@@ -79,6 +84,7 @@ public class TrayActionResolveTests
         Assert.Equal(TrayAction.ShowMainWindow, TrayMenuActions.TryResolve(TrayMenuActions.IconClickedEvent, "whatever"));
     }
 
+    /// <summary>验证非托盘事件名（含 null 与空串）一律返回 null，不触发任何动作。</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -88,6 +94,7 @@ public class TrayActionResolveTests
         Assert.Null(TrayMenuActions.TryResolve(eventName, TrayMenuActions.ShowItemId));
     }
 
+    /// <summary>验证原生直传的 JSON 字符串载荷（如 "show"）先解码再命中条目映射，而非落 null。</summary>
     [Fact]
     public void MenuClicked_JsonQuotedPayload_DecodesThenMaps()
     {
@@ -95,6 +102,7 @@ public class TrayActionResolveTests
         Assert.Equal(TrayAction.ShowMainWindow, TrayMenuActions.TryResolve(TrayMenuActions.MenuItemClickedEvent, "\"show\""));
     }
 
+    /// <summary>验证未知条目与畸形 JSON（含未终止字符串）载荷一律解析为 null 并静默忽略。</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -110,6 +118,7 @@ public class TrayActionResolveTests
 /// <summary>关窗闸门：默认拦截（hide-to-tray），批准后放行且幂等。</summary>
 public class CloseGateTests
 {
+    /// <summary>验证新闸门默认拦截关窗（ShouldCancelClose 为 true），即关闭即隐藏到托盘。</summary>
     [Fact]
     public void Default_InterceptsClose_UntilApproved()
     {
@@ -117,6 +126,7 @@ public class CloseGateTests
         Assert.True(gate.ShouldCancelClose);
     }
 
+    /// <summary>验证 ApproveExit 放行闸门且重复调用幂等，放行后 ShouldCancelClose 恒为 false。</summary>
     [Fact]
     public void ApproveExit_ReleasesGate_Idempotently()
     {
@@ -161,6 +171,7 @@ public class DesktopTrayCommandRouterTests
             CancellationToken.None);
     }
 
+    /// <summary>验证退出路径先放行闸门再触发 Close（记序 fake 断言 Close 瞬间闸门已释放），并回成功帧 {}。</summary>
     [Fact]
     public async Task Quit_ApprovesGateBeforeClosing_OrderContract()
     {
@@ -174,6 +185,7 @@ public class DesktopTrayCommandRouterTests
         Assert.Equal("{}", frame);
     }
 
+    /// <summary>验证托盘图标点击只触发显示主窗回调，不附带任何其他窗口动作。</summary>
     [Fact]
     public async Task ShowMainWindow_TriggersShow_Only()
     {
@@ -184,6 +196,7 @@ public class DesktopTrayCommandRouterTests
         Assert.Equal(new[] { "show" }, calls);
     }
 
+    /// <summary>验证显示主窗成功路径在日志中留下「显示主窗」痕迹，成功分支也可被到达性排查。</summary>
     [Fact]
     public async Task ShowMainWindow_Success_Logged()
     {
@@ -196,6 +209,7 @@ public class DesktopTrayCommandRouterTests
         Assert.Contains(logs, l => l.Contains("显示主窗"));
     }
 
+    /// <summary>验证无自更新状态机装载时检查更新命令零副作用（不触发窗口回调）且回成功帧 {}。</summary>
     [Fact]
     public async Task CheckUpdate_WithoutUpdateStack_NoSideEffect_AcceptedFrame()
     {
@@ -207,6 +221,7 @@ public class DesktopTrayCommandRouterTests
         Assert.Equal("{}", frame);
     }
 
+    /// <summary>验证未知事件名、未知条目与畸形帧一律回 null 帧且不触发任何窗口动作。</summary>
     [Theory]
     [InlineData("""{"event":"some.otherEvent","data":"quit"}""")]
     [InlineData("""{"event":"tray.menuItemClicked","data":"unknown-item"}""")]
@@ -222,6 +237,7 @@ public class DesktopTrayCommandRouterTests
         Assert.Equal("null", frame);
     }
 
+    /// <summary>验证任何托盘事件到达都在日志留下「事件到达」痕迹，与「到了被忽略/处理卡死」可区分。</summary>
     [Fact]
     public async Task TrayEvent_Arrival_AlwaysLogged()
     {
@@ -235,6 +251,7 @@ public class DesktopTrayCommandRouterTests
         Assert.Contains(logs, l => l.Contains("事件到达") && l.Contains("tray.menuItemClicked"));
     }
 
+    /// <summary>验证被忽略的托盘事件同时留下到达痕与含条目名的忽略痕，未知条目不再静默。</summary>
     [Fact]
     public async Task IgnoredEvent_ArrivalAndIgnore_BothLogged()
     {
@@ -248,6 +265,7 @@ public class DesktopTrayCommandRouterTests
         Assert.Contains(logs, l => l.Contains("事件忽略") && l.Contains("bogus-item"));
     }
 
+    /// <summary>验证检查更新受理（「已受理」）与自更新栈装载状态（未装载时「栈未装载」）都在日志留痕。</summary>
     [Fact]
     public async Task CheckUpdate_AcceptedAndStackStatus_Logged()
     {
@@ -265,6 +283,7 @@ public class DesktopTrayCommandRouterTests
 /// <summary>托盘「检查更新」通知文案映射：结束态给结论，中间态不打扰。</summary>
 public class TrayCheckFeedbackTests
 {
+    /// <summary>验证 UpToDate 结束态给出「已是最新版本」结论文案。</summary>
     [Fact]
     public void UpToDate_PromptsAlreadyLatest()
     {
@@ -273,6 +292,7 @@ public class TrayCheckFeedbackTests
         Assert.Equal("已是最新版本", message);
     }
 
+    /// <summary>验证 Ready 结束态文案包含目标版本号与「桌面设置」安装提示。</summary>
     [Fact]
     public void Ready_IncludesTargetVersion_AndInstallHint()
     {
@@ -282,6 +302,7 @@ public class TrayCheckFeedbackTests
         Assert.Contains("桌面设置", message);
     }
 
+    /// <summary>验证 Error 结束态文案包含失败前缀「检查更新失败」与具体原因（如网络不可达）。</summary>
     [Fact]
     public void Error_IncludesReason()
     {
@@ -291,6 +312,7 @@ public class TrayCheckFeedbackTests
         Assert.Contains("网络不可达", message);
     }
 
+    /// <summary>验证 Idle/Checking/Downloading/Installing 中间态不产生通知文案（返回 null），不打断用户。</summary>
     [Theory]
     [InlineData(Services.Update.UpdateStatus.Idle)]
     [InlineData(Services.Update.UpdateStatus.Checking)]
@@ -305,6 +327,7 @@ public class TrayCheckFeedbackTests
 /// <summary>托盘唤回的最大化动作判据：仅隐藏前采样为最大化才发出；未知与非最大化绝不动作。</summary>
 public class TrayRecallMaximizeTests
 {
+    /// <summary>验证隐藏前采样为最大化（1）才发出 SetMaximized(true)，非最大化（0）与采样未知（-1）绝不动。</summary>
     [Theory]
     [InlineData(1, true)]   // 隐藏前最大化 → 预置/兜底发出 SetMaximized(true)
     [InlineData(0, false)]  // 隐藏前非最大化 → 不动

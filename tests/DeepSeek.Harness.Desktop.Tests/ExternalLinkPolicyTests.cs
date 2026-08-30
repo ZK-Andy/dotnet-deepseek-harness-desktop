@@ -7,6 +7,7 @@ public class ExternalLinkPolicyTests
 {
     private const string Origin = "http://127.0.0.1:41449";
 
+    /// <summary>验证站外绝对 http(s) 链接判定为应外部打开，且输出解析后的 Uri。</summary>
     [Theory]
     [InlineData("https://x.com/some/status", true)]
     [InlineData("http://example.com/path", true)]
@@ -20,6 +21,7 @@ public class ExternalLinkPolicyTests
         }
     }
 
+    /// <summary>验证与 Origin 同源的链接（路径/哈希不同）不被判为外部打开。</summary>
     [Theory]
     [InlineData("http://127.0.0.1:41449/app", false)]
     [InlineData("http://127.0.0.1:41449/#/conversation", false)]
@@ -28,6 +30,7 @@ public class ExternalLinkPolicyTests
         Assert.Equal(expected, ExternalLinkPolicy.IsExternalHttpLink(href, Origin, out _));
     }
 
+    /// <summary>验证 null/空白、相对路径与非 http(s) scheme（mailto/javascript/data/ryn）一律不判为外部链接。</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -43,6 +46,7 @@ public class ExternalLinkPolicyTests
         Assert.False(ExternalLinkPolicy.IsExternalHttpLink(href, Origin, out _));
     }
 
+    /// <summary>验证 scheme 差异、默认端口等价、显式非默认端口与缺失来源等边界下外部链接判定正确。</summary>
     [Theory]
     [InlineData("https://example.com", "https://example.com", false)]
     [InlineData("http://example.com", "https://example.com", true)]  // 不同 scheme

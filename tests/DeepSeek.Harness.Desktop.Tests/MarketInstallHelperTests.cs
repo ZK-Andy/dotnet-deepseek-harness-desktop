@@ -12,12 +12,14 @@ public class MarketInstallHelperTests
         return p;
     }
 
+    /// <summary>验证 package.json 文件缺失时 IsBundleInstalled 判定未安装并返回 false，不抛异常。</summary>
     [Fact]
     public void IsBundleInstalled_ReturnsFalse_WhenFileMissing()
     {
         Assert.False(MarketInstallHelper.IsBundleInstalled(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
     }
 
+    /// <summary>验证 dependencies 与 dsh.profile.bundles 同时含 dshmarket 时判定已安装并返回 true。</summary>
     [Fact]
     public void IsBundleInstalled_ReturnsTrue_WhenBothPresent()
     {
@@ -28,6 +30,7 @@ public class MarketInstallHelperTests
         try { Assert.True(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
+    /// <summary>验证 dshmarket 仅出现在 dependencies、未列进 bundles 时判定未安装。</summary>
     [Fact]
     public void IsBundleInstalled_ReturnsFalse_WhenBundlesMissing()
     {
@@ -38,6 +41,7 @@ public class MarketInstallHelperTests
         try { Assert.False(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
+    /// <summary>验证 bundles 含 dshmarket 但 dependencies 为空时判定未安装，两处来源缺一不可。</summary>
     [Fact]
     public void IsBundleInstalled_ReturnsFalse_WhenDepsMissing()
     {
@@ -48,6 +52,7 @@ public class MarketInstallHelperTests
         try { Assert.False(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
+    /// <summary>验证 package.json 内容不是合法 JSON 时按未安装处理（返回 false）而不抛异常。</summary>
     [Fact]
     public void IsBundleInstalled_ReturnsFalse_WhenInvalidJson()
     {
@@ -55,6 +60,7 @@ public class MarketInstallHelperTests
         try { Assert.False(MarketInstallHelper.IsBundleInstalled(p, "dshmarket")); } finally { File.Delete(p); }
     }
 
+    /// <summary>验证同一清单内各包判定互不干扰：已装的 dshmarket 判 true、未装的 companion 仍判 false。</summary>
     [Fact]
     public void IsBundleInstalled_PerPackage_Independent()
     {
@@ -71,6 +77,7 @@ public class MarketInstallHelperTests
         finally { File.Delete(p); }
     }
 
+    /// <summary>验证清理只移除值为 file:.tgz 引用的 app 依赖项，其余依赖 keep 原样保留。</summary>
     [Fact]
     public async Task CleanupBogusApp_RemovesOnlyAppWithTgz()
     {
@@ -88,6 +95,7 @@ public class MarketInstallHelperTests
         finally { File.Delete(p); }
     }
 
+    /// <summary>验证清单中没有 app 依赖时清理不做任何改动，keep 依赖保持原样。</summary>
     [Fact]
     public async Task CleanupBogusApp_NoOp_WhenNoApp()
     {
@@ -101,12 +109,14 @@ public class MarketInstallHelperTests
         finally { File.Delete(p); }
     }
 
+    /// <summary>验证 package.json 文件不存在时清理静默返回、不抛异常。</summary>
     [Fact]
     public async Task CleanupBogusApp_NoOp_WhenFileMissing()
     {
         await MarketInstallHelper.CleanupBogusAppDependencyAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
     }
 
+    /// <summary>验证 pnpm-workspace.yaml 缺失时 EnsureWorkspaceAllowBuilds 不抛异常、也不擅自创建文件。</summary>
     [Fact]
     public void EnsureWorkspaceAllowBuilds_AddsEsbuild_WhenMissing()
     {
@@ -122,6 +132,7 @@ public class MarketInstallHelperTests
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>验证路径指向不存在的目录时调用不抛异常，无操作即通过。</summary>
     [Fact]
     public void EnsureWorkspaceAllowBuilds_NoOp_WhenMissing()
     {
@@ -129,6 +140,7 @@ public class MarketInstallHelperTests
         // 不抛即通过
     }
 
+    /// <summary>验证安装器资源目录中的 dsh-desktop-companion.tgz 被解析为首选供给源并返回其完整路径。</summary>
     [Fact]
     public void ResolveCompanionSpec_PrefersInstallerPluginsDir()
     {
@@ -144,6 +156,7 @@ public class MarketInstallHelperTests
         finally { Directory.Delete(plugins, true); }
     }
 
+    /// <summary>验证安装器资源缺失时 ResolveCompanionSpec 返回 null，调用方据此跳过伴生插件安装。</summary>
     [Fact]
     public void ResolveCompanionSpec_ReturnsNull_WhenNothing()
     {
@@ -152,6 +165,7 @@ public class MarketInstallHelperTests
         Assert.Null(MarketInstallHelper.ResolveCompanionSpec(null));
     }
 
+    /// <summary>验证 bundles 未含 dshmarket 时补写进清单并返回 true。</summary>
     [Fact]
     public async Task EnsureBundles_AddsWhenMissing()
     {
@@ -166,6 +180,7 @@ public class MarketInstallHelperTests
         finally { File.Delete(p); }
     }
 
+    /// <summary>验证追加新包时保留已有包，且重复补写幂等（二次调用返回 false 不再写入）。</summary>
     [Fact]
     public async Task EnsureBundles_AppendsSecondPackage_KeepsFirst()
     {
@@ -184,6 +199,7 @@ public class MarketInstallHelperTests
         finally { File.Delete(p); }
     }
 
+    /// <summary>验证目标包已存在于 bundles 时不再写入、返回 false。</summary>
     [Fact]
     public async Task EnsureBundles_NoOpWhenPresent()
     {
@@ -197,12 +213,14 @@ public class MarketInstallHelperTests
         finally { File.Delete(p); }
     }
 
+    /// <summary>验证 package.json 文件缺失时补写返回 false 而非抛异常。</summary>
     [Fact]
     public async Task EnsureBundles_ReturnsFalse_WhenFileMissing()
     {
         Assert.False(await MarketInstallHelper.EnsureBundlesContainsAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
     }
 
+    /// <summary>验证安装市场时拼装的进程参数形状与 DSH_HOME、pnpm_config_store_dir 环境变量，并回填 allowBuilds 与 bundles 缺失项。</summary>
     [Fact]
     public async Task EnsureMarketFromRegistry_BuildsCorrectArgsAndEnv_AndBackfillsBundles()
     {
@@ -253,6 +271,7 @@ public class MarketInstallHelperTests
         }
     }
 
+    /// <summary>验证首次安装被 minimumReleaseAge 政策拒绝后，带 pnpm_config_minimum_release_age=0 放宽重试并成功，共运行两次。</summary>
     [Fact]
     public async Task EnsureMarketFromRegistry_RetriesOnMinimumReleaseAge_Dropcap()
     {
@@ -293,6 +312,7 @@ public class MarketInstallHelperTests
         }
     }
 
+    /// <summary>验证 spawn 前通过 bin.js 安装 companion tgz 的参数与 DSH_HOME，并补写 companion、@deepseek-ai/dsh-web-app 缺失 bundles。</summary>
     [Fact]
     public async Task EnsureBundledPluginsBeforeSpawn_InstallsCompanion_AndBackfillsBundles()
     {
@@ -344,6 +364,7 @@ public class MarketInstallHelperTests
         }
     }
 
+    /// <summary>验证 companion 已同时写入 dependencies 与 bundles 时跳过安装、不启动任何进程，并记录「无需安装」。</summary>
     [Fact]
     public async Task EnsureBundledPluginsBeforeSpawn_NoRun_WhenCompanionInstalled()
     {
@@ -378,6 +399,7 @@ public class MarketInstallHelperTests
         }
     }
 
+    /// <summary>验证伴生安装首次遭 minimumReleaseAge 政策拒绝后带放宽环境重试并成功，共运行两次。</summary>
     [Fact]
     public async Task EnsureBundledPluginsBeforeSpawn_RetriesOnMinimumReleaseAge_Dropcap()
     {
@@ -419,6 +441,7 @@ public class MarketInstallHelperTests
         }
     }
 
+    /// <summary>验证无捆绑运行时回退到 PATH 上的 dsh 命令（无 bin.js 入口参数）安装 companion 并补写 bundles。</summary>
     [Fact]
     public async Task EnsureBundledPluginsBeforeSpawn_PathDsh_UsesDshCommand_WhenNoBundledRuntime()
     {

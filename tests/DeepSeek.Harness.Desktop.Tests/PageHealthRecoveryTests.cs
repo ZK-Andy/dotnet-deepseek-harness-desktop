@@ -6,6 +6,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// 成功恢复复位窗口。纯逻辑，与 <see cref="PageHealthTracker"/> 协同覆盖「同一死区有界多次恢复」。</summary>
 public class PageHealthRecoveryTests
 {
+    /// <summary>验证预算上限内的请求逐一放行，超出上限后拒绝并置 Exhausted。</summary>
     [Fact]
     public void AllowsUpToLimit_ThenDenies()
     {
@@ -19,6 +20,7 @@ public class PageHealthRecoveryTests
         Assert.True(r.Exhausted);
     }
 
+    /// <summary>验证预算耗尽后后续请求持续被拒绝（不留反复尝试空间），Attempts 停止增长。</summary>
     [Fact]
     public void DeniedRequest_MarksExhausted_AndStaysDenied()
     {
@@ -34,6 +36,7 @@ public class PageHealthRecoveryTests
         Assert.Equal(2, r.Attempts);
     }
 
+    /// <summary>验证成功恢复后 Attempts 清零、Exhausted 关闭，新死区从零重新计预算。</summary>
     [Fact]
     public void MarkRecovered_ResetsBudget()
     {
@@ -47,6 +50,7 @@ public class PageHealthRecoveryTests
         Assert.True(r.TryAllowRecovery());
     }
 
+    /// <summary>验证耗尽状态下的成功恢复复位预算，页回到 Alive 后新死区可重新有界恢复。</summary>
     [Fact]
     public void RecoveredAfterExhaustion_AllowsNewEpisode()
     {
@@ -62,6 +66,7 @@ public class PageHealthRecoveryTests
         Assert.True(r.TryAllowRecovery());
     }
 
+    /// <summary>验证 maxAttempts 为 0 或负数时构造抛 ArgumentOutOfRangeException。</summary>
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

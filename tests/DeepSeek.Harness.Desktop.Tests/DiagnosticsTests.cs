@@ -7,6 +7,8 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>诊断包导出：白名单收录、敏感排除、zip 内容与 state 快照。</summary>
 public class DiagnosticsExporterTests
 {
+    /// <summary>验证导出 zip 只收录白名单条目：日志、state/web-port 快照进包且 state 含版本与 home 信息，
+    /// 凭证/会话/包配置等敏感面在路径与内容两级均被排除，缺失的可选文件不出现也不报错。</summary>
     [Fact]
     public void Export_WhitelistedEntriesOnly_SensitiveExcluded()
     {
@@ -65,6 +67,8 @@ public class DiagnosticsExporterTests
     /// zip 必须落到 &lt;home&gt;/diagnostics 且原因留痕 log——取证功能不缺席也不静默。</summary>
     public class ExportFallbackTests
     {
+        /// <summary>验证文档目录解析为空时导出回退到 &lt;home&gt;/diagnostics，
+        /// 且 log 回调收到含「文档目录解析为空」的原因消息。</summary>
         [Fact]
         public void EmptyDocuments_FallsBackToHomeDiagnostics_WithLog()
         {
@@ -87,6 +91,8 @@ public class DiagnosticsExporterTests
             }
         }
 
+        /// <summary>验证文档目录指向不可写路径（常规文件）时导出回退到 &lt;home&gt;/diagnostics，
+        /// 且 log 回调收到含「文档目录不可写」与目标路径的原因消息。</summary>
         [Fact]
         public void UnwritableDocuments_FallsBackToHomeDiagnostics_WithReason()
         {
@@ -143,6 +149,7 @@ public class DiagnosticsExporterTests
 /// <summary>诊断导出命令路由：帧形态与失败路径。</summary>
 public class DesktopDiagnosticsCommandRouterTests
 {
+    /// <summary>验证路由只认准精确命令名 desktop.diagnostics.export：带后缀的命令与其他命令均不可路由。</summary>
     [Fact]
     public void CanRoute_ExactCommandOnly()
     {
@@ -152,6 +159,7 @@ public class DesktopDiagnosticsCommandRouterTests
         Assert.False(router.CanRoute("app.openExternal"));
     }
 
+    /// <summary>验证成功路径返回含 "path" 的 JSON 帧，且该路径确实写出可读取的 zip 文件。</summary>
     [Fact]
     public async Task RouteAsync_Success_ReturnsPathFrame_AndWritesZip()
     {
@@ -179,6 +187,7 @@ public class DesktopDiagnosticsCommandRouterTests
         }
     }
 
+    /// <summary>验证输出目录不可写（指向常规文件）时返回含 "error" 的帧而非抛异常，并留下日志。</summary>
     [Fact]
     public async Task RouteAsync_Failure_ReturnsErrorFrame_NotThrow()
     {

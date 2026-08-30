@@ -6,6 +6,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>就绪横幅脚本：版本嵌入与幂等守卫。</summary>
 public class UpdateBannerTests
 {
+    /// <summary>验证就绪横幅脚本随宿主 locale 输出英文「is ready」文案与「OK」按钮文本，缺省中文无英文残留。</summary>
     [Fact]
     public void ReadyScript_LocalizesEnglish()
     {
@@ -18,6 +19,7 @@ public class UpdateBannerTests
         Assert.DoesNotContain("已就绪", script);
     }
 
+    /// <summary>验证就绪横幅脚本嵌入版本号 9.9.9 并带幂等 id 守卫，重复注入时直接返回不再堆叠。</summary>
     [Fact]
     public void ReadyScript_EmbedsVersion_GuardsDoubleInjection()
     {
@@ -31,6 +33,7 @@ public class UpdateBannerTests
 /// <summary>开机自启条目文本构造器（纯函数）。</summary>
 public class AutostartBuilderTests
 {
+    /// <summary>验证 Linux 开机自启 desktop 条目含 Exec 指向与 X-GNOME-Autostart-enabled 标记。</summary>
     [Fact]
     public void BuildLinuxDesktopEntry_ContainsExecAndAutostartFlag()
     {
@@ -40,6 +43,7 @@ public class AutostartBuilderTests
         Assert.Contains("X-GNOME-Autostart-enabled=true", entry);
     }
 
+    /// <summary>验证 macOS 开机自启 plist 钉住 Label、参数与 RunAtLoad 标记。</summary>
     [Fact]
     public void BuildMacOSPlist_PinsLabelArgumentsAndRunAtLoad()
     {
@@ -78,6 +82,7 @@ public class UpdateInstallFailureRecoveryTests
         }
     }
 
+    /// <summary>验证 install 委托抛错后状态机回退到 ready、持久化记录与已下载资产原样保留，可安全重试。</summary>
     [Fact]
     public async Task InstallAsync_FailingInstall_RevertsToReady_AndKeepsAsset()
     {

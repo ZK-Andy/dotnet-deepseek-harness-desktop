@@ -13,6 +13,7 @@ public class PluginVersionCheckTests
         return p;
     }
 
+    /// <summary>验证从 tgz 的 package/package.json 读出版本号 0.0.2。</summary>
     [Fact]
     public void ReadBundledVersion_FromTgz_ReturnsVersion()
     {
@@ -20,6 +21,7 @@ public class PluginVersionCheckTests
         try { Assert.Equal("0.0.2", PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
     }
 
+    /// <summary>验证忽略非 package.json 条目与 ./ 目录前缀，仍能读出版本号。</summary>
     [Fact]
     public void ReadBundledVersion_FromTgz_IgnoresOtherEntriesAndDotSlashPrefix()
     {
@@ -29,6 +31,7 @@ public class PluginVersionCheckTests
         try { Assert.Equal("1.2.3", PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
     }
 
+    /// <summary>验证 tgz 内没有 package.json 条目时抛 InvalidDataException。</summary>
     [Fact]
     public void ReadBundledVersion_TgzWithoutPackageJson_Throws()
     {
@@ -36,6 +39,7 @@ public class PluginVersionCheckTests
         try { Assert.Throws<InvalidDataException>(() => PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
     }
 
+    /// <summary>验证 gzip 数据损坏时抛异常而非静默返回。</summary>
     [Fact]
     public void ReadBundledVersion_CorruptTgz_Throws()
     {
@@ -44,6 +48,7 @@ public class PluginVersionCheckTests
         try { Assert.ThrowsAny<Exception>(() => PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
     }
 
+    /// <summary>验证 tgz 文件不存在时抛 FileNotFoundException。</summary>
     [Fact]
     public void ReadBundledVersion_MissingFile_Throws()
     {
@@ -51,6 +56,7 @@ public class PluginVersionCheckTests
             () => PluginVersionCheck.ReadBundledVersion(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".tgz")));
     }
 
+    /// <summary>验证 version 字段为数字、缺失或清单非 JSON 等坏字段形态一律抛异常。</summary>
     [Theory]
     [InlineData("""{"version":123}""")]
     [InlineData("""{"name":"x"}""")]
@@ -69,6 +75,7 @@ public class PluginVersionCheckTests
         }
     }
 
+    /// <summary>验证目录形态（非 tgz）直接从目录下 package.json 读出版本。</summary>
     [Fact]
     public void ReadBundledVersion_DirectoryForm_ReadsPackageJson()
     {
@@ -98,6 +105,7 @@ public class PluginVersionCheckTests
         return profileDir;
     }
 
+    /// <summary>验证从 profile 的 node_modules 已装副本 package.json 读出版本号。</summary>
     [Fact]
     public void ReadInstalledVersion_InstalledCopy_ReturnsVersion()
     {
@@ -112,6 +120,7 @@ public class PluginVersionCheckTests
         }
     }
 
+    /// <summary>验证已装副本无 version 字段或清单损坏时返回 null 视为版本未知。</summary>
     [Theory]
     [InlineData((string?)null)]
     [InlineData("""{"name":"dsh-desktop-companion"}""")]
@@ -129,6 +138,7 @@ public class PluginVersionCheckTests
         }
     }
 
+    /// <summary>验证 profile 目录不存在时不抛异常、返回 null。</summary>
     [Fact]
     public void ReadInstalledVersion_MissingProfile_ReturnsNull()
     {
@@ -136,6 +146,7 @@ public class PluginVersionCheckTests
             Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dsh-desktop-companion"));
     }
 
+    /// <summary>验证安装版本低于捆绑版本才需要升级，相等或更高不需要，安装版本为 null 时按需要升级。</summary>
     [Theory]
     [InlineData(null, "0.0.1", true)]
     [InlineData("0.0.1", "0.0.2", true)]
@@ -147,6 +158,7 @@ public class PluginVersionCheckTests
         Assert.Equal(expected, PluginVersionCheck.NeedsUpgrade(installed, bundled));
     }
 
+    /// <summary>验证版本段含非数字（0.a.3）时抛 ArgumentException，失败不静默。</summary>
     [Fact]
     public void NeedsUpgrade_UnparseableSegment_FailsLoud()
     {

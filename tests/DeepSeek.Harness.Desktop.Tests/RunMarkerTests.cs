@@ -13,6 +13,7 @@ public class HostLogRotationTests
         return dir;
     }
 
+    /// <summary>验证超限日志滚动为 .old 并清空当前文件；小日志零动作且上一代 .old 保留。</summary>
     [Fact]
     public void RotateIfNeeded_OverLimit_RollsToOld_AndClearsCurrent()
     {
@@ -38,6 +39,7 @@ public class HostLogRotationTests
         }
     }
 
+    /// <summary>验证日志文件缺失时滚动为空操作，目录不产生任何新文件。</summary>
     [Fact]
     public void RotateIfNeeded_MissingFile_NoOp()
     {
@@ -57,6 +59,7 @@ public class HostLogRotationTests
 /// <summary>崩溃取证 marker：占位/遗留判定/owner 清理/链接拒收。</summary>
 public class RunMarkerTests
 {
+    /// <summary>验证全新 home 获取 marker：PreviousRunUnclean 为 false，且 token 落盘于 marker 文件。</summary>
     [Fact]
     public void Acquire_FreshHome_NoUnclean_WritesMarker()
     {
@@ -74,6 +77,7 @@ public class RunMarkerTests
         }
     }
 
+    /// <summary>验证上轮未 Release 即再次 Acquire 判定非受控退出（PreviousRunUnclean=true）并换发新 token。</summary>
     [Fact]
     public void Acquire_AfterUnreleasedAcquire_DetectsUncleanExit()
     {
@@ -91,6 +95,7 @@ public class RunMarkerTests
         }
     }
 
+    /// <summary>验证非 owner token 的 Release 被拒且 marker 保留，owner token 的 Release 删除 marker 文件。</summary>
     [Fact]
     public void Release_OwnerTokenRemoves_MismatchedTokenKeeps()
     {
@@ -109,6 +114,7 @@ public class RunMarkerTests
         }
     }
 
+    /// <summary>验证 marker 为符号链接时先解链替换为常规文件、绝不穿透改写链接目标（仅 Linux 断言）。</summary>
     [Fact]
     public void Acquire_SymlinkedMarker_UnlinksAndReplaces_NotWrittenThrough()
     {
@@ -139,6 +145,7 @@ public class RunMarkerTests
         }
     }
 
+    /// <summary>验证 marker 文件为可解析 JSON 且含 token/pid/startedAt 三个契约键，startedAt 为合法时间戳。</summary>
     [Fact]
     public void Acquire_MarkerFile_HasParseableContractKeys()
     {
@@ -165,6 +172,7 @@ public class RunMarkerTests
         return dir;
     }
 
+    /// <summary>验证 en 语言下未受控退出横幅输出英文文案与 textContent="OK" 按钮，不残留中文。</summary>
     [Fact]
     public void UncleanBannerScript_LocalizesEnglish()
     {

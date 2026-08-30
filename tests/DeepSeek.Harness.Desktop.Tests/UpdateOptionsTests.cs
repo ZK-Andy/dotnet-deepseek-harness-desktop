@@ -5,6 +5,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>自更新栈装载门禁：非 dev 恒真；dev 需显式 FORCE 开关（审核加固，防 dev 装系统包后重启 dev 二进制）。</summary>
 public class UpdateOptionsTests
 {
+    /// <summary>验证非 dev 恒启用；dev 仅在 FORCE=1 时启用，FORCE 为 null、空串或 0 均禁用（防 dev 装系统包后重启 dev 二进制）。</summary>
     [Theory]
     [InlineData(false, null, true)]
     [InlineData(false, "", true)]

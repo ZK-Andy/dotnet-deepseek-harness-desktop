@@ -58,6 +58,7 @@ public class BundledPluginCatalogTests
         return (pending, logs);
     }
 
+    /// <summary>验证未安装的随包插件直接进入待装清单，spec 指向不存在的路径也不做版本读取。</summary>
     [Fact]
     public void NotInstalled_AddedToPendingWithoutVersionRead()
     {
@@ -76,6 +77,7 @@ public class BundledPluginCatalogTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>验证已装 0.0.1 落后来源 0.0.2 时该插件进入升级待装，日志同时记录新旧版本号。</summary>
     [Fact]
     public void InstalledOlder_UpgradedWithVersionLog()
     {
@@ -95,6 +97,7 @@ public class BundledPluginCatalogTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>验证已装版本等于或高于来源版本时该插件跳过装配：同版不重装、更高绝不降级。</summary>
     [Theory]
     [InlineData("0.0.2")] // 同版：跳过
     [InlineData("0.0.3")] // 已装更高：绝不降级
@@ -115,6 +118,7 @@ public class BundledPluginCatalogTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>验证已入清单但 node_modules 副本缺失（版本不可读）时经重装修复，并记录「(不可读)」日志。</summary>
     [Fact]
     public void BrokenOrMissingInstalledCopy_RepairedViaReinstall()
     {
@@ -133,6 +137,7 @@ public class BundledPluginCatalogTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>验证解析器返回 null（无可用来源）时该插件跳过装配并记录「无可用来源」日志。</summary>
     [Fact]
     public void NullSpec_NoSourceForPlugin_Skipped()
     {
@@ -150,6 +155,7 @@ public class BundledPluginCatalogTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>验证来源版本串不语义化（2.a.0）时仅跳过本插件的版本比对，其余插件照常装配。</summary>
     [Fact]
     public void DirtyBundledVersion_IsolatedToOwnEntry()
     {
@@ -176,6 +182,7 @@ public class BundledPluginCatalogTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>验证清单扩展点解析器抛异常时单个插件跳过并记录「spec 解析失败」，其余清单项不受拖累。</summary>
     [Fact]
     public void ThrowingResolver_IsolatedToOwnEntry()
     {
@@ -201,6 +208,7 @@ public class BundledPluginCatalogTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>验证待装清单顺序严格跟随目录声明顺序（second 先声明则先出列）。</summary>
     [Fact]
     public void PendingOrder_FollowsCatalogOrder()
     {
@@ -221,6 +229,7 @@ public class BundledPluginCatalogTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>验证真实目录下 companion 唯一供给源为安装器 resources/plugins 的 tgz（运行时种子已退役），待装仅 companion 一条且不含 dshmarket。</summary>
     [Fact]
     public void RealCatalog_CompanionFromInstallerPluginsDir_WhenRuntimeSeedsRetired()
     {
@@ -249,6 +258,7 @@ public class BundledPluginCatalogTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    /// <summary>验证安装器资源目录缺失（开发 PATH dsh 场景）时 companion 无来源跳过，整目录无待装项。</summary>
     [Fact]
     public void RealCatalog_CompanionNull_WhenInstallerPluginsDirMissing()
     {

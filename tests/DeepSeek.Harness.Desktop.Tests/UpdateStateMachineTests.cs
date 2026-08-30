@@ -57,6 +57,7 @@ public class UpdateStateMachineTests
             onTransition: state => transitions?.Add(state));
     }
 
+    /// <summary>验证启动时持久化 ready 记录的版本与当前相同则清除记录并进入 UpToDate。</summary>
     [Fact]
     public async Task Start_ClearsStaleReady_WhenSameAsCurrent()
     {
@@ -70,6 +71,7 @@ public class UpdateStateMachineTests
         Assert.Equal(UpdateStatus.UpToDate, machine.State.Status);
     }
 
+    /// <summary>验证启动时资产文件仍存在则从持久化恢复 Ready 状态，且不触发网络检查。</summary>
     [Fact]
     public async Task Start_RestoresReady_FromPersistence_WhenAssetExists()
     {
@@ -89,6 +91,7 @@ public class UpdateStateMachineTests
         finally { File.Delete(path); }
     }
 
+    /// <summary>验证检查无可用更新时状态转为 UpToDate，不发起下载。</summary>
     [Fact]
     public async Task Check_NoUpdate_GoesUpToDate()
     {
@@ -99,6 +102,7 @@ public class UpdateStateMachineTests
         Assert.Equal(UpdateStatus.UpToDate, machine.State.Status);
     }
 
+    /// <summary>验证远程版本低于当前版本时不计为更新，状态保持 UpToDate。</summary>
     [Fact]
     public async Task Check_OlderRelease_GoesUpToDate()
     {
@@ -109,6 +113,7 @@ public class UpdateStateMachineTests
         Assert.Equal(UpdateStatus.UpToDate, machine.State.Status);
     }
 
+    /// <summary>验证发现新版本时下载资产并转入 Ready，下载路径记录恰好一次。</summary>
     [Fact]
     public async Task Check_NewVersion_DownloadsAndGoesReady()
     {
@@ -122,6 +127,7 @@ public class UpdateStateMachineTests
         _ = Assert.Single(downloads);
     }
 
+    /// <summary>验证下载失败转入 Error 后，再次检查成功即恢复 Ready。</summary>
     [Fact]
     public async Task DownloadFailure_GoesError_ThenRecheckRecovers()
     {
@@ -144,6 +150,7 @@ public class UpdateStateMachineTests
         Assert.Equal(UpdateStatus.Ready, machine.State.Status);
     }
 
+    /// <summary>验证非 Ready 状态下调用 InstallAsync 抛出 InvalidOperationException 拒绝安装。</summary>
     [Fact]
     public async Task Install_RejectsWhenNotReady()
     {
@@ -153,6 +160,7 @@ public class UpdateStateMachineTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => machine.InstallAsync(CancellationToken.None));
     }
 
+    /// <summary>验证 Ready 状态下安装会调用 install 回调携带资产路径与版本，状态转入 Installing。</summary>
     [Fact]
     public async Task Install_FromReady_TransitionsInstalling_AndFallsBackOnError()
     {
@@ -169,6 +177,7 @@ public class UpdateStateMachineTests
         Assert.Equal(UpdateStatus.Installing, machine.State.Status);
     }
 
+    /// <summary>验证 install 回调抛异常时异常向上传播，状态回退为 Ready。</summary>
     [Fact]
     public async Task Install_Failure_ReturnsToReady_AndThrows()
     {
@@ -182,6 +191,7 @@ public class UpdateStateMachineTests
         Assert.Equal(UpdateStatus.Ready, machine.State.Status);
     }
 
+    /// <summary>验证订阅能收到全部状态转移通知，释放订阅后不再收到新转移。</summary>
     [Fact]
     public async Task Subscribe_ReceivesTransitions_AndUnsubscribes()
     {
@@ -199,6 +209,7 @@ public class UpdateStateMachineTests
         Assert.Equal(afterCount, seen.Count);
     }
 
+    /// <summary>验证持久化记录版本低于当前（降级残留）时清除记录重新检查，不给出降级安装建议。</summary>
     [Fact]
     public async Task Start_ClearsReady_WhenOlderThanCurrent()
     {
@@ -219,6 +230,7 @@ public class UpdateStateMachineTests
         finally { File.Delete(path); }
     }
 
+    /// <summary>验证 ready.json 版本串损坏时不卡死启动，清除记录后正常检查进入 UpToDate。</summary>
     [Fact]
     public async Task Start_ClearsReady_WhenVersionUnparseable()
     {
@@ -239,6 +251,7 @@ public class UpdateStateMachineTests
         finally { File.Delete(path); }
     }
 
+    /// <summary>验证并发调用 CheckAsync 只执行一次网络检查，去重判空与占位处于同一临界区。</summary>
     [Fact]
     public async Task Check_ConcurrentCalls_RunSingleCheck()
     {
@@ -270,6 +283,7 @@ public class UpdateStateMachineTests
         Assert.Equal(UpdateStatus.Ready, machine.State.Status);
     }
 
+    /// <summary>验证 CheckAsync 产生的每个转移事件都携带正确的当前版本号。</summary>
     [Fact]
     public async Task CheckAsync_TransitionsCarryCurrentVersion()
     {

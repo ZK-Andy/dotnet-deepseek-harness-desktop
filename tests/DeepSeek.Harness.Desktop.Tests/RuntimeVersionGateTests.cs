@@ -5,6 +5,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>启动版本底线检查的纯逻辑：--version 输出解析与底线比较。</summary>
 public class RuntimeVersionGateTests
 {
+    /// <summary>验证从 --version 输出中提取首个语义化版本 token：容忍前导 v、噪声行与尾部换行。</summary>
     [Theory]
     [InlineData("0.1.1-rc.2\n", "0.1.1-rc.2")]
     [InlineData("v0.1.0-rc.8", "0.1.0-rc.8")]
@@ -15,6 +16,7 @@ public class RuntimeVersionGateTests
         Assert.Equal(expected, RuntimeVersionGate.TryParseVersionOutput(output));
     }
 
+    /// <summary>验证输出中不存在任何版本号时 TryParseVersionOutput 返回 null 而非抛异常。</summary>
     [Theory]
     [InlineData("", null)]
     [InlineData("no version here", null)]
@@ -23,6 +25,7 @@ public class RuntimeVersionGateTests
         Assert.Equal(expected, RuntimeVersionGate.TryParseVersionOutput(output));
     }
 
+    /// <summary>验证底线比较仅按版本数字段大小判定：预发布后缀不参与比较，低于最低版本返回 true。</summary>
     [Theory]
     [InlineData("0.1.0-rc.8", true)]
     [InlineData("0.1.0", true)]
@@ -35,6 +38,7 @@ public class RuntimeVersionGateTests
         Assert.Equal(expected, RuntimeVersionGate.IsBelowFloor(version));
     }
 
+    /// <summary>验证畸形版本串触发 ArgumentException（fail loud：脏 token 漏入时宁可抛也不静默放行）。</summary>
     [Fact]
     public void IsBelowFloor_MalformedVersion_FailsLoud()
     {
@@ -42,6 +46,7 @@ public class RuntimeVersionGateTests
         Assert.Throws<ArgumentException>(() => RuntimeVersionGate.IsBelowFloor("not-a-version"));
     }
 
+    /// <summary>验证生成的横幅脚本同时内嵌检测到的版本、最低版本常量与版本底线横幅标记 id。</summary>
     [Fact]
     public void BelowFloorBannerScript_MentionsDetectedAndFloorVersions()
     {
@@ -51,6 +56,7 @@ public class RuntimeVersionGateTests
         Assert.Contains("var id='dsh-desktop-version-floor-banner'", script);
     }
 
+    /// <summary>验证 en 语言下横幅输出英文文案与 OK 按钮文本，不含中文文案（双语宿主横幅）。</summary>
     [Fact]
     public void BelowFloorBannerScript_LocalizesEnglish()
     {

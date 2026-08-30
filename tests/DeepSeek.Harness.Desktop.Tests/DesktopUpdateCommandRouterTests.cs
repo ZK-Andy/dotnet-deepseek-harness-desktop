@@ -38,6 +38,7 @@ public class DesktopUpdateCommandRouterTests
             persistence: new FakePersistence());
     }
 
+    /// <summary>验证 check 后台任务收到 backgroundToken() 令牌而非请求作用域 token，请求 token 预取消也不连坐。</summary>
     [Fact]
     public async Task Check_PassesBackgroundToken_ToMachine()
     {
@@ -57,6 +58,7 @@ public class DesktopUpdateCommandRouterTests
         Assert.Equal(backgroundCts.Token, seen.Value);
     }
 
+    /// <summary>验证 backgroundToken 未注入时以 CancellationToken.None 按不可取消处理，不退回已取消的请求 token。</summary>
     [Fact]
     public async Task Check_WithoutBackgroundToken_NotCancellable()
     {
@@ -74,6 +76,7 @@ public class DesktopUpdateCommandRouterTests
         Assert.Equal(CancellationToken.None, seen.Value);
     }
 
+    /// <summary>验证 install 长任务经持久化恢复 ready 后同样收到 backgroundToken 令牌，而非已取消的请求 token。</summary>
     [Fact]
     public async Task Install_PassesBackgroundToken_ToMachine()
     {

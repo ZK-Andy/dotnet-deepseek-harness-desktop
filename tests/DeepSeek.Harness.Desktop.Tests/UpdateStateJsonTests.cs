@@ -6,12 +6,14 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>UpdateState.ToJson 页面契约：current/message 字段的形状与转义（设置页更新区数据源）。</summary>
 public class UpdateStateJsonTests
 {
+    /// <summary>验证 idle 状态序列化为紧凑 JSON 时仅含 status 字段且 version 显式为 null。</summary>
     [Fact]
     public void ToJson_Minimal_IdleHasNullVersionOnly()
     {
         Assert.Equal("""{"status":"idle","version":null}""", new UpdateState(UpdateStatus.Idle).ToJson());
     }
 
+    /// <summary>验证 ready 状态序列化后 status/version/current 三字段齐全且取值正确。</summary>
     [Fact]
     public void ToJson_Ready_IncludesVersionAndCurrent()
     {
@@ -22,6 +24,7 @@ public class UpdateStateJsonTests
         Assert.Equal("0.1.20", parsed.GetProperty("current").GetString());
     }
 
+    /// <summary>验证含引号等特殊字符的 message 被正确转义，反序列化后与原文逐字一致。</summary>
     [Fact]
     public void ToJson_Error_MessageEscapedAndRoundTrips()
     {
@@ -32,6 +35,7 @@ public class UpdateStateJsonTests
         Assert.Equal("0.1.20", parsed.GetProperty("current").GetString());
     }
 
+    /// <summary>验证 message/current 为 null 时对应字段整体省略，不输出 null 占位。</summary>
     [Fact]
     public void ToJson_NullMessageAndCurrent_OmitFields()
     {
@@ -41,6 +45,7 @@ public class UpdateStateJsonTests
         Assert.False(parsed.TryGetProperty("current", out _));
     }
 
+    /// <summary>验证版本串含引号等敌意字符时仍被转义、往返解析无损，不依赖上游格式校验。</summary>
     [Fact]
     public void ToJson_HostileVersionAndCurrent_RoundTripAfterEscaping()
     {

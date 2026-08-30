@@ -38,12 +38,16 @@ public static class CliShimPlanner
 {
     /// <summary>Windows shim 文件名。</summary>
     public const string DshCmdName = "dsh.cmd";
+    /// <summary>Windows PowerShell shim 文件名（dsh 命令）。</summary>
     public const string DshPs1Name = "dsh.ps1";
+    /// <summary>Windows shim 文件名（pnpm 命令）。</summary>
     public const string PnpmCmdName = "pnpm.cmd";
+    /// <summary>Windows PowerShell shim 文件名（pnpm 命令）。</summary>
     public const string PnpmPs1Name = "pnpm.ps1";
 
     /// <summary>Unix shim 文件名。</summary>
     public const string DshShName = "dsh";
+    /// <summary>Unix shim 文件名（pnpm 命令）。</summary>
     public const string PnpmShName = "pnpm";
 
     /// <summary>按平台构造 shim 规划。<paramref name="writeDshShim"/> 为 false 时（dev 隔离）只写不烘焙

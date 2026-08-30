@@ -6,6 +6,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>单实例仲裁契约：锁地址 dev 隔离、二启判定、通知应答、残留自愈、unlink 清理。</summary>
 public class LauncherActivationTests
 {
+    /// <summary>验证 isDev 开关使 socket 路径带 .dev 后缀，开发与生产实例不争抢同一把锁。</summary>
     [Fact]
     public void SocketPath_DevSuffix_IsolatesDevFromProd()
     {
@@ -18,6 +19,7 @@ public class LauncherActivationTests
         Assert.NotEqual(prod, dev);
     }
 
+    /// <summary>验证回退目录名带稳定非空的 uid 数字后缀做跨用户隔离，同用户两次调用结果一致；Windows 平台（不启用 UDS 仲裁）恒为空串。</summary>
     [Fact]
     public void FallbackUidSuffix_IsPerUser_NonEmpty()
     {
@@ -34,6 +36,7 @@ public class LauncherActivationTests
         Assert.Equal(suffix, LauncherActivation.FallbackUidSuffix());
     }
 
+    /// <summary>验证主实例绑定成功后，二启进程 NotifyPrimary 能得到应答，且主实例注册的激活回调被触发。</summary>
     [Fact]
     public async Task PrimaryThenNotify_SecondaryGetsAck_AndCallbackFires()
     {
@@ -56,6 +59,7 @@ public class LauncherActivationTests
         }
     }
 
+    /// <summary>验证主实例存活期间再次 TryBindPrimary 返回 false，二启被正确判定而非重复创建监听。</summary>
     [Fact]
     public async Task TryBindPrimary_SecondBindWhileAlive_ReturnsFalse()
     {
@@ -68,6 +72,7 @@ public class LauncherActivationTests
         }
     }
 
+    /// <summary>验证目标 socket 文件不存在（无监听对端）时通知失败返回 false。</summary>
     [Fact]
     public void NotifyPrimary_NoListener_ReturnsFalse()
     {
@@ -75,6 +80,7 @@ public class LauncherActivationTests
         Assert.False(LauncherActivation.NotifyPrimary(path, TimeSpan.FromMilliseconds(500)));
     }
 
+    /// <summary>验证文件残留但对端不存在的崩溃态能被探活识别并自愈重建为活 socket，通知功能随后恢复可用。</summary>
     [Fact]
     public async Task StaleSocketFile_SelfHeals_AndRebinds()
     {
@@ -92,6 +98,7 @@ public class LauncherActivationTests
         }
     }
 
+    /// <summary>验证 Dispose 时 unlink 掉 socket 文件，且释放后同一地址可立即重新绑定。</summary>
     [Fact]
     public void Listener_Dispose_UnlinksSocket_AndAllowsRebind()
     {
@@ -107,6 +114,7 @@ public class LauncherActivationTests
         }
     }
 
+    /// <summary>验证 Dispose 二次调用幂等、不抛 ObjectDisposedException，覆盖双击托盘退出触发重复清理的路径。</summary>
     [Fact]
     public void Listener_Dispose_Twice_IsIdempotent_NoThrow()
     {
@@ -120,6 +128,7 @@ public class LauncherActivationTests
         Assert.False(File.Exists(path));
     }
 
+    /// <summary>验证残留 socket 因只读目录删不掉时降级为「主实例但无监听」（返回 true + null listener），绝不返回 false 让调用方误判存在存活主实例而陪葬成零实例。</summary>
     [Fact]
     public void StaleUndeletableSocket_DegradesToPrimaryWithoutListener_NotZeroInstance()
     {
@@ -166,6 +175,7 @@ public class LauncherActivationTests
         }
     }
 
+    /// <summary>验证垃圾/空载荷不会误触发激活回调也不断链，随后发送的合法命令仍能到达并触发回调。</summary>
     [Theory]
     [InlineData("junk")]
     [InlineData("")]

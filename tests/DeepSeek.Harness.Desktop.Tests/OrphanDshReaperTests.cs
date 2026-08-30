@@ -19,6 +19,7 @@ public class OrphanDshReaperTests
         return path;
     }
 
+    /// <summary>验证 token 复验匹配时杀掉记录中的 PID 进程树并返回 true。</summary>
     [Fact]
     public void Reap_TokenMatches_KillsTree()
     {
@@ -43,6 +44,7 @@ public class OrphanDshReaperTests
         }
     }
 
+    /// <summary>验证 token 复验不符（PID 复用指向无关进程）时不杀任何进程、返回 false（零误杀核心）。</summary>
     [Fact]
     public void Reap_TokenMismatch_DoesNotKill()
     {
@@ -68,6 +70,7 @@ public class OrphanDshReaperTests
         }
     }
 
+    /// <summary>验证进程 token 读不到（进程已死或非 Linux 读环境失败）时不杀、返回 false。</summary>
     [Fact]
     public void Reap_TokenUnreadable_DoesNotKill()
     {
@@ -93,6 +96,7 @@ public class OrphanDshReaperTests
         }
     }
 
+    /// <summary>验证 pid 记录文件不存在时按无可清扫返回 false。</summary>
     [Fact]
     public void Reap_PidFileMissing_ReturnsFalse()
     {
@@ -114,6 +118,7 @@ public class OrphanDshReaperTests
         }
     }
 
+    /// <summary>验证 pid 记录内容损坏（非数字）时按损坏处理返回 false，fail-safe 不挡启动。</summary>
     [Fact]
     public void Reap_PidFileCorrupt_ReturnsFalse()
     {
@@ -138,6 +143,7 @@ public class OrphanDshReaperTests
         }
     }
 
+    /// <summary>验证超长数字串触发 int.Parse 溢出时同样按损坏处理返回 false，异常不穿透 Reap。</summary>
     [Fact]
     public void Reap_PidOverflowsInt_ReturnsFalse()
     {
@@ -162,6 +168,7 @@ public class OrphanDshReaperTests
         }
     }
 
+    /// <summary>验证杀进程抛异常（进程恰好退出或无权限）时记日志返回 false、不向上抛、不挡启动。</summary>
     [Fact]
     public void Reap_KillThrows_ReturnsFalse()
     {

@@ -5,6 +5,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>RuntimeLocator 行为：运行时目录解析 + 捆绑运行时探测。</summary>
 public class RuntimeLocatorTests
 {
+    /// <summary>验证 DSH_DESKTOP_RUNTIME_DIR 覆盖时运行时目录解析直接返回该变量的全路径。</summary>
     [Fact]
     public void ResolveRuntimeDirectory_EnvOverride_Wins()
     {
@@ -20,6 +21,7 @@ public class RuntimeLocatorTests
         }
     }
 
+    /// <summary>验证捆绑目录中就位 node 可执行文件与 dsh 入口 bin.js 时，TryLocateBundled 返回两者的绝对路径而非 null。</summary>
     [Fact]
     public void TryLocateBundled_WhenFilesPresent_ReturnsPaths()
     {
@@ -40,6 +42,7 @@ public class RuntimeLocatorTests
         }
     }
 
+    /// <summary>验证空目录中不存在捆绑运行时布局时 TryLocateBundled 返回 null（缺捆绑时仍可依赖下载路径兜底）。</summary>
     [Fact]
     public void TryLocateBundled_WhenMissing_ReturnsNull()
     {
@@ -55,6 +58,7 @@ public class RuntimeLocatorTests
         }
     }
 
+    /// <summary>验证 Windows 发行布局（node.exe 命名、不做扩展名猜测）下 TryLocateBundled 仍能命中并返回 node.exe 路径。</summary>
     [Fact]
     public void TryLocateBundled_WindowsNodeExeLayout_ReturnsPaths()
     {
@@ -76,6 +80,7 @@ public class RuntimeLocatorTests
         }
     }
 
+    /// <summary>验证下载目录环境变量覆盖时 ResolveDownloadedRuntimeDirectory 返回其全路径，忽略默认下载位置。</summary>
     [Fact]
     public void ResolveDownloadedRuntimeDirectory_EnvOverride_Wins()
     {
@@ -91,6 +96,7 @@ public class RuntimeLocatorTests
         }
     }
 
+    /// <summary>验证捆绑目录未就位时统一解析回退到下载目录；两处皆缺（下载目录删除后）返回 null，只读探测不创建目录。</summary>
     [Fact]
     public void TryLocateRuntimeDirectory_FallsBackToDownloadedDir()
     {

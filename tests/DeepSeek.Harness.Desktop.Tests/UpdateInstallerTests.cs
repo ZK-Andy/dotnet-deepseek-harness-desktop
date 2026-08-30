@@ -27,6 +27,7 @@ public class UpdateInstallerTests
         assetPath: "/home/zk/.local/share/updates/app_0.3.12_linux-amd64.deb",
         assetSha256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
 
+    /// <summary>验证 root 侧在装包前以 sha256sum 复验冻结的包哈希（TOCTOU 防线），哈希不一致以「package hash mismatch」退出。</summary>
     [Fact]
     public void BuildLinuxScript_VerifiesPackageHashAsRoot_BeforeInstall()
     {
@@ -40,6 +41,7 @@ public class UpdateInstallerTests
         Assert.Contains("package hash mismatch", script);
     }
 
+    /// <summary>验证日志路径为 symlink 时脚本在装包前拒绝执行，root 不向用户可控位置追加日志。</summary>
     [Fact]
     public void BuildLinuxScript_RefusesSymlinkLog()
     {
@@ -50,6 +52,7 @@ public class UpdateInstallerTests
         Assert.True(script.IndexOf("dpkg -i", StringComparison.Ordinal) > guardAt, "symlink 守卫必须先于装包");
     }
 
+    /// <summary>验证脚本经 sh -c 内联执行（root 不读用户可写文件），产物不再出现 install.sh 落盘路径。</summary>
     [Fact]
     public void BuildLinuxScript_InlineWithoutInstallShFile()
     {
@@ -58,6 +61,7 @@ public class UpdateInstallerTests
         Assert.DoesNotContain("install.sh", script);
     }
 
+    /// <summary>验证 .deb 扩展名映射 dpkg -i、.rpm 映射 rpm -U --replacepkgs，安装命令与预期逐字一致。</summary>
     [Theory]
     [InlineData("/tmp/app_0.1.21_linux-amd64.deb", "dpkg -i '/tmp/app_0.1.21_linux-amd64.deb'")]
     [InlineData("/tmp/app_0.1.21_linux-x86_64.rpm", "rpm -U --replacepkgs --quiet '/tmp/app_0.1.21_linux-x86_64.rpm'")]
@@ -66,6 +70,7 @@ public class UpdateInstallerTests
         Assert.Equal(expected, UpdateInstaller.InstallCommandFor(path));
     }
 
+    /// <summary>验证 .tar.gz/.dmg 等非 .deb/.rpm 扩展名抛出 PlatformNotSupportedException。</summary>
     [Theory]
     [InlineData("x.tar.gz")]
     [InlineData("x.dmg")]
@@ -74,6 +79,7 @@ public class UpdateInstallerTests
         Assert.Throws<PlatformNotSupportedException>(() => UpdateInstaller.InstallCommandFor(name));
     }
 
+    /// <summary>验证脚本含按进程号的等待环、安装命令原样落进、runuser 降权回原用户、环境按字面量序透传与 systemd-run 会话归位分支。</summary>
     [Fact]
     public void BuildLinuxScript_ContainsFullRelayChain()
     {
@@ -96,6 +102,7 @@ public class UpdateInstallerTests
         Assert.Contains("$RUN_PREFIX nohup '/opt/DeepSeek Harness Desktop/DeepSeek.Harness.Desktop' >> '/home/zk/.local/share/updates/install.log' 2>&1 &", script);
     }
 
+    /// <summary>验证未提供的变量不以空串写入二代实例环境，且无 HOME 时 cd 落到 / 兜底。</summary>
     [Fact]
     public void BuildLinuxScript_EmptyEnvValues_OmittedNotSetEmpty()
     {
@@ -109,6 +116,7 @@ public class UpdateInstallerTests
         Assert.Contains("cd '/'", script);
     }
 
+    /// <summary>验证 env 对为空时环境区退化为空并直接衔接 RUN_PREFIX，脚本产出仍合法。</summary>
     [Fact]
     public void BuildLinuxScript_NoEnvAtAll_PairsRegionCollapsesToRunPrefix()
     {
@@ -118,6 +126,7 @@ public class UpdateInstallerTests
         Assert.Contains("cd '/'", script);
     }
 
+    /// <summary>验证路径、日志路径与环境值中的单引号均按 sh 转义规则处理，字面值无损嵌入脚本、不破坏结构。</summary>
     [Fact]
     public void BuildLinuxScript_EscapesSingleQuotes_InPathsAndEnv()
     {

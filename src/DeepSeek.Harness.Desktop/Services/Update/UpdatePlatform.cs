@@ -5,6 +5,7 @@ public static class UpdatePlatform
 {
     /// <summary>包类型常量。</summary>
     public const string Deb = "deb";
+    /// <summary>包类型常量。</summary>
     public const string Rpm = "rpm";
 
     /// <summary>

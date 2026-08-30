@@ -7,6 +7,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// 落地，绝不进 innerHTML；两个动作按钮与 stderr 容器必须存在。</summary>
 public class RecoveryPageBuilderTests
 {
+    /// <summary>验证生成的恢复页脚本含骨架元素 id（ddc-reason/tail/export/exit）、两个 IPC 命令与 JSON 转义后的 reason 载荷。</summary>
     [Fact]
     public void Script_ContainsSkeleton_Buttons_AndPayload()
     {
@@ -21,6 +22,7 @@ public class RecoveryPageBuilderTests
         Assert.Contains("\\u8FD0\\u884C\\u65F6", script); // reason 经 JSON 序列化（非 ASCII 转义）
     }
 
+    /// <summary>验证恶意 stderr 行以 JSON 转义形态（&lt; → \u003C）落地、无裸 &lt;script&gt;，且数据回填走 textContent 而非 innerHTML。</summary>
     [Fact]
     public void StderrLines_Escaped_NotRawHtml_InjectionSafe()
     {
@@ -35,6 +37,7 @@ public class RecoveryPageBuilderTests
         Assert.Contains("d.textContent=l", script.Replace("\r", "").Replace("\n", ""));
     }
 
+    /// <summary>验证空 stderr 时脚本仍含「tail 为空则隐藏」的分支逻辑，不崩溃。</summary>
     [Fact]
     public void EmptyTail_TailHidden_NoCrash()
     {
@@ -57,6 +60,7 @@ public class RecoveryCommandRouterTests
         return (router, calls);
     }
 
+    /// <summary>验证退出命令先放行 CloseGate 再执行关窗的顺序契约（与托盘退出同款取证手法）。</summary>
     [Fact]
     public async Task Exit_ApprovesGateBeforeClosing_OrderContract()
     {
@@ -75,6 +79,7 @@ public class RecoveryCommandRouterTests
         Assert.Equal("{}", frame);
     }
 
+    /// <summary>验证路由未注册命令 desktop.other 抛 RynCommandNotFoundException。</summary>
     [Fact]
     public async Task UnknownCommand_Throws()
     {

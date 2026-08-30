@@ -13,6 +13,7 @@ public class RuntimeBootstrapTests
 {
     // —— 纯函数 ——
 
+    /// <summary>验证当前平台下归档文件名含 node-v{version}- 前缀，扩展名落在 .tar.xz/.tar.gz/zip 之一。</summary>
     [Fact]
     public void NodeArchiveFileName_CurrentPlatform_HasVersionAndExtension()
     {
@@ -22,12 +23,14 @@ public class RuntimeBootstrapTests
         Assert.Matches(@"\.(tar\.(xz|gz)|zip)$", name);
     }
 
+    /// <summary>验证 npm-cli.js 在发行包内的相对路径以 npm/bin/npm-cli.js 结尾。</summary>
     [Fact]
     public void NpmCliRelativePath_EndsWithNpmCli()
     {
         Assert.EndsWith(Path.Combine("npm", "bin", "npm-cli.js"), RuntimeBootstrap.NpmCliRelativePath());
     }
 
+    /// <summary>验证按文件名（大小写不敏感）从 SHASUMS 文本选出对应摘要，缺席条目返回 null。</summary>
     [Fact]
     public void SelectSha256_MatchesFileNameCaseInsensitiveHash()
     {
@@ -38,6 +41,7 @@ public class RuntimeBootstrapTests
         Assert.Null(RuntimeBootstrap.SelectSha256(shasums, "node-v24.20.0-darwin-arm64.tar.gz"));
     }
 
+    /// <summary>验证 Win32 扩展前缀（\\?\ 与 \\?\UNC\）被剥离、普通路径与 UNC 服务器路径原样保留。</summary>
     [Fact]
     public void StripExtendedPrefix_RemovesWin32Prefixes_KeepsPlainPaths()
     {
@@ -126,6 +130,7 @@ public class RuntimeBootstrapTests
         return (hooks, calls);
     }
 
+    /// <summary>验证下载路径端到端成功：摘要先行、下载、解压、npm 装 dsh、落最小 package.json、产出 Ready 进度且发行包残余不外泄。</summary>
     [Fact]
     public async Task RunAsync_DownloadPath_Succeeds_AndVerifiesArtifacts()
     {
@@ -160,6 +165,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证摘要不匹配时失败信息含 SHA256 且绝不产出运行时——供应链校验失败即止。</summary>
     [Fact]
     public async Task RunAsync_ShaMismatch_FailsLoud()
     {
@@ -196,6 +202,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证存在达标本机 node 时直接复用（不触发下载），仅走 npm install 装 dsh。</summary>
     [Fact]
     public async Task RunAsync_LocalNodeReuse_SkipsDownload()
     {
@@ -252,6 +259,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证挂起下载触发步超时（StepTimeoutMinutes=0 即时）转为含「超时」的可读失败态，并停在 EnsureNode 步。</summary>
     [Fact]
     public async Task RunAsync_StepTimeout_FailsAsRetryableError()
     {
@@ -291,6 +299,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证已有 node 但 npm install 返回非零时，失败信息透出 stderr（E404: not found）。</summary>
     [Fact]
     public async Task RunAsync_NpmInstallFails_FailsLoudWithStderr()
     {
@@ -329,6 +338,7 @@ public class RuntimeBootstrapTests
 
     // —— batch 3 · 多源回落 ——
 
+    /// <summary>验证官方源（nodejs.org）下载失败后切到镜像（cdn.npmmirror.com）完成下载并解压成功。</summary>
     [Fact]
     public async Task RunAsync_OfficialDownloadFails_FallsBackToMirror()
     {
@@ -392,6 +402,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证镜像关闭（NodeMirrorBaseUrl 为空）时单源失败即整体失败，错误信息含「下载」。</summary>
     [Fact]
     public async Task RunAsync_MirrorDisabled_PrimaryOnly_SingleSourceFailureFails()
     {
@@ -425,6 +436,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证官方摘要不可达时失败信息含「摘要」，且绝不下载归档（无可信摘要防投毒）。</summary>
     [Fact]
     public async Task RunAsync_OfficialDigestUnreachable_FailsLoud_NeverDownloads()
     {
@@ -461,6 +473,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证主源抛异常时按序尝试下一源并成功落盘，URL 序列与候选源顺序一致。</summary>
     [Fact]
     public async Task DownloadWithFallback_PrimaryThrows_UsesNextSource()
     {
@@ -491,6 +504,7 @@ public class RuntimeBootstrapTests
         File.Delete(dest);
     }
 
+    /// <summary>验证所有候选源均失败时抛 InvalidOperationException，信息含「所有候选源均失败」。</summary>
     [Fact]
     public async Task DownloadWithFallback_AllFail_Throws()
     {
@@ -520,6 +534,7 @@ public class RuntimeBootstrapTests
 
     // —— batch 3 · 断点续传（Range） ——
 
+    /// <summary>验证目标文件已存在且服务端回 206 时从断点（bytes=N-）续传追加，不重头下载。</summary>
     [Fact]
     public async Task DownloadResumable_ExistingAnd206_Appends()
     {
@@ -539,6 +554,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证服务端回 200（不支持 Range/文件已变）时重头下载覆盖，绝不追加错位字节。</summary>
     [Fact]
     public async Task DownloadResumable_ExistingAnd200_RestartsFromZero()
     {
@@ -561,6 +577,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证服务端回 416（Range 不可满足）时重头下载兜底，最终正确性由后续 SHA256 校验。</summary>
     [Fact]
     public async Task DownloadResumable_ExistingAnd416_RestartsFromZero()
     {
@@ -583,6 +600,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证无既有文件时发送不带 Range 头的普通 GET 全量下载。</summary>
     [Fact]
     public async Task DownloadResumable_NoExisting_SendsPlainGet()
     {
@@ -601,6 +619,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证非网络/IO 的编程 bug 不被伪造成「源失败」，原样上抛 fail loud。</summary>
     [Fact]
     public async Task DownloadWithFallback_NonNetworkBug_NotSwallowed()
     {
@@ -630,6 +649,7 @@ public class RuntimeBootstrapTests
 
     // —— batch 3 · 原子 staging + 锁重试 ——
 
+    /// <summary>验证全新 runtime 目录下 staging 整体换入 runtimeDir，且 staging 自身被移除。</summary>
     [Fact]
     public void SwapStaging_FreshRuntime_PopulatesRuntimeDir()
     {
@@ -653,6 +673,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证已有 runtime 时先备份再原子替换，成功后 .backup-* 不残留。</summary>
     [Fact]
     public void SwapStaging_ExistingRuntime_BacksUpAndReplaces()
     {
@@ -679,6 +700,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证跨崩溃残留的 .staging-*/.backup-* 被清理，正式 runtime 目录不受影响。</summary>
     [Fact]
     public void CleanupStaleStagingDirs_RemovesTransient_KeepsFormalDirs()
     {
@@ -701,6 +723,7 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证锁竞争抛 IOException 时重试至成功（前两次失败、第三次成功，共 3 次尝试）。</summary>
     [Fact]
     public void WithLockRetry_RetriesOnIOException_ThenSucceeds()
     {
@@ -716,6 +739,7 @@ public class RuntimeBootstrapTests
         Assert.Equal(3, attempts);
     }
 
+    /// <summary>验证重试次数耗尽（FileLockRetryCount 次）后仍上抛 IOException，不无限重试。</summary>
     [Fact]
     public void WithLockRetry_Exhausts_Throws()
     {
@@ -758,6 +782,7 @@ public class RuntimeBootstrapTests
 /// </summary>
 public class RuntimeBootstrapE2ETests
 {
+    /// <summary>验证真实网络 E2E（env 门控 DSH_TEST_BOOTSTRAP_E2E=1 才执行）：真下载钉版 Node、官方 SHASUMS 校验并 npm 安装 dsh 成功。</summary>
     [Fact]
     public async Task RunAsync_RealNetwork_InstallsDsh()
     {
@@ -792,6 +817,7 @@ public class RuntimeBootstrapE2ETests
 /// <summary>子进程文本流 UTF-8 单点契约（ADR online-first-unbundled-runtime 踩坑约束）。</summary>
 public class Utf8TextStreamsTests
 {
+    /// <summary>验证 ProcessStartInfo 的标准输出与标准错误流编码同时被设为 UTF-8。</summary>
     [Fact]
     public void UseUtf8TextStreams_SetsBothEncodings()
     {
@@ -805,6 +831,7 @@ public class Utf8TextStreamsTests
 /// <summary>RuntimeBootstrapGate 记序语义 + BootstrapCommandRouter 路由契约。</summary>
 public class BootstrapGateAndRouterTests
 {
+    /// <summary>验证 RuntimeBootstrapGate 记序往返：Signal 后 IsSignaled=true，Reset 后回到 false。</summary>
     [Fact]
     public void Gate_SignalAndReset_RoundTrip()
     {
@@ -816,6 +843,7 @@ public class BootstrapGateAndRouterTests
         Assert.False(gate.IsSignaled);
     }
 
+    /// <summary>验证 desktop.bootstrap.retry 可路由且 RouteAsync 同步触发闸门信号，recovery.exit 不可路由。</summary>
     [Fact]
     public void Router_RetryCommand_SignalsGate()
     {
@@ -829,6 +857,7 @@ public class BootstrapGateAndRouterTests
         Assert.True(gate.IsSignaled);
     }
 
+    /// <summary>验证路由未注册命令 desktop.unknown 抛 RynCommandNotFoundException。</summary>
     [Fact]
     public async Task Router_UnknownCommand_ThrowsRynCommandNotFound()
     {
@@ -841,6 +870,7 @@ public class BootstrapGateAndRouterTests
 /// <summary>RuntimeBootstrapOptions 配置装载：节缺失全默认、合法节逐项覆盖、坏 JSON fail-safe。</summary>
 public class RuntimeBootstrapOptionsTests
 {
+    /// <summary>验证 appsettings 缺 RuntimeBootstrap 节时全部返回默认值（Node 24.20.0、dsh@latest、最低 major 22、npmmirror 镜像）。</summary>
     [Fact]
     public void Load_MissingSection_ReturnsDefaults()
     {
@@ -861,6 +891,7 @@ public class RuntimeBootstrapOptionsTests
         }
     }
 
+    /// <summary>验证合法配置节逐项覆盖默认值：Node 版本/规格/最低 major/步超时/分发与镜像 URL。</summary>
     [Fact]
     public void Load_ValidSection_Overrides()
     {
@@ -885,6 +916,7 @@ public class RuntimeBootstrapOptionsTests
         }
     }
 
+    /// <summary>验证坏 JSON 时 fail-safe 回退默认值而非抛异常，配置损坏不阻塞引导。</summary>
     [Fact]
     public void Load_BrokenJson_FailsSafeToDefaults()
     {

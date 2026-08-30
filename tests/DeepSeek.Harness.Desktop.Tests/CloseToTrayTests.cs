@@ -13,6 +13,7 @@ public class CloseBehaviorPreferenceTests
         return Path.Combine(dir, CloseBehaviorPreference.FileName);
     }
 
+    /// <summary>验证无持久化文件时 HideOnClose 缺省回退为 true，保持历史行为（存量升级零感知）。</summary>
     [Fact]
     public void MissingFile_FallsBackToTrue()
     {
@@ -20,6 +21,7 @@ public class CloseBehaviorPreferenceTests
         Assert.True(new CloseBehaviorPreference(TempPath()).HideOnClose);
     }
 
+    /// <summary>验证持久化文件损坏（非 JSON）时 HideOnClose 回退为 true 而非抛错。</summary>
     [Fact]
     public void CorruptFile_FallsBackToTrue()
     {
@@ -28,6 +30,7 @@ public class CloseBehaviorPreferenceTests
         Assert.True(new CloseBehaviorPreference(path).HideOnClose);
     }
 
+    /// <summary>验证 Set(false) 落盘 hideToTrayOnClose:false，新建实例重载后仍保持关闭。</summary>
     [Fact]
     public void SetFalse_PersistsAndSurvivesReload()
     {
@@ -39,6 +42,7 @@ public class CloseBehaviorPreferenceTests
         Assert.Contains("\"hideToTrayOnClose\":false", File.ReadAllText(path));
     }
 
+    /// <summary>验证 Set(true) 在文件中显式写出 hideToTrayOnClose:true，不依赖缺省值。</summary>
     [Fact]
     public void SetTrue_WritesExplicitTrue()
     {
@@ -51,6 +55,7 @@ public class CloseBehaviorPreferenceTests
 /// <summary>closeToTray 路由契约：帧形状、set 落盘、未知命令 fail loud。</summary>
 public class CloseToTrayCommandRouterTests
 {
+    /// <summary>验证路由器只接受 closeToTray 前缀命令，autostart 等非本路由命令一概拒绝。</summary>
     [Fact]
     public void CanRoute_MatchesOnlyOwnCommands()
     {
@@ -62,6 +67,7 @@ public class CloseToTrayCommandRouterTests
         Assert.False(router.CanRoute("desktop.autostart.getState"));
     }
 
+    /// <summary>验证 getState 帧携带缺省 enabled=true 与托盘可用性 available=false 两字段。</summary>
     [Fact]
     public async Task GetState_ReturnsEnabledAndAvailability()
     {
@@ -74,6 +80,7 @@ public class CloseToTrayCommandRouterTests
         Assert.Equal("""{"enabled":true,"available":false}""", frame);
     }
 
+    /// <summary>验证 set 命令把 enabled=false 落盘到偏好文件，随后 getState 帧反映关闭状态与 available=true。</summary>
     [Fact]
     public async Task SetFalse_PersistsPreference()
     {
@@ -89,6 +96,7 @@ public class CloseToTrayCommandRouterTests
         Assert.Equal("""{"enabled":false,"available":true}""", frame);
     }
 
+    /// <summary>验证未知命令路由抛 RynCommandNotFoundException，未知命令绝不静默吞掉。</summary>
     [Fact]
     public async Task UnknownCommand_ThrowsNotFound()
     {

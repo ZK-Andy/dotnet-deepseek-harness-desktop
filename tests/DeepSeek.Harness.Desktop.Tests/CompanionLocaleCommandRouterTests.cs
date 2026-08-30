@@ -11,6 +11,7 @@ public class CompanionLocaleCommandRouterTests
         router.RouteAsync(CompanionLocaleCommandRouter.CommandName,
             new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(json)), null!, CancellationToken.None);
 
+    /// <summary>验证合法 locale 上报更新 UiLocale.Current 并恰好触发一次 Changed 事件，返回空对象帧 {}。</summary>
     [Fact]
     public async Task ValidLocale_UpdatesUiLocale()
     {
@@ -25,6 +26,7 @@ public class CompanionLocaleCommandRouterTests
         Assert.Equal(1, fired);
     }
 
+    /// <summary>验证坏 JSON、缺字段、非字符串与非法 locale 形态一律静默忽略，返回 null 帧且不改变当前值。</summary>
     [Theory]
     [InlineData("not-json")]
     [InlineData("""{"locale":123}""")]
@@ -42,6 +44,7 @@ public class CompanionLocaleCommandRouterTests
         Assert.Equal(before, ui.Current);
     }
 
+    /// <summary>验证重复上报相同 locale 不再触发 Changed 事件。</summary>
     [Fact]
     public async Task SameLocale_NoDuplicateEvent()
     {
@@ -56,6 +59,7 @@ public class CompanionLocaleCommandRouterTests
         Assert.Equal(0, fired);
     }
 
+    /// <summary>验证路由器只认自己的 locale 命令名，其他命令（desktop.update.getState）拒绝路由。</summary>
     [Fact]
     public void CanRoute_OnlyOwnCommand()
     {

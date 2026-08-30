@@ -5,6 +5,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>desktop profile 自举（对齐上游 initProfile 语义）：三件套创建、幂等、永不覆写已有文件。</summary>
 public class DesktopProfileBootstrapTests
 {
+    /// <summary>验证全新 home 下创建清单（含 dsh-base 与 dsh-web-app bundles 及 private 标记），并补齐 patch 与 workspace 兄弟文件。</summary>
     [Fact]
     public void EnsureProfile_FreshHome_CreatesManifestWithWebAppBundles_AndSiblingFiles()
     {
@@ -28,6 +29,7 @@ public class DesktopProfileBootstrapTests
         }
     }
 
+    /// <summary>验证已初始化的 profile 绝不覆写用户清单与 patch，仅按需补齐缺失的兄弟文件。</summary>
     [Fact]
     public void EnsureProfile_AlreadyInitialized_NeverTouchesExistingFiles()
     {
@@ -55,6 +57,7 @@ public class DesktopProfileBootstrapTests
         }
     }
 
+    /// <summary>验证对账移除指向不存在路径的 file: 死引用，registry 形态与现存本地目录引用原样保留，并输出可解析日志。</summary>
     [Fact]
     public void ReconcileProfile_RemovesDeadLocalSeedRefs_KeepsRegistryAndPresentLocal()
     {
@@ -93,6 +96,7 @@ public class DesktopProfileBootstrapTests
         }
     }
 
+    /// <summary>验证全部引用为 registry 形态或现存本地目标时对账为 no-op：返回 0 且不产生日志。</summary>
     [Fact]
     public void ReconcileProfile_NoOp_WhenNoDeadLocalRefs()
     {
@@ -121,6 +125,7 @@ public class DesktopProfileBootstrapTests
         }
     }
 
+    /// <summary>验证 manifest 缺失时对账安全 no-op：返回 0、不抛错、不产生日志。</summary>
     [Fact]
     public void ReconcileProfile_NoOp_WhenManifestMissing()
     {

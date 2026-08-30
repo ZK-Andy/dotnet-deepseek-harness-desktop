@@ -10,6 +10,7 @@ public class PreinstallTests
 {
     // —— PreinstallChoiceGate ——
 
+    /// <summary>验证 PreinstallChoiceGate 初始未决策（IsDecided=false）：首个 Set 之前闸门须处于未拍板态。</summary>
     [Fact]
     public void Gate_NotDecided_Initially()
     {
@@ -17,6 +18,7 @@ public class PreinstallTests
         Assert.False(gate.IsDecided);
     }
 
+    /// <summary>验证 Set(Install) 使闸门转为已决策，且等待中的 Choice 返回 Install。</summary>
     [Fact]
     public async Task Gate_SetInstall_CompletesChoiceWithInstall()
     {
@@ -26,6 +28,7 @@ public class PreinstallTests
         Assert.Equal(PreinstallChoice.Install, await gate.Choice);
     }
 
+    /// <summary>验证 Set(Skip) 使闸门转为已决策，且等待中的 Choice 返回 Skip。</summary>
     [Fact]
     public async Task Gate_SetSkip_CompletesChoiceWithSkip()
     {
@@ -35,6 +38,7 @@ public class PreinstallTests
         Assert.Equal(PreinstallChoice.Skip, await gate.Choice);
     }
 
+    /// <summary>验证一次拍板即锁定：先 Install 再 Set(Skip)，Choice 仍为 Install，第二次 Set 被忽略。</summary>
     [Fact]
     public async Task Gate_SecondSet_Ignored()
     {
@@ -44,6 +48,7 @@ public class PreinstallTests
         Assert.Equal(PreinstallChoice.Install, await gate.Choice);
     }
 
+    /// <summary>验证 Reset 清除已拍板决策，闸门回到未决策态，可重新走选择流程。</summary>
     [Fact]
     public void Gate_Reset_ClearsDecision()
     {
@@ -55,6 +60,7 @@ public class PreinstallTests
 
     // —— PreinstallCommandRouter ——
 
+    /// <summary>验证路由只接受 own 命令 desktop.preinstall.choose，其它命令（如 desktop.bootstrap.retry）不可路由。</summary>
     [Fact]
     public void Router_CanRoute_MatchesCommand()
     {
@@ -63,6 +69,7 @@ public class PreinstallTests
         Assert.False(router.CanRoute("desktop.bootstrap.retry"));
     }
 
+    /// <summary>验证 {"action":"install"} 载荷经 RouteAsync 落到闸门的 Install 决策。</summary>
     [Fact]
     public async Task Router_Install_SetsGateInstall()
     {
@@ -72,6 +79,7 @@ public class PreinstallTests
         Assert.Equal(PreinstallChoice.Install, await gate.Choice);
     }
 
+    /// <summary>验证 {"action":"skip"} 载荷经 RouteAsync 落到闸门的 Skip 决策。</summary>
     [Fact]
     public async Task Router_Skip_SetsGateSkip()
     {
@@ -81,6 +89,7 @@ public class PreinstallTests
         Assert.Equal(PreinstallChoice.Skip, await gate.Choice);
     }
 
+    /// <summary>验证未知 action 值（weird）按默认 Install 处理，而非报错或卡死。</summary>
     [Fact]
     public async Task Router_UnknownAction_DefaultsToInstall()
     {
@@ -90,6 +99,7 @@ public class PreinstallTests
         Assert.Equal(PreinstallChoice.Install, await gate.Choice);
     }
 
+    /// <summary>验证空参数体（无 JSON）与未知 action 同路，默认决策为 Install。</summary>
     [Fact]
     public async Task Router_EmptyArgs_DefaultsToInstall()
     {
@@ -99,6 +109,7 @@ public class PreinstallTests
         Assert.Equal(PreinstallChoice.Install, await gate.Choice);
     }
 
+    /// <summary>验证路由到未注册命令 desktop.preinstall.decide 抛 RynCommandNotFoundException 而非静默吞掉。</summary>
     [Fact]
     public async Task Router_UnknownCommand_Throws()
     {
@@ -118,6 +129,7 @@ public class PreinstallTests
         return p;
     }
 
+    /// <summary>验证 profile 文件缺失时首启待装列表为 dshmarket（按全新环境处理）而非报错。</summary>
     [Fact]
     public void Pending_ReturnsMarket_WhenFileMissing()
     {
@@ -125,6 +137,7 @@ public class PreinstallTests
         Assert.Equal(["dshmarket"], PresetPluginCatalog.PendingForFirstBoot(missing));
     }
 
+    /// <summary>验证 dependencies 与 bundles 均未含 dshmarket 时判定其为待装插件。</summary>
     [Fact]
     public void Pending_ReturnsMarket_WhenNotInstalled()
     {
@@ -136,6 +149,7 @@ public class PreinstallTests
         finally { File.Delete(p); }
     }
 
+    /// <summary>验证 dependencies 与 bundles 均已就位 dshmarket 时首启待装列表为空。</summary>
     [Fact]
     public void Pending_ReturnsEmpty_WhenMarketInstalled()
     {
@@ -147,6 +161,7 @@ public class PreinstallTests
         finally { File.Delete(p); }
     }
 
+    /// <summary>验证「registry 已装但 bundles 未补写」的异常路径按未就位处理，引导页重新呈现 dshmarket。</summary>
     [Fact]
     public void Pending_ReturnsMarket_WhenDepButNoBundle()
     {
@@ -161,6 +176,7 @@ public class PreinstallTests
 
     // —— PreinstallFrame 形状 ——
 
+    /// <summary>验证 decision 帧 JSON 序列化为紧凑形态时字段顺序与大小写精确为 {"kind":"decision","plugins":[...]}。</summary>
     [Fact]
     public void Frame_Decision_ExactShape()
     {
@@ -168,6 +184,7 @@ public class PreinstallTests
             JsonSerializer.Serialize(new PreinstallFrame("decision", Plugins: ["dshmarket"]), AppJsonContext.Default.PreinstallFrame));
     }
 
+    /// <summary>验证 log 帧 JSON 序列化形状精确为 {"kind":"log","line":"..."}。</summary>
     [Fact]
     public void Frame_Log_ExactShape()
     {
@@ -175,6 +192,7 @@ public class PreinstallTests
             JsonSerializer.Serialize(new PreinstallFrame("log", Line: "Progress 42%"), AppJsonContext.Default.PreinstallFrame));
     }
 
+    /// <summary>验证 done(install/ok:true) 帧序列化为 kind+action+ok+message 四字段的精确形状。</summary>
     [Fact]
     public void Frame_Done_ExactShape()
     {
@@ -182,6 +200,7 @@ public class PreinstallTests
             JsonSerializer.Serialize(new PreinstallFrame("done", Action: "install", Ok: true, Message: "complete"), AppJsonContext.Default.PreinstallFrame));
     }
 
+    /// <summary>验证 skip 帧的 null Ok 字段被省略：序列化只保留 kind+action 两字段。</summary>
     [Fact]
     public void Frame_Done_Skip_OmitsOk()
     {
@@ -190,6 +209,7 @@ public class PreinstallTests
             JsonSerializer.Serialize(new PreinstallFrame("done", Action: "skip"), AppJsonContext.Default.PreinstallFrame));
     }
 
+    /// <summary>验证含 &lt;/script&gt; 的日志行经 JSON 转义后无裸 &lt; 落入脚本（XSS 面），且能解析回原值。</summary>
     [Fact]
     public void Frame_HostileLine_EscapesForJs()
     {
@@ -199,6 +219,7 @@ public class PreinstallTests
         Assert.Equal(hostile, JsonDocument.Parse(json).RootElement.GetProperty("line").GetString());
     }
 
+    /// <summary>验证中文消息以 \uXXXX 转义形态序列化（ASCII 安全），且能解析往返回原值。</summary>
     [Fact]
     public void Frame_ChineseMessage_RoundTrips_WithEscapedJson()
     {
@@ -210,6 +231,7 @@ public class PreinstallTests
 
     // —— 流式行泵（RunProcessStreamingAsync 的核心：逐行转发 + 累积）——
 
+    /// <summary>验证行泵逐行转发（含结尾换行）且 StringBuilder 累积完整输出，行事件与累积内容一致。</summary>
     [Fact]
     public async Task PumpAsync_ForwardsEachLine_AndAccumulates()
     {
@@ -222,6 +244,7 @@ public class PreinstallTests
         Assert.Equal(["alpha", "beta", "gamma"], seen);
     }
 
+    /// <summary>验证末行无换行符时仍被完整捕获为一行转发，不丢最后一段输出。</summary>
     [Fact]
     public async Task PumpAsync_CapturesLastLineWithoutTrailingNewline()
     {

@@ -7,6 +7,7 @@ public class DesktopBannerTests
 {
     private static readonly DesktopBanner.Palette s_palette = new("#111111", "#eeeeee", "#222222", "#333333");
 
+    /// <summary>验证生成脚本带固定 id 的幂等守卫，同一横幅重复注入时直接返回。</summary>
     [Fact]
     public void Build_GuardsDoubleInjection()
     {
@@ -15,6 +16,7 @@ public class DesktopBannerTests
         Assert.Contains("if(document.getElementById(id))return;", script);
     }
 
+    /// <summary>验证脚本内嵌全部已知横幅 id，堆叠偏移按已存横幅数 × 44px 运行时计算。</summary>
     [Fact]
     public void Build_EmbedsAllKnownIds_ForStackCount()
     {
@@ -28,6 +30,7 @@ public class DesktopBannerTests
         Assert.Contains("top:'+(n*44)+'px;", script);
     }
 
+    /// <summary>验证文案经 JsString 管线转义，含引号与闭合标签的原始输入不会直接拼进脚本。</summary>
     [Fact]
     public void Build_EncodesTextViaJsString()
     {
@@ -36,6 +39,7 @@ public class DesktopBannerTests
         Assert.DoesNotContain("包含</div>", script);
     }
 
+    /// <summary>验证传入配色（背景/前景/边框）完整落地为脚本内联样式。</summary>
     [Fact]
     public void Build_AppliesPalette()
     {
@@ -45,6 +49,7 @@ public class DesktopBannerTests
         Assert.Contains("#333333", script);
     }
 
+    /// <summary>验证按钮文案随宿主 locale 切换：en 出「OK」、缺省中文，且中文经 JsString 转义为大写 \u 序列。</summary>
     [Fact]
     public void Build_OkLabel_LocalizedViaJsString()
     {

@@ -5,6 +5,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// <summary>宿主 UI 语言单点契约（ADR host-ui-locale）：归一化、变化事件、英文分支判定、OS 缺省。</summary>
 public class UiLocaleTests
 {
+    /// <summary>验证 Set 更新 Current 且仅在值实际变化时触发一次 Changed，同值设置不重复触发。</summary>
     [Fact]
     public void Set_NewValue_UpdatesAndFiresChanged()
     {
@@ -20,6 +21,7 @@ public class UiLocaleTests
         Assert.Equal(2, fired);
     }
 
+    /// <summary>验证仅 en 前缀（en/en-GB）判定为英文，zh-CN 与 fr 等其余语言均不判定为英文。</summary>
     [Fact]
     public void IsEnglish_OnlyEnPrefix()
     {
@@ -34,6 +36,7 @@ public class UiLocaleTests
         Assert.False(ui.IsEnglish);
     }
 
+    /// <summary>验证空白语言标记被拒绝并抛出 ArgumentException。</summary>
     [Fact]
     public void Set_NullOrWhitespace_Throws()
     {
@@ -41,6 +44,7 @@ public class UiLocaleTests
         Assert.Throws<ArgumentException>(() => ui.Set("  "));
     }
 
+    /// <summary>验证新实例构造即有非空语言（OS locale 或 zh-CN 兜底），任何上报到达前宿主面即可用。</summary>
     [Fact]
     public void Default_IsOsFallback_NonEmpty()
     {

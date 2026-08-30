@@ -9,6 +9,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 [Collection("dsh-home-env")]
 public class HarnessRuntimeHostTests
 {
+    /// <summary>验证取消令牌已置位时 StartAsync 直接返回 null：入口取消检查先于 spawn，任何路径都不会留下无人认领的 dsh 孤儿子进程。</summary>
     [Fact]
     public async Task StartAsync_CancelledToken_ReturnsNull_WithoutSpawning()
     {
@@ -21,6 +22,7 @@ public class HarnessRuntimeHostTests
         Assert.Null(await host.StartAsync(TimeSpan.FromSeconds(5), cts.Token));
     }
 
+    /// <summary>验证 BuildDshWebArgs 产物含 --no-open 且第二参数为桌面 profile 名，避免 dsh web 把 URL 交给系统默认浏览器、与内嵌 WebView 重复弹窗。</summary>
     [Fact]
     public void BuildDshWebArgs_IncludesNoOpen_SoShellDoesNotHandOffToOsBrowser()
     {
@@ -31,6 +33,7 @@ public class HarnessRuntimeHostTests
         Assert.Equal(HarnessRuntimeHost.DesktopProfileName, args[1]);
     }
 
+    /// <summary>验证当前 PATH 为 null 或空串时，富化结果仅含 home 目录下 ~/.local/bin 单独一段（按 ':' 拼接）。</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -39,6 +42,7 @@ public class HarnessRuntimeHostTests
         Assert.Equal("/home/u/.local/bin", HarnessRuntimeHost.BuildEnrichedPath(current, "/home/u", ':'));
     }
 
+    /// <summary>验证 ~/.local/bin 未出现在既有 PATH 中时被追加到末尾，原有各段相对顺序保持不变。</summary>
     [Fact]
     public void BuildEnrichedPath_MissingLocalBin_AppendsAfterExisting()
     {
@@ -46,6 +50,7 @@ public class HarnessRuntimeHostTests
         Assert.Equal("/usr/local/bin:/usr/bin:/home/u/.local/bin", enriched);
     }
 
+    /// <summary>验证 ~/.local/bin 已在 PATH 中时富化结果原样返回，不产生重复段（幂等）。</summary>
     [Fact]
     public void BuildEnrichedPath_AlreadyPresent_Idempotent()
     {
@@ -53,6 +58,7 @@ public class HarnessRuntimeHostTests
         Assert.Equal(path, HarnessRuntimeHost.BuildEnrichedPath(path, "/home/u", ':'));
     }
 
+    /// <summary>验证 ~/.local/bin-extra 这类相似前缀段不会被误判为已含 ~/.local/bin，仍会追加本尊目录。</summary>
     [Fact]
     public void BuildEnrichedPath_SimilarPrefixSegment_DoesNotFalsePositive()
     {
@@ -61,6 +67,7 @@ public class HarnessRuntimeHostTests
         Assert.Equal("/home/u/.local/bin-extra:/home/u/.local/bin", enriched);
     }
 
+    /// <summary>DSH_TEST_E2E=1 且 PATH 中有 dsh 时真实 spawn dsh 并断言解析出的 URL 形如 http://127.0.0.1:&lt;port&gt;：未启用或找不到 dsh 时自动跳过并保持绿色。</summary>
     [Fact]
     public async Task StartAsync_ParsesRealDshWebUrl_WhenEnabled()
     {
@@ -103,6 +110,7 @@ public class HarnessRuntimeHostTests
         }
     }
 
+    /// <summary>验证子进程被终止后 RestartAsync 能重建新实例且端口保持不变——重启前后 URL 相等，Web UI 才能记住上一会话。</summary>
     [Fact]
     public async Task RestartAsync_AfterChildKilled_YieldsNewUrl_WhenEnabled()
     {
@@ -152,6 +160,7 @@ public class HarnessRuntimeHostTests
         }
     }
 
+    /// <summary>验证 DSH_HOME 下端口状态文件读写往返：初始无文件时 TryLoadPersistedPort 为 null，PersistPort 写入后按原值读回。</summary>
     [Fact]
     public void PersistPort_ThenLoad_RoundTripsUnderDshHome()
     {
@@ -175,6 +184,7 @@ public class HarnessRuntimeHostTests
         }
     }
 
+    /// <summary>验证 0.3.5 及之前写在 home 根的历史端口文件，在 profile 文件缺失时仍被回读沿用，升级后首次启动零感知。</summary>
     [Fact]
     public void LegacyHomeRootFile_UsedWhenProfileFileMissing()
     {
@@ -197,6 +207,7 @@ public class HarnessRuntimeHostTests
         }
     }
 
+    /// <summary>验证 PersistPort 只写 profiles/desktop 路径下的端口文件，绝不回写 home 根旧位置文件，跨 profile 争抢不能借尸还魂。</summary>
     [Fact]
     public void Persist_WritesProfilePathOnly_LegacyFileUntouched()
     {
@@ -222,6 +233,7 @@ public class HarnessRuntimeHostTests
         }
     }
 
+    /// <summary>验证 profile 文件缺失且 home 根旧文件内容非数字时按无记忆返回 null，不抛异常阻断启动。</summary>
     [Fact]
     public void ProfileFile_MissingButLegacyCorrupt_ReturnsNull()
     {
@@ -244,6 +256,7 @@ public class HarnessRuntimeHostTests
         }
     }
 
+    /// <summary>验证 profile 端口文件内容损坏时 TryLoadPersistedPort 返回 null，且随后的 PersistPort 能覆盖修复为新值。</summary>
     [Fact]
     public void TryLoadPersistedPort_CorruptFile_ReturnsNull()
     {
@@ -268,6 +281,7 @@ public class HarnessRuntimeHostTests
         }
     }
 
+    /// <summary>验证全新实例（端口缓存为空）冷启动时从磁盘加载上次端口，两次实例解析出相同 URL，origin 保持不变。</summary>
     [Fact]
     public async Task StartAsync_PersistsPort_AcrossFreshInstances_WhenEnabled()
     {

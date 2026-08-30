@@ -10,6 +10,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 [Collection("dsh-home-env")]
 public class SharedHomeContractTests
 {
+    /// <summary>验证桌面覆盖变量优先于生态 DSH_HOME 与默认 ~/.dsh 的 home 解析优先级。</summary>
     [Fact]
     public void ResolveDshHome_DesktopOverride_WinsOverEcosystemAndDefault()
     {
@@ -28,6 +29,7 @@ public class SharedHomeContractTests
         }
     }
 
+    /// <summary>验证无桌面覆盖时生态标准 DSH_HOME 生效，且 ~ 前缀展开到用户主目录。</summary>
     [Fact]
     public void ResolveDshHome_EcosystemOverride_Honored_AndTildeExpanded()
     {
@@ -46,6 +48,7 @@ public class SharedHomeContractTests
         }
     }
 
+    /// <summary>验证空白 DSH_HOME 按上游语义视为未设，回退到规范默认 ~/.dsh 而非当前工作目录。</summary>
     [Fact]
     public void ResolveDshHome_WhitespaceEcosystem_TreatedAsUnset_FallsBackToCanonicalDotDsh()
     {
@@ -64,6 +67,7 @@ public class SharedHomeContractTests
         }
     }
 
+    /// <summary>验证端口记忆写入 profiles/desktop 下按 profile 隔离，旧全局位置仅保留作迁移回读不再写入。</summary>
     [Fact]
     public void PortMemory_LivesUnderDesktopProfile_LegacyPathKeptForMigrationRead()
     {
@@ -88,6 +92,7 @@ public class SharedHomeContractTests
         }
     }
 
+    /// <summary>验证端到端装配契约：desktop profile 落 home 层、sessions 不落 profile 内、storages 居 home 层（由 DSH_TEST_E2E 门控）。</summary>
     [Fact]
     public async Task StartAsync_DesktopProfile_AssemblesAtHomeLevel_SessionsSharedAcrossProfiles_WhenEnabled()
     {

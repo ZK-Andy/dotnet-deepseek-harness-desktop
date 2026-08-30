@@ -7,6 +7,7 @@ public class ReleaseAssetTests
 {
     private const string Repo = "ZK-Andy/dotnet-deepseek-harness-desktop";
 
+    /// <summary>验证 linux-x64 + Deb 平台从 expanded_assets 挑中 linux-amd64.deb，且 SHA256SUMS 链接指向仓库内 sums 文件。</summary>
     [Fact]
     public void Pick_LinuxAmd64_Deb()
     {
@@ -22,6 +23,7 @@ public class ReleaseAssetTests
         Assert.EndsWith("/SHA256SUMS.txt", meta.Sha256Url, StringComparison.Ordinal);
     }
 
+    /// <summary>验证 rpm 系统挑中 linux-x86_64.rpm——架构命名与 deb 的 amd64 不同，防实机串包（2026-08-22 教训）。</summary>
     [Fact]
     public void Pick_LinuxX64_Rpm_UsesRpmArchName()
     {
@@ -37,6 +39,7 @@ public class ReleaseAssetTests
         Assert.Equal("app_0.1.21_linux-x86_64.rpm", meta.AssetName);
     }
 
+    /// <summary>验证各 RID（win-x64/linux-arm64/osx-arm64）与可选包类型组合挑中对应命名资产，含 linux-arm64 的 rpm 用 aarch64 命名特例。</summary>
     [Theory]
     [InlineData("win-x64", null, "app_0.1.21_windows-x64-setup.exe")]
     [InlineData("linux-arm64", "deb", "app_0.1.21_linux-arm64.deb")]
@@ -54,6 +57,7 @@ public class ReleaseAssetTests
         Assert.Equal(expectedName, meta.AssetName);
     }
 
+    /// <summary>验证资产列表无可匹配项（仅有 SHA256SUMS）时返回 null，绝不退回错误资产。</summary>
     [Fact]
     public void Pick_ReturnsNull_WhenNoMatchingAsset()
     {
@@ -65,6 +69,7 @@ public class ReleaseAssetTests
         Assert.Null(meta);
     }
 
+    /// <summary>验证包类型检测优先级：有 dpkg 取 Deb、仅 rpm 取 Rpm、两者皆无回退 Deb（保证装不上时错误可诊断）。</summary>
     [Fact]
     public void DetectPackageKind_PrefersDpkg_FallsBackRpm()
     {
@@ -75,6 +80,7 @@ public class ReleaseAssetTests
         Assert.Equal(UpdatePlatform.Deb, UpdatePlatform.DetectPackageKind(hasDpkg: false, hasRpm: false));
     }
 
+    /// <summary>验证 SHA256SUMS 解析兼容「双空格」与「*」二进制两类行形态，缺席条目返回 null。</summary>
     [Fact]
     public void ParseSha256_HandlesStandardAndBinaryFormats()
     {
@@ -88,6 +94,7 @@ public class ReleaseAssetTests
         Assert.Null(InstallerDownloader.ParseSha256(sums, "missing.deb"));
     }
 
+    /// <summary>验证下载锁跨实例互斥（第二实例拿不到锁，防双写 .part 损坏），释放后语义等价于进程死亡自动释放。</summary>
     [Fact]
     public void DownloadLock_ExclusiveAcrossInstances()
     {

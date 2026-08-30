@@ -7,12 +7,14 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// 错误帧精确形状、autostart 状态帧线形 pin、JS 字面量嵌值的转义边界。</summary>
 public class AppJsonTests
 {
+    /// <summary>验证 Error 输出的错误帧与紧凑形态线形 {"error":"boom"} 逐字符一致。</summary>
     [Fact]
     public void Error_ExactCompactShape()
     {
         Assert.Equal("""{"error":"boom"}""", AppJsonContext.Error("boom"));
     }
 
+    /// <summary>验证含引号、反斜杠与 HTML 敏感标签字符的恶意消息经 Error 转义后可无损往返还原。</summary>
     [Fact]
     public void Error_HostileMessage_RoundTrips()
     {
@@ -21,6 +23,7 @@ public class AppJsonTests
         Assert.Equal(hostile, parsed.GetProperty("error").GetString());
     }
 
+    /// <summary>验证 autostart 状态帧 enabled true/false 两态经 AppJsonContext 序列化后逐字符命中紧凑线形。</summary>
     [Fact]
     public void AutostartState_ExactShape()
     {
@@ -31,6 +34,7 @@ public class AppJsonTests
             JsonSerializer.Serialize(new AutostartCommandRouter.StateFrame(false), AppJsonContext.Default.AutostartState));
     }
 
+    /// <summary>验证 JsString 对 HTML 敏感字符与中文一律转义为 \u 形态（大写），且转义后仍可解析还原原值。</summary>
     [Fact]
     public void JsString_HtmlSensitiveAndNonAsciiEscaped_RoundTrips()
     {

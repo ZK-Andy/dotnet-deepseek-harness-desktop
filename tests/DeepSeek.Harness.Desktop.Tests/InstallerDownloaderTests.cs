@@ -33,6 +33,7 @@ public class InstallerDownloaderTests
     private static string TempDir() =>
         Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
 
+    /// <summary>验证资产请求返回 404 等非 2xx 时显式转抛 HttpRequestException，且目录中不留 .part 半成品文件。</summary>
     [Fact]
     public async Task AssetHttpError_ThrowsAndLeavesNoPart()
     {
@@ -50,6 +51,7 @@ public class InstallerDownloaderTests
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>验证 release 未附 SHA256SUMS.txt 时宁可拒装（抛消息含 SHA256SUMS 的 InvalidOperationException），也不安装未经哈希校验的包体。</summary>
     [Fact]
     public async Task MissingShaFile_RefusesToInstall()
     {
@@ -69,6 +71,7 @@ public class InstallerDownloaderTests
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>验证下载物哈希与清单条目不符时抛 InvalidDataException，并删除已产生的 .part 半成品。</summary>
     [Fact]
     public async Task HashMismatch_ThrowsAndDeletesPart()
     {
@@ -94,6 +97,7 @@ public class InstallerDownloaderTests
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>验证 SHA256SUMS 清单里只有其他资产条目、缺目标资产对应哈希时抛 InvalidOperationException，且无 .part 残留。</summary>
     [Fact]
     public async Task MissingSumEntry_Throws()
     {
@@ -119,6 +123,7 @@ public class InstallerDownloaderTests
         finally { Directory.Delete(dir, true); }
     }
 
+    /// <summary>验证成功路径：下载物按清单哈希校验通过后原子改名为目标文件，内容与载荷一致，.part 临时文件被清理。</summary>
     [Fact]
     public async Task Success_MovesAtomically_AndCleansPart()
     {
