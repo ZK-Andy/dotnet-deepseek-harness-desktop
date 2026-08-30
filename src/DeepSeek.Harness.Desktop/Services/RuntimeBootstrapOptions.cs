@@ -19,8 +19,8 @@ public sealed record RuntimeBootstrapOptions
     /// 镜像仅承担归档下载，摘要仍取自 <see cref="NodeDistBaseUrl"/> 官方（防投毒，ADR reference-alignment 批次三）。</summary>
     public string NodeMirrorBaseUrl { get; init; } = "https://cdn.npmmirror.com/binaries/node";
 
-    /// <summary>dsh 的安装 spec（@latest：内核升级与壳发版解耦，见 ADR）。</summary>
-    public string DshSpec { get; init; } = "@deepseek-ai/dsh@latest";
+    /// <summary>dsh 的安装 spec（默认跟 npm latest 解耦；当前钉 alpha.2，重入 @latest 见 ADR）。</summary>
+    public string DshSpec { get; init; } = "@deepseek-ai/dsh@0.1.2-alpha.2";
 
     /// <summary>复用本机 PATH node 的最低主版本（低于则下载钉版）。</summary>
     public int MinimumLocalNodeMajor { get; init; } = 22;

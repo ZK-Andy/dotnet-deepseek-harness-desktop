@@ -30,11 +30,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Ryn" Version="0.32.0" />
-    <PackageReference Include="Ryn.Plugins.Tray" Version="0.32.0" />
-    <PackageReference Include="Ryn.Callbacks" Version="0.32.0" />
+    <PackageReference Include="Ryn" Version="0.35.1" />
+    <PackageReference Include="Ryn.Plugins.Tray" Version="0.35.1" />
+    <PackageReference Include="Ryn.Callbacks" Version="0.35.1" />
     <PackageReference Include="StyleCop.Analyzers" Version="1.1.118" PrivateAssets="all" />
-    <PackageReference Include="Ryn.Ipc.Generator" Version="0.32.0"
+    <PackageReference Include="Ryn.Ipc.Generator" Version="0.35.1"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 

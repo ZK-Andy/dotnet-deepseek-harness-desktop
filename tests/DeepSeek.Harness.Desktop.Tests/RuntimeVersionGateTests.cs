@@ -29,8 +29,9 @@ public class RuntimeVersionGateTests
     [Theory]
     [InlineData("0.1.0-rc.8", true)]
     [InlineData("0.1.0", true)]
-    [InlineData("0.1.1-rc.2", false)]
-    [InlineData("0.1.1-rc.1", false)] // 数字核相同：预发布后缀不参与比较，粗粒度防线（文档化语义）
+    [InlineData("0.1.1-rc.2", true)]  // 数字核 0.1.1 < 底线 0.1.2：转入低于
+    [InlineData("0.1.1-rc.1", true)]  // 数字核 0.1.1 < 底线 0.1.2：转入低于（后缀不参与，粗粒度防线）
+    [InlineData("0.1.2-alpha.1", false)] // 数字核同为 0.1.2：后缀不参与比较，粗粒度防线
     [InlineData("0.2.0", false)]
     [InlineData("1.0.0", false)]
     public void IsBelowFloor_ComparesNumericSegmentsOnly(string version, bool expected)

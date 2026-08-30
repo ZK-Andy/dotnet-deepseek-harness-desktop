@@ -12,10 +12,11 @@ namespace DeepSeek.Harness.Desktop.Services;
 public static class RuntimeVersionGate
 {
     /// <summary>
-    /// 桌面支持的最低 dsh 版本（online-first 后 dsh 走 @latest，本底线是对上游缺陷/破坏性
+    /// 桌面支持的最低 dsh 版本（默认走 @latest、当前临时钉 alpha.2，本底线是对上游缺陷/破坏性
     /// 变更的唯一兜底：出问题立即抬升）。协议级兼容底线，固定在代码不入 appsettings。
+    /// 当前钉 alpha.2（一次性 Token 鉴权取代 ApiProxy 的协议级变更），低于即横幅提示。
     /// </summary>
-    public const string MinimumVersion = "0.1.1-rc.2";
+    public const string MinimumVersion = "0.1.2-alpha.2";
 
     /// <summary>版本探测时限：<c>dsh --version</c> 是毫秒级调用，超时按未知处理而非阻塞启动。</summary>
     public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(8);

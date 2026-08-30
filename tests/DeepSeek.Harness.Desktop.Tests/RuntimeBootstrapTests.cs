@@ -140,7 +140,7 @@ public class RuntimeBootstrapTests
         {
             var progress = new List<BootstrapProgress>();
             BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(
-                new RuntimeBootstrapOptions { NodeVersion = "24.20.0", DshSpec = "@deepseek-ai/dsh@latest" },
+                new RuntimeBootstrapOptions { NodeVersion = "24.20.0", DshSpec = "@deepseek-ai/dsh@0.1.2-alpha.2" },
                 runtimeDir,
                 progress.Add,
                 hooks,
@@ -775,7 +775,7 @@ public class RuntimeBootstrapTests
 
 /// <summary>
 /// 真实网络 E2E（env 门控 <c>DSH_TEST_BOOTSTRAP_E2E=1</c> 才执行，否则自跳过）：真下载钉版
-/// Node + 官方 SHASUMS256 校验 + tar 解压 + npm 安装 dsh@latest + 产物验证。验证生产 hooks
+/// Node + 官方 SHASUMS256 校验 + tar 解压 + npm 安装钉版 dsh（默认 alpha.2）+ 产物验证。验证生产 hooks
 /// 主链（全新下载走普通 GET、原子落盘、子进程）。断点续传（206/416）与多源回落分支为纯单测
 /// 覆盖（本 E2E 为全新 runtimeDir + 官方源成功，不触发该二分支）。跑一次约 1-3 分钟、依赖外网
 /// 与 npm 可达——CI 不默认跑。
@@ -870,7 +870,7 @@ public class BootstrapGateAndRouterTests
 /// <summary>RuntimeBootstrapOptions 配置装载：节缺失全默认、合法节逐项覆盖、坏 JSON fail-safe。</summary>
 public class RuntimeBootstrapOptionsTests
 {
-    /// <summary>验证 appsettings 缺 RuntimeBootstrap 节时全部返回默认值（Node 24.20.0、dsh@latest、最低 major 22、npmmirror 镜像）。</summary>
+    /// <summary>验证 appsettings 缺 RuntimeBootstrap 节时全部返回默认值（Node 24.20.0、dsh 钉 alpha.2、最低 major 22、npmmirror 镜像）。</summary>
     [Fact]
     public void Load_MissingSection_ReturnsDefaults()
     {
@@ -881,7 +881,7 @@ public class RuntimeBootstrapOptionsTests
             File.WriteAllText(Path.Combine(dir, "appsettings.json"), """{"Update":{}}""");
             var options = RuntimeBootstrapOptions.Load(dir);
             Assert.Equal("24.20.0", options.NodeVersion);
-            Assert.Equal("@deepseek-ai/dsh@latest", options.DshSpec);
+            Assert.Equal("@deepseek-ai/dsh@0.1.2-alpha.2", options.DshSpec);
             Assert.Equal(22, options.MinimumLocalNodeMajor);
             Assert.Equal("https://cdn.npmmirror.com/binaries/node", options.NodeMirrorBaseUrl);
         }

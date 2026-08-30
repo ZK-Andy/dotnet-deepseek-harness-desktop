@@ -2,7 +2,7 @@ namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
 /// 首启引导状态机（ADR online-first-unbundled-runtime）：无捆绑运行时且无 PATH dsh 时，
-/// 探测/复用本机 node → 下载钉版 Node（SHA256 校验）→ npm 安装 dsh@latest → 验证产物入口。
+/// 探测/复用本机 node → 下载钉版 Node（SHA256 校验）→ npm 安装钉版 dsh（当前 alpha.2）→ 验证产物入口。
 /// 单次尝试语义：失败返回 <see cref="BootstrapOutcome"/> 非成功，重试循环由调用方驱动
 /// （重试信号来自引导页的 desktop.bootstrap.retry 命令）。每步完成即验证产物——
 /// 对齐竞品踩坑约束（readiness 竞态），不做 fire-and-forget。

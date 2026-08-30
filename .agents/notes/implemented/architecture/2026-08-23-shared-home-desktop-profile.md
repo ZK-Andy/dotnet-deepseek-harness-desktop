@@ -16,7 +16,7 @@ Status: implemented
 - 启动组装走专属 `profiles/desktop`：spawn 参数与 DesktopBootstrap 插件任务的 profile 引用共用单点常量 `HarnessRuntimeHost.DesktopProfileName`。
 - **desktop profile 由壳自举**（实现期发现的关键前置）：上游 app-boot 只对内置模板（web/headless）自动初始化 profile，自定义名在 `package.json` 缺失时直接拒启。`DesktopProfileBootstrap.EnsureProfile` 在首次 spawn 前按上游 `initProfile` 同款三件套自举（清单 + 空 patch 层 + pnpm-workspace），bundles 对齐 web 模板（`dsh-base` + `dsh-web-app`——缺 web-app 则永远出不了 `dsh web:` URL）；幂等且永不覆写已存在文件。随包插件安装完成后补回这两个必需 bundle，防上游 reconcile 重整时丢失桌面 Web UI 层。
 - **破坏性变更是既定代价（已拍板）**：存量私有 home 不做自动迁移、不做兼容层；旧 home 残留由 `LegacyHomeNotice` 探测并在 host.log 留痕（界面横幅已去除，见 bug-fix `2026-08-24-companion-settings-consolidation`）；`DSH_DESKTOP_DSH_HOME` 指回即回退。
-- **启动版本底线检查**（版本偏斜唯一防线）：`RuntimeVersionGate` 只读探测即将执行的 dsh 版本，低于底线（`0.1.1-rc.2`，与闭包钉版同源升级）仅日志+横幅明确提示，不阻断；探测失败按未知处理只记日志。数字段逐段比较，同核预发布后缀不参与（粗粒度足够拦截跨 minor 老运行时）。
+- **启动版本底线检查**（版本偏斜唯一防线）：`RuntimeVersionGate` 只读探测即将执行的 dsh 版本，低于底线（`0.1.2-alpha.2`，当前钉 alpha.2，见 [upgrade-ryn-and-dsh-runtime](../process/2026-08-31-upgrade-ryn-and-dsh-runtime.md)）仅日志+横幅明确提示，不阻断；探测失败按未知处理只记日志。数字段逐段比较，同核预发布后缀不参与（粗粒度足够拦截跨 minor 老运行时）。
 - **运行时归属（B 形态核心）**：随包捆绑闭包保留为预览期形态——「零下载确定性」是在案差异化点；去捆绑降级为远期选项（触发条件：① 上游 dsh 发布 stable；② 供给链出现可借鉴成熟实践），届时另立 ADR。
 - 开发期守卫不回退：dev 自动隔离逻辑不变（其判定依赖捆绑闭包存在性，本形态下继续有效）。
 

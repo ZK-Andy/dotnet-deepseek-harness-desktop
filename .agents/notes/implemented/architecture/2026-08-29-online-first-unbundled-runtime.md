@@ -22,13 +22,13 @@ Status: implemented
 ### 首启形态
 
 1. 安装器只带壳 + 自有插件（companion tgz）；体积上限为**自包含 .NET 运行时**（linux-x64：下载 25–39MB / 落盘 ~88MB，见 [installer-size-retain-self-contained](2026-08-30-installer-size-retain-self-contained.md)）——「降至 10MB 级」仅 framework-dependent 成立，本决策维持 self-contained。
-2. 首启引导：壳启动时检测运行时（本机 Node ≥ RuntimeVersionGate 底线则复用，否则下载钉版 Node zip 到 app-data，SHA256 校验）→ `npm install @deepseek-ai/dsh@latest`（npm 随 Node 分发，零额外依赖）→ registry 安装 dshmarket；
+2. 首启引导：壳启动时检测运行时（本机 Node ≥ RuntimeVersionGate 底线则复用，否则下载钉版 Node zip 到 app-data，SHA256 校验）→ `npm install @deepseek-ai/dsh@0.1.2-alpha.2`（npm 随 Node 分发，零额外依赖；当前钉版见 [upgrade-ryn-and-dsh-runtime](../process/2026-08-31-upgrade-ryn-and-dsh-runtime.md)，重入 `@latest` 条件见该 ADR）→ registry 安装 dshmarket；
 3. 首启 UI：Ryn 加载内置静态进度页（检测/下载/安装/失败重试状态机，fail loud），完成后导航到 dsh URL 进入既有主链路；
 4. 存量升级（v0.3.12 → 新版）：安装器替换安装目录，`resources/runtime` 随之消失，首启检测缺失触发一次性下载。**不做迁移代码**。
 
 ### 版本策略
 
-- dsh：`@latest`（跟 npm `latest` dist-tag）。上游现习惯 rc 直发 latest（实证：latest = 0.1.1-rc.2），预发行版可触达；若上游改用 `--tag next` 则自动隔离（同样是保护）。内核升级与壳发版解耦，`ERR_PNPM_NO_MATCHING_VERSION` 类等待链消失。`RuntimeVersionGate` 底线保留兜底；
+- dsh：`@latest`（跟 npm `latest` dist-tag）。上游现习惯 rc 直发 latest（实证：latest = 0.1.1-rc.2），预发行版可触达；若上游改用 `--tag next` 则自动隔离（同样是保护）。内核升级与壳发版解耦，`ERR_PNPM_NO_MATCHING_VERSION` 类等待链消失。`RuntimeVersionGate` 底线保留兜底；**当前运行时临时钉 `0.1.2-alpha.2`（alpha 唯一实质变化 = 一次性 Token 鉴权取代 ApiProxy），重入 `@latest` 条件见 [upgrade-ryn-and-dsh-runtime](../process/2026-08-31-upgrade-ryn-and-dsh-runtime.md)**；
 - Node：钉版 zip（现役 24.20.0），来源 nodejs.org dist，下载带 SHA256 校验与重试。
 
 ### 插件随包范围收口
@@ -111,3 +111,4 @@ Status: implemented
 - [artifact-verification-chain](../../implemented/process/2026-08-24-artifact-verification-chain.md)（implemented）：本 ADR 移除其闭包图静态校验一环（唯一消费者 `bundle-runtime-ci.sh` 已删）；依赖树完整性改由 npm registry 安装原子性把关。
 - [plugin-surface-consolidation](../../implemented/feature/2026-08-29-plugin-surface-consolidation.md)（implemented）：本篇的批次三——插件面收口 + config reconcile + dshmarket 迁引导。
 - [reference-alignment](2026-08-29-reference-alignment.md)（implemented）：本篇「引导 registry 装市场「一次就位」」的叙事被其对批次一/二修订——companion（internal）改 spawn 前静默自愈（不再装后重启）、dshmarket 改引导页「插件准备」步确认/跳过（不再自动装）。
+- [upgrade-ryn-and-dsh-runtime](../process/2026-08-31-upgrade-ryn-and-dsh-runtime.md)（implemented）：本篇「dsh：`@latest`」版本策略行被其临时取代（钉 `0.1.2-alpha.2`；重入 `@latest` 条件见该 ADR）。
