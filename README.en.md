@@ -6,7 +6,7 @@
 
 <p align="center"><a href="README.md">中文</a> · <strong>English</strong></p>
 
-<p align="center"><strong>A .NET desktop client for DeepSeek Harness — online-first: downloads and prepares the runtime on first launch, no manual setup.</strong></p>
+<p align="center"><strong>A .NET desktop client for DeepSeek Harness — a simple shell that depends on the one global dsh: installs it when missing, updates to @alpha when behind.</strong></p>
 
 <p align="center">
   <a href="#features">Features</a> ·
@@ -25,18 +25,18 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-467%2F467-brightgreen" alt="tests"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-449%2F449-brightgreen" alt="tests"></a>
   <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-53.1%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell does **not** bundle the DeepSeek Harness runtime — end users need **no separate Node.js or DeepSeek Harness installation**; the first launch downloads and prepares the runtime (needs network), then it's ready to use.
+A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell is a **simple shell that depends on the system-global node + global dsh** (both on the user's `PATH`; installed/updated with `npm install -g @deepseek-ai/dsh@alpha`, shared by the desktop and terminal — one copy, no version fork). On first launch it detects the global dsh: installs it if missing, updates it to `@alpha` if behind, and uses it directly if already current. **Node stays system-global** (the user's node/npm, or the desktop downloads the latest official Node into a system-global location when absent), shared by desktop and terminal; the desktop never ships a private node / private PATH.
 
 ## Features
 
-- ⚡️ **Zero-setup, download and run (online-first)** — the installer ships only the shell (~30MB); first launch bootstraps automatically: reuses a local Node when present, otherwise downloads the pinned Node and installs `@deepseek-ai/dsh` from the registry; the download layer is **resumable (Range) + official/mirror multi-source fallback + atomic staging + file-lock retry** (more resilient on slow/blocked networks), then the shell spawns dsh in the shared data directory `~/.dsh` under a dedicated `desktop` profile. The dsh kernel follows npm `latest` — kernel upgrades no longer wait for a shell release. Sessions, credentials and plugins are **one universe with the CLI, TUI and Web**.
-- ⌨️ **Terminal commands (CLI shim registration)** — once the runtime is ready the shell registers `dsh`/`pnpm` onto the user's `PATH` (Windows `%LOCALAPPDATA%\deepseek-harness\bin` + idempotent `HKCU\Environment\Path` merge; macOS/Linux `~/.local/bin` + idempotent shell-rc block), so `dsh`/`pnpm` are usable straight from the terminal. The shim prefers a compatible local node and falls back to the desktop runtime; it never overwrites a user's own same-named command.
+- ⚡️ **Simple shell, depends on system-global node + global dsh (online-first)** — the installer ships only the shell (~30MB), no runtime closure. On first launch it detects the global dsh on the user's `PATH`: installs it via the global node's `npm install -g @deepseek-ai/dsh@alpha` into the system-global location when missing, updates it to `@alpha` when behind, and uses it directly when already current. **The dsh kernel follows the `alpha` prerelease channel — not pinned.** Node check happens once when dsh must be ensured (reuse the system-global node; if absent, the desktop downloads the latest official Node into a system-global location — giving a manual command when sudo is needed), with no repeated downloads. The shell spawns dsh in the shared data directory `~/.dsh` under a dedicated `desktop` profile. Sessions, credentials and plugins are **one universe with the CLI, TUI and Web**.
+- ⌨️ **Terminal commands (CLI shim registration)** — dsh is already globally on `PATH`; the shell registers the content-constant `pnpm` shim onto the user's `PATH` (Windows `%LOCALAPPDATA%\deepseek-harness\bin` + idempotent `HKCU\Environment\Path` merge; macOS/Linux `~/.local/bin` + idempotent shell-rc block; no dsh shim needed), so `pnpm` is usable straight from the terminal. It never overwrites a user's own same-named command.
 - 🔒 **Native, lightweight shell** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
 - 🔄 **Crash self-heal & session return** — the shell supervises the runtime process: crash → recovery screen (cause / stderr tail + export diagnostics + exit) → auto-restart → same window back to a new URL; **the port stays stable** so the Web UI origin (and page-level session memory) survives — **return to your previous conversation after a crash or restart**.
 - 💓 **Page-health watch (fake-alive watchdog)** — a host-side, read-only probe polls for the "dsh process running but page blank" fake-alive state (no script injection, no reliance on the bundled companion surviving); after consecutive blanks cross a threshold it triggers one bounded reload for self-heal, exhausts back to observation, and resets its budget on successful recovery — preventing an unlimited reload loop on false positives.
@@ -80,8 +80,8 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 └─────────────────────────┬────────────────────────────┘
                           │ spawn + shared ~/.dsh · desktop profile
 ┌─────────────────────────▼────────────────────────────┐
-│ Runtime (first-launch bootstrap, online-first)        │
-│   local Node or pinned download → registry dsh install │
+│ Runtime (global dsh, simple shell)                    │
+│   PATH @deepseek-ai/dsh@alpha (install/update as needed)│
 │   dsh web (localhost)                                │
 └──────────────────────────────────────────────────────┘
 ```
@@ -96,7 +96,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 # without a PATH dsh the first-launch bootstrap runs, which needs network)
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# tests (467/467)
+# tests (449/449)
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # webview devtools (default off)
@@ -109,7 +109,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program + Services/ (runtime supervision, self-update, system tray, single-instance activation, diagnostics)
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 467/467
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 449/449
 ├── scripts/                        # gates + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```

@@ -2,7 +2,7 @@
 # package-macos.sh — 从 .NET publish 输出打 macOS 包（dmg，含 app bundle）。
 # 参照 pilot-harness 的 mac 打包：此处为 .NET 自包含 publish 的等价物。
 # online-first（ADR online-first-unbundled-runtime）：包只带壳 + 安装器自带插件资源
-# （Resources/plugins/dsh-desktop-companion.tgz）；运行时由首启引导下载，不再捆绑闭包。
+# （Resources/plugins/dsh-desktop-companion.tgz）；运行时 = 用户 PATH 全局 dsh，不再捆绑闭包。
 # 布局：
 #   DeepSeek.Harness.Desktop.app/Contents/MacOS/  = dotnet publish 全量
 #   DeepSeek.Harness.Desktop.app/Contents/Resources/plugins/ = 插件 tgz
@@ -39,9 +39,9 @@ rm -rf "$STAGE" && mkdir -p "$STAGE/$APP_BUNDLE/Contents/MacOS" "$STAGE/$APP_BUN
 cp -r "$PUBLISH_DIR/." "$STAGE/$APP_BUNDLE/Contents/MacOS/"
 # 安装器自带插件资源：companion tgz 从仓库源码现打并校验（fail loud）。
 # 资源一律 exe 目录相对（Contents/MacOS/resources/，与 Linux/Windows 同构）——
-# 运行时侧（RuntimeLocator / 插件解析）按 AppContext.BaseDirectory 探测；旧布局
+# 运行时侧（dsh 探测 / 插件解析）按 AppContext.BaseDirectory 探测；旧布局
 # Resources/ 下的资源从未被探测到过（mac 无真机验证的潜伏布局 bug，本批顺势修正）。
-# 不再捆绑运行时闭包——首启引导负责 Node/dsh 安装（ADR online-first-unbundled-runtime）。
+# 不再捆绑运行时闭包——首启引导确保全局 dsh（ADR simple-shell-single-global-dsh）。
 mkdir -p "$STAGE/$APP_BUNDLE/Contents/MacOS/resources/plugins"
 bash "$ROOT/scripts/build-companion-tgz.sh" "$STAGE/$APP_BUNDLE/Contents/MacOS/resources/plugins/dsh-desktop-companion.tgz"
 # 闭包残留检测：resources/runtime 出现即打包漂移（旧缓存/手工产物混入），fail loud

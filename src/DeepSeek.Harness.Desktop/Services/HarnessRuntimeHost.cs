@@ -6,12 +6,11 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// 静态路径/环境解析面见 <c>HarnessRuntimeHost.Paths.cs</c>（partial）。</summary>
 /// <remarks>对应 implemented architecture ADR shared-home-desktop-profile：壳只负责运行时生命周期，组合的 Harness
 /// 插件树即应用运行时；产品态默认上游规范共享 home `~/.dsh`，专属 `profiles/desktop` 承载插件装配。
-/// 支持捆绑运行时（<paramref name="bundled"/> 指定 node + dsh bin.js）；为 null 时回退 PATH 里的 dsh。</remarks>
+/// 全局 dsh 模型（ADR simple-shell-single-global-dsh）：宿主恒以 PATH 上的 <c>dsh</c> 运行，无捆绑形态。</remarks>
 public sealed partial class HarnessRuntimeHost : IDisposable
 {
     private const int StderrTailCapacity = 40;
 
-    private (string NodeExe, string DshEntry)? _bundled;
     private readonly Action<string>? _log;
     private int? _port;
     private Process? _process;
@@ -22,34 +21,15 @@ public sealed partial class HarnessRuntimeHost : IDisposable
     private readonly List<string> _stderrTail = new(StderrTailCapacity);
     private readonly object _stderrLock = new();
 
-    /// <summary>创建运行时宿主。</summary>
-    /// <param name="bundled">捆绑运行时 (node 可执行, dsh bin.js)；null 表示用 PATH 的 dsh。</param>
+    /// <summary>创建运行时宿主（恒以 PATH 上的全局 dsh 形态运行）。</summary>
     /// <param name="log">日志回调（可选）：端口漂移等运行时决策留痕 host.log（缺省 null 安全）。</param>
-    public HarnessRuntimeHost((string NodeExe, string DshEntry)? bundled = null, Action<string>? log = null)
+    public HarnessRuntimeHost(Action<string>? log = null)
     {
-        _bundled = bundled;
         _log = log;
     }
 
-    /// <summary>
-    /// 首启引导成功后绑定运行时（ADR online-first-unbundled-runtime）：宿主以 null 构造、
-    /// 引导完成后补绑，随后 StartAsync 按 bundled 形态 spawn。尚未启动过 dsh（_process 为空）
-    /// 才允许绑定；已启动后补绑属调用序错误，fail loud。
-    /// </summary>
-    public void BindRuntime((string NodeExe, string DshEntry) runtime)
-    {
-        if (_process is not null)
-        {
-            throw new InvalidOperationException("dsh 已启动，禁止补绑运行时（调用序错误）");
-        }
-
-        _bundled = runtime;
-        _log?.Invoke($"[host] 引导运行时已绑定：node={runtime.NodeExe} bin={runtime.DshEntry}");
-    }
-
     /// <summary>本次采用的运行时描述（日志/恢复屏用）。</summary>
-    public string RuntimeDescription =>
-        _bundled is { } b ? $"bundled node={b.NodeExe} bin={b.DshEntry}" : "PATH dsh";
+    public string RuntimeDescription => "PATH dsh";
 
     /// <summary>失败时可读的诊断尾巴（stderr 末 N 行）。</summary>
     public IReadOnlyList<string> StderrTail
@@ -136,7 +116,7 @@ public sealed partial class HarnessRuntimeHost : IDisposable
         return url;
     }
 
-    /// <summary>构造 dsh web 子进程的 ProcessStartInfo（bundled vs PATH dsh 形态 + 环境注入）。</summary>
+    /// <summary>构造 dsh web 子进程的 ProcessStartInfo（PATH dsh 形态 + 环境注入）。</summary>
     /// <param name="port">固定端口；<c>null</c> 时让 OS 分配（<c>--port 0</c>）。</param>
     /// <param name="home">共享 DSH_HOME。</param>
     /// <param name="spawnToken">孤儿清扫 token（注入环境变量，与落盘 pid 对应）。</param>
@@ -150,15 +130,7 @@ public sealed partial class HarnessRuntimeHost : IDisposable
             WorkingDirectory = AppContext.BaseDirectory,
         };
         UseUtf8TextStreams(psi);
-        if (_bundled is { } b)
-        {
-            psi.FileName = RuntimeBootstrap.StripExtendedPrefix(b.NodeExe);
-            psi.ArgumentList.Add(b.DshEntry);
-        }
-        else
-        {
-            psi.FileName = "dsh";
-        }
+        psi.FileName = "dsh";
 
         foreach (string arg in BuildDshWebArgs(port))
         {

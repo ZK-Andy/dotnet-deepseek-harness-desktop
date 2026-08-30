@@ -72,10 +72,15 @@ public static class CliShimPath
 
     /// <summary>构造把 <paramref name="binDir"/> 加入 PATH 的 export 块（POSIX shell；幂等标记包裹）。</summary>
     public static string BuildShellExportBlock(string binDir, string separator) =>
+        BuildShellExportBlocks(new[] { binDir }, separator);
+
+    /// <summary>构造把一组目录加入 PATH 的 export 块（POSIX shell；幂等标记包裹）——同时暴露 pnpm shim 目录
+    /// 与系统全局 node 的 global bin 目录（无系统 node 时由桌面装到系统全局，终端与桌面共用同一份 node/dsh）。</summary>
+    public static string BuildShellExportBlocks(IEnumerable<string> dirs, string separator) =>
         $"""
         {RcBeginMarker}
-        # DeepSeek Harness Desktop: add the desktop CLI bin dir to PATH.
-        export PATH="{binDir}{separator}$PATH"
+        # DeepSeek Harness Desktop: add the desktop CLI dirs to PATH.
+        export PATH="{string.Join(separator, dirs)}{separator}$PATH"
         {RcEndMarker}
         """;
 

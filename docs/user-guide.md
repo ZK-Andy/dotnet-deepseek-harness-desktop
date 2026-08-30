@@ -13,7 +13,7 @@
 | Debian/Ubuntu x64 / arm64 | `..._linux-amd64.deb` / `..._linux-arm64.deb` |
 | Fedora/RHEL x86_64 / aarch64 | `..._linux-x86_64.rpm` / `..._linux-aarch64.rpm` |
 
-**无需单独安装 Node.js 或 DeepSeek Harness**——外壳在**首次启动**时自动联网下载并准备运行时（下载钉版 Node，经 registry 安装 `@deepseek-ai/dsh`）。此过程**需要网络**，进度页可见、失败可重试；准备完成后再进入界面。
+**依赖系统全局 node + 全局 dsh**（都在用户 PATH 上，`@deepseek-ai/dsh@alpha`，与 CLI/TUI/Web 共用同一套、无版本分叉）——外壳在**首次启动**检测全局 dsh：没有则经全局 node 的 `npm install -g @deepseek-ai/dsh@alpha` 装到系统全局位、落后则更新到 `@alpha`，已最新则直接用。机器无 node/npm 时，外壳会**下载最新官方 Node 并装到系统全局**（写系统位需 sudo 时给手动安装命令）。此过程**需要网络**（仅首次 / 无全局 dsh 时），进度页可见、失败可重试；就位后再进入界面。
 
 ## 安装
 
@@ -25,7 +25,7 @@
 
 ## 首次启动
 
-1. 启动后壳会自动准备并拉起 DeepSeek Harness 运行时并加载界面。首次启动（无捆绑运行时且无 PATH dsh）会进入引导：检测/复用本机 Node，否则下载钉版 Node 并安装 dsh——全程进度页可见；**断网或失败可在进度页重试**（步骤级超时兜底）。
+1. 启动后壳会自动准备并拉起 DeepSeek Harness 运行时并加载界面。首次启动（用户 PATH 上无全局 dsh 或版本落后）会进入引导：确保系统全局 node（复用 PATH 上用户 node/npm；无则下载最新官方 Node 装到系统全局）→ 用其 `npm install -g @deepseek-ai/dsh@alpha`；node/dsh 写系统位需 sudo 时给手动安装命令——全程进度页可见；**断网或失败可在进度页重试**（步骤级超时兜底）。
 2. 首次使用请在界面内的**模型设置**中配置你自己的模型 API 凭据。
 3. 运行时就位后、进入界面前，引导页会出现「插件准备」步：插件市场（dshmarket）以推荐 chip 展示，你可用「确认安装」或「跳过」决定是否安装（跳过仍可稍后在应用内市场补装），安装过程日志实时回流到进度页。桌面伴生插件（companion）为壳必需，静默自愈、不展示在勾选清单。确认后可进入界面。
 4. 插件市场就位后即可浏览并安装社区插件。

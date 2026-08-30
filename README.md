@@ -6,7 +6,7 @@
 
 <p align="center"><a href="README.en.md">English</a> · <strong>中文</strong></p>
 
-<p align="center"><strong>DeepSeek Harness（MIT）的 .NET 桌面客户端——online-first：首启自动下载并准备运行时，无需手动安装。</strong></p>
+<p align="center"><strong>DeepSeek Harness（MIT）的 .NET 桌面客户端——简单壳，依赖全机唯一的一份全局 dsh：无则装、落后则更新到 @alpha。</strong></p>
 
 <p align="center">
   <a href="#功能">功能</a> ·
@@ -25,18 +25,18 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-467%2F467-brightgreen" alt="tests"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-449%2F449-brightgreen" alt="tests"></a>
   <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-53.1%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-**[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端**，基于 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 原生 WebView 框架）。桌面壳**不捆绑 DeepSeek Harness 运行时**——终端用户**无需单独安装 Node / DeepSeek Harness**，首次启动自动下载并准备运行时（需联网），之后即开即用。
+**[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端**，基于 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 原生 WebView 框架）。桌面壳是**简单壳，依赖系统全局 node + 全局 dsh**（都在用户 PATH 上，`npm install -g @deepseek-ai/dsh@alpha` 装/更新，桌面与终端共用同一套、无版本分叉）。首次启动检测全局 dsh：没有 → 装；落后 `@alpha` → 更新到 `@alpha`；已最新 → 直接用。**node 走系统全局**（用户那份 node/npm，或没有则桌面下载最新官方 node 装到系统全局位供共用），桌面不自备私有 node / 私有 PATH。
 
 ## 功能
 
-- ⚡️ **零环境、下载即用（online-first）** — 安装器只带壳（约 30MB 级），首启自动引导：优先复用本机 Node，否则下载钉版 Node 并经 registry 安装 `@deepseek-ai/dsh`；下载层**断点续传 + 官方/镜像多源回落 + 原子落盘 + 文件锁重试**（断网/弱网更稳），壳在共享数据目录 `~/.dsh` 以专属 `desktop` profile 拉起 dsh。dsh 内核跟随 npm `latest`，升级不再等壳发版。会话/凭据/插件与 CLI、TUI、Web **同一宇宙互通**。
-- ⌨️ **终端命令（CLI shim 注册）** — 运行时就位后把 `dsh`/`pnpm` 命令注册到用户 `PATH`（Windows `%LOCALAPPDATA%\deepseek-harness\bin` + `HKCU\Environment\Path` 幂等合并；mac/linux `~/.local/bin` + shell rc 幂等块），终端可直接用 `dsh`/`pnpm`。shim 优先兼容本机 node、回退桌面运行时；不覆盖用户自己的同名命令。
+- ⚡️ **简单壳、依赖系统全局 node + 全局 dsh（online-first）** — 安装器只带壳（约 30MB 级），不运输行时闭包。首启检测用户 PATH 上的全局 dsh：没有 → 经全局 node 的 `npm install -g @deepseek-ai/dsh@alpha` 装到系统全局位；落后 `@alpha` → 更新到 `@alpha`；已最新 → 直接用。**dsh 跟随 alpha 预发布通道，不钉版**。node 检查/下载只在"需要确保 dsh"时做一次（复用系统全局 node；无则桌面下载最新官方 node 装到系统全局位，写系统位需 sudo 时给出手动安装命令），不做重复联网。壳在共享数据目录 `~/.dsh` 以专属 `desktop` profile 拉起 dsh。会话/凭据/插件与 CLI、TUI、Web **同一宇宙互通**。
+- ⌨️ **终端命令（CLI shim 注册）** — dsh 已全局在 PATH；壳把内容恒定的 `pnpm` shim 注册到用户 `PATH`（Windows `%LOCALAPPDATA%\deepseek-harness\bin` + `HKCU\Environment\Path` 幂等合并；mac/linux `~/.local/bin` + shell rc 幂等块；dsh 无需 shim），终端可直接用 `pnpm`。不覆盖用户自己的同名命令。
 
 - 🔒 **原生轻量壳** — C# 后端跑在系统 WebView（WebView2 / WKWebView / WebKitGTK），NativeAOT 就绪，能力沙箱 deny-by-default（`ryn.json`）。
 - 🔄 **崩溃自愈与会话回归** — 壳监督运行时子进程：崩溃 → 恢复页（原因/stderr 尾部 + 导出诊断 + 退出应用）→ 自动重启 → 同一窗口回到新 URL；**端口保持稳定**，Web UI origin（及页面级会话记忆）存活——**崩溃或重启后回到之前的对话**。
@@ -81,8 +81,8 @@
 └─────────────────────────┬────────────────────────────┘
                           │ spawn + 共享 ~/.dsh · desktop profile
 ┌─────────────────────────▼────────────────────────────┐
-│ 运行时（首启引导，online-first）                        │
-│   本机 Node 或下载钉版 → registry 安装 @deepseek-ai/dsh  │
+│ 运行时（全局 dsh，简单壳）                               │
+│   PATH 上的 @deepseek-ai/dsh@alpha（无则装/落后则更新） │
 │   dsh web（localhost）                                │
 └──────────────────────────────────────────────────────┘
 ```
@@ -96,7 +96,7 @@
 # 运行（开发环境必须带 DSH_DESKTOP_DEV=1——dev 隔离 home 与单实例后缀；无 PATH dsh 时走首启引导，需网络）
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# 测试（467/467）
+# 测试（449/449）
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # WebView 调试器（默认关）
@@ -109,7 +109,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 ```
 ├── src/DeepSeek.Harness.Desktop/   # Ryn 壳：Program + Services/（运行时监督、自更新、系统托盘、单实例仲裁、诊断导出等）
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 467/467
+├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 449/449
 ├── scripts/                        # 门禁 + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```

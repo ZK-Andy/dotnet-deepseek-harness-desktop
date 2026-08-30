@@ -17,12 +17,15 @@ scripts/  build-companion-tgz.sh, package-*.sh, release-preflight.sh, verify-*.p
 ```
 
 * `appsettings.json`：`DevTools:false`；`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
-* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（覆盖捆绑运行时目录，dev 信号之一）、`DSH_DESKTOP_DEV=1`（显式 dev 声明——dev 判定只认这两个显式标记，不探测闭包存在性）、`DSH_DESKTOP_DSH_HOME`（桌面专属覆盖，默认共享 `~/.dsh`；dev 自动隔离到 `<仓库>/.cache/dev-home`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。CLI shim 注册的测试隔离覆盖：`DSH_DESKTOP_CLI_BIN_DIR`（覆盖 shim 落盘目录）、`DSH_DESKTOP_CLI_RC_HOME`（覆盖 shell rc 基目录）——**仅在设置这两个变量时** shim 注册不写用户真实路径；未设置时（正常运行）shim 写用户真实路径（`%LOCALAPPDATA%\deepseek-harness\bin` / `~/.local/bin` + HKCU Path / shell rc），此即产品行为。
+* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（dev 信号之一；全局 dsh 模型下不再解析运行时目录）、`DSH_DESKTOP_DEV=1`（显式 dev 声明——dev 判定只认这两个显式标记，不探测闭包存在性）、`DSH_DESKTOP_DSH_HOME`（桌面专属覆盖，默认共享 `~/.dsh`；dev 自动隔离到 `<仓库>/.cache/dev-home`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。CLI shim 注册的测试隔离覆盖：`DSH_DESKTOP_CLI_BIN_DIR`（覆盖 shim 落盘目录）、`DSH_DESKTOP_CLI_RC_HOME`（覆盖 shell rc 基目录）——**仅在设置这两个变量时** shim 注册不写用户真实路径；未设置时（正常运行）shim 写用户真实路径（`%LOCALAPPDATA%\deepseek-harness\bin` / `~/.local/bin` + HKCU Path / shell rc），此即产品行为。
 
-## 运行时来源（online-first）
+## 运行时来源（系统全局 node + 全局 dsh）
 
-安装器/仓库不再捆绑运行时闭包（ADR online-first-unbundled-runtime）：无捆绑闭包且无 PATH dsh 时，
-首启引导下载钉版 Node（SHA256 校验）并经 npm 安装 dsh（落位 `~/.dsh-desktop/runtime`）。
+安装器/仓库不再捆绑运行时闭包（ADR simple-shell-single-global-dsh）：桌面依赖用户 PATH 上全局 dsh
+（`@deepseek-ai/dsh@alpha`）+ 系统全局 node。PATH 上无全局 dsh 时，首启引导：确保系统全局 node（复用
+PATH 上用户 node/npm；无则下载最新官方 node 装到系统全局前缀——默认 `~/.local`、写系统位需 sudo 时给手动命令，
+不自备私有 node）→ 用其 `npm install -g @deepseek-ai/dsh@alpha`（装/更新到 alpha 通道，系统全局位）；
+dsh 装全局因权限需 sudo 时提示手动命令。
 
 ## 运行与调试
 
@@ -37,7 +40,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ```
 
 * `HarnessRuntimeHost` 抓 `dsh web:` 日志；`RuntimeSupervisor` 崩溃自动重启（端口复用保 `origin`）。
-* 无捆绑运行时且无 PATH dsh 时，首启经 `RuntimeBootstrap` 引导（复用/下载钉版 Node → npm 装 `@deepseek-ai/dsh@0.1.2-alpha.2`），在 spawn dsh 前一次就位。
+* PATH 上无全局 dsh 时，首启经 `RuntimeBootstrap` 引导（确保系统全局 node → `npm install -g @deepseek-ai/dsh@alpha`；需 sudo 时提示手动命令），在 spawn dsh 前一次就位。
 * 插件面均在 spawn dsh 前就位：companion（internal）静默自愈（`EnsureBundledPluginsBeforeSpawnAsync`，`BundledPluginCatalog` 清单单条 `plugin add`，版本感知升级），dshmarket（preset）经引导页「插件准备」步确认/跳过（`desktop.preinstall.choose` 决策）；`pnpm-workspace.yaml` 的 `allowBuilds` 6 项由壳自愈（companion 与市场用），不再「装后 `host.Stop()` 重启」。启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用。
 
 ## 测试与门禁

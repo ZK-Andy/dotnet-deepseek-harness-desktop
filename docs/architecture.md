@@ -1,6 +1,6 @@
 # Architecture
 
-> 现状。`Ryn` 壳 + online-first 运行时引导（无捆绑闭包）+ 崩溃监督 + 首启引导装 dshmarket + 随包 companion 装配 + 安装器瘦身打包（ADR `implemented/architecture/2026-08-29-online-first-unbundled-runtime`）。
+> 现状。`Ryn` 壳 + 依赖全局 dsh 的简单壳（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）+ 崩溃监督 + 首启引导装 dshmarket + 随包 companion 装配 + 安装器瘦身打包。
 
 ## 概览
 
@@ -14,7 +14,7 @@
 
 * 壳只管生命周期、窗口、恢复；`dsh` 的插件树即应用运行时。
 * **共享 home（B 形态）**：默认上游规范 `~/.dsh`，经 `HarnessRuntimeHost.ResolveDshHome()` 解析——优先级：`DSH_DESKTOP_DSH_HOME`（dev 隔离/用户回退）> 生态标准 `DSH_HOME` > `~/.dsh`；home 层数据（sessions/credentials/workspaces）与 CLI/TUI/Web 互通。桌面插件装配走专属 `profiles/desktop`（`DesktopProfileBootstrap` 在首次 spawn 前按上游 `initProfile` 同款三件套自举，bundles 对齐 web 模板）。
-* 运行时来源见「运行时定位与启动」的 online-first 条目（无捆绑时回退 `PATH dsh`，再缺失走首启引导）。
+* 运行时 = 全机唯一一份全局 dsh（用户 PATH，`@deepseek-ai/dsh@alpha`）；桌面不运输行时闭包、不自备运行时目录（见「运行时定位与启动」）。
 * **可观测性**（ADR `2026-08-24-shell-observability-diagnostics`）：全部壳侧诊断经 `HostLog` 双写 stdout 与 `<home>/logs/host.log`（超 5MB 滚动 .old）；supervisor 恢复时落子进程 stderr 尾部、自更新状态机每次变化留痕；`RunMarker` 启动占位/owner 清理判定非受控退出（横幅提示）；`desktop.diagnostics.export` + CLI `--export-diagnostics` 导出白名单诊断 zip 到用户文档目录。
 * 启动期告知（ADR `implemented/architecture/2026-08-23-shared-home-desktop-profile`）：`RuntimeVersionGate` 只读探测 dsh 版本低于底线仅横幅提示不阻断；检测到 v0.2.x 私有 home 残留则在 host.log 留痕（界面横幅已去除，见 ADR `implemented/bug-fix/2026-08-24-companion-settings-consolidation`）。
 * **系统托盘与 hide-to-tray**（ADR `implemented/architecture/2026-08-24-shell-tray-hide-to-tray`）：`Ryn.Plugins.Tray` 注册图标 + 菜单（显示主窗/检查更新/退出）；点击事件经 companion 中继（`__ryn.on` → `desktop.tray.event`）回宿主解析——`TrayService.EmitEvent` 是插件内部属性，AOT 下反射不可用。关窗默认取消并隐藏（`CloseGate` 唯一放行通道：托盘退出与自更新安装路径先批准再 Close）；托盘初始化失败时拦截不同步生效，关窗保持直退。
@@ -26,8 +26,8 @@
 
 ## 运行时定位与启动
 
-* **online-first 运行时来源**（ADR `implemented/architecture/2026-08-29-online-first-unbundled-runtime`）：安装器不携带运行时；`RuntimeLocator.TryLocateRuntimeDirectory` 按「捆绑目录（`DSH_DESKTOP_RUNTIME_DIR` / `resources/runtime`，dev/存量场景）→ 引导下载目录 `~/.dsh-desktop/runtime`」解析。捆绑与 PATH `dsh` 均缺失时进入**首启引导**：`RuntimeBootstrap` 状态机复用本机 Node（≥底线主版本）或下载钉版 Node（nodejs.org dist + SHA256 校验 + 解压归一），`npm install @deepseek-ai/dsh@0.1.2-alpha.2`，每步完成即验证产物，失败进度页可见、可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
-* `Services/RuntimeLocator`：`TryLocateBundled` 判 `node(.exe)` + `node_modules/@deepseek-ai/dsh/lib/bin.js`（捆绑与引导下载同布局）。
+* **运行时来源 = 系统全局 node + 全局 dsh**（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）：安装器不携带运行时；dsh 版本探测走 PATH（`RuntimeVersionGate.ProbeAsync`，无独立 RuntimeLocator）。PATH 上无全局 dsh 时进入**首启引导**：`RuntimeBootstrap` 确保**系统全局 node**（复用 PATH 上用户 node/npm；无则桌面下载最新官方 node 装到系统全局前缀——默认 `~/.local`、写系统位需 sudo 时提示手动命令，不自备私有 node），用其 npm `npm install -g @deepseek-ai/dsh@alpha`（装/更新到 alpha 预发布通道，落到系统全局位），验证 `dsh --version` 可解析；dsh `npm install -g` 因权限需 sudo 时提示手动命令。失败进度页可见、可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
+* dsh 版本只读探测：`Services/RuntimeVersionGate.ProbeAsync` 直跑 PATH `dsh --version`（全局 dsh 模型无捆绑形态），不维护任何下载运行时目录。
 * `Services/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`，占位回退 `0`。
 * `Services/HarnessUrlParser`：单行解析 `dsh web: http://127.0.0.1:<port>`。
 
@@ -43,12 +43,12 @@
 ## 插件装配与引导
 
 * 随包插件清单：`dsh-desktop-companion`（桌面伴生：更新/诊断/设置 UI 与托盘事件中继，仅随包分发）——成员登记于 `Services/BundledPluginCatalog`；dshmarket 不再随包，改由首启引导经 registry 安装（`MarketInstallHelper.EnsureMarketFromRegistryAsync`，见下）。
-* 首启引导（`RuntimeBootstrap`，online-first）：无捆绑运行时且无 PATH dsh 时，在 spawn dsh **之前**完成「检测/复用本机 Node → 下载钉版 Node（SHA256 校验）→ npm 安装 `@deepseek-ai/dsh@0.1.2-alpha.2` → 验证产物」，全程进度页可见、失败可重试（`desktop.bootstrap.retry`）。
+* 首启引导（`RuntimeBootstrap`）：PATH 上无全局 dsh 时，在 spawn dsh **之前**完成「确保系统全局 node（复用 PATH 用户 node/npm；无则下载最新官方 node 装到系统全局前缀）→ 用其 `npm install -g @deepseek-ai/dsh@alpha`（系统全局位）→ 验证 `dsh --version`」，node/dsh 写系统位需 sudo 时给手动命令；全程进度页可见、失败可重试（`desktop.bootstrap.retry`）。
 * **插件引导（ADR reference-alignment 批次二）**：运行时就位后、spawn dsh 前，若存在待装可选插件（现仅 `dshmarket` 预设），进度页呈现「插件准备」步（推荐 chip + 确认/跳过 + 安装日志回流）。用户确认才安装、跳过则该次不装（可经应用内市场补装）、5 分钟无决策默认跳过；companion（internal）不在勾选清单，保持 spawn 前静默自愈。
 * 启动前 reconcile（`DesktopProfileBootstrap.ReconcileProfile`）：扫描 desktop profile，移除解析目标已不存在的本地 `file:`/`link:` bundle 引用（退役随包种子属之），对齐 dsh-tauri-desk #177——不允许不可解析 bundle 引用残留。
 * **插件安装均在 spawn dsh 前完成**（对齐参照 `launch.rs`「所有插件内核前就位、绝不安装后重启」）：companion 经 `EnsureBundledPluginsBeforeSpawnAsync`——`BundledPluginCatalog.AssemblePending` 组装待装清单：未装即装（安装器资源 `resources/plugins` tgz，`ResolveCompanionSpec` `>1K` 校验）、已装则 `PluginVersionCheck` 版本感知升级（来源 > 已装副本即入列，同版/更高跳过；spec 缺失、解析器异常或脏版本串按单插件记日志跳过；见 ADR `implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog` + `implemented/feature/2026-08-29-plugin-surface-consolidation`）；dshmarket 经 `EnsureMarketFromRegistryAsync`（`plugin add dshmarket@latest`）。安装前 `EnsureWorkspaceAllowBuilds` 放行 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）、`CleanupBogusAppDependencyAsync` 清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`；装后 `EnsureBundlesContainsAsync` 兜底并补回桌面必需 bundle（`dsh-base`/`dsh-web-app`）。dev 运行且 DSH_HOME 显式覆盖指回真实 home 时整体跳过（防把 dev 依赖写进共享 profile）。
 * `dsh` 的 `reconcilePlugins` 在 `plugin add` 后自动把包名追加到 `dsh.profile.bundles`（`pilot-harness` 同款）。
-* **CLI shim 注册（ADR reference-alignment 批次四）**：运行时就位后（`CliShimRegistrar.TryRegister`，捆绑/PATH-dsh 与引导完成两条路径各一次）把 `dsh`/`pnpm` 注册进用户 PATH——Windows `%LOCALAPPDATA%\deepseek-harness\bin` 写 `dsh.cmd`/`dsh.ps1`/`pnpm.cmd`/`pnpm.ps1` + `HKCU\Environment\Path` 幂等合并 + `WM_SETTINGCHANGE` 广播；mac/linux `~/.local/bin` 写 POSIX sh + 既有 `.bashrc`/`.zshrc`/`.profile`/`.bash_profile` 幂等 rc 块。shim 烘焙运行时（node + `node_modules/@deepseek-ai/dsh/lib/bin.js`）与 `DSH_HOME`，节点解析序 = 本地兼容 node（≥22.15/23.8/24）→ 运行时 node；`dsh`/`pnpm` 均优先转发用户自装的同名命令（排除本 shim 目录），绝不覆盖用户配置（目标为本应用生成的 shim 才覆盖、悬空符号链接先移除、用户文件保留）。best-effort——任一步失败仅告警不阻启动；dev 隔离时跳过 dsh shim（防把开发环境烘焙进共享 shim，仅写内容恒定的 pnpm shim）。online-first 模型不捆绑独立 pnpm（dsh 的 `plugin` 子命令经 `spawnSync("pnpm")` 从 PATH 调用），故 pnpm shim 只转发用户自家 pnpm、缺则诚实提示（参照项目 `dependencies/pnpm` 属有意差异）。
+* **CLI shim 注册（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）**：dsh 已全局在 PATH，`CliShimRegistrar.TryRegister` 只注册内容恒定的 `pnpm` shim——Windows `%LOCALAPPDATA%\deepseek-harness\bin` 写 `pnpm.cmd`/`pnpm.ps1` + `HKCU\Environment\Path` 幂等合并 + `WM_SETTINGCHANGE` 广播；mac/linux `~/.local/bin` 写 POSIX sh（`pnpm`）+ 既有 `.bashrc`/`.zshrc`/`.profile`/`.bash_profile` 幂等 rc 块。shim 不烘焙运行时/DSH_HOME；`pnpm` 优先转发用户自装的同名命令（排除本 shim 目录），绝不覆盖用户配置（目标为本应用生成的 shim 才覆盖、悬空符号链接先移除、用户文件保留）。best-effort——任一步失败仅告警不阻启动。本分布不捆绑独立 pnpm（dsh 的 `plugin` 子命令经 `spawnSync("pnpm")` 从 PATH 调用），故 pnpm shim 只转发用户自家 pnpm、缺则诚实提示（参照项目 `dependencies/pnpm` 属有意差异）。
 
 ## 外部链接接管
 
@@ -66,7 +66,7 @@
 
 ## 打包
 
-* online-first（ADR `implemented/architecture/2026-08-29-online-first-unbundled-runtime`）：安装器**不捆绑运行时闭包**，只带壳（publish 全量，实测 ~26-36MB 压缩后）+ 安装器自带插件资源 `resources/plugins/dsh-desktop-companion.tgz`（`scripts/build-companion-tgz.sh` 打包时从仓库源码现打并校验）；运行时由首启引导安装（见「运行时定位与启动」）。
+* 依赖全局 dsh（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）：安装器**不捆绑运行时闭包**，只带壳（publish 全量，实测 ~26-36MB 压缩后）+ 安装器自带插件资源 `resources/plugins/dsh-desktop-companion.tgz`（`scripts/build-companion-tgz.sh` 打包时从仓库源码现打并校验）；运行时 = 用户 PATH 上的全局 dsh（无则首启引导 `npm install -g @alpha` 装，见「运行时定位与启动」）。
 * `scripts/package-linux.sh`：`dotnet publish -r linux-x64|linux-arm64`（arm64 自 Ryn.Interop 0.30.4 供给 linux-arm64 native 起恢复发布，2026-08-25）→ `staging` 现打 companion tgz 进 `resources/plugins`、拦 `resources/runtime` 闭包残留（fail loud）→ `deb (Depends: libwebkitgtk-6.0-4, libadwaita-1-0, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4()(64bit), libadwaita-1.so.0()(64bit), BuildArch x86_64/aarch64)`。
 * `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → 单一安装产物：mac `dmg`（`hdiutil`，含 `.app`）/ win `exe` 安装器（`Inno Setup`/`NSIS`/`7z SFX`，`…-setup.exe`），文件名含 `…_macos-*/…_windows-*` 标识，签名占位（`codesign`/`signtool` 待证书）。**不单独产出便携 zip**（对齐 pilot-harness 每平台单产物的思路）。
 * 安装器资源一律 **exe 目录相对**（`AppContext.BaseDirectory/resources/plugins`，Linux `usr/lib/<app>` / mac `Contents/MacOS` / win 安装根三平台同构）；`verify-package-layout.sh` 断言无闭包残留 + 插件 tgz 名称/体积关；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。

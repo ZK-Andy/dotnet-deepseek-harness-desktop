@@ -1,12 +1,11 @@
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
-/// <see cref="RuntimeBootstrap"/> 的引擎辅助面（partial，ADR 尺寸健康闸）：子进程捕获、node 探测、
-/// 步骤超时、失败态、node/npm-cli 定位、锁重试。引导状态机（RunAsync/DownloadNodeAsync）与
-/// 纯函数/文件系统原子面分别在 <c>RuntimeBootstrap.cs</c>/<c>RuntimeBootstrap.Pure.cs</c>。
+/// <see cref="RuntimeBootstrap"/> 的引擎辅助面（partial，ADR 尺寸健康闸）：子进程捕获、全局 node 探测、
+/// 步骤超时、失败态、npm-cli 定位。引导状态机（RunAsync/EnsureGlobalNodeAsync）与
+/// 纯函数/路径单点面分别在 <c>RuntimeBootstrap.cs</c>/<c>RuntimeBootstrap.Pure.cs</c>。
 /// </summary>
 public static partial class RuntimeBootstrap
 {
@@ -19,7 +18,7 @@ public static partial class RuntimeBootstrap
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            // GUI 子系统壳 spawn tar/node/npm 不能闪控制台窗（Windows）
+            // GUI 子系统壳 spawn node/npm 不能闪控制台窗（Windows）
             CreateNoWindow = true,
         };
         HarnessRuntimeHost.UseUtf8TextStreams(psi);
@@ -53,8 +52,8 @@ public static partial class RuntimeBootstrap
         catch (Exception)
         {
             // 取消/异常路径必须整树击杀：ReadToEndAsync 的 OCE 会跳过 WaitForExitAsync（其内部
-            // 才注册 kill-on-cancel），using dispose 只关句柄不杀进程——npm 会带着 runtimeDir
-            // 的写权成孤儿，下次引导与新进程竞写 node_modules
+            // 才注册 kill-on-cancel），using dispose 只关句柄不杀进程——npm 会带着写权成孤儿，下次
+            // 引导与新进程竞写 node_modules
             try
             {
                 p.Kill(entireProcessTree: true);
@@ -68,21 +67,29 @@ public static partial class RuntimeBootstrap
         }
     }
 
-    private static readonly Regex s_nodeVersionToken = new(
-        @"^v(\d+)\.\d+\.\d+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static async Task<(string? NodePath, string? Version)> ProbeLocalNodeAsync(Action<string> log, CancellationToken ct)
+    /// <summary>探测 PATH 上系统全局 node（取真实可执行路径）+ 其 npm-cli.js。全局 node 是那份唯一 dsh 的运行时，
+    /// 桌面与终端共用（ADR simple-shell-single-global-dsh）。</summary>
+    private static async Task<(string? NodePath, string? NpmCli)> ProbeLocalNodeAsync(Action<string> log, CancellationToken ct)
     {
         try
         {
-            (int exit, string? stdout, string _) = await RunCaptureAsync(log, "node", ["--version"], ct).ConfigureAwait(false);
+            // 确认 node 可执行（--version 非零即视为不存在），并取真实路径（process.execPath），
+            // npm-cli 紧邻 node 安装在发行包布局内。
+            (int exit, string? stdout, string _) = await RunCaptureAsync(log, "node", ["-e", "console.log(process.execPath)"], ct).ConfigureAwait(false);
             if (exit != 0)
             {
                 return (null, null);
             }
 
-            Match m = s_nodeVersionToken.Match(stdout.Trim());
-            return m.Success ? ("node", m.Groups[1].Value) : (null, null);
+            string? nodePath = stdout?.Trim();
+            if (string.IsNullOrWhiteSpace(nodePath))
+            {
+                return (null, null);
+            }
+
+            // npm-cli 定位失败即视为本机 node 不可复用（绝不猜测执行）
+            string? npmCli = LocateNpmCliBesideLocalNode(nodePath);
+            return npmCli is null ? (null, null) : (nodePath, npmCli);
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
@@ -119,18 +126,6 @@ public static partial class RuntimeBootstrap
         return new BootstrapOutcome(false, step, $"[{step}] {error}", null);
     }
 
-    private static string? TryFindNode(string runtimeDir)
-    {
-        string node = Path.Combine(runtimeDir, "node");
-        if (File.Exists(node))
-        {
-            return node;
-        }
-
-        string nodeExe = Path.Combine(runtimeDir, "node.exe");
-        return File.Exists(nodeExe) ? nodeExe : null;
-    }
-
     private static string? LocateNpmCliBesideLocalNode(string nodePath)
     {
         // node 在 PATH 上时布局不定（发行包/包管理器/symlink）；只探测两种主流布局，
@@ -149,103 +144,5 @@ public static partial class RuntimeBootstrap
             Path.Combine(dir, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"),
         };
         return candidates.FirstOrDefault(File.Exists);
-    }
-
-    /// <summary>引导第①相：Node 就位（优先已下载/本机复用，否则下载钉版）；返回 (nodePath, npmCli)。</summary>
-    private static async Task<(string? NodePath, string? NpmCli)> EnsureNodePhaseAsync(
-        RuntimeBootstrapOptions options, string runtimeDir, Action<BootstrapProgress> report,
-        RuntimeBootstrapHooks hooks, CancellationToken ct)
-    {
-        // ① Node 就位：优先已下载（断点重试语义），再本机复用，最后下载钉版
-        report(new BootstrapProgress(BootstrapStep.EnsureNode, "检测本机 Node"));
-        string? nodePath = TryFindNode(runtimeDir);
-        string? npmCli = null;
-        if (nodePath is not null)
-        {
-            report(new BootstrapProgress(BootstrapStep.EnsureNode, "复用已下载的 Node"));
-            npmCli = Path.Combine(runtimeDir, NpmCliRelativePath());
-        }
-        else
-        {
-            (string? localNode, string? localMajor) = await hooks.ProbeLocalNodeAsync(ct).ConfigureAwait(false);
-            bool reuse = localNode is not null &&
-                        int.TryParse(localMajor, out int major) &&
-                        major >= options.MinimumLocalNodeMajor;
-            if (reuse)
-            {
-                report(new BootstrapProgress(BootstrapStep.EnsureNode, $"复用本机 Node v{localMajor}+"));
-                // 本机 node 的 npm-cli 紧邻其安装布局；找不到即视为不可复用（fail loud 落到下载）
-                npmCli = LocateNpmCliBesideLocalNode(localNode!);
-                if (npmCli is null)
-                {
-                    report(new BootstrapProgress(BootstrapStep.EnsureNode, "本机 Node 缺 npm，改用下载钉版"));
-                    reuse = false;
-                }
-                else
-                {
-                    nodePath = localNode;
-                }
-            }
-
-            if (!reuse)
-            {
-                (nodePath, npmCli) = await DownloadNodeAsync(options, runtimeDir, report, hooks, ct).ConfigureAwait(false);
-            }
-        }
-
-        return (nodePath, npmCli);
-    }
-
-    /// <summary>下载相：从官方 SHASUMS256.txt 取可信摘要（不可达即中止，不用镜像自证）。</summary>
-    private static async Task<string> FetchSha256ExpectedAsync(
-        RuntimeBootstrapOptions options, string baseUrl, string versionDir, string fileName,
-        Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, CancellationToken ct)
-    {
-        // 摘要优先取自官方（信任根）：先拉 SHASUMS256.txt 得可信摘要，随后归档（官方→镜像）逐一用它校验；
-        // 官方摘要不可达即中止（无可信摘要 → 不用镜像，防投毒，ADR 批次三）
-        report(new BootstrapProgress(BootstrapStep.EnsureNode, "获取 Node 发行包 SHA256 摘要"));
-        string shasums;
-        try
-        {
-            shasums = await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct,
-                token => hooks.FetchTextAsync($"{baseUrl}/{versionDir}/SHASUMS256.txt", token)).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // 官方摘要不可达 = 无可信信任根，绝不回落镜像摘要（自证自证）——fail loud，带原始网络上下文
-            throw new InvalidOperationException($"获取 Node 发行包官方 SHA256 摘要失败：{ex.Message}", ex);
-        }
-
-        return SelectSha256(shasums, fileName)
-            ?? throw new InvalidOperationException($"SHASUMS256.txt 缺少 {fileName} 的摘要，安全中止");
-    }
-
-    /// <summary>解压 → 归一为扁平布局 → 原子 swap 进 runtimeDir（含清理 extract 残余；fail loud）。</summary>
-    private static async Task ExtractNormalizeAndSwapAsync(
-        RuntimeBootstrapOptions options, string stagingDir, string runtimeDir, string archivePath,
-        Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, CancellationToken ct)
-    {
-        report(new BootstrapProgress(BootstrapStep.ExtractNode, "解压 Node"));
-        string extractDir = Path.Combine(stagingDir, "extract");
-        Directory.CreateDirectory(extractDir);
-        await WithStepTimeout(options.StepTimeoutMinutes, ct,
-            token => hooks.ExtractArchiveAsync(archivePath, extractDir, token)).ConfigureAwait(false);
-
-        // 归一为捆绑闭包同款扁平布局（RuntimeLocator.TryLocateBundled 的探测形态）于 staging 根：
-        // node(.exe) 在根目录、npm 模块树按平台相对路径可达；发行包其余内容（include/share/
-        // CHANGELOG 等）随 staging 清理，保持 runtimeDir 与闭包同构
-        string inner = Directory.EnumerateDirectories(extractDir).FirstOrDefault()
-            ?? throw new InvalidOperationException("Node 发行包解压结果无内容目录");
-        string nodeRel = OperatingSystem.IsWindows() ? "node.exe" : Path.Combine("bin", "node");
-        string npmTreeRel = OperatingSystem.IsWindows() ? "node_modules" : "lib";
-        MoveInto(stagingDir, Path.Combine(inner, nodeRel), Path.GetFileName(nodeRel));
-        MoveInto(stagingDir, Path.Combine(inner, npmTreeRel), npmTreeRel);
-        // 发行包其余内容（include/share/CHANGELOG/LICENSE 等）仍留在 extract/<inner>；swap 会把整个
-        // stagingDir 原子搬进 runtimeDir，必须先清 extract 残余，保证 runtimeDir 与闭包同构（R2 B1）。
-        // 用 DeleteWithLockRetry（fail loud）而非最佳努力——清不动就不该把残余搬进正式目录
-        DeleteWithLockRetry(extractDir);
-
-        report(new BootstrapProgress(BootstrapStep.ExtractNode, "原子就位运行时"));
-        SwapStagingIntoPlace(stagingDir, runtimeDir);
     }
 }

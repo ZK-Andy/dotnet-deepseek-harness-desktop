@@ -98,6 +98,7 @@ Status: implemented
 ## Related
 
 - [online-first-unbundled-runtime](2026-08-29-online-first-unbundled-runtime.md)（implemented）：本 ADR 在其首启引导/下载层之上对齐健壮性与插件时序；下载层改动直接作用于其 `RuntimeBootstrap`。
+- [simple-shell-single-global-dsh](2026-08-31-simple-shell-single-global-dsh.md)（implemented）：**部分取代本 ADR 的"CLI shim / PATH 注册"批次**——dsh 已全局在 PATH（桌面不再生成 dsh shim，仅 pnpm shim；node 走系统全局并暴露到 PATH）。插件时序（spawn 前安装）保留（见该篇本 ADR 回链）。
 - [plugin-surface-consolidation](../feature/2026-08-29-plugin-surface-consolidation.md)（implemented）：本 ADR 批次一/二在其「dshmarket 迁 spawn 前」基础上把 companion（internal）也收敛到 spawn 前，并补插件引导 UX。
 - [page-health-monitor](../process/2026-08-26-page-health-monitor.md)（implemented）：批次五直接扩展其 `PageHealthMonitor`——从「阶段 1 只观测」升级为「观测 + 有界恢复」，其被取代的「阶段 2 未立项」陈述随批次五改写。
 - [shell-observability-diagnostics](2026-08-24-shell-observability-diagnostics.md)（implemented）：PageHealthMonitor 观测面保留、有界恢复叠加其上。

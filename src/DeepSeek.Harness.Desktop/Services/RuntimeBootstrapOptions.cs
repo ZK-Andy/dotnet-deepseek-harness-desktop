@@ -4,29 +4,28 @@ namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
 /// 首启引导的可调参数（appsettings.json 的 <c>RuntimeBootstrap</c> 节，禁止硬编码进逻辑）。
-/// ADR online-first-unbundled-runtime：无捆绑运行时且无 PATH dsh 时，引导下载钉版 Node +
-/// registry 安装 dsh。闭包退役后本记录的 <see cref="NodeVersion"/> 是 Node 钉版的唯一正典。
+/// ADR simple-shell-single-global-dsh：桌面是简单壳，依赖全机唯一的系统全局 node + 全局 dsh
+/// （都在 PATH 上）：有系统 node 就用其 npm 执行 <c>npm install -g @deepseek-ai/dsh@alpha</c>；没有则
+/// 下载最新官方 node 发行包并装到系统全局前缀（需 sudo 时提示手动命令），再装全局 dsh。
 /// </summary>
 public sealed record RuntimeBootstrapOptions
 {
-    /// <summary>引导下载的 Node 钉版（闭包退役后的唯一正典；追平现役 LTS 属人工拍板）。</summary>
-    public string NodeVersion { get; init; } = "24.20.0";
-
-    /// <summary>Node 官方发行目录基址（含尾随 dist 段）。</summary>
-    public string NodeDistBaseUrl { get; init; } = "https://nodejs.org/dist";
-
-    /// <summary>Node 发行包多源回落镜像基址（默认 npmmirror；置空字符串 = 仅官方单源，镜像关闭）。
-    /// 镜像仅承担归档下载，摘要仍取自 <see cref="NodeDistBaseUrl"/> 官方（防投毒，ADR reference-alignment 批次三）。</summary>
-    public string NodeMirrorBaseUrl { get; init; } = "https://cdn.npmmirror.com/binaries/node";
-
-    /// <summary>dsh 的安装 spec（默认跟 npm latest 解耦；当前钉 alpha.2，重入 @latest 见 ADR）。</summary>
-    public string DshSpec { get; init; } = "@deepseek-ai/dsh@0.1.2-alpha.2";
-
-    /// <summary>复用本机 PATH node 的最低主版本（低于则下载钉版）。</summary>
-    public int MinimumLocalNodeMajor { get; init; } = 22;
+    /// <summary>dsh 的安装 spec（跟随 alpha 预发布通道，见 ADR simple-shell-single-global-dsh）。</summary>
+    public string DshSpec { get; init; } = "@deepseek-ai/dsh@alpha";
 
     /// <summary>单个下载/安装步骤的超时（分钟）。</summary>
     public int StepTimeoutMinutes { get; init; } = 10;
+
+    /// <summary>node 官方发行目录基址（含尾随 dist 段）。</summary>
+    public string NodeDistBaseUrl { get; init; } = "https://nodejs.org/dist";
+
+    /// <summary>node 发行包多源回落镜像基址（默认 npmmirror；置空字符串 = 仅官方单源，镜像关闭）。
+    /// 镜像仅承担归档下载，可信摘要仍取自 <see cref="NodeDistBaseUrl"/> 官方（防投毒）。</summary>
+    public string NodeMirrorBaseUrl { get; init; } = "https://cdn.npmmirror.com/binaries/node";
+
+    /// <summary>系统全局 node 安装前缀（空 = 默认 <see cref="RuntimeBootstrap.DefaultGlobalNodePrefix"/>）。
+    /// 无系统 node 时桌面据此把下载的 node 落到系统全局位（用户可写，避免需 sudo；也可配 <c>/usr/local</c>）。</summary>
+    public string NodeGlobalPrefix { get; init; } = string.Empty;
 
     /// <summary>从应用旁的 appsettings.json 读取 <c>RuntimeBootstrap</c> 节；文件缺失或节缺失时全默认。</summary>
     public static RuntimeBootstrapOptions Load(string baseDirectory)
@@ -47,9 +46,14 @@ public sealed record RuntimeBootstrapOptions
             }
 
             var options = new RuntimeBootstrapOptions();
-            if (section.TryGetProperty(nameof(NodeVersion), out JsonElement v) && v.ValueKind == JsonValueKind.String)
+            if (section.TryGetProperty(nameof(DshSpec), out JsonElement s) && s.ValueKind == JsonValueKind.String)
             {
-                options = options with { NodeVersion = v.GetString()! };
+                options = options with { DshSpec = s.GetString()! };
+            }
+
+            if (section.TryGetProperty(nameof(StepTimeoutMinutes), out JsonElement t) && t.ValueKind == JsonValueKind.Number)
+            {
+                options = options with { StepTimeoutMinutes = t.GetInt32() };
             }
 
             if (section.TryGetProperty(nameof(NodeDistBaseUrl), out JsonElement b) && b.ValueKind == JsonValueKind.String)
@@ -62,19 +66,9 @@ public sealed record RuntimeBootstrapOptions
                 options = options with { NodeMirrorBaseUrl = mb.GetString()! };
             }
 
-            if (section.TryGetProperty(nameof(DshSpec), out JsonElement s) && s.ValueKind == JsonValueKind.String)
+            if (section.TryGetProperty(nameof(NodeGlobalPrefix), out JsonElement gp) && gp.ValueKind == JsonValueKind.String)
             {
-                options = options with { DshSpec = s.GetString()! };
-            }
-
-            if (section.TryGetProperty(nameof(MinimumLocalNodeMajor), out JsonElement m) && m.ValueKind == JsonValueKind.Number)
-            {
-                options = options with { MinimumLocalNodeMajor = m.GetInt32() };
-            }
-
-            if (section.TryGetProperty(nameof(StepTimeoutMinutes), out JsonElement t) && t.ValueKind == JsonValueKind.Number)
-            {
-                options = options with { StepTimeoutMinutes = t.GetInt32() };
+                options = options with { NodeGlobalPrefix = gp.GetString()! };
             }
 
             return options;

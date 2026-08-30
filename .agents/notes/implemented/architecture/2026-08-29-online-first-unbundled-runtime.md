@@ -104,6 +104,7 @@ Status: implemented
 ## Related
 
 - [shared-home-desktop-profile](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md)（implemented）：本 ADR 取代其「运行时归属 B 形态：闭包保留为预览期形态、去捆绑是远期选项」条款与 dev 判定挂账——它自注「届时另立 ADR」，本篇即该 ADR；共享 home / desktop profile / 数据互通等其余决定全部保留。
+- [simple-shell-single-global-dsh](2026-08-31-simple-shell-single-global-dsh.md)（implemented）：**部分取代本篇**——本篇的"下载自备运行时（`~/.dsh-desktop/runtime`）/ 跟随 @latest 解耦"由该 ADR 收敛为"依赖系统全局 node + 全局 dsh（`@alpha`）+ 无系统 node 时桌面装 node 到系统全局"；首启引导/失败重试骨架与"无捆绑闭包"保留（见该篇本 ADR 回链）。
 - [bundled-plugin-registry-normalization](../../implemented/feature/2026-08-29-bundled-plugin-registry-normalization.md)（implemented）：本 ADR 取代其「随包 = 种子保离线可靠」前提与「MARKET_VERSION 钉版语义（freshness 巡检职责不变）」一条（批次二/三退役）；归化**语义**（显式 `dshmarket@latest` 改写存量）由批次三引导注册表安装承接（`AssemblePending` 的归化机制已随批次三退役）。
 - [ryn-shell-bundled-dsh-runtime](../../implemented/architecture/2026-08-20-ryn-shell-bundled-dsh-runtime.md)（implemented）：本 ADR 直接转向其「完整运行时打包」决定，捆绑闭包与「零下载确定性」差异化表述随 offline 约束删除而退役。
 - [companion-plugin-version-aware-upgrade](../../implemented/feature/2026-08-22-companion-plugin-version-aware-upgrade.md)（implemented）：随包种子退役后 tgz 供给渠道变化见批次三；版本比对机制不变。

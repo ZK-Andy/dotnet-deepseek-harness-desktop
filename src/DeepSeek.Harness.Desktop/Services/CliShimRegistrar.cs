@@ -8,13 +8,15 @@ public sealed record CliShimFile(string TargetPath, string Content, bool Executa
 
 /// <summary>
 /// CLI shim 注册的纯规划结果：要落盘的 shim 文件、bin 目录与 PATH 增量（Windows 为 HKCU 追加、
-/// Unix 为 rc key 块）。
+/// Unix 为 rc key 块）。<paramref name="RuntimeNodeBinDir"/> 为系统全局 node 的 global bin 目录
+/// （无系统 node 时由桌面装到系统全局；把它一并暴露进终端 PATH，让桌面与终端共用同一份 node/dsh）。
 /// </summary>
 public sealed record CliShimSetup(
     IReadOnlyList<CliShimFile> Files,
     string BinDir,
     string PathSeparator,
-    string? ShellRcBlock);
+    string? ShellRcBlock,
+    string? RuntimeNodeBinDir = null);
 
 /// <summary>写入 shim 目标的决策。</summary>
 public enum ShimWriteAction
@@ -30,53 +32,38 @@ public enum ShimWriteAction
 }
 
 /// <summary>
-/// CLI shim 注册纯逻辑（可单测）：把运行时 + DSH_HOME 烘焙进 shim，规划落盘文件与 PATH 增量，
-/// 并判定写入动作（幂等合并、绝不覆盖用户配置）。平台 IO（注册表 / rc 落盘 / 广播）与
-/// 编排见 <see cref="CliShimRegistrar"/>。
+/// CLI shim 注册纯逻辑（可单测）：规划 <c>pnpm</c> shim 落盘文件与 PATH 增量，
+/// 并判定写入动作（幂等合并、绝不覆盖用户配置）。dsh 已全局在 PATH（ADR simple-shell-single-global-dsh），
+/// 不再生成 dsh shim。平台 IO（注册表 / rc 落盘 / 广播）与编排见 <see cref="CliShimRegistrar"/>。
 /// </summary>
 public static class CliShimPlanner
 {
-    /// <summary>Windows shim 文件名。</summary>
-    public const string DshCmdName = "dsh.cmd";
-    /// <summary>Windows PowerShell shim 文件名（dsh 命令）。</summary>
-    public const string DshPs1Name = "dsh.ps1";
     /// <summary>Windows shim 文件名（pnpm 命令）。</summary>
     public const string PnpmCmdName = "pnpm.cmd";
     /// <summary>Windows PowerShell shim 文件名（pnpm 命令）。</summary>
     public const string PnpmPs1Name = "pnpm.ps1";
 
-    /// <summary>Unix shim 文件名。</summary>
-    public const string DshShName = "dsh";
     /// <summary>Unix shim 文件名（pnpm 命令）。</summary>
     public const string PnpmShName = "pnpm";
 
-    /// <summary>按平台构造 shim 规划。<paramref name="writeDshShim"/> 为 false 时（dev 隔离）只写不烘焙
-    /// home/hash 的 pnpm shim、跳过 dsh shim（对齐参照「debug 构建不写共享 dsh shim」，避免把开发环境
-    /// 烘焙进用户终端；Windows 同样遵守，避免 dev 写成共享 %LOCALAPPDATA%）。</summary>
-    public static CliShimSetup BuildSetup(
-        string runtimeDir, string dshHome, string binDir, bool isWindows, bool writeDshShim)
+    /// <summary>按平台构造 shim 规划（仅 pnpm；dsh 已全局在 PATH，内容恒定，不烘焙运行时/DSH_HOME）。
+    /// <paramref name="runtimeNodeBinDir"/> 非空时（系统全局 node 由桌面装好）一并把它暴露进终端 PATH。</summary>
+    public static CliShimSetup BuildSetup(string binDir, bool isWindows, string? runtimeNodeBinDir = null)
     {
         var files = new List<CliShimFile>();
+        // 系统全局 node 的 bin 目录前置：终端优先用桌面与终端共用那份 node/dsh（无系统 node 场景）。
+        string[] pathDirs = string.IsNullOrWhiteSpace(runtimeNodeBinDir)
+            ? new[] { binDir }
+            : new[] { runtimeNodeBinDir, binDir };
         if (isWindows)
         {
-            if (writeDshShim)
-            {
-                files.Add(new CliShimFile(Path.Combine(binDir, DshCmdName), CliShimBuilder.BuildDshCmd(runtimeDir, dshHome), Executable: false));
-                files.Add(new CliShimFile(Path.Combine(binDir, DshPs1Name), CliShimBuilder.BuildDshPs1(runtimeDir, dshHome), Executable: false));
-            }
-
             files.Add(new CliShimFile(Path.Combine(binDir, PnpmCmdName), CliShimBuilder.BuildPnpmCmd(), Executable: false));
             files.Add(new CliShimFile(Path.Combine(binDir, PnpmPs1Name), CliShimBuilder.BuildPnpmPs1(), Executable: false));
-            return new CliShimSetup(files, binDir, ";", ShellRcBlock: null);
-        }
-
-        if (writeDshShim)
-        {
-            files.Add(new CliShimFile(Path.Combine(binDir, DshShName), CliShimBuilder.BuildDshSh(runtimeDir, dshHome), Executable: true));
+            return new CliShimSetup(files, binDir, ";", ShellRcBlock: null, RuntimeNodeBinDir: runtimeNodeBinDir);
         }
 
         files.Add(new CliShimFile(Path.Combine(binDir, PnpmShName), CliShimBuilder.BuildPnpmSh(), Executable: true));
-        return new CliShimSetup(files, binDir, ":", CliShimPath.BuildShellExportBlock(binDir, ":"));
+        return new CliShimSetup(files, binDir, ":", CliShimPath.BuildShellExportBlocks(pathDirs, ":"), RuntimeNodeBinDir: runtimeNodeBinDir);
     }
 
     /// <summary>判定写入动作：悬空符号链接先移除；本应用生成/不存在则写；用户文件保留。
@@ -127,23 +114,25 @@ public sealed class CliShimRegistrar
     }
 
     /// <summary>
-    /// 执行一次 shim 注册。best-effort——吞掉预期内的异常并返回 false（调用方不因注册失败阻断启动）；
-    /// 绝不抛给上层。调用方（DesktopBootstrap.Startup.RegisterCliShim）在运行时就位且非 dev 隔离时调用。
+    /// 执行一次 shim 注册（仅 pnpm；dsh 已全局在 PATH，无需生成 dsh shim）。<paramref name="runtimeNodeBinDir"/>
+    /// 非空时（系统全局 node 由桌面装好）一并把它暴露进终端 PATH，让终端与桌面共用同一份 node/dsh。
+    /// best-effort——吞掉预期内的异常并返回 false（调用方不因注册失败阻断启动）；绝不抛给上层。
+    /// 调用方（<see cref="DesktopBootstrap.Startup"/> 的 RegisterCliShim）在启动时调用。
     /// </summary>
-    public bool TryRegister(string runtimeDir, string dshHome, bool isDevIsolated)
+    public bool TryRegister(string? runtimeNodeBinDir = null)
     {
         try
         {
             string binDir = ResolveBinDir();
             Directory.CreateDirectory(binDir);
-            CliShimSetup setup = CliShimPlanner.BuildSetup(runtimeDir, dshHome, binDir, OperatingSystem.IsWindows(), writeDshShim: !isDevIsolated);
+            CliShimSetup setup = CliShimPlanner.BuildSetup(binDir, OperatingSystem.IsWindows(), runtimeNodeBinDir);
             foreach (CliShimFile file in setup.Files)
             {
                 WriteShimFile(file);
             }
 
             RegisterPath(setup);
-            _log($"[cli-shim] 已注册终端命令到 {binDir}（dsh{(isDevIsolated ? "（dev 跳过），" : "/")}pnpm）");
+            _log($"[cli-shim] 已注册终端命令到 {binDir}（pnpm{(setup.RuntimeNodeBinDir is null ? "" : $"；系统全局 node = {setup.RuntimeNodeBinDir}")}）");
             return true;
         }
         catch (Exception ex) when (ex is IOException
@@ -205,6 +194,11 @@ public sealed class CliShimRegistrar
     {
         (string? current, bool expand) = ReadUserEnvPath();
         string merged = CliShimPath.MergePathToken(current, setup.BinDir, ";", caseInsensitive: true);
+        if (setup.RuntimeNodeBinDir is not null)
+        {
+            merged = CliShimPath.MergePathToken(merged, setup.RuntimeNodeBinDir, ";", caseInsensitive: true);
+        }
+
         if (string.Equals(current, merged, StringComparison.Ordinal))
         {
             return;

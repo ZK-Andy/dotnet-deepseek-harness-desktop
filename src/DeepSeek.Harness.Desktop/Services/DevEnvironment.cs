@@ -3,17 +3,15 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// <summary>
 /// 开发运行时隔离的纯判定（可单测）。触发条件满足其一：<c>DSH_DESKTOP_RUNTIME_DIR</c> 已设置，
 /// 或 <c>DSH_DESKTOP_DEV=1</c> 显式声明（<c>dotnet run</c> 调试的典型形态）。
-/// 判定只认显式环境标记，绝不以「捆绑闭包是否存在」探测——online-first 去捆绑后
-/// （ADR online-first-unbundled-runtime）打包新装同样没有闭包，闭包探测会把全部新装用户
-/// 误判为 dev（ApplicationId 带 .dev 后缀 + 随包插件安装被跳过；shared-home ADR 在案挂账，
-/// 本判定即其重构收口）。
+/// 判定只认显式环境标记，绝不以「捆绑闭包是否存在」探测——桌面依赖全局 dsh、不运输行时闭包，
+/// 闭包探测会把全部用户误判为 dev（ApplicationId 带 .dev 后缀 + 随包插件安装被跳过）。
 /// 隔离包含两件事：ApplicationId 加 <c>.dev</c> 后缀（避开 GTK 同 id 单实例互斥，使 dev 与
 /// 正式版可同时开窗）与 DSH_HOME 默认指向仓库内 <c>.cache/dev-home</c>（杜绝与正式版共享
 /// profile 的串扰）。
 /// </summary>
 public static class DevEnvironment
 {
-    /// <summary>开发运行时覆盖的环境变量名（RuntimeLocator 同款语义）。</summary>
+    /// <summary>开发运行时覆盖的环境变量名（dev 判定的显式标记之一，不再解析运行时目录）。</summary>
     public const string RuntimeDirEnv = "DSH_DESKTOP_RUNTIME_DIR";
 
     /// <summary>开发运行时显式声明环境变量名（<c>dotnet run</c> 调试用）。</summary>

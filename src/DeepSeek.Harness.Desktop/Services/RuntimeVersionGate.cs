@@ -5,16 +5,16 @@ using System.Text.RegularExpressions;
 namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
-/// 启动版本底线检查（只读探测，ADR shared-home-desktop-profile）：共享 home 后桌面钉版运行时与
-/// 用户自管 CLI 写同一 home，版本偏斜的唯一防线——探测即将执行的 dsh 版本，低于底线仅明确提示，
+/// 启动版本底线检查（只读探测，ADR shared-home-desktop-profile）：桌面依赖全局 dsh（alpha 通道），
+/// 与用户自管 CLI 写同一 home，版本偏斜的唯一防线——探测即将执行的 dsh 版本，低于底线仅明确提示，
 /// 不阻断、不做迁移管控。探测失败（超时/进程失败/不可解析）视为未知：只记日志，不用横幅打扰。
 /// </summary>
 public static class RuntimeVersionGate
 {
     /// <summary>
-    /// 桌面支持的最低 dsh 版本（默认走 @latest、当前临时钉 alpha.2，本底线是对上游缺陷/破坏性
-    /// 变更的唯一兜底：出问题立即抬升）。协议级兼容底线，固定在代码不入 appsettings。
-    /// 当前钉 alpha.2（一次性 Token 鉴权取代 ApiProxy 的协议级变更），低于即横幅提示。
+    /// 桌面支持的最低 dsh 版本（跟随 @alpha 预发布通道，本底线是对上游缺陷/破坏性变更的唯一兜底：
+    /// 出问题立即抬升）。协议级兼容底线，固定在代码不入 appsettings。
+    /// 低于即横幅提示（全局 dsh 更新失败或用户自装极旧版的兜底）。
     /// </summary>
     public const string MinimumVersion = "0.1.2-alpha.2";
 
@@ -53,10 +53,10 @@ public static class RuntimeVersionGate
     {
         bool english = uiLocale?.IsEnglish == true;
         string text = english
-            ? $"Current dsh runtime version {detectedVersion} is below the minimum supported by this desktop ({MinimumVersion}); data or behavior may be incompatible. Upgrade dsh, or use the bundled runtime."
-            : "当前 dsh 运行时版本 " + detectedVersion +
+            ? $"Current dsh version {detectedVersion} is below the minimum supported by this desktop ({MinimumVersion}); data or behavior may be incompatible. Upgrade dsh to the alpha channel."
+            : "当前 dsh 版本 " + detectedVersion +
               " 低于桌面支持的最低版本 " + MinimumVersion +
-              "，可能出现数据或行为不兼容；请升级 dsh，或使用桌面自带的捆绑运行时。";
+              "，可能出现数据或行为不兼容；请升级 dsh 至 alpha 通道。";
         return DesktopBanner.Build(
             "dsh-desktop-version-floor-banner",
             text,
@@ -65,10 +65,10 @@ public static class RuntimeVersionGate
     }
 
     /// <summary>
-    /// 只读探测 dsh 版本：bundled 给定时执行 <c>node bin.js --version</c>，否则 PATH <c>dsh --version</c>。
+    /// 只读探测 PATH 上全局 dsh 的版本（<c>dsh --version</c>；全局 dsh 模型下无捆绑形态）。
     /// </summary>
     /// <returns>探测到的版本串；超时、进程失败或输出不可解析返回 null（未知 ≠ 不合格，不提示横幅）。</returns>
-    public static async Task<string?> ProbeAsync((string NodeExe, string DshEntry)? bundled, CancellationToken ct)
+    public static async Task<string?> ProbeAsync(CancellationToken ct)
     {
         try
         {
@@ -82,16 +82,7 @@ public static class RuntimeVersionGate
                 CreateNoWindow = true,
             };
             HarnessRuntimeHost.UseUtf8TextStreams(psi);
-            if (bundled is { } b)
-            {
-                psi.FileName = b.NodeExe;
-                psi.ArgumentList.Add(b.DshEntry);
-            }
-            else
-            {
-                psi.FileName = "dsh";
-            }
-
+            psi.FileName = "dsh";
             psi.ArgumentList.Add("--version");
 
             using Process p = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 dsh --version 进程");

@@ -4,7 +4,7 @@
 #   linux.desktop（Name/Comment/Categories/StartupWMClass）
 #   产物为 AppImage→deb/rpm（此处为 .NET 自包含 publish 的等价物）
 # online-first（ADR online-first-unbundled-runtime）：包只带壳 + 安装器自带插件资源
-# （resources/plugins/dsh-desktop-companion.tgz）；运行时由首启引导下载，不再捆绑闭包。
+# （resources/plugins/dsh-desktop-companion.tgz）；运行时 = 用户 PATH 全局 dsh，不再捆绑闭包。
 # 布局：
 #   usr/lib/<app>/   = dotnet publish 全量 + resources/plugins（插件 tgz）
 #   usr/bin/<app>    = 符号链接
@@ -45,7 +45,7 @@ rm -rf "$STAGE" && mkdir -p "$STAGE/$DEST"
 cp -r "$PUBLISH_DIR/." "$STAGE/$DEST/"
 
 # 2) 安装器自带插件资源（resources/plugins）：companion tgz 从仓库源码现打并校验（fail loud）。
-#    不再捆绑运行时闭包——首启引导负责 Node/dsh 安装（ADR online-first-unbundled-runtime）。
+#    不再捆绑运行时闭包——首启引导确保全局 dsh（ADR simple-shell-single-global-dsh）。
 mkdir -p "$STAGE/$DEST/resources/plugins"
 bash "$ROOT/scripts/build-companion-tgz.sh" "$STAGE/$DEST/resources/plugins/dsh-desktop-companion.tgz"
 # 闭包残留检测：resources/runtime 出现即打包漂移（旧缓存/手工产物混入），fail loud

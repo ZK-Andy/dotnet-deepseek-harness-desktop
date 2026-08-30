@@ -114,7 +114,7 @@ public static partial class MarketInstallHelper
     }
 
     /// <summary>解析桌面伴生插件的安装 <c>spec</c>：安装器资源 tgz（&gt;1K 防假包）；
-    /// 无 registry 分发面，运行时目录种子随 online-first 退役（ADR online-first-unbundled-runtime 批次三）。</summary>
+    /// 无 registry 分发面，随包种子/运行时目录种子已随全局 dsh 模型退役。</summary>
     /// <param name="installerPluginsDir">安装器自带的 resources/plugins（打包形态唯一供给源）。</param>
     /// <returns>可安装的 spec；<see langword="null"/> 表示无任何来源（如开发用 PATH dsh），调用方跳过。</returns>
     public static string? ResolveCompanionSpec(string? installerPluginsDir)

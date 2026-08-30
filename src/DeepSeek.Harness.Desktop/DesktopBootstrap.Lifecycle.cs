@@ -106,27 +106,26 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    /// <summary>后台引导任务（RunBootstrapIfNeeded 的 Task.Run 主体）：重试循环 → 绑定运行时 → 插件安装
-    /// → 起 dsh → 导航进主界面；任一失败收口为日志（窗口仍可重试/关闭）。</summary>
+    /// <summary>后台引导任务（RunBootstrapIfNeeded 的 Task.Run 主体）：重试循环 → 确保全局 dsh
+    /// → 插件安装 → 起 dsh → 导航进主界面；任一失败收口为日志（窗口仍可重试/关闭）。</summary>
     private async Task RunBootstrapTaskAsync(CancellationToken bootCt)
     {
         try
         {
-            (string NodeExe, string DshEntry)? runtime = await RunBootstrapWithRetryAsync(_bootstrapGate, bootCt);
-            if (runtime is null)
+            string? version = await RunBootstrapWithRetryAsync(_bootstrapGate, bootCt);
+            if (version is null)
             {
                 Services.HostLog.Write("[bootstrap] 引导未完成（用户放弃或应用退出）");
                 return;
             }
 
-            _bundledClosure = runtime;
-            _host.BindRuntime(runtime.Value);
+            // 全局 dsh 就位：宿主以 PATH dsh 形态运行（ADR simple-shell-single-global-dsh）。
+            Services.HostLog.Write($"[bootstrap] 全局 dsh 就位：v{version}");
 
-            // CLI shim 注册（ADR reference-alignment 批次四）：引导完成后运行时已下载就位，
-            // 把 dsh/pnpm 注册进用户 PATH。best-effort（见 RegisterCliShim，内含兜底）。
-            RegisterCliShim(_isDev);
+            // CLI shim 注册（dsh 已全局在 PATH；仅注册内容恒定的 pnpm shim）。
+            RegisterCliShim();
 
-            await InstallBootstrapPluginsAsync(runtime.Value, bootCt);
+            await InstallBootstrapPluginsAsync(bootCt);
 
             Uri? url = await _host.StartAsync(timeout: TimeSpan.FromSeconds(60), bootCt);
             if (url is null)
@@ -156,8 +155,9 @@ public sealed partial class DesktopBootstrap
     }
 
     /// <summary>引导刚落定后的插件装配（ADR reference-alignment 批次一/二）：companion（internal）spawn 前
-    /// 静默自愈，dshmarket（preset）经引导页确认装/跳过。best-effort：失败只告警不阻断启动。</summary>
-    private async Task InstallBootstrapPluginsAsync((string NodeExe, string DshEntry) runtime, CancellationToken bootCt)
+    /// 静默自愈，dshmarket（preset）经引导页确认装/跳过。dsh 已在全局 PATH，nodeExe/dshEntry 双 null →
+    /// 走 PATH dsh 命令。best-effort：失败只告警不阻断启动。</summary>
+    private async Task InstallBootstrapPluginsAsync(CancellationToken bootCt)
     {
         // 对齐参照：companion（internal）在 spawn dsh 前静默自愈（batch-1），不出现在
         // 引导勾选清单（对齐 ensure_internal_plugins）；best-effort：失败只告警不阻断
@@ -165,8 +165,8 @@ public sealed partial class DesktopBootstrap
         try
         {
             await Services.MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                runtime.NodeExe,
-                runtime.DshEntry,
+                nodeExe: null,
+                dshEntry: null,
                 HarnessRuntimeHost.ResolveDshHome(),
                 Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
                 Services.HostLog.Write,
@@ -183,7 +183,7 @@ public sealed partial class DesktopBootstrap
         // 跳过则该次不装（less-bootstrapped，dsh 起动后可从应用内市场/设置自愈补装）。
         try
         {
-            await RunPreinstallPhaseAsync(runtime, RunDshPluginAddStreamingAsync, bootCt);
+            await RunPreinstallPhaseAsync(RunDshPluginAddStreamingAsync, bootCt);
         }
         catch (Exception ex)
         {
@@ -341,7 +341,7 @@ public sealed partial class DesktopBootstrap
     {
         // 共享 home 切换的启动期告知（ADR shared-home-desktop-profile）：版本底线检查 + 旧 home 一次性提示。
         // 随包插件现于 spawn dsh 前安装（不再「启动后装 → 覆写页面并重启运行时」），横幅无需等安装收尾，
-        // 只需等首启引导落定——版本探针用的 bundledClosure 在引导完成时被赋值，提前跑会探到空。
+        // 只需等首启引导落定——版本探针走 PATH 上全局 dsh（bundled=null），提前跑会探到空。
         _ = Task.Run(async () =>
         {
             try
@@ -361,7 +361,7 @@ public sealed partial class DesktopBootstrap
             }
 
             string home = HarnessRuntimeHost.ResolveDshHome();
-            string? detected = await Services.RuntimeVersionGate.ProbeAsync(_bundledClosure, _supervisorCts.Token);
+            string? detected = await Services.RuntimeVersionGate.ProbeAsync(_supervisorCts.Token);
             if (detected is not null)
             {
                 Services.HostLog.Write($"[host] dsh 版本 {detected}（底线 {Services.RuntimeVersionGate.MinimumVersion}）");

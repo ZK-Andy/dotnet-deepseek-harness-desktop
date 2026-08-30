@@ -137,19 +137,17 @@ public sealed partial class DesktopBootstrap
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     /// <summary>
-    /// CLI shim 注册（ADR reference-alignment 批次四）：运行时就位后把 dsh/pnpm 注册进用户 PATH。
-    /// best-effort——registrar 已吞预期异常；此处再兜底任何意外异常（注册是增强信息，绝不阻断启动）。
-    /// dev 隔离时跳过 dsh shim（防把开发环境烘焙进共享 shim），只写内容恒定的 pnpm shim。
+    /// CLI shim 注册（ADR simple-shell-single-global-dsh）：dsh 已全局在 PATH，仅把内容恒定的 pnpm
+    /// shim 注册进用户 PATH；若系统全局 node 由桌面装到全局前缀（无系统 node 时），同时把该 node 的
+    /// global bin 目录暴露进终端 PATH（终端与桌面共用同一份 node/dsh）。best-effort——registrar 已吞
+    /// 预期异常；此处再兜底任何意外异常（注册是增强信息，绝不阻断启动）。
     /// </summary>
-    private void RegisterCliShim(bool devIsolated)
+    private void RegisterCliShim()
     {
         try
         {
-            if (RuntimeLocator.TryLocateRuntimeDirectory() is { } runtimeDir)
-            {
-                new Services.CliShimRegistrar(Services.HostLog.Write).TryRegister(
-                    runtimeDir, HarnessRuntimeHost.ResolveDshHome(), devIsolated);
-            }
+            string? nodeBinDir = Services.RuntimeBootstrap.TryResolveActiveNodeBinDir(_bootstrapOptions!);
+            new Services.CliShimRegistrar(Services.HostLog.Write).TryRegister(nodeBinDir);
         }
         catch (Exception ex)
         {
@@ -182,17 +180,16 @@ public sealed partial class DesktopBootstrap
     // TODO(retry-push-fold): PushBootstrapStateAsync 与 RetryPushPreinstallAsync 是 15×400ms 重试推送的
     // 逐字节同构（仅日志前缀与脚本不同），可折叠为一个 PushEventToPageWithRetryAsync(accessor, script, logTag)。
     /// <summary>
-    /// 引导重试循环：单次尝试（RuntimeBootstrap.RunAsync）→ 成功返回运行时；失败推错误态并等待
-    /// 重试信号（desktop.bootstrap.retry 经 <paramref name="gate"/> 放行）或应用退出
+    /// 引导重试循环：单次尝试（RuntimeBootstrap.RunAsync）→ 成功返回验证通过的全局 dsh 版本；
+    /// 失败推错误态并等待重试信号（desktop.bootstrap.retry 经 <paramref name="gate"/> 放行）或应用退出
     /// （<paramref name="ct"/> 取消）。返回 null = 放弃（退出/取消）。
     /// </summary>
-    private async Task<(string NodeExe, string DshEntry)?> RunBootstrapWithRetryAsync(
+    private async Task<string?> RunBootstrapWithRetryAsync(
         Services.RuntimeBootstrapGate gate, CancellationToken ct)
     {
-        var options = Services.RuntimeBootstrapOptions.Load(AppContext.BaseDirectory);
-        string runtimeDir = RuntimeLocator.ResolveDownloadedRuntimeDirectory();
+        RuntimeBootstrapOptions options = _bootstrapOptions!;
         RuntimeBootstrapHooks hooks = Services.RuntimeBootstrap.CreateDefaultHooks(Services.HostLog.Write);
-        Services.HostLog.Write($"[bootstrap] 引导开始：runtimeDir={runtimeDir} dshSpec={options.DshSpec} node=v{options.NodeVersion}");
+        Services.HostLog.Write($"[bootstrap] 引导开始：dshSpec={options.DshSpec}（用系统全局 node 的 npm 装到全局）");
 
         while (true)
         {
@@ -202,7 +199,6 @@ public sealed partial class DesktopBootstrap
             {
                 outcome = await Services.RuntimeBootstrap.RunAsync(
                     options,
-                    runtimeDir,
                     progress => _ = Services.PagePump.PushBootstrapStateAsync(_windowAccessor, progress.Step.ToString(), progress.Message, progress.Failed),
                     hooks,
                     ct);
@@ -212,9 +208,9 @@ public sealed partial class DesktopBootstrap
                 return null;
             }
 
-            if (outcome.Success && outcome.Runtime is { } runtime)
+            if (outcome.Success && outcome.DshVersion is { } version)
             {
-                return runtime;
+                return version;
             }
 
             string reason = outcome.Error ?? "未知错误";
@@ -247,12 +243,11 @@ public sealed partial class DesktopBootstrap
     }
 
     /// <summary>
-    /// 首启插件引导相（ADR reference-alignment 批次二）：运行时就位后（BindRuntime 后）、StartAsync 前，
+    /// 首启插件引导相（ADR reference-alignment 批次二）：全局 dsh 就位后（StartAsync 前），
     /// 若存在待装可选插件（preset），引导页呈现 chip + 确认/跳过 + 日志回流；用户确认才安装，跳过则不装。
     /// 5 分钟无决策默认跳过（避免壳永久挂在安装前、dsh 永不启动；跳过可经应用内市场补装）。
     /// </summary>
     private async Task RunPreinstallPhaseAsync(
-        (string NodeExe, string DshEntry) runtime,
         Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> runPluginAddStreaming,
         CancellationToken ct)
     {
@@ -297,8 +292,8 @@ public sealed partial class DesktopBootstrap
         {
             await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("installing", Plugin: Services.PresetPluginCatalog.Market));
             await Services.MarketInstallHelper.EnsureMarketFromRegistryAsync(
-                runtime.NodeExe,
-                runtime.DshEntry,
+                nodeExe: null,
+                dshEntry: null,
                 home,
                 Services.HostLog.Write,
                 runPluginAddStreaming,

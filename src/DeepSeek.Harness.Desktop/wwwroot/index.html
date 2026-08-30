@@ -83,10 +83,9 @@
     <div id="bootstrap">
         <div class="spinner visible" id="bootSpinner"></div>
         <div id="bootSteps">
-            <div class="step" data-step="EnsureNode"><span class="dot"></span><span>获取 Node 运行时</span></div>
-            <div class="step" data-step="ExtractNode"><span class="dot"></span><span>校验并解压</span></div>
-            <div class="step" data-step="InstallDsh"><span class="dot"></span><span>安装 dsh（需联网）</span></div>
-            <div class="step" data-step="VerifyDsh"><span class="dot"></span><span>验证安装结果</span></div>
+            <div class="step" data-step="EnsureNode"><span class="dot"></span><span>确保系统全局 Node</span></div>
+            <div class="step" data-step="InstallDsh"><span class="dot"></span><span>npm 安装全局 dsh（需联网）</span></div>
+            <div class="step" data-step="VerifyDsh"><span class="dot"></span><span>验证 dsh 版本</span></div>
             <div class="step" data-step="PreinstallPlugins"><span class="dot"></span><span>插件准备</span></div>
         </div>
         <div id="preinstall">
@@ -105,9 +104,9 @@
     <p id="fallbackText">运行时未就绪（<code>dsh web</code> 未在时限内给出 URL）。</p>
     <p id="fallbackHint">请检查 <code>DEEPSEEK_API_KEY</code> 与日志，或重启应用。</p>
     <script>
-        // 首启引导状态机渲染（ADR online-first-unbundled-runtime）：宿主经 CustomEvent 推进度，
+        // 首启引导状态机渲染（ADR simple-shell-single-global-dsh）：宿主经 CustomEvent 推进度，
         // 数据一律 textContent 回填（stderr/错误信息是上游不可控输出，绝不 innerHTML 拼接）。
-        var STEP_ORDER = ['EnsureNode', 'ExtractNode', 'InstallDsh', 'VerifyDsh', 'PreinstallPlugins'];
+        var STEP_ORDER = ['EnsureNode', 'InstallDsh', 'VerifyDsh', 'PreinstallPlugins'];
 
         function renderBootstrap(detail) {
             document.getElementById('bootstrap').classList.add('visible');

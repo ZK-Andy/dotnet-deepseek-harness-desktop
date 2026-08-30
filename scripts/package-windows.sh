@@ -4,7 +4,7 @@
 # POSIX 路径转换成第二个脚本文件名致编译恒失败，NSIS/SFX 回退链把失败吞成
 # 「成功」，Windows 发布资产实际长期为 7z 自解压包而非安装器，2026-08-29 冒烟实锤）。
 # online-first（ADR online-first-unbundled-runtime）：包只带壳 + 安装器自带插件资源
-# （resources/plugins/dsh-desktop-companion.tgz）；运行时由首启引导下载，不再捆绑闭包。
+# （resources/plugins/dsh-desktop-companion.tgz）；运行时 = 用户 PATH 全局 dsh，不再捆绑闭包。
 # 布局：publish 全量 + resources/plugins
 # 用法：
 #   scripts/package-windows.sh [publish_dir]
@@ -36,7 +36,7 @@ rm -rf "$STAGE" && mkdir -p "$STAGE"
 cp -r "$PUBLISH_DIR/." "$STAGE/"
 
 # 安装器自带插件资源：companion tgz 从仓库源码现打并校验（fail loud）。
-# 不再捆绑运行时闭包——首启引导负责 Node/dsh 安装（ADR online-first-unbundled-runtime）。
+# 不再捆绑运行时闭包——首启引导确保全局 dsh（ADR simple-shell-single-global-dsh）。
 mkdir -p "$STAGE/resources/plugins"
 bash "$ROOT/scripts/build-companion-tgz.sh" "$STAGE/resources/plugins/dsh-desktop-companion.tgz"
 # 闭包残留检测：resources/runtime 出现即打包漂移（旧缓存/手工产物混入），fail loud

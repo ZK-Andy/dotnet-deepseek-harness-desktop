@@ -44,4 +44,5 @@ Status: implemented
 ## Related
 
 - [online-first-unbundled-runtime](../architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：本 ADR 临时取代其「dsh：`@latest`」版本策略行（钉 alpha.2；重入条件见 Decision）。
+- [simple-shell-single-global-dsh](../architecture/2026-08-31-simple-shell-single-global-dsh.md)（implemented）：**取代本 ADR 的"dsh 钉 `0.1.2-alpha.2`"版本通道决定**——dsh 改跟随 `@alpha` 预发布通道（不钉版），本 ADR 的"重入 @latest 条件"随之收敛。
 - [ide0005-enforce-via-format-gate](2026-08-31-ide0005-enforce-via-format-gate.md)（implemented）：Ryn.Callbacks 生成器 public 符号文档缺口在 0.35.1 仍存，本 ADR 不改变其结论。

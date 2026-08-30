@@ -1,12 +1,12 @@
 # Testing
 
-> 测试基线以 README 双语徽章为准（当前 347/347，覆盖率 49%+）；`dotnet test` 全绿 0 警告是每次提交的硬门。
+> 测试基线以 README 双语徽章为准（当前 449/449，覆盖率 49%+）；`dotnet test` 全绿 0 警告是每次提交的硬门。
 
 ## 单测
 
 * 框架：`xunit 2.9.3`，`dotnet test dotnet-deepseek-harness-desktop.slnx`；测试工程 `tests/DeepSeek.Harness.Desktop.Tests/`（35 个测试文件）。
 * 覆盖面（按域分组，逐类细节见各文件头 `<summary>`）：
-  * **壳与运行时**：`HarnessUrlParserTests`（`dsh web:` 行解析）、`HarnessRuntimeHostTests`（端口分配/记忆/占位回退/生命周期门/取消契约）、`RuntimeLocatorTests`（捆绑优先/PATH 回退）、`RuntimeVersionGateTests`（版本底线判定 + 底线横幅）、`DesktopProfileBootstrapTests`/`SharedHomeContractTests`（desktop profile 自举与共享 home 契约）、`RunMarkerTests`（非受控退出标记与横幅）、`DesktopBannerTests`（横幅工厂幂等/堆叠/转义）。
+  * **壳与运行时**：`HarnessUrlParserTests`（`dsh web:` 行解析）、`HarnessRuntimeHostTests`（端口分配/记忆/占位回退/生命周期门/取消契约）、`RuntimeVersionGateTests`（版本底线判定 + 底线横幅）、`DesktopProfileBootstrapTests`/`SharedHomeContractTests`（desktop profile 自举与共享 home 契约）、`RunMarkerTests`（非受控退出标记与横幅）、`DesktopBannerTests`（横幅工厂幂等/堆叠/转义）。
   * **监督与观测**：`PageHealthMonitorTests`（页面健康探针）、`HostLogAndDiagnosticsTests`（HostLog 出口脱敏集成）、`SecretMaskerTests`（凭据形状遮罩纯函数）、`DiagnosticsTests`（诊断包导出）、`RecoveryPageTests`（恢复页脚本构建）。
   * **托盘/窗口/单实例**：`TrayTests`（托盘命令记序）、`CloseToTrayTests`（关到托盘偏好）、`LauncherActivationTests`（单实例仲裁/uid 回退后缀）、`DesktopBannerTests`。
   * **随包插件**：`MarketInstallHelperTests`（检测/迁移/workspace 修正/伴生 spec/JsonNode 写盘格式钉子）、`PluginVersionCheckTests`（版本解包/升级判定/脏版本 fail loud）、`BundledPluginCatalogTests`（清单装配判定/端到端布局）、`DesktopProfileBootstrapTests`（reconcile 不可解析引用）。
@@ -39,8 +39,8 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release
 * **沙箱冒烟**：`HarnessRuntimeHost` `StartAsync` 抓 `dsh web:`（`60s`），`RuntimeSupervisor` `kill` 子进程→自动重启+换 `URL`（回归断言重启 `URL` 相同以保 `origin`）。
 * **本机冒烟**：`dotnet run --project src/DeepSeek.Harness.Desktop` 起 `Ryn` 窗口加载 `dsh web:`（需 `DEEPSEEK_API_KEY` 与 `WebKitGTK`）。`DSH_DEVTOOLS=1` 开 `WebView` 调试。
 * **打包自检**：`verify-package-layout.sh` 断言安装器 staging 无闭包残留、插件 tgz 过名称/体积关（`build-companion-tgz.sh` 打包时现打现校验，新鲜度由「现打直进 staging」结构性保证）；`release-preflight.sh` 发布前复核资产矩阵/体积下限（15MB）/SHA256SUMS；`smoke-install-{linux,windows,macos}.sh` 三平台「静默安装/拷装 → 启动 → 双信号」（Linux 全链/安装链、win/mac runner 有桌面会话应达全链）。
-* **插件面**：首启引导（`RuntimeBootstrap`）完成运行时后、spawn dsh **前**装插件——companion（internal）静默自愈（`EnsureBundledPluginsBeforeSpawnAsync`，`BundledPluginCatalog` 清单 + 版本感知升级，自安装器 `resources/plugins`）、dshmarket（preset）经引导页「插件准备」步确认/跳过（`desktop.preinstall.choose` 决策 + `dsh-desktop-preinstall` 日志回流，5 分钟超时默认跳过），全部 `plugin add` 就位后 `StartAsync`（不再「装后 `host.Stop()` 重启」）；启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用（见 [architecture.md](architecture.md)）。
+* **插件面**：首启引导（`RuntimeBootstrap`）全局 dsh 就位后、spawn dsh **前**装插件——companion（internal）静默自愈（`EnsureBundledPluginsBeforeSpawnAsync`，`BundledPluginCatalog` 清单 + 版本感知升级，自安装器 `resources/plugins`）、dshmarket（preset）经引导页「插件准备」步确认/跳过（`desktop.preinstall.choose` 决策 + `dsh-desktop-preinstall` 日志回流，5 分钟超时默认跳过），全部 `plugin add` 就位后 `StartAsync`（不再「装后 `host.Stop()` 重启」）；启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用（见 [architecture.md](architecture.md)）。
 
 ## 行为级回归要求
 
-* 变更 `HarnessRuntimeHost`（含退出/生命周期）、`RuntimeLocator` 入口、`dsh web:` 解析、监督顺序、自更新安全防线（pkexec 脚本/哈希复验）、打包布局必须配套回归/快照；`mock` 仅用于昂贵/非确定性边界。
+* 变更 `HarnessRuntimeHost`（含退出/生命周期）、dsh 版本探测入口（`RuntimeVersionGate.ProbeAsync`）、`dsh web:` 解析、监督顺序、自更新安全防线（pkexec 脚本/哈希复验）、打包布局必须配套回归/快照；`mock` 仅用于昂贵/非确定性边界。
