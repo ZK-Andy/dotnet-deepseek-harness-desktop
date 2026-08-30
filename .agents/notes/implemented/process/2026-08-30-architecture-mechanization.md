@@ -93,7 +93,7 @@ Status: implemented
 - **标准更自洽**：行为契约（async/异常/日志）归编码规范，架构规范只留结构+契约；「一个事实一个家」落地。
 - 新增：`verify-code-health.py`（F1-F4）+ `verify-code-conventions.py`（D004/D005）+ `NetArchTest.Rules`（`tests/ArchitectureTests.cs`，A2/A4/A5）；门禁矩阵扩展（CI + pre-commit，`--enforce` 硬门槛）。**不建分析器工程**。
 - 存量清账（一次完成）：`Startup`/`MarketInstallHelper`/`HarnessRuntimeHost`/`RuntimeBootstrap`/`DesktopBootstrap` 拆为 <400 的 partial、F2/F4 方法分解到阈值内；D004/D005、A5 归位。
-- **A-规则校准**：原 A1/A2/A3 对薄桌面壳过度严格（要求 ports-and-adapters 重写：应用层不得直引具体基础设施、子域互不依赖），与 architecture-standards「采纳原理，不照抄模板」矛盾。落地校准为真实可强制：A4 组合根不被内层依赖 / A5 新类型必进 Services / A2 子域无真循环（Tray→Update 单向合理耦合）。「应用层不得直引具体基础设施实现（R3 边界抽象）」留评审面，不作硬门禁。D001–D003 留评审。
+- **A-规则校准（用户拍板保留为评审项）**：原 A1/A2/A3 对薄桌面壳过度严格（要求 ports-and-adapters 重写：应用层不得直引具体基础设施、子域互不依赖），与 architecture-standards「采纳原理，不照抄模板」矛盾。落地校准为真实可强制：A4 组合根不被内层依赖 / A5 新类型必进 Services / A2 子域无真循环（Tray→Update 单向合理耦合）。**A3（应用层不得直引具体基础设施实现，R3 边界抽象）与 A6（IPC 跨界 ID 强类型）保留为评审项、不作硬门禁**（前者需接口抽取、后者未达量产）——留评审/AI 兜底。D001–D003 留评审。
 - 文档同步：coding-standards（提额 500→1000）与 architecture-standards 重构、AGENTS 质量门清单（加两个 verify）、README 测试徽章 464→467、feature-flow 分流。
 - **落地结果**：`verify-code-health`/`verify-code-conventions` 全清零、`dotnet test` 467/467 全绿、五 verify 门禁全绿；机制在「report → 清账 → fail 硬门槛 → 工作流集成」执行序完成。
 
