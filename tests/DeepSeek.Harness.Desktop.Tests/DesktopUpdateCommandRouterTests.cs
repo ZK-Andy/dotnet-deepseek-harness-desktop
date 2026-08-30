@@ -44,15 +44,21 @@ public class DesktopUpdateCommandRouterTests
     {
         // 后台任务必须拿到 backgroundToken() 的令牌（监督器），而非请求作用域 token
         CancellationToken? seen = null;
+        var seenSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var requestCts = new CancellationTokenSource();
         requestCts.Cancel(); // 恶劣前提：请求 token 已取消——后台任务不受它连坐
         using var backgroundCts = new CancellationTokenSource();
-        UpdateStateMachine machine = CreateMachine(ct => seen = ct);
+        UpdateStateMachine machine = CreateMachine(ct =>
+        {
+            seen = ct;
+            seenSignal.TrySetResult();
+        });
         var router = new DesktopUpdateCommandRouter(machine, backgroundToken: () => backgroundCts.Token);
 
         await router.RouteAsync("desktop.update.check", ReadOnlyMemory<byte>.Empty, null!, requestCts.Token);
 
-        await Task.Delay(50); // check 是 Task.Run 后台任务，让一拍
+        // check 是 Task.Run 后台任务：确定性等待其实际执行，避免固定 Delay 的竞态 flaky
+        await seenSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.NotNull(seen);
         Assert.False(seen.Value.IsCancellationRequested);
         Assert.Equal(backgroundCts.Token, seen.Value);
@@ -64,14 +70,19 @@ public class DesktopUpdateCommandRouterTests
     {
         // backgroundToken 未注入（测试形态）时按不可取消处理，而非退回请求 token
         CancellationToken? seen = null;
+        var seenSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var requestCts = new CancellationTokenSource();
         requestCts.Cancel();
-        UpdateStateMachine machine = CreateMachine(ct => seen = ct);
+        UpdateStateMachine machine = CreateMachine(ct =>
+        {
+            seen = ct;
+            seenSignal.TrySetResult();
+        });
         var router = new DesktopUpdateCommandRouter(machine);
 
         await router.RouteAsync("desktop.update.check", ReadOnlyMemory<byte>.Empty, null!, requestCts.Token);
 
-        await Task.Delay(50);
+        await seenSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.NotNull(seen);
         Assert.Equal(CancellationToken.None, seen.Value);
     }

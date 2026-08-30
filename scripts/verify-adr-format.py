@@ -74,8 +74,12 @@ def _validate_name(rel: Path) -> list[str]:
         errors.append(f"{rel}: '{date_str}' is not a real calendar date")
         return errors
 
-    if note_date > datetime.date.today():
-        errors.append(f"{rel}: date '{date_str}' is after today ({datetime.date.today()})")
+    # 时区容差：作者本地日期可领先/落后 UTC 至多 1 天（UTC+14 早 / UTC-12 晚），故允许
+    # note_date ≤ today_utc+1。保留"不晚于今日"意图（拦截真未来/明显错日），同时容忍
+    # 同日在不同时区的合法情况——CI runner 是 UTC，作者本地可能已跨到次日。
+    today_utc = datetime.datetime.now(datetime.timezone.utc).date()
+    if note_date > today_utc + datetime.timedelta(days=1):
+        errors.append(f"{rel}: date '{date_str}' is after today ({today_utc})")
     if note_date.year < 1970:
         errors.append(f"{rel}: date '{date_str}' is before the epoch (1970)")
     return errors
@@ -173,10 +177,10 @@ def _self_test(root: Path) -> int:
         write_status(badslug / "implemented" / "feature", "2026-08-27-Naming-Ok.md", "implemented")
         cases.append((badslug, 1, "uppercase in filename -> fail"))
 
-        # case D: future date → exit 1
+        # case D: future date → exit 1（相对 UTC 今天 +2，恒超过 +1 容差，跨时区亦确定失败）
         futuredate = t / "futuredate"
         (futuredate / "implemented" / "feature").mkdir(parents=True)
-        future = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        future = (datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=2)).isoformat()
         write_status(futuredate / "implemented" / "feature", f"{future}-naming-ok.md", "implemented")
         cases.append((futuredate, 1, "date after today -> fail"))
 
