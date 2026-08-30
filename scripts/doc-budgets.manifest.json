@@ -3,6 +3,7 @@
     { "path": "AGENTS.md", "max_words": 800 },
     { "path": ".agents/AGENTS.md", "max_words": 300 },
     { "path": ".agents/notes/README.md", "max_words": 800 },
-    { "path": "docs/cookbook.md", "max_words": 2500 }
+    { "path": "docs/cookbook.md", "max_words": 2500 },
+    { "path": "docs/coding-standards.md", "max_words": 500 }
   ]
 }

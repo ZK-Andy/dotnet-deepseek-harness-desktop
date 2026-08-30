@@ -26,6 +26,7 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 
 ## 编码约定
 
+- **C# 编码规范**：基准见 [docs/coding-standards.md](docs/coding-standards.md)（dotnet/runtime C# Coding Style + Microsoft .NET C# Coding Conventions；仓库根 `.editorconfig` 已落地，IDE/Roslyn 据此格式化与提示）。
 - **fail loud**：缺失引用、误配置绝不静默跳过；最迟在最早可解析点失败。
 - 可调参数进配置模型（Config/appsettings），禁止硬编码；协议常量与安全不变量保持固定。
 - 跨界 ID 用强类型/Branded，禁止裸 string 跨包传递。
@@ -68,6 +69,7 @@ scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 | .agents/AGENTS.md | ≤ 300 词 |
 | .agents/notes/README.md | ≤ 800 词 |
 | docs/cookbook.md | ≤ 2500 词 |
+| docs/coding-standards.md | ≤ 500 词 |
 
 超限：迁移到其他层（留一行链接）→ 精简 → 才允许提额度（PR 说明理由）。
 

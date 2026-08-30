@@ -1,0 +1,102 @@
+# .editorconfig — DeepSeek.Harness.Desktop C# 编码规范
+# 基准 = dotnet/runtime C# Coding Style + Microsoft .NET C# Coding Conventions（见 docs/coding-standards.md）。
+# 作用：IDE/Roslyn 据此自动格式化与提示；`dotnet format` 可自动对齐（本仓库当前未把 dotnet format 放入 CI 门禁，
+# 本文件以「IDE 引导 + suggestion」为主，不因既有代码未全合规而阻断构建）。既有文件风格优先于本文件规则。
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+tab_width = 4
+trim_trailing_whitespace = true
+
+[*.{cs,csx}]
+# —— Allman 花括号：开括号独立成行 ——
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_open_brace_types = all
+csharp_new_line_before_open_brace_control_blocks = all
+csharp_new_line_before_open_brace_anonymous_methods = all
+csharp_new_line_before_open_brace_anonymous_types = all
+csharp_new_line_before_open_brace_object_collection = all
+csharp_new_line_before_open_brace_lambda = all
+csharp_new_line_before_open_brace_generic_type_constraints = all
+
+# —— namespace：文件作用域声明（namespace X;） ——
+csharp_style_namespace_declaration = file_scoped:suggestion
+
+# —— 语言关键字优先于 BCL 类型（int 而非 Int32；string 而非 String） ——
+csharp_style_predefined_type_for_locals_parameters_members = true:suggestion
+csharp_style_predefined_type_for_member_access = true:suggestion
+csharp_style_predefined_type_for_declaration = true:suggestion
+dotnet_diagnostic.IDE0049.severity = suggestion
+
+# —— 避免多余的 this. 限定 ——
+dotnet_diagnostic.IDE0003.severity = suggestion
+
+# —— var：仅在类型于右侧显式命名（new/显式转型）时使用（dotnet/runtime 规则 10） ——
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_when_type_is_not_apparent = false:suggestion
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# —— 目标类型 new()：类型在左侧显式命名时可用 ——
+csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
+
+# —— using：置于 namespace 之外、按字母序（System.* 置顶） ——
+dotnet_sort_system_directives_first = true
+csharp_using_directive_placement = outside_namespace:suggestion
+dotnet_style_using_directive_placement = outside_namespace:suggestion
+
+# —— 惯用风格：行为/语言偏好 ——
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+dotnet_style_prefer_auto_properties = true:suggestion
+dotnet_style_prefer_simplified_interpolation = true:suggestion
+dotnet_style_preferred_conditional_expression = true:suggestion
+csharp_prefer_simple_using_statement = true:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_style_prefer_collection_expression = true:suggestion
+
+# —— 空引用：启用可空上下文，公共 API 用 XML doc（IDE0060/参数文档提示级） ——
+dotnet_diagnostic.CS8618.severity = suggestion
+dotnet_diagnostic.CS8625.severity = suggestion
+
+# ======== 命名约定（dotnet/runtime） ========
+dotnet_naming_rule.private_fields_begin_with_underscore.severity = suggestion
+dotnet_naming_rule.private_fields_begin_with_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_begin_with_underscore.style = underscore_prefix
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_rule.private_static_fields_begin_with_s_underscore.severity = suggestion
+dotnet_naming_rule.private_static_fields_begin_with_s_underscore.symbols = private_static_fields
+dotnet_naming_rule.private_static_fields_begin_with_s_underscore.style = s_underscore_prefix
+dotnet_naming_symbols.private_static_fields.applicable_kinds = field
+dotnet_naming_symbols.private_static_fields.applicable_accessibilities = private
+
+dotnet_naming_rule.constants_are_pascal_case.severity = suggestion
+dotnet_naming_rule.constants_are_pascal_case.symbols = constants
+dotnet_naming_rule.constants_are_pascal_case.style = pascal_case
+dotnet_naming_symbols.constants.applicable_kinds = field
+dotnet_naming_symbols.constants.modifiers = const
+
+dotnet_naming_rule.methods_are_pascal_case.severity = suggestion
+dotnet_naming_rule.methods_are_pascal_case.symbols = methods
+dotnet_naming_rule.methods_are_pascal_case.style = pascal_case
+dotnet_naming_symbols.methods.applicable_kinds = method
+
+dotnet_naming_rule.types_are_pascal_case.severity = suggestion
+dotnet_naming_rule.types_are_pascal_case.symbols = types
+dotnet_naming_rule.types_are_pascal_case.style = pascal_case
+dotnet_naming_symbols.types.applicable_kinds = class, struct, interface, enum
+
+# 命名风格定义
+dotnet_naming_style.underscore_prefix.required_prefix = _
+dotnet_naming_style.underscore_prefix.capitalization = camel_case
+dotnet_naming_style.s_underscore_prefix.required_prefix = s_
+dotnet_naming_style.s_underscore_prefix.capitalization = camel_case
+dotnet_naming_style.pascal_case.capitalization = pascal_case
