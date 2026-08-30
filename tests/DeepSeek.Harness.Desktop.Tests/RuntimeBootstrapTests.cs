@@ -371,6 +371,9 @@ public class RuntimeBootstrapTests
     [Fact]
     public async Task RunAsync_StepTimeout_FailsAsRetryableError()
     {
+        // 钉临时全局前缀：默认 ~/.local 在真机上可能已有 node（用户手动/此前安装），会让
+        // 「复用已装到系统全局的 Node」分支短路、下载永不触发——隔离机器状态，强制走下载路径命中步超时。
+        string prefix = Path.Combine(Path.GetTempPath(), "dsh-timeout-" + Guid.NewGuid().ToString("N"));
         string fileName = RuntimeBootstrap.NodeArchiveFileName("24.20.0")!;
         string sha = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("archive-bytes"))).ToLowerInvariant();
@@ -391,7 +394,7 @@ public class RuntimeBootstrapTests
             ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((null, null)));
 
         BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { StepTimeoutMinutes = 0 },
+            new RuntimeBootstrapOptions { StepTimeoutMinutes = 0, NodeGlobalPrefix = prefix },
             _ => { },
             hooks,
             CancellationToken.None);

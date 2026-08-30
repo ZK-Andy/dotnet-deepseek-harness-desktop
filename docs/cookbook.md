@@ -43,6 +43,8 @@
 
 - **[调试] workflow 表达式让 GitHub 解析失败的症状：每次 push 都产出零 job failure run + Actions 列表里 workflow 名回退为文件路径（2026-08-28 实证）**：release.yml 仅挂 `on: push: tags: ['v*']`，解析失败后 GitHub 对**每次** branch push 记一条 `failure`、jobs 为空的 run（name 字段显示 `.github/workflows/release.yml` 而非 `release`——`gh api .../actions/workflows` 看 name 是最快判别位），与 `on` 过滤器无关。实证根因：step `with:` 里的 `matches(github.ref_name, <预发布正则>)`（分隔符+rc/beta/alpha+可选小数段+行尾锚定，YAML 内合法）被 GitHub 表达式层拒绝（本地 PyYAML 通过，教训同 `1fae212`——PyYAML 容忍 ≠ GitHub 接受）；改走 step 内 bash `grep -E` 判定 + output 引用后 name 恢复、phantom run 消失（`25beea9`）。修复前先有错误定性「仅当本次 push 改了该 workflow 才触发」——第二次未改 workflow 的 push 照样复现，即被证伪。
 
+- **[调试] 测试本地失败CI绿先查机器状态短路（2026-08-31）**：走下载路径测试须钉NodeGlobalPrefix。
+
 ## 环境
 
 - **[环境] GUI 启动的应用 PATH 不含 `~/.local/bin`（2026-08-25）**：桌面壳 spawn 的 dsh 及其 MCP stdio 子进程解析不到用户级 node/codegraph/npx——stdio command 一律绝对路径或自包含启动器（codegraph 平台包 `bin/codegraph` 脚本 exec vendored node 绝对路径，`env -i PATH=/usr/bin:/bin` 实测可起）。
