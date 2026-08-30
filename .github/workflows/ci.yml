@@ -51,6 +51,12 @@ jobs:
           python3 scripts/verify-md-links.py
           python3 scripts/verify-handoff-structure.py
           python3 scripts/verify-governance.py
+      - name: 架构尺寸健康闸（R4/R1 先拆再上硬门槛）
+        run: |
+          python3 scripts/verify-code-health.py --enforce
+      - name: 契约扫描（R3 边界/日志）
+        run: |
+          python3 scripts/verify-code-conventions.py --enforce
 
   build-test:
     needs: changes

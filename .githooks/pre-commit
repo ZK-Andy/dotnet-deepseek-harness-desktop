@@ -38,4 +38,12 @@ python3 scripts/verify-handoff-structure.py
 echo "-> verify-governance.py"
 python3 scripts/verify-governance.py
 
+# 8) 架构尺寸健康闸（R4/R1：先拆再上硬门槛——diff 不得顶过阈值/触碰超阈值文件须先拆）
+echo "-> verify-code-health.py"
+python3 scripts/verify-code-health.py --enforce
+
+# 9) 契约扫描（R3 边界/日志：D004 未走 HostLog、D005 非边界层直调基础设施）
+echo "-> verify-code-conventions.py"
+python3 scripts/verify-code-conventions.py --enforce
+
 echo "pre-commit OK"
