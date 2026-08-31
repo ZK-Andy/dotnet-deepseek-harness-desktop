@@ -6,10 +6,10 @@
 2. **实现**：按 ADR 范围动 src/tests/scripts；越界想法记 TODO 不顺手做。
 3. **测试**：`dotnet test` 全绿 0 警告；行为级变更必须配套回归/快照。`scripts/**` 变更跑其自带自测或冒烟（如 preflight 假资产冒烟、`package-*.sh --stage-only`）；`.github/workflows/**` 变更必须 dispatch 实跑验证——ci.yml 绿不代表打包流水线绿，表达式错误只有真 runner 能暴露。
 4. **门禁**：三脚本 + build 全绿（pre-commit 会再拦一次）。**架构机械化门禁**（见 ADR [2026-08-30-architecture-mechanization](../notes/implemented/process/2026-08-30-architecture-mechanization.md)）：`verify-code-health.py`（F1–F4 尺寸）+ `verify-code-conventions.py`（D004/D005 契约）+ `dotnet test` 的 `ArchitectureTests`（A2/A4/A5 依赖方向；A1/A3/A6 为留评审项，不机器化）——**先拆再上**为强制：diff 不得把文件/方法**顶过阈值**；触碰已超阈值文件须**先拆到阈值内**（拆分是合并前置，本次变更应让文件缩小）。
-5. **评审（三重审核执行契约）**：**触发**——改行为/安全面 / IPC 帧契约 / 发版链路 / 跨模块行为，或用户指定的批量事后审核。**纯结构重构（零行为变更，测试+门禁可证）走轻审或简化路径**，不占重三审。契约：
-   - **范围 = 单元 diff**：一次只审一个逻辑单元（单个提交/相干子集），评审代理拿精确 `git diff <base>..<head>`（用 `scripts/change-scope.sh` 界定）；**禁止**对整仓/全文件做快照 + 手工 diff（杜绝 `.review_tmp` 式无界深挖）。
+5. **评审（三重审核执行契约）**：**触发**——按明确清单（见 [2026-08-31-review-scope-narrowing](../notes/implemented/process/2026-08-31-review-scope-narrowing.md) 触发枚举）：触碰行为契约面（src/tests 之外，含 workflows 打包/发版、resources 捆绑、templates/docs 契约口径）/ 涉及 async·生命周期·事件序·取消·异常·并发 / 改 IPC 帧契约 / 改发版链路 / 用户指定批量事后审核，才重三审。**纯结构重构（零行为变更，测试+门禁可证）走轻审或简化路径**——由主会话在进入步骤 5 前用 `scripts/change-scope.sh` 输出 + `dotnet test`/机械化门禁绿判定，命中即跳过重三审、走轻审（R2 代码面即可，R1/R3 免）。契约：
+   - **范围 = 单元 diff + 面收窄**：一次只审一个逻辑单元（单个提交/相干子集），评审代理拿精确 `git diff <base>..<head>`（用 `scripts/change-scope.sh` 界定）；**只读 diff 触及的文件 + 其直接依赖/被依赖的相邻件（一层以内）**，不开局读全仓标准面（禁止对整仓/全文件做快照 + 手工 diff，杜绝 `.review_tmp` 式无界深挖；标准面按 diff 面按需引用）。
    - **父级预消化简报**：主会话先给每个代理一份紧凑清单（改了哪些文件、什么模式、风险点、3–5 条定向检查项 + 指定文件/行），而不是"加载技能 → 审一切"。
-   - **串行 + 有界**：R1(dsh-find-simplifications) → R2(dsh-code-review) → R3(dsh-archive-agent-notes)**依次**，前一个收口才放下一个；每个代理设**轮次/工具调用上限**，到限未收口即中断，返回已有部分结论，绝不无限挂起。
+   - **串行 + 有界**：R1(dsh-find-simplifications) → R2(dsh-code-review) → R3(dsh-archive-agent-notes)**依次**，前一个收口才放下一个（**保持串行，不做并行**——三路共享同一 diff 解读、R3 ADR 面结论可能因 R1/R2 代码面修复而失效）；每个代理设**默认上限**（工具调用 ≤12、单次 diff 视野 ≤200 行变更、轮次 ≤2，可被主会话覆盖），到限未收口即中断，返回已有部分结论，绝不无限挂起。
    - **确定性报告契约**：每代理返回 `Blocker[]`/`Suggestion[]`，每条 `文件:行 + 一句证据`；空即"无发现"。主会话逐条采纳/拒绝（附证据），处理跨路冲突（某路修复可能使另一路发现失效），修复一次性收口为单个 `refactor(review)` 提交。
    - **行为保持的第一证据 = 测试 + 门禁**：`dotnet test` 绿 + 机械化门禁绿已兜底行为，评审只补**测试/门禁盖不住的语义/文档面**（R2 异常边界/编排序、R3 ADR 状态/链接/口径），不重复全量重验。
    - **大批量回溯审核用 `workflow`**：多提交/多面回溯用 workflow 阶段化 fan-out（有界 + phaseline），不用一次性背景子代理。

@@ -29,6 +29,14 @@
 - `rejected/`：仅当理由能防止重蹈覆辙才保留，否则连档删除。
 - `archived/`：归档时只允许在 Status 下插一行 `Archived: YYYY-MM-DD`，之后永久冻结（禁改/禁译/禁删）。
 
+## 证据严肃性（写作/评审约定，不机器强制）
+
+写 `Problem`/`Decision`/`Consequences` 时，对**推断**与**测量数字**遵守三件套（来源：[2026-08-31-adr-evidence-rigor](implemented/process/2026-08-31-adr-evidence-rigor.md)）：
+
+- **现象/机制分离**：凡推断成因标【推断 · 未证】，未证成因不得当后续决策的默认前提。
+- **数值声明标强度**：测量数字带 n + 实验设置；**n<3 一律标【探索性】**，宣传性措辞不作为决策依据。
+- **勘误/撤回通道**：implemented 后发现依据理论被证伪时，Status 下插 `Erratum: YYYY-MM-DD — <撤回什么/保留什么>`，再走 `archived/` 冻结；正文不动。
+
 ## 门禁
 
 ```sh
