@@ -1,6 +1,8 @@
 # Agent Note: pnpm-store-alignment-with-terminal
 
 Status: implemented
+Erratum: 2026-09-01 — 撤回「桌面注入 pnpm store-dir 到 ~/.dsh」的决定（注入制造桌面 vs 系统默认 store 各自为政，成为 UNEXPECTED_STORE 成因；其防的 /home 只读经查证是沙箱绑定、非真实环境）。保留本 ADR 作反例档案，正文不动。
+Archived: 2026-09-01
 
 ## Problem
 

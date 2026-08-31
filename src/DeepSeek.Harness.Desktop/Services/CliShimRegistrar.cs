@@ -10,17 +10,13 @@ public sealed record CliShimFile(string TargetPath, string Content, bool Executa
 /// CLI shim 注册的纯规划结果：要落盘的 shim 文件、bin 目录与 PATH 增量（Windows 为 HKCU 追加、
 /// Unix 为 rc key 块）。<paramref name="RuntimeNodeBinDir"/> 为系统全局 node 的 global bin 目录
 /// （无系统 node 时由桌面装到系统全局；把它一并暴露进终端 PATH，让桌面与终端共用同一份 node/dsh）。
-/// <paramref name="PnpmStoreDir"/>/<paramref name="PnpmCacheDir"/> 非空时，一并把 pnpm store/cache 目录
-/// 导出进 shell rc 块，让终端与桌面共用同一份 pnpm store（ADR pnpm-store-alignment-with-terminal）。
 /// </summary>
 public sealed record CliShimSetup(
     IReadOnlyList<CliShimFile> Files,
     string BinDir,
     string PathSeparator,
     string? ShellRcBlock,
-    string? RuntimeNodeBinDir = null,
-    string? PnpmStoreDir = null,
-    string? PnpmCacheDir = null);
+    string? RuntimeNodeBinDir = null);
 
 /// <summary>写入 shim 目标的决策。</summary>
 public enum ShimWriteAction
@@ -51,10 +47,8 @@ public static class CliShimPlanner
     public const string PnpmShName = "pnpm";
 
     /// <summary>按平台构造 shim 规划（仅 pnpm；dsh 已全局在 PATH，内容恒定，不烘焙运行时/DSH_HOME）。
-    /// <paramref name="runtimeNodeBinDir"/> 非空时（系统全局 node 由桌面装好）一并把它暴露进终端 PATH。
-    /// <paramref name="pnpmStoreDir"/>/<paramref name="pnpmCacheDir"/> 非空时，一并把它导出进 shell rc 块，
-    /// 让终端与桌面共用同一份 pnpm store（ADR pnpm-store-alignment-with-terminal；Unix 侧生效）。</summary>
-    public static CliShimSetup BuildSetup(string binDir, bool isWindows, string? runtimeNodeBinDir = null, string? pnpmStoreDir = null, string? pnpmCacheDir = null)
+    /// <paramref name="runtimeNodeBinDir"/> 非空时（系统全局 node 由桌面装好）一并把它暴露进终端 PATH。</summary>
+    public static CliShimSetup BuildSetup(string binDir, bool isWindows, string? runtimeNodeBinDir = null)
     {
         var files = new List<CliShimFile>();
         // 系统全局 node 的 bin 目录前置：终端优先用桌面与终端共用那份 node/dsh（无系统 node 场景）。
@@ -65,11 +59,11 @@ public static class CliShimPlanner
         {
             files.Add(new CliShimFile(Path.Combine(binDir, PnpmCmdName), CliShimBuilder.BuildPnpmCmd(), Executable: false));
             files.Add(new CliShimFile(Path.Combine(binDir, PnpmPs1Name), CliShimBuilder.BuildPnpmPs1(), Executable: false));
-            return new CliShimSetup(files, binDir, ";", ShellRcBlock: null, RuntimeNodeBinDir: runtimeNodeBinDir, PnpmStoreDir: pnpmStoreDir, PnpmCacheDir: pnpmCacheDir);
+            return new CliShimSetup(files, binDir, ";", ShellRcBlock: null, RuntimeNodeBinDir: runtimeNodeBinDir);
         }
 
         files.Add(new CliShimFile(Path.Combine(binDir, PnpmShName), CliShimBuilder.BuildPnpmSh(), Executable: true));
-        return new CliShimSetup(files, binDir, ":", CliShimPath.BuildShellExportBlocks(pathDirs, ":", pnpmStoreDir, pnpmCacheDir), RuntimeNodeBinDir: runtimeNodeBinDir, PnpmStoreDir: pnpmStoreDir, PnpmCacheDir: pnpmCacheDir);
+        return new CliShimSetup(files, binDir, ":", CliShimPath.BuildShellExportBlocks(pathDirs, ":"), RuntimeNodeBinDir: runtimeNodeBinDir);
     }
 
     /// <summary>判定写入动作：悬空符号链接先移除；本应用生成/不存在则写；用户文件保留。
@@ -131,8 +125,7 @@ public sealed class CliShimRegistrar
         {
             string binDir = ResolveBinDir();
             Directory.CreateDirectory(binDir);
-            (string? pnpmStoreDir, string? pnpmCacheDir) = ResolvePnpmDirs();
-            CliShimSetup setup = CliShimPlanner.BuildSetup(binDir, OperatingSystem.IsWindows(), runtimeNodeBinDir, pnpmStoreDir, pnpmCacheDir);
+            CliShimSetup setup = CliShimPlanner.BuildSetup(binDir, OperatingSystem.IsWindows(), runtimeNodeBinDir);
             foreach (CliShimFile file in setup.Files)
             {
                 WriteShimFile(file);
@@ -154,15 +147,6 @@ public sealed class CliShimRegistrar
             _log($"[cli-shim] CLI shim 注册失败（不影响启动）：{ex.Message}");
             return false;
         }
-    }
-
-    /// <summary>解析要导出进 shell rc 的 pnpm store/cache 目录（ADR pnpm-store-alignment-with-terminal）。
-    /// 复用 <see cref="HarnessRuntimeHost"/> 的 DSH_HOME 解析（<c>~/.dsh/.pnpm-store</c> / <c>~/.dsh/.pnpm-cache</c>），
-    /// 目录名与 <see cref="HarnessRuntimeHost.Paths"/> 的 <c>ApplyPnpmWriteDirs</c> 共用常量防漂移。</summary>
-    private static (string? StoreDir, string? CacheDir) ResolvePnpmDirs()
-    {
-        string home = HarnessRuntimeHost.ResolveDshHome();
-        return (Path.Combine(home, HarnessRuntimeHost.PnpmStoreDirName), Path.Combine(home, HarnessRuntimeHost.PnpmCacheDirName));
     }
 
     /// <summary>写单个 shim 文件：悬空符号链接先移除；本应用生成/不存在则写；用户文件保留。</summary>
@@ -240,9 +224,6 @@ public sealed class CliShimRegistrar
 
             string content = SafeRead(rc) ?? string.Empty;
             string updated = CliShimPath.EnsureShellRcBlock(content, setup.ShellRcBlock);
-            // 升级旧版本桌面块（只含 PATH）：补进 pnpm store/cache export（ADR pnpm-store-alignment-with-terminal）。
-            // EnsureShellRcBlock 对"已含块"直接返回，故这里单独保证块内含 pnpm 行，否则前版本块永不升级。
-            updated = CliShimPath.EnsurePnpmDirsInRc(updated, setup.PnpmStoreDir, setup.PnpmCacheDir);
             if (!string.Equals(content, updated, StringComparison.Ordinal))
             {
                 File.WriteAllText(rc, updated);

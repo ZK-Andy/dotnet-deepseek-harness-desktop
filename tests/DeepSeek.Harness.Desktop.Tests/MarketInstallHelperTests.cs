@@ -220,7 +220,7 @@ public class MarketInstallHelperTests
         Assert.False(await MarketInstallHelper.EnsureBundlesContainsAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
     }
 
-    /// <summary>验证安装市场时拼装的进程参数形状与 DSH_HOME、pnpm_config_store_dir 环境变量，并回填 allowBuilds 与 bundles 缺失项。</summary>
+    /// <summary>验证安装市场时拼装的进程参数形状与 DSH_HOME 环境变量，并回填 allowBuilds 与 bundles 缺失项。</summary>
     [Fact]
     public async Task EnsureMarketFromRegistry_BuildsCorrectArgsAndEnv_AndBackfillsBundles()
     {
@@ -258,7 +258,6 @@ public class MarketInstallHelperTests
             // 参数形状：dsh bin.js plugin --profile desktop add dshmarket@latest
             Assert.Equal(["/dsh/bin.js", "plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", MarketInstallHelper.MarketSpec], args);
             Assert.Equal(home, capturedPsi!.Environment["DSH_HOME"]);
-            Assert.Equal(Path.Combine(home, ".pnpm-store"), capturedPsi.Environment["pnpm_config_store_dir"]);
             // allowBuilds 已放行（ESBuild 至少一条）
             Assert.Contains("allowBuilds", File.ReadAllText(workspace));
             // bundles 已补写

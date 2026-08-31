@@ -139,10 +139,6 @@ public sealed partial class HarnessRuntimeHost : IDisposable
 
         psi.Environment["DSH_HOME"] = home;
 
-        // 桌面环境可能 /home 只读：把 pnpm store/cache 重定向到可写的 DSH_HOME 下，
-        // 否则 dsh-market 等插件安装走 pnpm 会因 store 写入失败（EROFS）而失败。
-        ApplyPnpmWriteDirs(psi, home);
-
         // GUI 会话的 PATH 不含 ~/.local/bin：MCP stdio 等下游按命令名拉取外部进程时
         // 解析不到用户级命令（ADR gui-path-enrichment）。追加而非前置，不改系统优先级。
         psi.Environment["PATH"] = BuildEnrichedPath(

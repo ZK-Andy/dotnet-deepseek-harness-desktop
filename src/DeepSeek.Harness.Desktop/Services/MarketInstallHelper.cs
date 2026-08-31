@@ -155,7 +155,6 @@ public static partial class MarketInstallHelper
                 psi.Environment["pnpm_config_minimum_release_age"] = "0";
             }
 
-            HarnessRuntimeHost.ApplyPnpmWriteDirs(psi, dshHome);
             HarnessRuntimeHost.UseUtf8TextStreams(psi);
             return psi;
         }

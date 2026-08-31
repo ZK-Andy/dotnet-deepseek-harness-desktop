@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
 /// <see cref="HarnessRuntimeHost"/> 的静态路径/环境解析面（partial，ADR 尺寸健康闸）。
-/// 纯函数列：DSH_HOME 解析、profile/端口/PID 路径、pnpm 重定向、PATH 增补、进程流 UTF-8。
+/// 纯函数列：DSH_HOME 解析、profile/端口/PID 路径、PATH 增补、进程流 UTF-8。
 /// 生命周期与实例状态在 <c>HarnessRuntimeHost.cs</c>；本文件只承载无实例状态的静态单点。
 /// </summary>
 public sealed partial class HarnessRuntimeHost
@@ -29,15 +29,6 @@ public sealed partial class HarnessRuntimeHost
     /// PPID=systemd --user 实证）。下次冷启动据此清扫残留——跨平台，不全靠 Linux 的 PDEATHSIG。</summary>
     private const string PidFileName = ".dsh-pid";
 
-    /// <summary>pnpm store 目录名（DSH_HOME 下）：desktop spawn 的 dsh 子进程被注入
-    /// <c>pnpm_config_store_dir</c> 指向此目录（<see cref="ApplyPnpmWriteDirs"/>），CLI shim 注册时
-    /// 也把它导出进 shell rc（<see cref="CliShimRegistrar.ResolvePnpmDirs"/>）——两处共用此单点防漂移
-    /// （ADR pnpm-store-alignment-with-terminal）。</summary>
-    internal const string PnpmStoreDirName = ".pnpm-store";
-
-    /// <summary>pnpm cache 目录名（DSH_HOME 下）；语义同 <see cref="PnpmStoreDirName"/>。</summary>
-    internal const string PnpmCacheDirName = ".pnpm-cache";
-
     /// <summary>
     /// 子进程文本流显式 UTF-8（单点）：dsh/npm/node 系子进程输出恒 UTF-8，不显式声明时
     /// Windows 按系统 OEM 码页（如 GBK）解码，中文日志进 stderr tail/诊断包变乱码
@@ -53,19 +44,6 @@ public sealed partial class HarnessRuntimeHost
     /// <summary>上次 spawn 的 dsh PID 文件路径（按 profile 隔离，同端口文件）。</summary>
     internal static string ResolvePidFilePath() =>
         Path.Combine(ResolveDshHome(), "profiles", DesktopProfileName, PidFileName);
-
-    /// <summary>把 pnpm store/cache 重定向到 <paramref name="home"/> 下并预建目录（dsh spawn 与随包插件安装两条链共用的单点）。</summary>
-    /// <remarks>
-    /// 桌面环境可能 /home 只读：不重定向时 dsh-market 等插件安装走 pnpm 会因 store 写入失败（EROFS）而失败；
-    /// 预建目录兼容旧 pnpm 的 store 仍被读取时不因 EROFS 失败。
-    /// </remarks>
-    internal static void ApplyPnpmWriteDirs(ProcessStartInfo psi, string home)
-    {
-        psi.Environment["pnpm_config_store_dir"] = Path.Combine(home, PnpmStoreDirName);
-        psi.Environment["pnpm_config_cache_dir"] = Path.Combine(home, PnpmCacheDirName);
-        Directory.CreateDirectory(Path.Combine(home, PnpmStoreDirName));
-        Directory.CreateDirectory(Path.Combine(home, PnpmCacheDirName));
-    }
 
     /// <summary>记录本次 spawn 的 dsh PID + 孤儿清扫 token（尽力而为：写失败仅导致下次冷启动清扫落空，端口漂移告警兜底）。</summary>
     internal static void PersistSpawn(int pid, string token)
