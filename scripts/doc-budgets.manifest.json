@@ -3,7 +3,7 @@
     { "path": "AGENTS.md", "max_words": 800 },
     { "path": ".agents/AGENTS.md", "max_words": 300 },
     { "path": ".agents/notes/README.md", "max_words": 800 },
-    { "path": "docs/cookbook.md", "max_words": 2565 },
+    { "path": "docs/cookbook.md", "max_words": 2700, "_justify_bump": "2026-08-31 提额 2565->2700：pnpm-store-alignment-with-terminal 行为级变更新增一条上游/踩坑诊断（终端 dsh plugin 与桌面 pnpm store 不一致的判别 + 解法），baseline 已贴预算，仅提额容纳该净增量" },
     { "path": "docs/coding-standards.md", "max_words": 1000 },
     { "path": "docs/architecture-standards.md", "max_words": 600 }
   ]

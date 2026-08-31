@@ -109,6 +109,67 @@ public class CliShimPathTests
         Assert.Contains(CliShimPath.RcBeginMarker, result);
     }
 
+    /// <summary>验证提供 pnpm store/cache 目录时，rc 块同时导出两者（ADR pnpm-store-alignment-with-terminal）。</summary>
+    [Fact]
+    public void BuildShellExportBlocks_WithPnpmDirs_ExportsStoreAndCache()
+    {
+        string block = CliShimPath.BuildShellExportBlocks(
+            new[] { "/home/x/.local/bin" },
+            ":",
+            pnpmStoreDir: "/home/x/.dsh/.pnpm-store",
+            pnpmCacheDir: "/home/x/.dsh/.pnpm-cache");
+        Assert.Contains("export pnpm_config_store_dir=\"/home/x/.dsh/.pnpm-store\"", block);
+        Assert.Contains("export pnpm_config_cache_dir=\"/home/x/.dsh/.pnpm-cache\"", block);
+    }
+
+    /// <summary>验证未提供 pnpm 目录时 rc 块保持原 PATH 语义，不产生多余的 store 空行。</summary>
+    [Fact]
+    public void BuildShellExportBlocks_WithoutPnpmDirs_KeepsPathOnly()
+    {
+        string withStore = CliShimPath.BuildShellExportBlocks(new[] { "/home/x/.local/bin" }, ":", "/home/x/.dsh/.pnpm-store", "/home/x/.dsh/.pnpm-cache");
+        string withoutStore = CliShimPath.BuildShellExportBlocks(new[] { "/home/x/.local/bin" }, ":");
+        Assert.DoesNotContain("pnpm_config_store_dir", withoutStore);
+        Assert.DoesNotContain("pnpm_config_cache_dir", withoutStore);
+        Assert.Contains("export PATH=", withoutStore);
+        Assert.Contains("pnpm_config_store_dir", withStore);
+    }
+
+    /// <summary>验证旧版本桌面块（只含 PATH，无 pnpm export）被升级补进 pnpm store/cache 行（ADR pnpm-store-alignment-with-terminal）。</summary>
+    [Fact]
+    public void EnsurePnpmDirsInRc_Upgrades_OldBlock_WithoutPnpm()
+    {
+        string oldBlock = CliShimPath.BuildShellExportBlocks(new[] { "/home/x/.local/bin" }, ":");
+        string upgraded = CliShimPath.EnsurePnpmDirsInRc(oldBlock, "/home/x/.dsh/.pnpm-store", "/home/x/.dsh/.pnpm-cache");
+        Assert.Contains("export pnpm_config_store_dir=\"/home/x/.dsh/.pnpm-store\"", upgraded);
+        Assert.Contains("export pnpm_config_cache_dir=\"/home/x/.dsh/.pnpm-cache\"", upgraded);
+        Assert.Contains("export PATH=", upgraded);
+        // 块标记仍在，且 PATH 行保留
+        Assert.Contains(CliShimPath.RcBeginMarker, upgraded);
+        Assert.Contains(CliShimPath.RcEndMarker, upgraded);
+    }
+
+    /// <summary>验证 rc 整文件已含 pnpm export（无论块内块外）时再升级为幂等（原样返回），不重复追加。</summary>
+    [Fact]
+    public void EnsurePnpmDirsInRc_Is_Idempotent_When_Pnpm_Present_Anywhere()
+    {
+        string block = CliShimPath.BuildShellExportBlocks(new[] { "/home/x/.local/bin" }, ":", "/home/x/.dsh/.pnpm-store", "/home/x/.dsh/.pnpm-cache");
+        Assert.Equal(block, CliShimPath.EnsurePnpmDirsInRc(block, "/home/x/.dsh/.pnpm-store", "/home/x/.dsh/.pnpm-cache"));
+
+        // pnpm 行在桌面块之外（用户手改场景）：同样视为已含，不重复追加
+        string outsideBlock = block + "\n# user lines\nexport pnpm_config_store_dir=\"/home/x/.dsh/.pnpm-store\"\n";
+        string onceMore = CliShimPath.EnsurePnpmDirsInRc(outsideBlock, "/home/x/.dsh/.pnpm-store", "/home/x/.dsh/.pnpm-cache");
+        Assert.Contains("export PATH=", onceMore);
+        Assert.Contains("pnpm_config_store_dir", onceMore);
+    }
+
+    /// <summary>验证 rc 无桌面块（无标记）时升级函数原样返回（整块追加交由 EnsureShellRcBlock）。</summary>
+    [Fact]
+    public void EnsurePnpmDirsInRc_No_Op_When_No_Block()
+    {
+        const string plain = "# user rc\n";
+        Assert.Equal(plain, CliShimPath.EnsurePnpmDirsInRc(plain, "/home/x/.dsh/.pnpm-store", "/home/x/.dsh/.pnpm-cache"));
+    }
+
     /// <summary>验证仅前两行含生成标记的脚本才被识别为本应用 shim，正文提及标记或 null 输入均不算。</summary>
     [Fact]
     public void IsGeneratedShim_Only_Marks_Marker_In_Header()
@@ -193,6 +254,25 @@ public class CliShimPlannerTests
         Assert.Null(setup.ShellRcBlock);
     }
 
+    /// <summary>验证 Unix 计划在提供 pnpm store/cache 目录时记录二者并写入 shell rc 块（ADR pnpm-store-alignment-with-terminal）。</summary>
+    [Fact]
+    public void Unix_Setup_RecordsAndExportsPnpmDirs()
+    {
+        CliShimSetup setup = CliShimPlanner.BuildSetup(Bin, isWindows: false, pnpmStoreDir: "/home/test/.dsh/.pnpm-store", pnpmCacheDir: "/home/test/.dsh/.pnpm-cache");
+        Assert.Equal("/home/test/.dsh/.pnpm-store", setup.PnpmStoreDir);
+        Assert.Equal("/home/test/.dsh/.pnpm-cache", setup.PnpmCacheDir);
+        Assert.Contains("export pnpm_config_store_dir=\"/home/test/.dsh/.pnpm-store\"", setup.ShellRcBlock);
+        Assert.Contains("export pnpm_config_cache_dir=\"/home/test/.dsh/.pnpm-cache\"", setup.ShellRcBlock);
+    }
+
+    /// <summary>验证 Windows 计划不导出 pnpm store（Windows 走 HKCU 注册表 PATH，无 shell rc 块）。</summary>
+    [Fact]
+    public void Windows_Setup_DoesNotExportPnpmDirs()
+    {
+        CliShimSetup setup = CliShimPlanner.BuildSetup(Bin, isWindows: true, pnpmStoreDir: @"C:\Users\x\.dsh\.pnpm-store", pnpmCacheDir: @"C:\Users\x\.dsh\.pnpm-cache");
+        Assert.Null(setup.ShellRcBlock);
+    }
+
     /// <summary>验证目标已存在且非本应用 shim 时写入决策为保留用户文件。</summary>
     [Fact]
     public void DecideShimWrite_Preserves_User_File()
@@ -225,29 +305,36 @@ public class CliShimRegistrarTests : IDisposable
 {
     private readonly string _binDir;
     private readonly string _rcHome;
+    private readonly string _dshHome;
     private readonly string? _oldBinDir;
     private readonly string? _oldRcHome;
+    private readonly string? _oldDshHome;
 
-    /// <summary>初始化隔离的 CLI shim 测试环境：临时 bin/rc 目录 + 注入 DSH_DESKTOP_CLI_BIN_DIR / DSH_DESKTOP_CLI_RC_HOME，结束时清理。</summary>
+    /// <summary>初始化隔离的 CLI shim 测试环境：临时 bin/rc/dsh-home 目录 + 注入 DSH_DESKTOP_CLI_BIN_DIR /
+    /// DSH_DESKTOP_CLI_RC_HOME / DSH_DESKTOP_DSH_HOME，结束时清理。</summary>
     public CliShimRegistrarTests()
     {
         string root = Path.Combine(Path.GetTempPath(), "dsh-cli-shim-" + Guid.NewGuid().ToString("N"));
         _binDir = Path.Combine(root, "bin");
         _rcHome = Path.Combine(root, "rc");
+        _dshHome = Path.Combine(root, "dsh");
         Directory.CreateDirectory(_rcHome);
         File.WriteAllText(Path.Combine(_rcHome, ".bashrc"), "# existing bashrc\n");
 
         _oldBinDir = Environment.GetEnvironmentVariable("DSH_DESKTOP_CLI_BIN_DIR");
         _oldRcHome = Environment.GetEnvironmentVariable("DSH_DESKTOP_CLI_RC_HOME");
+        _oldDshHome = Environment.GetEnvironmentVariable("DSH_DESKTOP_DSH_HOME");
         Environment.SetEnvironmentVariable("DSH_DESKTOP_CLI_BIN_DIR", _binDir);
         Environment.SetEnvironmentVariable("DSH_DESKTOP_CLI_RC_HOME", _rcHome);
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", _dshHome);
     }
 
-    /// <summary>还原 DSH_DESKTOP_CLI_* 环境变量并递归删除本夹具的临时目录。</summary>
+    /// <summary>还原 DSH_DESKTOP_CLI_* / DSH_DESKTOP_DSH_HOME 环境变量并递归删除本夹具的临时目录。</summary>
     public void Dispose()
     {
         Environment.SetEnvironmentVariable("DSH_DESKTOP_CLI_BIN_DIR", _oldBinDir);
         Environment.SetEnvironmentVariable("DSH_DESKTOP_CLI_RC_HOME", _oldRcHome);
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", _oldDshHome);
         try { Directory.Delete(Path.GetDirectoryName(_binDir)!, recursive: true); } catch { }
     }
 
@@ -279,6 +366,26 @@ public class CliShimRegistrarTests : IDisposable
 
         string rc = File.ReadAllText(Path.Combine(_rcHome, ".bashrc"));
         Assert.Equal(1, Count(rc, CliShimPath.RcBeginMarker));
+    }
+
+    /// <summary>验证 TryRegister 把 pnpm store/cache 目录导出进 shell rc，终端与桌面共用同一份 pnpm store（ADR pnpm-store-alignment-with-terminal）。
+    /// 仅 Unix：Windows 走 HKCU 注册表 PATH、不写 shell rc（与既有 rc 类测试一致）。</summary>
+    [Fact]
+    public void TryRegister_ExportsPnpmStoreToShellRc()
+    {
+        if (IsWindows())
+        {
+            return; // Windows 不写 shell rc（走注册表），该契约仅 Unix 生效
+        }
+
+        var reg = new CliShimRegistrar(_ => { });
+        reg.TryRegister();
+
+        string rc = File.ReadAllText(Path.Combine(_rcHome, ".bashrc"));
+        string store = Path.Combine(_dshHome, ".pnpm-store");
+        string cache = Path.Combine(_dshHome, ".pnpm-cache");
+        Assert.Contains($"export pnpm_config_store_dir=\"{store}\"", rc);
+        Assert.Contains($"export pnpm_config_cache_dir=\"{cache}\"", rc);
     }
 
     /// <summary>验证目标 shim 已被用户文件占据时注册不改写其内容。</summary>

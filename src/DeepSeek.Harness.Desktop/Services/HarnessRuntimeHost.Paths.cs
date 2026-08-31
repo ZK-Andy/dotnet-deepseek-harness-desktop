@@ -29,6 +29,15 @@ public sealed partial class HarnessRuntimeHost
     /// PPID=systemd --user 实证）。下次冷启动据此清扫残留——跨平台，不全靠 Linux 的 PDEATHSIG。</summary>
     private const string PidFileName = ".dsh-pid";
 
+    /// <summary>pnpm store 目录名（DSH_HOME 下）：desktop spawn 的 dsh 子进程被注入
+    /// <c>pnpm_config_store_dir</c> 指向此目录（<see cref="ApplyPnpmWriteDirs"/>），CLI shim 注册时
+    /// 也把它导出进 shell rc（<see cref="CliShimRegistrar.ResolvePnpmDirs"/>）——两处共用此单点防漂移
+    /// （ADR pnpm-store-alignment-with-terminal）。</summary>
+    internal const string PnpmStoreDirName = ".pnpm-store";
+
+    /// <summary>pnpm cache 目录名（DSH_HOME 下）；语义同 <see cref="PnpmStoreDirName"/>。</summary>
+    internal const string PnpmCacheDirName = ".pnpm-cache";
+
     /// <summary>
     /// 子进程文本流显式 UTF-8（单点）：dsh/npm/node 系子进程输出恒 UTF-8，不显式声明时
     /// Windows 按系统 OEM 码页（如 GBK）解码，中文日志进 stderr tail/诊断包变乱码
@@ -52,10 +61,10 @@ public sealed partial class HarnessRuntimeHost
     /// </remarks>
     internal static void ApplyPnpmWriteDirs(ProcessStartInfo psi, string home)
     {
-        psi.Environment["pnpm_config_store_dir"] = Path.Combine(home, ".pnpm-store");
-        psi.Environment["pnpm_config_cache_dir"] = Path.Combine(home, ".pnpm-cache");
-        Directory.CreateDirectory(Path.Combine(home, ".pnpm-store"));
-        Directory.CreateDirectory(Path.Combine(home, ".pnpm-cache"));
+        psi.Environment["pnpm_config_store_dir"] = Path.Combine(home, PnpmStoreDirName);
+        psi.Environment["pnpm_config_cache_dir"] = Path.Combine(home, PnpmCacheDirName);
+        Directory.CreateDirectory(Path.Combine(home, PnpmStoreDirName));
+        Directory.CreateDirectory(Path.Combine(home, PnpmCacheDirName));
     }
 
     /// <summary>记录本次 spawn 的 dsh PID + 孤儿清扫 token（尽力而为：写失败仅导致下次冷启动清扫落空，端口漂移告警兜底）。</summary>
