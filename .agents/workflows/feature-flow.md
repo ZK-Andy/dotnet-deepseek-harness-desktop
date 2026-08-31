@@ -13,7 +13,7 @@
    - **确定性报告契约**：每代理返回 `Blocker[]`/`Suggestion[]`，每条 `文件:行 + 一句证据`；空即"无发现"。主会话逐条采纳/拒绝（附证据），处理跨路冲突（某路修复可能使另一路发现失效），修复一次性收口为单个 `refactor(review)` 提交。
    - **行为保持的第一证据 = 测试 + 门禁**：`dotnet test` 绿 + 机械化门禁绿已兜底行为，评审只补**测试/门禁盖不住的语义/文档面**（R2 异常边界/编排序、R3 ADR 状态/链接/口径），不重复全量重验。
    - **大批量回溯审核用 `workflow`**：多提交/多面回溯用 workflow 阶段化 fan-out（有界 + phaseline），不用一次性背景子代理。
-   - 评审代理**须额外按**根「[AGENTS.md](../AGENTS.md) 评审检查项（AI 兜底）」+ [coding-standards](../../docs/coding-standards.md) / [architecture-standards](../../docs/architecture-standards.md) 核对 D001–D003（async 尾缀/async void/空 catch）/ R1 组合根只装配 / R3 边界完备 / IPC 强类型 ID——上游技能为通用清单、不含本项目规则，这些「留评审」项须显式补审。
+   - 评审代理**须额外按**根「[AGENTS.md](../AGENTS.md) 评审检查项（AI 兜底）」+ [coding-standards](../../docs/coding-standards.md) / [architecture-standards](../../docs/architecture-standards.md) 核对 D001–D003（async 尾缀/async void/空 catch）/ R1 组合根只装配 / R3 边界完备 / IPC 强类型 ID——上游技能为通用清单、不含本项目规则，这些「留评审」项须显式补审。**源点映射**：`dsh-code-review`/`dsh-find-simplifications` 源点内的上游 DSH 文档引用（`packages/AGENTS.md`、`docs/defensive-patterns.md`、`docs/AGENTS.md`、`docs/subsystems/`、`notes/.../2026-0[67]-*.md`、`docs/i18n/*`）在本仓库多数**不存在**——评审代理不得引用它们，一律按上文本项目等价物（根 `AGENTS.md`、`coding-standards`、`architecture-standards`、`testing.md`、`architecture.md`）核对；无等价物的（`packages/`、`subsystems/`、`i18n/`、上游 notes 示例）直接忽略。
 6. **提交**：逻辑单元分粒度提交，conventional commits 格式。
 7. **推送 + 观察 CI**：main 推送触发 ci.yml，绿了才算完；涉及打包/workflow 链路的按步骤 3 加跑实跑验证。
 8. **收尾（每个功能批次完成即执行，不积压到会话结束；前置门 = 触发了步骤 5 的批次必须评审通过且修复已收口[CI 绿]，未触发的走简化路径直接收尾）**：按 [session-close](session-close.md) 检查单过一遍本批次相关项（提交对账 / README 双语同步 / 交接条目 / 待办速览）；ADR 保持与 shipped 现实一致的 implemented 表述。**done = 通过全部验证**：ADR（需要时）→ 机械化门禁（尺寸/依赖/契约）→ 测试（含回归）→ 评审（需要时）→ CI 全绿。

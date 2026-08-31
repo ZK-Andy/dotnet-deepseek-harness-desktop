@@ -71,6 +71,7 @@ python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/
 python3 scripts/verify-governance.py     # Issue/PR 模板治理字段（governance.yml 输入校验）
 python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（report 默认；--enforce 才 fail）
 python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）
+python3 scripts/verify-skill-format.py    # 技能格式（frontmatter/目录束/内链/结构）
 scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 ```
 
@@ -90,4 +91,4 @@ scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 ## 参考
 
 - 体系方法论文档在 `.plan/`（本地工作文档，未纳入 git 提交）：`适配方案.md`、`适配经验总结.md`、`dsh.txt`；交接主文档在仓库根 `HANDOFF.md`（同为本地工作文档，不提交）。
-- 本仓库技能均原版源自 `deepseek-ai/deepseek-harness`（MIT），出处见 `.agents/AGENTS.md`。
+- 本项目 `.agents/skills/` 为自研技能（方法论吸取上游 deepseek-harness）；原版 11 技能备份于 `.plan/种子/skills/`（git 之外）。技能规范见 `.agents/AGENTS.md`。
