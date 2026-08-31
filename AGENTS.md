@@ -67,7 +67,7 @@ python3 scripts/verify-adr-format.py     # ADR 头/骨架/状态-目录一致性
 python3 scripts/verify-cookbook.py       # 踩坑记录格式/阶段标签封闭集（docs/cookbook.md）
 python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json # 字数预算
 python3 scripts/verify-md-links.py       # 相对链接/锚点（skills/、archived/、.plan/ 排除）
-python3 scripts/verify-handoff-structure.py # HANDOFF 滚动窗/状态区/归档指针（HANDOFF 存在即校验）
+python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/待办文件与预算；存在即校验）
 python3 scripts/verify-governance.py     # Issue/PR 模板治理字段（governance.yml 输入校验）
 python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（report 默认；--enforce 才 fail）
 python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）

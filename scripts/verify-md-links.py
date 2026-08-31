@@ -66,6 +66,10 @@ def main() -> int:
         # 捆绑运行时（README 带仓库相对链接）、构建产物
         if any(seg in md.parts for seg in (".dotnet-cache", ".cache", "resources", "bin", "obj", "node_modules")):
             continue
+        # 本地工作文档：.plan/（含 journal）为 gitignore 纯本地叙事，条目自 HANDOFF 归档后
+        # 相对路径解析面改变（仓库根→.plan/journal/），其外链按纪律不校验（见 AGENTS 质量门注释）
+        if ".plan" in md.parts:
+            continue
         # 归档笔记：冻结历史，其外链按纪律不校验（见 .agents/notes/README.md archived 规则）；
         # 限定 .agents/notes/ 下的 archived，避免未来误伤无关目录
         if ".agents" in md.parts and "notes" in md.parts and "archived" in md.parts:

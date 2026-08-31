@@ -2,7 +2,7 @@
 
 > 每次会话恢复/开始时顺序执行；全部完成后向用户复述关键状态并等待命令。
 
-1. **读 HANDOFF**——读「**状态区**」（背景/位置/当前状态/待办/开始步骤）+「**交接更新记录**」滚动窗；如需近期过程细节，再读 `.plan/journal/` 对应**月卷**（如 `2026-08-session-journal.md`，按月归档）。踩坑判别要点见 `docs/cookbook.md`（原 Gotchas 已并入，HANDOFF 不再承载）。
+1. **读 HANDOFF 家庭**——读 `HANDOFF.md`「**状态区**」（背景/位置/当前状态/待办/开始步骤）+「**交接更新记录**」摘要滚动窗；**待办明细读 `HANDOFF-todos.md`**（`[ ]` 条为行动清单、`[x]` 为一行指针）；如需近期过程细节，再读 `.plan/journal/` 对应**月卷**（如 `2026-08-session-journal.md`，按月归档）。踩坑判别要点见 `docs/cookbook.md`（原 Gotchas 已并入，HANDOFF 不再承载）。
 2. **git 对账**：`git log --oneline -8 && git status`
    - HEAD 若比 HANDOFF 最新记录**多出提交**：逐条查明内容再继续（教训：未记录的提交曾导致决策误读）。
 3. **门禁基线**：verify-adr-format / verify-doc-budgets / verify-md-links / verify-handoff-structure 四脚本全绿（后者在清检 CI 无 HANDOFF 时自动跳过）。
