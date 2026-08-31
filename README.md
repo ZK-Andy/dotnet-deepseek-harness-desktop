@@ -62,7 +62,7 @@
 >
 > **未签名说明**：本项目**开源、不做付费签名**，发布包**未签名**。macOS 首次打开若见 Gatekeeper「来自身份不明的开发者」→ 右键「打开」或 系统设置 → 隐私与安全性 →「仍要打开」；Windows 若见 SmartScreen「未知发布者」→「更多信息」→「仍要运行」。开发/内部可用 `SELF_SIGN=1` 自签消除本机告警，用法见 [docs/development.md](docs/development.md)。
 >
-> **测试状态**：`Linux` 已 `CI` 自动验证；`macOS x64` / `Windows` 真机针对性测试**等待社区支持**（本地无 mac Intel x64 / Windows 真机）。
+> **测试状态**：单元测试由 `CI` 自动跑（`dotnet test` 全绿，见上方徽章）；**真机验收至今只在 `Linux` `x64` `rpm` 包上做过**——`deb`、`Linux arm64`、`macOS`（`dmg`）、`Windows`（`setup.exe`）**均无真机验证**，仅经 CI 编译/打包/冒烟。`macOS x64` / `Windows` 真机针对性测试**等待社区支持**（本地无 mac Intel x64 / Windows 真机）。安装器、自更新、首启补装等依赖真机的链路请按 [docs/testing.md](docs/testing.md) 列出的边界对待，尝鲜前做好备份。
 
 ## 自动更新
 

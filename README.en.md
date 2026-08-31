@@ -61,7 +61,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 >
 > **Unsigned note**: this is an **open-source project and we do not do paid signing**, so releases are **unsigned**. On macOS, if Gatekeeper shows "unidentified developer", right-click → Open, or System Settings → Privacy & Security → Open Anyway. On Windows, if SmartScreen shows "unknown publisher", choose More info → Run anyway. For dev/internal use, `SELF_SIGN=1` signs locally to clear warnings; see [docs/development.md](docs/development.md).
 >
-> **Test status**: `Linux` is verified by `CI`; `macOS x64` / `Windows` real-machine targeted testing **awaits community support** (no local Intel-mac / Windows hardware here).
+> **Test status**: unit tests are run automatically by `CI` (`dotnet test` green, see badge above); **real-machine acceptance has so far only been done on the `Linux` `x64` `rpm` package** — `deb`, `Linux arm64`, `macOS` (`dmg`) and `Windows` (`setup.exe`) are **all unvalidated on real hardware**, only built/packaged/smoke-tested by CI. Targeted real-machine testing for `macOS x64` / `Windows` **awaits community support** (no local Intel-mac / Windows hardware here). Treat installer, self-update and first-launch-bootstrap paths as per the boundaries listed in [docs/testing.md](docs/testing.md), and back up before trying anything.
 
 ## Auto-Update
 
