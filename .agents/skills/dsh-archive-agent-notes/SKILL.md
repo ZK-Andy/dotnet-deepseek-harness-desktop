@@ -1,68 +1,39 @@
 ---
 name: dsh-archive-agent-notes
-description: Use when adding, auditing, pruning, archiving, restoring, or reviewing Agent Notes in deepseek-harness; checks every new note for superseded active records, classifies implemented notes by future decision value, deletes rejected notes that no longer prevent a tempting fallacy, and applies the frozen archived/{kind} triplet and manifest rules.
+description: Use when adding, auditing, pruning, archiving, or reviewing Agent Notes (ADR) in this repo (dotnet-deepseek-harness-desktop) — checks every new note for superseded active records, classifies implemented notes by future decision value, deletes rejected notes that no longer prevent a tempting fallacy, and applies the frozen archived/{kind} rules. This repo is single-language (中文单语; no .zh.md/hash triplet).
 ---
 
-# Archive DeepSeek Harness Agent Notes
+# Archive Agent Notes (ADR) In This Repo
 
-Reduce the active decision corpus without erasing history that can still guide work. Judge every note semantically; word count and age are discovery aids, never archive criteria.
+**This skill is guidance, not a script.** Reduce the active decision corpus without erasing history that can still guide work. Judge every note semantically; word count and age are discovery aids, never archive criteria. This repo is single-language (正文中文单语) — archiving **does not** use the upstream `.zh.md` / `.i18n.yaml` / hash-triplet mechanism; it uses a single `.md` under `.agents/notes/` with `verify-adr-format.py` gating format/lifecycle directory.
 
-## Read the contracts
+## Sources of truth
 
-Read [the Agent Note rules](../../notes/README.md), [the archive instructions](../../notes/archived/AGENTS.md), and the applicable active lifecycle instructions before classifying. Use current code, configuration, package docs, generated catalogs, newer Agent Notes, and inbound links to establish whether a rationale still owns or constrains anything.
+- [.agents/notes/README.md](../../notes/README.md) — note rules: lifecycle/class/naming, implemented present-tense, Alternatives mandate, evidence rigor.
+- Root [AGENTS.md](../../../AGENTS.md)「文档纪律」 — rationale → Agent Notes; durable docs write current state, not change history.
+- [scripts/verify-adr-format.py](../../../scripts/verify-adr-format.py) — the machine gate (header/skeleton/state-directory consistency, filename/date rules).
+
+## What earns an archive (classify by future value)
+
+- **Implemented — keep active:** retain a note when its rationale, alternatives, negative guarantees, durable/wire semantics, ownership boundary, security rule, or reintroduction condition is likely to guide a future change. Length does not matter.
+- **Implemented — archive:** move to `archived/<kind>/` (with the `Archived:` line) when the shipped decision is complete and its body is unlikely to guide future work — one-off UI chrome, a narrow adapter, a minor closed bug, superseded implementation detail, or process history whose current behavior is obvious elsewhere.
+- **Proposed — never archive:** keep a live proposal active; if no longer worth pursuing, reject it with an honest reason (satisfy the rejected lifecycle).
+- **Rejected — keep only as a guardrail:** retain a rejection when the losing proposal remains a tempting, meaningful mistake and the note explains why it loses.
+- **Rejected — delete:** delete the note when the rejected idea is obsolete, superseded, no longer plausible, or unlikely to prevent re-litigation. Repair or delete inbound links.
+
+Do not archive toward a quota. Inspect every note in scope, classify analogous groups under one principle, and record genuinely borderline decisions for the handoff.
 
 ## Check supersession when adding a note
 
-Every new Agent Note triggers a scoped audit of active notes covering the same decision, mechanism, or rejected alternative. Classify each full or partial supersession while writing the new note: archive qualifying implemented triplets in the same PR, retain and cross-link partial supersessions or independently useful rationale, reject obsolete proposals, and delete rejected notes that no longer prevent a plausible mistake. Apply the Agent Note consolidation rule when the new owner absorbs every unique proposition; do not defer a known match to a later corpus audit.
+Every new Agent Note triggers a scoped audit of active notes covering the same decision, mechanism, or rejected alternative. Classify each full or partial supersession while writing the new note: archive qualifying implemented notes in the same change, retain and cross-link partial supersessions or independently useful rationale, reject obsolete proposals, and delete rejected notes that no longer prevent a plausible mistake.
 
-## Classify by future value
+## Workflow — Archive one implemented note
 
-Apply these lifecycle-specific outcomes:
+1. Move the single `yyyy-mm-dd-<topic>.md` from `implemented/<kind>/` to `archived/<kind>/`; `implemented` is deliberately absent from the archive path.
+2. Make no body edits. Insert only `Archived: YYYY-MM-DD` immediately below `Status: implemented`, using the archival date.
+3. Search for inbound links from active prose; redirect them to current authority, retarget to the archived path only when the historical snapshot is intentionally cited, or delete them. Never verify or repair links out of the archived note.
+4. Run `python3 scripts/verify-adr-format.py` (it checks state-directory consistency and filename/date rules; `archived/` is permanently frozen by the Agent Note rules, not by the script — do not edit an archived note afterward).
 
-- **Implemented — keep active:** retain a note when its rationale, alternatives, negative guarantees, durable/wire semantics, ownership boundary, security rule, or reintroduction condition is likely to guide a future change. Length does not matter.
-- **Implemented — archive:** archive a note when the shipped decision is complete and its body is unlikely to guide future work, such as one-off UI chrome, a narrow adapter, a minor closed bug, superseded implementation detail, or process history whose current behavior is obvious elsewhere.
-- **Proposed — never archive:** keep a live proposal active; if it is no longer worth pursuing, reject it with an honest reason and satisfy the rejected lifecycle format.
-- **Rejected — keep only as a guardrail:** retain a rejection only when the losing proposal remains a tempting, meaningful mistake and the note explains why it loses.
-- **Rejected — delete:** delete the whole triplet when the rejected idea is obsolete, superseded, no longer plausible, or unlikely to prevent re-litigation. Repair or delete inbound links.
+## Validation
 
-Do not archive toward a quota. Inspect every note in scope, classify analogous groups under one principle, use best judgment for close cases, and record genuinely borderline decisions for the handoff.
-
-## Calibrated examples
-
-These examples set the bar; the word counts demonstrate that size is not the test.
-
-Archive implemented notes such as:
-
-- collapsed sidebar control rail — 533 words: closed, minor UI behavior;
-- Commander argument adapter — 1,498 words: substantial implementation detail with little future design leverage;
-- documentation graph atlas — 920 words: completed documentation machinery whose current generators are authoritative.
-
-Keep implemented notes such as:
-
-- event-sourced sessions — 248 words: foundational authority and durability boundary;
-- single Harness-home resolver — 596 words: cross-product ownership rule;
-- project session directories — 628 words: durable storage and identity policy;
-- parallel pre-push gates — 400 words: borderline, but still guides gate scheduling and resource tuning;
-- dropped image content block — 334 words: keep until multimodal support lands, because it states the coordinated reintroduction condition.
-
-For rejected notes:
-
-- keep folding the compaction package split — 426 words: the temptation to merge the packages remains meaningful;
-- delete streaming workflow progress through tool calls — 972 words: its ACP/UI premise is obsolete;
-- delete dropping ACP terminal metadata — 362 words: the later automation-only ACP decision resolved the question.
-
-## Archive one implemented triplet
-
-1. Move the complete `foo.md`, `foo.zh.md`, and `foo.i18n.yaml` triplet from `implemented/<kind>/` to `archived/<kind>/`; `implemented` is deliberately absent from the archive path.
-2. Make no body edits. Insert only `Archived: YYYY-MM-DD` immediately below `Status: implemented` in both language files, using the archival date and the same value on both sides.
-3. Re-record the sidecar hashes mechanically for the two metadata-only edits. Do not translate, reformat, update facts, or repair links inside the note.
-4. Search for inbound links from active prose. Redirect them to current authority, retarget them to the archived path only when the historical snapshot is intentionally cited, or delete them. Never verify or repair links out of the archived note.
-5. Run `pnpm run verify-archived-agent-notes --write`. Its append-only mode first proves every existing seal still matches, then adds only the new triplet hashes. Run the normal verifier afterward.
-
-After the triplet is sealed, never edit, move, translate, reformat, or delete it. Archived notes remain valid inbound-link targets but are historical snapshots, not authority for current behavior.
-
-## Validate and report
-
-Run the archive verifier's focused test, `pnpm run verify-archived-agent-notes`, `pnpm run doc-sync`, `pnpm run lint`, and `git diff --check`; select any additional evidence through [dsh-pre-push-checks](../dsh-pre-push-checks/SKILL.md).
-
-Report active implemented notes kept, implemented notes archived, rejected notes kept/deleted, proposed notes rejected if any, and every genuinely borderline case with its word count and chosen outcome. Do not claim archived outbound links are valid: the archive verifier intentionally never checks them.
+Run `python3 scripts/verify-adr-format.py` and `git diff --check`; select any additional evidence through [dsh-pre-push-checks](../dsh-pre-push-checks/SKILL.md). Report active implemented notes kept, implemented notes archived, rejected notes kept/deleted, proposed notes rejected if any, and every borderline case with its word count and chosen outcome.

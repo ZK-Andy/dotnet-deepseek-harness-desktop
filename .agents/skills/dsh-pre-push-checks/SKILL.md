@@ -1,115 +1,53 @@
 ---
 name: dsh-pre-push-checks
-description: Use before pushing, force-pushing, marking ready for review, or claiming checks pass on a deepseek-harness branch, and immediately after gh stack sync publishes rewritten branches, to select the smallest tests and checks that cover the outgoing or just-published diff without reflexively running the full repository suite.
+description: Use before pushing, force-pushing, marking ready for review, or claiming checks pass on this repo (dotnet-deepseek-harness-desktop) to select the smallest tests and checks that cover the outgoing or just-published diff without reflexively running the full repository suite. Aligns with the root AGENTS.md Git discipline (hooks fast / CI exhaustive, --force-with-lease, change-scope).
 ---
 
-# DSH Pre-Push Checks
+# Pre-Push Checks In This Repo
 
-Use this skill to run relevant local evidence once before a `deepseek-harness` push. The sole ordering exception is `gh stack sync`, which may publish a cascading rebase before the rewritten layers can be validated; validate them immediately afterward and do not merge until the evidence passes. Git hooks are intentionally narrow: pre-commit fixes staged lint, checks staged whitespace, and guards vendored-source metadata; pre-push runs only the incremental repository typecheck. CI owns exhaustive coverage and the platform matrix.
+**This skill is guidance, not a script.** Run relevant local evidence once before a push, then stop. Git hooks are intentionally narrow (fast checks); CI owns exhaustive coverage and the platform matrix. This repo is .NET (single project solution) — the build/test/verify toolchain is `dotnet`, not pnpm. The upstream `gh stack sync` / stacked-PR flow does **not** apply (this repo merges sequentially).
+
+## Sources of truth
+
+- Root [AGENTS.md](../../../AGENTS.md)「Git 纪律」 — `--force-with-lease`, raw `--force` forbidden, change-scope as standard front-check, hooks fast / CI exhaustive.
+- [scripts/change-scope.sh](../../../scripts/change-scope.sh) — compute the change scope (git merge-base + diff --name-only).
+- [docs/testing.md](../../../docs/testing.md) — test tiers/gates.
+- The machine gates in root `AGENTS.md`「质量门」 (`verify-*.py`).
 
 ## Inspect the outgoing change
 
-1. Confirm the checkout and branch.
+1. Confirm checkout and branch:
+   `git status --short --branch`
+   `git rev-parse --show-toplevel`
+2. Verify the PR base or stack parent, fetch that ref, and inspect the complete scope:
+   `scripts/change-scope.sh <base> <head>`
+   Never guess/fetch the base; supply the verified ref. After a base merge or retarget, re-run the report and reassess which checks the combined scope invalidates.
 
-```sh
-git status --short --branch
-git rev-parse --show-toplevel
-```
-
-2. Verify the live PR base or stack parent, fetch that ref, and inspect the complete scope against it.
-
-```sh
-pnpm --silent run change-scope --base <verified-base-ref>
-```
-
-The command never guesses or fetches a base. Supply the ref verified from current remote or stack state; use `--head <ref>` when inspecting a commit other than `HEAD`. Its versioned JSON records committed paths relative to the resolved merge base, while staged, unstaged, and untracked paths describe the current worktree. After merging a changed base, rerun the report, reassess which behavior the combined scope can affect, and rerun only checks invalidated by the merge.
-
-## Select relevant evidence
+## Workflow — Select relevant evidence
 
 There is no universal local baseline beyond the hooks. Every behavior change needs the narrowest available test or purpose-built check that would fail for its regression; add broader checks only for surfaces the diff actually reaches.
 
-- **Package or script behavior:** run the owning Vitest file or focused test name. Add adjacent package tests when a shared contract changes; leave repository-wide coverage to CI unless the change is genuinely cross-cutting or the user requests it.
-- **Documentation, Agent Notes, catalogs, or doc-linked comments:** run `pnpm run doc-sync`; run full lint when the documentation workflow requires it.
-- **Model-, editor-, CLI-, or terminal-visible output:** run the focused keyless snapshot or real runnable-example scenario that owns the output.
-- **Package manifests, public exports, build configuration, worker/bin entries, or built runtime paths:** run `pnpm run build`, the relevant hygiene checks, and the owning built-artifact smoke.
-- **Real provider or agent behavior:** run the relevant `pnpm run test:e2e` target when credentials are available; never print secrets.
+- **Code/behavior change:** run `dotnet build` (0 warnings) and the owning `dotnet test` filter or focused tests for the changed source. Leave repository-wide coverage to CI unless the change is genuinely cross-cutting.
+- **Documentation, Agent Notes, catalogs, or doc-linked comments:** run the relevant `<repo>/scripts/verify-*.py` gates (`verify-adr-format`, `verify-doc-budgets`, `verify-md-links`, `verify-cookbook`, `verify-handoff-structure` as touched) and `git diff --check`.
+- **Skill changes:** run `python3 scripts/verify-skill-format.py`.
+- **Config (.editorconfig / csproj / workflow / scripts):** run `dotnet format --verify-no-changes`, and the relevant `.github/workflows/**` path (which must be exercised on a real runner).
 
-Do not manually repeat a passing check merely because commit or push follows. In particular, do not run typecheck immediately before pushing solely to duplicate the pre-push hook.
-
-### Focus unit coverage on the affected source
-
-Test selection and coverage selection are separate. A Vitest file filter chooses which tests run, while the repository configuration otherwise measures every `packages/*/*/src/**/*.ts` file. When unit coverage is relevant, name both the owning tests and the source files or package whose coverage those tests must prove:
-
-```sh
-pnpm exec vitest run packages/<group>/<package>/tests/<behavior>.spec.ts \
-  --coverage \
-  --coverage.include='packages/<group>/<package>/src/**/*.ts'
-```
-
-Use an exact source file when the behavior is truly confined to one module. Repeat `--coverage.include` for multiple affected files or packages, and pass every owning test file needed to exercise that scope. The configured per-file 100% thresholds still apply inside the selected source scope.
-
-When the owning tests are unclear, use Vitest's dependency graph to discover a candidate set, then inspect the selected tests before treating the run as evidence:
-
-```sh
-pnpm exec vitest related packages/<group>/<package>/src/<changed>.ts \
-  --run \
-  --coverage \
-  --coverage.include='packages/<group>/<package>/src/<changed>.ts'
-```
-
-`vitest related` cannot discover behavior reached only through configuration, dynamic loading, subprocesses, workers, built artifacts, or external providers; select those owning tests explicitly. Do not use `--passWithNoTests`, lower coverage thresholds, or narrow `--coverage.include` merely to hide an uncovered affected file. If a selected package scope fails because one focused test does not cover it, add its other relevant owning tests or narrow the source scope only when the excluded modules cannot be affected by the change.
-
-## Full local rehearsal
-
-Run the complete local approximation only when the user explicitly requests it, while diagnosing a CI failure, or when the change spans the repository so broadly that no narrower set is credible. Use the current workflow and package scripts as the inventory; do not recreate the removed `check:pre-push` aggregate.
+Do not manually repeat a passing check merely because commit or push follows. Report pending CI checks as pending; inspect failures before attributing to branch or environment.
 
 ## Protect history-rewriting pushes
 
-Rebase is allowed for standalone and stacked PR branches, including after review. Before a standalone history rewrite, fetch the current remote branch and record its exact OID; publish with `--force-with-lease=<branch>:<observed-oid>` so a concurrent update aborts the push. `gh stack push` and `gh stack sync` supply lease protection for their managed branches. Raw `--force` is never allowed.
-
-After any rewritten push, fetch the live heads again and re-audit unresolved review threads, approvals, mergeability, and checks. Commit hashes and inline-comment anchors from before the rewrite are not current evidence.
-
-### Post-sync validation
-
-`gh stack sync` fetches, cascade-rebases, and pushes as one operation, so it cannot place local validation between rewrite and publication. Before running it, require a clean worktree and record the official stack order and exact remote heads. After it returns:
-
-1. Re-query every branch head and the official GitHub stack order.
-2. Inspect the changed scope of every rewritten layer against its live PR base.
-3. Run the relevant evidence selected by this skill for each affected layer.
-4. Keep every PR unmerged and report validation as pending until all selected checks pass.
-
-If post-sync evidence fails, leave the lease-protected published heads in place, repair the failure, validate the repair, and publish the correction. Do not claim the sync made the stack ready merely because the command succeeded.
+Rebase is allowed for standalone branches (including after review). Before a rewrite, fetch the current remote branch and record its exact OID; publish with `--force-with-lease=<branch>:<observed-oid>` so a concurrent update aborts the push. Raw `--force` is never allowed. After any rewritten push, fetch the live heads again and re-audit unresolved review threads, approvals, mergeability, and checks — hashes/anchors from before the rewrite are not current evidence.
 
 ## Handle failures
 
-If a relevant check fails before an ordinary push, stop and fix or explain the blocker. Do not push and hope CI differs. For the post-sync exception, block the merge and follow the repair procedure above.
-
-If a failure looks environment-specific, prove it:
-
-- Record the exact command, failing test, and platform-specific mismatch.
-- Confirm the relevant non-platform evidence.
-- Prefer fixing cross-platform nondeterminism when the check is required.
-- Bypass a local hook only when the user explicitly asks or agrees, and report exactly what failed and why CI is expected to differ.
+If a relevant check fails before an ordinary push, stop and fix or explain the blocker. Do not push and hope CI differs. If a failure looks environment-specific, prove it: record the exact command, failing test, and platform-specific mismatch; confirm the relevant non-platform evidence; prefer fixing cross-platform nondeterminism where the check is required. Bypass a local hook only when the user explicitly asks, and report exactly what failed and why CI is expected to differ.
 
 ## Push procedure
 
-For ordinary and standalone rebase pushes:
-
 1. Run the selected relevant checks once.
-2. Commit normally and inspect any files changed by the pre-commit fixer before continuing.
-3. Push normally, or use the exact lease for an authorized rewritten branch, so the incremental typecheck hook runs.
-4. Verify the remote ref matches local `HEAD`.
+2. Commit normally and inspect any files changed by the pre-commit hook before continuing.
+3. Push normally, or use the exact lease for an authorized rewritten branch, so the pre-push hook runs.
+4. Verify the remote ref matches local HEAD: `git rev-parse HEAD origin/$(git branch --show-current)`.
+5. For GitHub PRs, inspect remote CI: `gh pr checks`.
 
-```sh
-git rev-parse HEAD origin/$(git branch --show-current)
-```
-
-For GitHub PRs, inspect remote CI after the push:
-
-```sh
-gh pr checks
-```
-
-Report pending checks as pending. Inspect failures before attributing them to the branch or the environment.
-
-For `gh stack sync`, use the post-sync validation sequence instead of pretending the ordinary order was possible.
+Report pending checks as pending; never claim a push is clean on a green gate the diff did not actually reach.

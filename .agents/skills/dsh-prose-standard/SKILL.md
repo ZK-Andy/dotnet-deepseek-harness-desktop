@@ -1,81 +1,50 @@
 ---
 name: dsh-prose-standard
-description: Use when writing, reviewing, restoring, trimming, or auditing prose in the deepseek-harness repo, including deciding where documentation or comments are required across Markdown, JSDoc, code and test comments, prompts, descriptions, diagnostics, and CLI or UI strings.
+description: Use when writing, reviewing, restoring, trimming, or auditing prose in this repo (dotnet-deepseek-harness-desktop) — deciding where documentation or comments are required across Markdown, XML doc (`<summary>/<param>/<returns>`), code and test comments, prompts, descriptions, diagnostics, and CLI/UI strings. This repo is .NET (XML doc, not JSDoc) and bilingual (中文主文档 + .en.md mirrors for README/user-guide/faq).
 ---
 
-# DeepSeek Harness Prose Standard
+# Prose Standard In This Repo
 
-Write enough to preserve the contract, then remove reasoning transcripts, repetition, and decoration. A contract is an obligation, invariant, precondition, postcondition, or compatibility promise that a caller, callee, implementer, producer, or consumer relies on. This skill owns editorial judgment and required prose coverage; use [dsh-doc-standards](../dsh-doc-standards/SKILL.md) for placement, budgets, bilingual pairs, and documentation gates, and [dsh-trim-cot-leakage](../dsh-trim-cot-leakage/SKILL.md) for hunting and fixing reasoning-transcript leakage. It is guidance, not a script.
+**This skill is guidance, not a script.** Write enough to preserve the contract, then remove reasoning transcripts, repetition, and decoration. A contract is an obligation, invariant, precondition, postcondition, or compatibility promise that a caller, callee, implementer, producer, or consumer relies on. This repo is .NET: public-API contracts go in XML doc (`<summary>/<param>/<returns>`), not JSDoc; durable prose follows the root「文档纪律」and the doc placement tiers. Use [dsh-doc-standards](../dsh-doc-standards/SKILL.md) for placement, budgets, and documentation gates; use [dsh-trim-cot-leakage](../dsh-trim-cot-leakage/SKILL.md) for hunting reasoning-transcript leakage.
 
-Treat `contract`, `boundary`, `shape`, `surface`, `seam`, `gate`, and `vocabulary` as terms to check before use, not banned words. First ask whether the exact rule, API, field set, type, validation, timing point, component split, or failure states the fact better. Keep a term when it names the exact technical subject, including caller/callee contracts and security/process boundaries.
+## Sources of truth (read, don't re-summarize)
 
-Comments describe non-obvious contracts or rationale that code cannot express; they do not restate what code already implies.
-
-## Inputs and exclusions
-
-Require an explicit `scope`. If it is missing, report the required input and stop; do not infer a repository-wide scope or begin an interview.
-
-Accept `mode: automatic | interactive`; default to `automatic`. Enter interactive mode only when the user explicitly requests questions or calibration.
-
-`mode` controls questions, not write authority. Review and audit tasks report findings without editing; explicitly requested write, fix, or trim tasks apply clear changes.
-
-Always exclude `vendor/` from discovery, review, and edits, even when the requested scope is the whole repository. Do not follow a symlink into it. Put exclusions after inclusion globs so a later include cannot re-admit it: for example, end ripgrep commands with `--glob '!vendor/**'`, and give Git commands an explicit `:(exclude)vendor/**` pathspec. If the requested scope contains only `vendor/`, report that no eligible files remain.
-
-Also exclude `.agents/notes/archived/` from prose review and edits. Archived Agent Notes are frozen snapshots; inspect an exact target only to understand a historical inbound citation, never to modernize its prose or outbound links.
-
-Treat generated catalogs, snapshots, and fixtures as derivative. Edit the owning source or scenario first, then regenerate the artifact. When a generator extracts a summary from owner prose, make the extracted sentence complete for that surface. Bilingual pairs have no permanent owner: either language may be the authored side for an update. Follow the [lightweight routine path](../../../docs/AGENTS.md#writing-rules), update the counterpart minimally, and re-record the pair.
+- Root [AGENTS.md](../../../AGENTS.md)「文档纪律」 — every fact has one home (rationale → Agent Notes, procedure → cookbook, contract → README, rule → AGENTS); durable docs write current state, not change history; relative links + machine-checkable; no bare filenames.
+- [docs/coding-standards.md](../../../docs/coding-standards.md) — naming/format conventions and the XML doc contract (`<summary>/<param>/<returns>`) for public API;「行为契约」for async/exception/logging.
+- [docs/architecture-standards.md](../../../docs/architecture-standards.md) — R1/R2/R3 (compose root, dependency direction, boundary abstraction); prose must not contradict the layer map.
 
 ## Preserve the complete proposition
 
-Before editing, identify every proposition in the passage. Preserve each relevant:
+Before editing, identify every proposition in the passage. Preserve each relevant actor/action, condition/timing/ordering, modality (must/may/never), negative guarantee and exception, and ownership/side-effect/failure-mode/consequence. Remove adjectives, repetition, and narration only when every factual clause survives and the result is clearer — a smaller word count alone is not an improvement.
 
-- actor and action;
-- condition, timing, and ordering;
-- modality such as must, may, or never;
-- negative guarantee and exception;
-- ownership, side effect, failure mode, and consequence.
+Keep a complete local contract at the point of use. Aggressively link to the owning document for architecture, rationale, algorithms, history, or extended examples. One explanation has one home; essential contract facts may repeat locally.
 
-Remove adjectives, repetition, and narration only when every factual clause survives and the result is clearer. A smaller word count alone is not an improvement.
-
-Keep a complete local contract at the point of use: behavior, failure, ownership, and consequence that a caller or maintainer needs there. Aggressively link to the owning document for architecture, rationale, algorithms, history, or extended examples. One explanation has one home; essential contract facts may repeat locally.
-
-Keep non-obvious rationale when omitting it could plausibly cause misuse or an incorrect simplification. Otherwise state the consequence and link the rationale home.
-
-## Required coverage by prose location
+## Required coverage by location
 
 This is not a one-way shortening pass. Add or restore prose when code, types, and structure do not communicate a required contract below. Do not add a comment when those facts are already obvious locally.
 
-- **Public JSDoc:** document caller-visible return distinctions, throws or rejections, side effects, ownership, timing, cancellation, and durability.
-- **Internal comments:** orient non-local structure and obviously complicated local structure, including invariants, race ordering, ownership, security boundaries, and surprising failure behavior. Delete control-flow narration and code restatement.
-- **Module comments:** state the module's role, dependencies, responsibilities, and non-obvious architecture choices; link architecture choices to their owning explanation.
+- **Public XML doc (`<summary>/<param>/<returns>`):** document caller-visible return distinctions, throws/rejections, side effects, ownership, timing, cancellation, durability.
+- **Internal comments:** orient non-local structure and obviously complicated local structure — invariants, race ordering, ownership, security boundaries, surprising failure behavior. Delete control-flow narration and code restatement.
 - **Tests:** explain only non-obvious test design—why a fixture, assertion, platform accommodation, real entry path, or indirect observation is necessary. Delete walkthroughs and inventories.
-- **Cookbooks:** include prerequisites, required actions, the real entry path, observable verification, and concise warnings.
-- **READMEs:** include the consumer contract: configuration, semantics, failures, limitations, extension points, and model-visible effects. Quote stable model-visible text owned by the package; link generated catalogs and cross-package owners. Keep durable gaps and maintainer traps, not ordinary cleanup inventories. Follow the [package README requirements](../../../docs/cookbook/adding-a-package.md#4-write-the-package-readme).
-- **Agent Notes:** retain unique rationale, mechanisms, alternatives, consequences, shipped verification evidence, and named coverage gaps. Implemented Agent Notes state shipped reality in the present tense; remove planning checklists, not evidence of what pins the decision.
-- **Postmortems:** retain the incident sequence, evidence, causal chain, impact, and prevention. Remove repeated persuasion or implementation detail that does not establish causality.
-- **Skills and agent instructions:** state behavioral guardrails and explicit scope limitations such as “guidance, not a script/checklist.” Keep the workflow concise and link its source of truth.
-- **Examples and configuration comments:** explain access limits, non-obvious wiring or load order, security stance, replay behavior, exceptions, and likely misuse. Do not narrate entries that the configuration already shows.
+- **Cookbook (`docs/cookbook.md`):** include prerequisites, required actions, the real entry path, observable verification, concise warnings; each entry carries a stage label.
+- **READMEs:** include the consumer contract: configuration, semantics, failures, limitations, and extension points. For bilingual (`README.md`) keep the `.en.md` mirror in the same change.
+- **Agent Notes:** retain unique rationale, mechanisms, alternatives, consequences, shipped verification evidence, named coverage gaps. Implemented notes state shipped reality in present tense; remove planning checklists.
 - **Prompts and visible strings:** treat wording as behavior. Inspect generated output and run behavior validation or state why no snapshot applies.
-- **Diagnostics:** name the failing subject or path, violated rule, and correction when it is non-obvious. Remove internal execution narration.
+- **Diagnostics:** name the failing subject/path, violated rule, and correction when non-obvious. Remove internal execution narration.
 
-Preserve searchable mechanism names and meaningful modal, temporal, or negative emphasis. Normalize decorative emphasis only.
+## Bilingual discipline (committed counterparts)
+
+This repo keeps `.md` ↔ `.en.md` counterparts for `README`, `user-guide`, and `faq`. Editing either side obligates the counterpart in the same change. Preserve stable product-visible text verbatim; compare meaning and terminology on both sides — a green link/pair check does not prove translation quality.
 
 ## Workflow
 
-1. Confirm the scope, mode, current branch or PR base, and applicable `AGENTS.md` files. Do not inspect unrelated branches.
-2. Read [the documentation standard](../../../docs/AGENTS.md) and the owning code or document before judging a passage. For calibration or unfamiliar cases, read [the distilled examples](references/examples.md).
-3. Inspect the requested scope, not only the largest files. Use searches and word counts to find candidates, then judge passages semantically.
-4. Classify each candidate as keep, add, trim, restore, restructure, or defer. Apply clear changes only when the task authorizes edits; do not manufacture edits to satisfy a deletion target.
-5. Update the owner before derivative artifacts. Re-check analogous passages after learning a new rule.
-6. Run the narrow relevant checks, documentation gates, `git diff --check`, and behavior tests for visible strings. Verify the final diff contains no `vendor/` path and report any accidental vendor match rather than claiming a clean exclusion history.
-7. Report the inspected scope, clear changes, deliberate keeps, deferred cases, and checks actually run.
+1. Require an explicit `scope`. If it is missing, report the required input and stop — do not infer a repository-wide scope. Then confirm the mode (`automatic | interactive`, default automatic; `mode` controls questions, not write authority — review/audit tasks report findings without editing) and branch/PR base. Inspect only the requested scope, not the whole repo.
+2. Read the owning document and code before judging a passage. For calibration read the ownership docs above.
+3. Classify each candidate as keep/add/trim/restore/restructure/defer; apply clear changes only when the task authorizes edits.
+4. Update the owner before derivative artifacts; re-check analogous passages after learning a new rule.
+5. Run the narrow relevant gates (`verify-md-links`, `verify-doc-budgets`, `git diff --check`) and, for public API doc changes, `dotnet build` (0 warnings). Note: the main project does **not** open `GenerateDocumentationFile`/CS1591 — public-API XML doc is required by root `AGENTS.md`「编码约定」and is enforced by code review, not a build gate.
+6. Report the inspected scope, clear changes, deliberate keeps, deferred cases, and checks actually run.
 
 ## Borderline decisions
 
-A case is borderline only when at least two versions satisfy the complete-proposition rule but trade accepted principles, and this skill does not already resolve the tradeoff. A rewrite with one proposition-preserving answer is not borderline.
-
-In automatic mode, apply clear edits when authorized and report genuine borderline cases without asking questions. Do not weaken a proposition to make progress.
-
-In interactive mode, group analogous passages under the governing principle. Present two or three viable versions, recommend one, and state the factual or structural difference. Do not offer inferior distractors. Use the user's requested channel; when calibrating a PR through inline comments, place the recommended provisional version in the diff and attach the alternatives to that exact line.
-
-After the user decides, distill the principle and versions into [the examples](references/examples.md), without PR history or reviewer narration, and apply the learned rule to every analogous passage in scope.
+A case is borderline only when at least two versions satisfy the complete-proposition rule but trade accepted principles, and this skill does not already resolve the tradeoff. In automatic mode, apply clear edits when authorized and report genuine borderline cases without asking questions — do not weaken a proposition to make progress. In interactive mode, group analogous passages under the governing principle, present two or three viable versions, recommend one, and state the factual or structural difference. Do not offer inferior distractors.
