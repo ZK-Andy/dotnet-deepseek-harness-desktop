@@ -6,7 +6,7 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 
 ## Problem
 
-2026-09-03 组合根阶段方法重构（composition-root-stage-typing）暴露评审档判定的逃逸：该 diff 触碰 `DesktopBootstrap`（组合根核心启动链）×3 + `ArchitectureTests`（A5 门禁判据放宽）+ 其 proposed ADR 明确承诺「三重审核（R1/R2/R3 串行）」，但主会话套用 review-scope-narrowing 的通用「零行为变更 → 轻审 R2」缺省判据，只跑了一路 R2 轻审即放行——用户指出时，评审档判定仍是**执行者自觉**：规则写得再细，执行者自判「这算纯结构重构」即可绕开。补丁若只加文字条款（T1–T6）必然重演：本次逃逸恰是「规则已写明但仍被绕开」。
+2026-09-03 组合根阶段方法重构（composition-root-stage-typing）暴露评审档判定的逃逸：该 diff 触碰 `DesktopBootstrap`（组合根核心启动链）×3 + `ArchitectureTests`（A5 门禁判据放宽）+ 其 proposed ADR 明确承诺「三重审核（R1/R2/R3 串行）」，但主会话套用 review-scope-narrowing 的通用「零行为变更 → 轻审 R2」缺省判据，只跑了一路 R2 轻审即放行——用户指出时，评审档判定仍是**执行者自觉**：规则写得再细，执行者自判「这算纯结构重构」即可绕开。补丁若只加文字条款必然重演：本次逃逸恰是「规则已写明但仍被绕开」。
 
 ## Decision
 
@@ -49,4 +49,4 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 
 - [review-scope-narrowing](2026-08-31-review-scope-narrowing.md)（implemented）：被本机制覆盖「更高档优先」判据的母 ADR，已加防逃逸指针。
 - [feature-flow](../../../workflows/feature-flow.md) 步骤 5：评审执行契约入口，指向 review-scope-narrowing。
-- [composition-root-stage-typing](../../proposed/architecture/2026-09-03-composition-root-stage-typing.md)（proposed）：本次逃逸的触发变更，其三重审核已随本批补跑完成（R1/R2/R3 收口）。
+- [composition-root-stage-typing](../architecture/2026-09-03-composition-root-stage-typing.md)（implemented）：本次逃逸的触发变更，其三重审核已随本批补跑完成（R1/R2/R3 收口）。
