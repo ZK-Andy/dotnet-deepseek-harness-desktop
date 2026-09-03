@@ -16,21 +16,7 @@ public static class SystemBrowser
     /// <summary>用系统默认浏览器打开 <paramref name="url"/>。返回是否已启动。</summary>
     public static bool Open(string url)
     {
-        var psi = new ProcessStartInfo();
-        if (OperatingSystem.IsLinux())
-        {
-            psi.FileName = "xdg-open";
-            psi.ArgumentList.Add(url);
-            psi.UseShellExecute = false;
-            psi.RedirectStandardOutput = true;
-            psi.RedirectStandardError = true;
-        }
-        else
-        {
-            psi.FileName = url;
-            psi.UseShellExecute = true;
-        }
-
+        ProcessStartInfo psi = BuildProcessStartInfo(url);
         using var p = Process.Start(psi);
         if (p is null)
         {
@@ -49,5 +35,29 @@ public static class SystemBrowser
         // 返回值语义弱（刚 spawn 的 xdg-open 必然未退出，恒 true 居多）：真实失败由浏览器
         // 自身后台报错不回灌；调用方（ExternalLinkCommandRouter/导航回调）对 false/异常已有 toast 兜底
         return !p.HasExited;
+    }
+
+    /// <summary>构造打开命令的 <see cref="ProcessStartInfo"/>（纯函数，可单测）：
+    /// Linux 走 <c>xdg-open</c> 并重定向子进程输出（浏览器后台报错不回灌应用终端），
+    /// 其余平台 <c>Process.Start(UseShellExecute=true)</c>。</summary>
+    /// <param name="url">要打开的站外 http(s) URL。</param>
+    internal static ProcessStartInfo BuildProcessStartInfo(string url)
+    {
+        var psi = new ProcessStartInfo();
+        if (OperatingSystem.IsLinux())
+        {
+            psi.FileName = "xdg-open";
+            psi.ArgumentList.Add(url);
+            psi.UseShellExecute = false;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+        }
+        else
+        {
+            psi.FileName = url;
+            psi.UseShellExecute = true;
+        }
+
+        return psi;
     }
 }

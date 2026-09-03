@@ -1,16 +1,16 @@
 # Testing
 
-> 测试基线以 README 双语徽章为准（当前 449/449，覆盖率 49%+）；`dotnet test` 全绿 0 警告是每次提交的硬门。
+> 测试基线以 README 双语徽章为准（当前 473/473，覆盖率 53%+）；`dotnet test` 全绿 0 警告是每次提交的硬门。
 
 ## 单测
 
-* 框架：`xunit 2.9.3`，`dotnet test dotnet-deepseek-harness-desktop.slnx`；测试工程 `tests/DeepSeek.Harness.Desktop.Tests/`（35 个测试文件）。
+* 框架：`xunit 2.9.3`，`dotnet test dotnet-deepseek-harness-desktop.slnx`；测试工程 `tests/DeepSeek.Harness.Desktop.Tests/`（37 个测试文件）。
 * 覆盖面（按域分组，逐类细节见各文件头 `<summary>`）：
   * **壳与运行时**：`HarnessUrlParserTests`（`dsh web:` 行解析）、`HarnessRuntimeHostTests`（端口分配/记忆/占位回退/生命周期门/取消契约）、`RuntimeVersionGateTests`（版本底线判定 + 底线横幅）、`DesktopProfileBootstrapTests`/`SharedHomeContractTests`（desktop profile 自举与共享 home 契约）、`RunMarkerTests`（非受控退出标记与横幅）、`DesktopBannerTests`（横幅工厂幂等/堆叠/转义）。
   * **监督与观测**：`PageHealthMonitorTests`（页面健康探针）、`HostLogAndDiagnosticsTests`（HostLog 出口脱敏集成）、`SecretMaskerTests`（凭据形状遮罩纯函数）、`DiagnosticsTests`（诊断包导出）、`RecoveryPageTests`（恢复页脚本构建）。
   * **托盘/窗口/单实例**：`TrayTests`（托盘命令记序）、`CloseToTrayTests`（关到托盘偏好）、`LauncherActivationTests`（单实例仲裁/uid 回退后缀）、`DesktopBannerTests`。
   * **随包插件**：`MarketInstallHelperTests`（检测/迁移/workspace 修正/伴生 spec/JsonNode 写盘格式钉子）、`PluginVersionCheckTests`（版本解包/升级判定/脏版本 fail loud）、`BundledPluginCatalogTests`（清单装配判定/端到端布局）、`DesktopProfileBootstrapTests`（reconcile 不可解析引用）。
-  * **自更新**：`UpdateVersionTests`、`UpdateStateMachineTests`（对账/恢复/并发去重）、`ReleaseAssetTests`（资产挑选/SUMS 解析/下载锁）、`InstallerDownloaderTests`（SHA256SUMS 强校验/原子改名）、`UpdateInstallerTests`（deb/rpm 命令 + Linux root 脚本内容级回归：PATH 硬化/哈希复验/symlink 守卫/降权拉起）、`DesktopUpdateCommandRouterTests`（后台 token 契约）、`UpdateOptionsTests`/`UpdateStateJsonTests`/`AppJsonTests`。
+  * **自更新**：`UpdateVersionTests`、`UpdateStateMachineTests`（对账/恢复/并发去重）、`ReleaseAssetTests`（资产挑选/SUMS 解析/下载锁）、`FileReadyPersistenceTests`（ready.json 往返契约）、`InstallerDownloaderTests`（SHA256SUMS 强校验/原子改名）、`UpdateInstallerTests`（deb/rpm 命令 + Linux root 脚本内容级回归：PATH 硬化/哈希复验/symlink 守卫/降权拉起）、`DesktopUpdateCommandRouterTests`（后台 token 契约）、`UpdateOptionsTests`/`UpdateStateJsonTests`/`AppJsonTests`。
   * **导航与外链**：`ExternalLinkPolicyTests`、`ExternalLinkCommandRouterTests`、`RynNavigationCallbacksTests`（拦截/放行/origin 刷新/失败 toast）。
   * **退出与环境**：`ExitOrchestrationTests`（退出编排记序契约）、`DevEnvironmentTests`（dev 隔离）、`ConvenienceTests`（更新就绪横幅/自启条目）。
 * 运行：沙箱需 `DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget`（`/home` 只读）。

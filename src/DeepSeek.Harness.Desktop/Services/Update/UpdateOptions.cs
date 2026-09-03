@@ -26,48 +26,57 @@ public sealed record UpdateOptions
     /// <summary>从应用旁的 appsettings.json 读取 <c>Update</c> 节；文件缺失或节缺失时全默认。</summary>
     public static UpdateOptions Load(string baseDirectory)
     {
+        string path = Path.Combine(baseDirectory, "appsettings.json");
+        if (!File.Exists(path))
+        {
+            return new UpdateOptions();
+        }
+
         try
         {
-            string path = Path.Combine(baseDirectory, "appsettings.json");
-            if (!File.Exists(path))
-            {
-                return new UpdateOptions();
-            }
-
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            if (!doc.RootElement.TryGetProperty("Update", out JsonElement section) ||
-                section.ValueKind != JsonValueKind.Object)
-            {
-                return new UpdateOptions();
-            }
-
-            var options = new UpdateOptions();
-            if (section.TryGetProperty(nameof(Repository), out JsonElement repo) && repo.ValueKind == JsonValueKind.String)
-            {
-                options = options with { Repository = repo.GetString()! };
-            }
-
-            if (section.TryGetProperty(nameof(FeedTimeoutSeconds), out JsonElement feed) && feed.ValueKind == JsonValueKind.Number)
-            {
-                options = options with { FeedTimeoutSeconds = feed.GetInt32() };
-            }
-
-            if (section.TryGetProperty(nameof(DownloadTimeoutMinutes), out JsonElement dl) && dl.ValueKind == JsonValueKind.Number)
-            {
-                options = options with { DownloadTimeoutMinutes = dl.GetInt32() };
-            }
-
-            if (section.TryGetProperty(nameof(UpdatesDirName), out JsonElement dir) && dir.ValueKind == JsonValueKind.String)
-            {
-                options = options with { UpdatesDirName = dir.GetString()! };
-            }
-
-            return options;
+            return Parse(File.ReadAllText(path));
         }
         catch (JsonException)
         {
             // 配置损坏不阻塞启动：回退全默认（fail-safe 而非 fail-loud——更新是增强功能）。
             return new UpdateOptions();
         }
+    }
+
+    /// <summary>把 appsettings.json 全文解析为 <see cref="UpdateOptions"/>（纯函数，可单测）：
+    /// 无 <c>Update</c> 节、节非对象或键缺失一律回退默认；损坏 JSON 由调用方转 fail-safe。</summary>
+    /// <param name="json">appsettings.json 全文。</param>
+    /// <returns>解析后的选项（缺省字段保持默认值）。</returns>
+    internal static UpdateOptions Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("Update", out JsonElement section) ||
+            section.ValueKind != JsonValueKind.Object)
+        {
+            return new UpdateOptions();
+        }
+
+        var options = new UpdateOptions();
+        if (section.TryGetProperty(nameof(Repository), out JsonElement repo) && repo.ValueKind == JsonValueKind.String)
+        {
+            options = options with { Repository = repo.GetString()! };
+        }
+
+        if (section.TryGetProperty(nameof(FeedTimeoutSeconds), out JsonElement feed) && feed.ValueKind == JsonValueKind.Number)
+        {
+            options = options with { FeedTimeoutSeconds = feed.GetInt32() };
+        }
+
+        if (section.TryGetProperty(nameof(DownloadTimeoutMinutes), out JsonElement dl) && dl.ValueKind == JsonValueKind.Number)
+        {
+            options = options with { DownloadTimeoutMinutes = dl.GetInt32() };
+        }
+
+        if (section.TryGetProperty(nameof(UpdatesDirName), out JsonElement dir) && dir.ValueKind == JsonValueKind.String)
+        {
+            options = options with { UpdatesDirName = dir.GetString()! };
+        }
+
+        return options;
     }
 }

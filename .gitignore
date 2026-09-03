@@ -34,3 +34,6 @@ resources/runtime/
 
 # ZCode 本地会话工作目录
 .zcode/
+
+# 评审简报（本地工作文档，主会话启动评审前产出，供 verify-review-brief.py 校验）
+/.review-briefs/

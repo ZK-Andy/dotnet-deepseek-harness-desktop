@@ -42,6 +42,22 @@ Review evidence format (header zone of an implemented ADR):
 Default is report-only (exit 0). `--enforce` exits 1 when a FULL-tier diff
 lacks review evidence. `--self-test` runs offline fixtures.
 
+Companion gate: before any review lane is launched the main session must write
+a bounded brief per lane under `.review-briefs/` and run
+`scripts/verify-review-brief.py --enforce` (FULL => R1/R2/R3 briefs, LIGHT =>
+R2). This script gates *evidence after review* (commit/push); the brief gate
+gates *task bounding before review* (local launch). See
+`.agents/notes/implemented/process/2026-08-31-review-scope-narrowing.md` §4.
+
+Consumption contract: `scripts/verify-review-brief.py` imports this module's
+private helpers `_repo_changed_paths` and `_classify` (lane derivation for the
+brief gate, single source of truth for the tier). That import is only safe
+because this module has NO top-level side effects beyond constant/regex
+definition (`if __name__ == "__main__"` guards main()). Keep it that way:
+adding a top-level git call or file read would silently break the brief gate's
+lane derivation. The brief gate also inherits the FULL classification of
+`verify-*.py` path changes, so editing THIS script is FULL-tier by design.
+
 Usage:
     python3 scripts/verify-review-tier.py [--repo ROOT] [--staged|--since BASE] [--enforce]
     python3 scripts/verify-review-tier.py --self-test

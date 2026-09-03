@@ -69,6 +69,55 @@ public class ReleaseAssetTests
         Assert.Null(meta);
     }
 
+    /// <summary>验证他仓/异段 href 被仓库防御拦下：即使文件名碰巧匹配也不取（防替换页/串仓拿他仓资产当更新装）。</summary>
+    [Fact]
+    public void Pick_SkipsForeignRepoOrNonDownloadSegment_EvenIfNameMatches()
+    {
+        string own = $"/{Repo}/releases/download/v0.1.21/app_0.1.21_linux-amd64.deb";
+        // 他仓同名资产 + 本仓非 download 段（如 /releases/tag/...）——都必须被防御跳过
+        string[] hrefs =
+        [
+            "/attacker/app/releases/download/v0.1.21/app_0.1.21_linux-amd64.deb",
+            $"/{Repo}/releases/tag/app_0.1.21_linux-amd64.deb",
+            own,
+        ];
+
+        var meta = ReleaseMeta.Pick("v0.1.21", hrefs, "linux-x64", Repo, UpdatePlatform.Deb);
+
+        Assert.NotNull(meta);
+        Assert.Equal("https://github.com" + own, meta.AssetUrl);
+    }
+
+    /// <summary>验证绝对 URL（https://github.com/...）输入不被接受——expanded_assets 页恒产相对路径，
+    /// 绝对 URL 会绕过 StartsWith(repoSegment) 的仓库防御（其前缀是 https:// 而非 /owner/repo/），
+    /// 按非本仓跳过返回 null；防替换页/串仓拿他仓资产当更新装。</summary>
+    [Fact]
+    public void Pick_AbsoluteHref_IsRejectedLikeForeignRepo()
+    {
+        string abs = $"https://github.com/{Repo}/releases/download/v0.1.21/app_0.1.21_linux-amd64.deb";
+        var meta = ReleaseMeta.Pick("v0.1.21",
+        [
+            abs,
+            $"https://github.com/{Repo}/releases/download/v0.1.21/SHA256SUMS.txt",
+        ], "linux-x64", Repo, UpdatePlatform.Deb);
+
+        Assert.Null(meta);
+    }
+
+    /// <summary>验证 sha 缺失时仍返回资产 meta 且 Sha256Url=null（拒装决策由调用方/下载器 fail loud 执行）。</summary>
+    [Fact]
+    public void Pick_MissingSha_ReturnsMetaWithNullShaUrl()
+    {
+        var meta = ReleaseMeta.Pick("v0.1.21",
+        [
+            $"/{Repo}/releases/download/v0.1.21/app_0.1.21_linux-amd64.deb",
+        ], "linux-x64", Repo, UpdatePlatform.Deb);
+
+        Assert.NotNull(meta);
+        Assert.Equal("app_0.1.21_linux-amd64.deb", meta.AssetName);
+        Assert.Null(meta.Sha256Url);
+    }
+
     /// <summary>验证包类型检测优先级：有 dpkg 取 Deb、仅 rpm 取 Rpm、两者皆无回退 Deb（保证装不上时错误可诊断）。</summary>
     [Fact]
     public void DetectPackageKind_PrefersDpkg_FallsBackRpm()
