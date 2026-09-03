@@ -75,7 +75,8 @@ public static class UpdateInstaller
 
     /// <summary>
     /// 生成 Linux 安装脚本内容（纯字符串，可单测）：等本进程退出 → **root 侧复验包哈希** → 装包 →
-    /// 把新版**降权回原用户**拉起。环境透传由 <paramref name="relayEnv"/> 决定——只透传生成时非空的变量
+    /// 装包成功后删除安装包（用后即清，ADR self-update-prune-consumed-packages；失败仅留日志，
+    /// 下次启动对账兜底删）→ 把新版**降权回原用户**拉起。环境透传由 <paramref name="relayEnv"/> 决定——只透传生成时非空的变量
     /// （空值写入会以「空串覆盖」污染二代实例的 glib/libsoup 路径解析）；二代实例先切到主目录再拉起
     /// （不继承 pkexec 脚本的工作目录），并优先经 <c>systemd-run --user --scope</c> 并入用户会话，使后续
     /// 自更新的 pkexec 能按活动会话弹授权（无用户总线/无 systemd-run 时原样降权）。
@@ -107,7 +108,14 @@ public static class UpdateInstaller
             if ! echo '{assetSha256}  {EscapeSingle(assetPath)}' | sha256sum -c --status -; then echo "package hash mismatch; abort"; exit 1; fi
             echo "app exited; running: {installCommand}"
             {installCommand}
-            echo "install exit=$?"
+            install_rc=$?
+            echo "install exit=$install_rc"
+            # 用后即清（ADR self-update-prune-consumed-packages）：装包成功即系统已持有副本，
+            # 用户空间暂存不再被任何路径引用——root 顺手删，失败仅留日志不阻断 relaunch
+            # （下次启动对账兜底再删）。
+            if [ "$install_rc" -eq 0 ]; then
+              rm -f '{EscapeSingle(assetPath)}' || echo "package cleanup failed (will be pruned on next launch)"
+            fi
             cd '{EscapeSingle(home)}'
             if [ -n "$PKEXEC_UID" ]; then
               REL_USER="$(getent passwd "$PKEXEC_UID" 2>/dev/null | cut -d: -f1)"

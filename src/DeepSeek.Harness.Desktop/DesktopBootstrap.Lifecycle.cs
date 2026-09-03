@@ -51,8 +51,14 @@ public sealed partial class DesktopBootstrap
         var updateHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan }; // verify-code-conventions: ignore 组合根装配：自更新子域的 HttpClient 由组合根构造注入（属装配）
         string updatesDir = Path.Combine(HarnessRuntimeHost.ResolveDshHome(), updateOptions.UpdatesDirName);
         string? updatePkgKind = Services.Update.UpdatePlatform.DetectCurrentPackageKind();
+
+        // 启动对账清扫（ADR self-update-prune-consumed-packages）：删过期包 + install.sh/.download.lock
+        // 死残留；ready 待装包恒版本 > 当前（对账 ≤ 当前即清记录），天然免于误删。
+        string currentVersion = Services.Update.AppVersion.Current();
+        Services.Update.StalePackagePruner.Run(updatesDir, currentVersion, log: Services.HostLog.Write);
+
         _updateMachine = new Services.Update.UpdateStateMachine(
-            currentVersion: Services.Update.AppVersion.Current(),
+            currentVersion: currentVersion,
             check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions, Services.HostLog.Write).FetchLatestAsync(UpdateRid(), updatePkgKind, ct),
             download: (meta, ct) => new Services.Update.InstallerDownloader(updateHttp, Services.HostLog.Write).DownloadAsync(
                 meta, updatesDir, TimeSpan.FromMinutes(updateOptions.DownloadTimeoutMinutes), ct),
@@ -91,7 +97,7 @@ public sealed partial class DesktopBootstrap
                     + (state.Message is null ? "" : $"：{state.Message}"));
                 Services.PagePump.PushUpdateState(_windowAccessor, state);
             });
-        Services.HostLog.Write($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}，feed 超时 {updateOptions.FeedTimeoutSeconds}s 下载超时 {updateOptions.DownloadTimeoutMinutes}m");
+        Services.HostLog.Write($"[host] 自更新：当前版本 {currentVersion}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}，feed 超时 {updateOptions.FeedTimeoutSeconds}s 下载超时 {updateOptions.DownloadTimeoutMinutes}m");
     }
 
     private void RunBootstrapIfNeeded(AppToken app)

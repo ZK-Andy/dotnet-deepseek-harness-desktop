@@ -149,4 +149,43 @@ public class UpdateInstallerTests
         Assert.Contains("DSH_DESKTOP_DSH_HOME='dsh ho'\\''me'", script);
         Assert.Contains("cd '/ho'\\''me'", script);
     }
+
+    /// <summary>验证装包成功后脚本删除安装包（用后即清）：rm 落在 install 成功判定之后、relaunch 之前。</summary>
+    [Fact]
+    public void BuildLinuxScript_RemovesPackage_AfterSuccessfulInstall_BeforeRelaunch()
+    {
+        string script = Build(s_fullEnv);
+
+        // 装包结果先存 install_rc，成功分支才 rm 安装包
+        Assert.Contains("install_rc=$?", script);
+        Assert.Contains("if [ \"$install_rc\" -eq 0 ]; then", script);
+        int rmAt = script.IndexOf("rm -f '/home/zk/.local/share/updates/app_0.3.12_linux-amd64.deb'", StringComparison.Ordinal);
+        int relaunchAt = script.IndexOf("nohup", StringComparison.Ordinal);
+        Assert.True(rmAt >= 0, "缺装包成功后删除安装包");
+        Assert.True(rmAt < relaunchAt, "删包必须先于 relaunch（root 尚未降权）");
+    }
+
+    /// <summary>验证装包结果先存 install_rc 再判定：rm 删除命令位于「成功分支守卫（if eq 0）」之内——
+    /// 失败不删包（保留供重试/诊断），删包失败仅留日志（|| echo）不阻断 relaunch。</summary>
+    [Fact]
+    public void BuildLinuxScript_CleanupGuardedByInstallSuccess_AndNonFatal()
+    {
+        string script = Build(s_fullEnv);
+
+        // 装包结果先存 install_rc（后续 echo/判定不污染 $?）
+        Assert.Contains("install_rc=$?", script);
+        Assert.Contains("echo \"install exit=$install_rc\"", script);
+        // rm 只出现在成功守卫（if [ "$install_rc" -eq 0 ]）的 then 体内、且带失败容忍：
+        // 失败分支（else/守卫外）绝不删包——用 then/fi 词法界定真钉
+        string guard = "if [ \"$install_rc\" -eq 0 ]; then";
+        int guardAt = script.IndexOf(guard, StringComparison.Ordinal);
+        Assert.True(guardAt >= 0, "缺装包成功守卫");
+        // then 与紧随其后的 fi 之间的区块 = 成功分支
+        int thenAt = guardAt + guard.Length;
+        int fiAt = script.IndexOf("fi", thenAt, StringComparison.Ordinal);
+        string successBlock = script[thenAt..fiAt];
+        int rmAt = successBlock.IndexOf("rm -f '/home/zk/.local/share/updates/app_0.3.12_linux-amd64.deb'", StringComparison.Ordinal);
+        Assert.True(rmAt >= 0, "rm 必须在成功守卫的 then 体内（失败不删包）");
+        Assert.Contains("|| echo \"package cleanup failed", successBlock);
+    }
 }
