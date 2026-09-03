@@ -20,11 +20,11 @@ public sealed partial class DesktopBootstrap
     private bool _isDev;
     private bool _devAutoIsolated;
     private int _maximizedAtHide = -1;
-    // TODO(window-accessor-alias): _updateWindow 是 _windowAccessor 的恒等别名（BuildApp 末赋值一次，
-    // 永不分化）。可折叠到 _windowAccessor（保留 167 处的空检注释）；现按「赋值时点与原 Main 一致」
-    // 不变量如实保留，属拆分后应收口的残渣。
-    private CurrentWindowAccessor? _updateWindow;
     private Action? _updateExitReaper;
+    // _supervisorCtsRef = _supervisorCts 的第二个引用（非恒等别名，勿删）：命令路由在 BuildApp 的
+    // RegisterServices 注册时点早于 SetupSupervisor 给 _supervisorCts 赋值，故先持一个可空引用、
+    // 由 SetupSupervisor 接线（Lifecycle 行 198），路由经 backgroundToken 闭包惰性读它——
+    // 服务注册期拿不到 supervisorCts 的延迟捕获模式。
     private CancellationTokenSource? _supervisorCtsRef;
     private Services.UiLocale _uiLocale = null!;
     private PrimaryListener? _instanceListener;
@@ -42,10 +42,6 @@ public sealed partial class DesktopBootstrap
     private RunMarkerResult _marker = null!;
     private bool _previousRunUnclean;
     private CancellationTokenSource _supervisorCts = null!;
-    // TODO(navigation-settled-unconsumed): _startupNavigationSettled 只 TrySetResult、无任何消费者
-    // （横幅走 ShowBannerWhenReadyAsync 的重试环、恢复走 showRecovery 直注入）。wire-or-cut——要么删字段+接线
-    // （零行为变更），要么真接回横幅门控；现状「写信号不读」误导读者。
-    private TaskCompletionSource _startupNavigationSettled = null!;
     private RuntimeSupervisor _supervisor = null!;
     private Task _supervisorTask = null!;
     private Services.Tray.CloseGate _closeGate = null!;
@@ -177,7 +173,9 @@ public sealed partial class DesktopBootstrap
                     instanceSocketPath,
                     onShowRequested: async () =>
                     {
-                        CurrentWindowAccessor? accessor = _updateWindow;
+                        // BuildApp 前 _windowAccessor 尚未赋值（null! 占位）：启动早期到达的
+                        // 激活请求静默忽略（保留原可空窗口字段语义）。
+                        CurrentWindowAccessor? accessor = _windowAccessor;
                         if (accessor is null)
                         {
                             return;

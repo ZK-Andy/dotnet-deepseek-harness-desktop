@@ -56,19 +56,16 @@ public sealed partial class DesktopBootstrap
             .Build();
 
         _windowAccessor = _app.Services.GetRequiredService<CurrentWindowAccessor>();
-        _updateWindow = _windowAccessor;
     }
 
     private void RegisterServices(IServiceCollection services)
     {
         services.AddRynCommands();
-        // 宿主导航回调（Ryn 0.32.0 Ryn.Callbacks）：在导航边界统一拦截外部链接，
-        // 并给崩溃恢复/横幅门控提供「页面已到达」信号（ADR ryn-navigation-callbacks）。
+        // 宿主导航回调（Ryn 0.32.0 Ryn.Callbacks）：在导航边界统一拦截外部链接（ADR ryn-navigation-callbacks）。
         services.AddRynCallbacks();
         services.AddRynNavigationCallbacks();
         // 覆盖源生成的 handler 无参注册：导航回调依赖（openExternal 打开器 / 日志 /
-        // 当前页面 origin）在 ConfigureServices 时已知，经工厂注入；onNavigated 之后经
-        // SetOnNavigated 绑定（startupNavigationSettled 在其后声明）。
+        // 当前页面 origin）在 ConfigureServices 时已知，经工厂注入。
         services.AddSingleton(sp => new Services.RynNavigationCallbacks(
             opener: null,
             log: Services.HostLog.Write,

@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
 /// 宿主导航回调（Ryn 0.32.0 <c>Ryn.Callbacks</c>）：把外部链接处理从「点击层注入脚本」
-/// 迁到「导航层统一拦截」，并给崩溃恢复/横幅门控提供「页面已到达」的权威信号。
+/// 迁到「导航层统一拦截」，并经 <see cref="OnWebViewNavigated"/> 留痕与刷新 origin。
 /// </summary>
 /// <remarks>
 /// 一个类可承载两类回调，由源生成器按 <see cref="RynCallbackAttribute"/> 分组生成
@@ -14,8 +14,8 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// <item><see cref="OnWebViewNavigating"/>：在原生引擎提交导航前裁决——用户发起的站外 http(s) 一律
 /// <see cref="NavigationDecision.Block"/> 并交给系统浏览器（经 <see cref="SystemBrowser"/>），同源 SPA
 /// 路由 / <c>ryn://</c> / <c>data:</c> 等非 http(s) scheme 放行；宿主程序化导航（崩溃恢复）放行。</item>
-/// <item><see cref="OnWebViewNavigated"/>：导航已到达（内容实际提交）后留痕并回调「到达」信号，
-/// 供启动横幅门控（较 <c>NavigateAsync</c> 返回的「任务已派发」更权威）。</item>
+/// <item><see cref="OnWebViewNavigated"/>：导航已到达（内容实际提交）后留痕、刷新当前 origin，
+/// 并回调「到达」信号（<see cref="SetOnNavigated"/>，当前无宿主消费者，作可扩展能力保留）。</item>
 /// </list>
 /// 本类为 instance：源生成器把依赖方法经 DI 解析 <c>GetRequiredService&lt;RynNavigationCallbacks&gt;</c>
 /// 后调用，故构造函数依赖必须在 DI 注册（DesktopBootstrap.RegisterServices 用工厂覆盖无参注册）。
@@ -50,11 +50,12 @@ public sealed class RynNavigationCallbacks
     }
 
     /// <summary>
-    /// 绑定「导航已到达」回调（单实例可变）。由 DesktopBootstrap 在 <c>_startupNavigationSettled</c>
-    /// 声明后注入，取代 <c>RuntimeSupervisor.onNavigated</c> 的「<c>NavigateAsync</c> 返回即触发」——
-    /// 本回调由 <see cref="RynCallbackKind.WebViewNavigated"/> 在内容实际提交后触发，是更权威的
-    /// 「页面已到达」信号。写入在主线程（<c>app.Build()</c> 后），读在 saucer 原生回调线程，故用
+    /// 绑定「导航已到达」回调（单实例可变）。由内容实际提交后的
+    /// <see cref="RynCallbackKind.WebViewNavigated"/> 触发，是比「<c>NavigateAsync</c> 返回即触发」
+    /// 更权威的「页面已到达」信号（取代已删除的 <c>RuntimeSupervisor.onNavigated</c>）。
+    /// 写入在主线程（<c>app.Build()</c> 后），读在 saucer 原生回调线程，故用
     /// <see cref="Volatile"/> 保证跨线程可见性。
+    /// 当前无宿主消费者（横幅/恢复各自有自重复试与直注入），作为可扩展能力保留（有测试覆盖）。
     /// </summary>
     public void SetOnNavigated(Action onNavigated) => Volatile.Write(ref _onNavigatedImpl, onNavigated);
 

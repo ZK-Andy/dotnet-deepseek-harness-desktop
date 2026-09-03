@@ -68,7 +68,7 @@ public sealed partial class DesktopBootstrap
                 _closeGate.ApproveExit();
                 try
                 {
-                    _updateWindow?.Current?.Close();
+                    _windowAccessor?.Current?.Close();
                 }
                 catch (Exception ex)
                 {
@@ -86,7 +86,7 @@ public sealed partial class DesktopBootstrap
                     "[update] " + state.Status
                     + (state.Version is null ? "" : $" {state.Version}")
                     + (state.Message is null ? "" : $"：{state.Message}"));
-                Services.PagePump.PushUpdateState(_updateWindow, state);
+                Services.PagePump.PushUpdateState(_windowAccessor, state);
             });
         Services.HostLog.Write($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}，feed 超时 {updateOptions.FeedTimeoutSeconds}s 下载超时 {updateOptions.DownloadTimeoutMinutes}m");
     }
@@ -196,10 +196,6 @@ public sealed partial class DesktopBootstrap
         // 原 `using var supervisorCts`：生命周期由 Run 的 finally 释放（本方法赋值）。
         _supervisorCts = new CancellationTokenSource();
         _supervisorCtsRef = _supervisorCts; // 自更新后台任务 token 持有器接线（见顶部声明）
-        // 启动期横幅导航门控（ADR shell-firstboot-hardening）：安装任务触发监督器重启后页面会被
-        // NavigateAsync 整体替换，横幅必须等这次导航落地再注入，否则与导航竞速被清掉
-        // （v0.3.0 实机：18:30:01 注入 vs 18:30:03 导航，旧 home 横幅陪葬）。
-        _startupNavigationSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _supervisor = new RuntimeSupervisor(
             _host,
             restartTimeout: TimeSpan.FromSeconds(60),
@@ -240,12 +236,6 @@ public sealed partial class DesktopBootstrap
 
             await _supervisor.RunAsync(_supervisorCts.Token);
         });
-
-        // 「导航已到达」信号（ADR ryn-navigation-callbacks）：由 RynNavigationCallbacks 的
-        // WebViewNavigated 回调在内容实际提交后触发，取代 RuntimeSupervisor.onNavigated 的
-        // 「NavigateAsync 返回即触发」——恢复/横幅门控据此拿到真正的「页面已到达」。
-        _app.Services.GetRequiredService<Services.RynNavigationCallbacks>().SetOnNavigated(
-            () => _startupNavigationSettled.TrySetResult());
 
         // 有序退出编排 + 自更新兜底收割器接线（WireExitHandlers）
         WireExitHandlers(_app.Services.GetRequiredService<IRynWindow>());
