@@ -21,7 +21,9 @@ public class ArchitectureTests
         ? string.Join(", ", result.FailingTypes.Select(t => t.FullName ?? t.Name))
         : string.Empty;
 
-    /// <summary>A5 · 新类型必须进 Services/ 或子域：根命名空间只允许组合根（DesktopBootstrap/Program）。</summary>
+    /// <summary>A5 · 新类型必须进 Services/ 或子域：根命名空间只允许组合根（DesktopBootstrap/Program）。
+    /// 组合根内的**嵌套编排 token**（ADR composition-root-stage-typing 阶段方法链的类型承诺）属组合根
+    /// 一部分，一并放行——该类 token 只在组合根签名间传递、不进 Services/ 子域。</summary>
     [Fact]
     public void TypesResideOnlyInServicesOrComposeRoot()
     {
@@ -30,7 +32,26 @@ public class ArchitectureTests
             .And().DoNotResideInNamespace(ServicesNs)
             .GetTypes();
         string[] bad = rootTypes
-            .Where(t => !(t.Name.StartsWith("DesktopBootstrap") || t.Name.StartsWith("Program")))
+            .Where(t =>
+            {
+                if (t.Name.StartsWith("DesktopBootstrap") || t.Name.StartsWith("Program"))
+                {
+                    return false;
+                }
+
+                // 放行嵌套于组合根的编排 token（ADR composition-root-stage-typing）：它们随组合根定义，
+                // 语义上属组合根一部分，不构成根命名空间的独立类型。
+                if (t.IsNested)
+                {
+                    Type? declaring = t.DeclaringType;
+                    if (declaring is not null && declaring.Name.StartsWith("DesktopBootstrap", StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            })
             .Select(t => t.FullName ?? t.Name).ToArray();
         Assert.True(bad.Length == 0,
             $"A5 violate: root-namespace types outside compose root: {string.Join(", ", bad)}");

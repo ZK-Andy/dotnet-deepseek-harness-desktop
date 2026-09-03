@@ -12,6 +12,10 @@ artifacts/
 TestResults/
 *.nupkg
 
+# Python（verify-*.py 门禁脚本运行缓存）
+__pycache__/
+*.pyc
+
 # dotnet 首用/包的本地缓存（沙箱 /home 只读重定向）
 /.dotnet-cache/
 

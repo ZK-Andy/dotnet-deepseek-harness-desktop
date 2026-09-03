@@ -31,4 +31,14 @@ python3 scripts/verify-adr-format.py
 python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json
 python3 scripts/verify-md-links.py
 
+# 评审档位硬闸（ADR review-tier-escape-proofing）：outgoing FULL 档变更须携带
+# Review 证据；无证据即拦 push——行为级机械限制，杜绝「轻审跳过重三审」逃逸。
+# --since origin/main：扫本次将推送的提交（已提交形态，工作树干净也能拦）。
+echo "-> verify-review-tier.py --since origin/main --enforce"
+if git rev-parse --verify origin/main >/dev/null 2>&1; then
+  python3 scripts/verify-review-tier.py --since origin/main --enforce
+else
+  echo "  (origin/main 不存在，跳过——CI 仍会全量拦截)"
+fi
+
 echo "pre-push OK"

@@ -14,7 +14,7 @@ namespace DeepSeek.Harness.Desktop;
 /// </summary>
 public sealed partial class DesktopBootstrap
 {
-    private void BuildApp()
+    private AppToken BuildApp(RuntimeToken runtime, UpdateToken update)
     {
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 trayReady）
         _iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
@@ -56,6 +56,9 @@ public sealed partial class DesktopBootstrap
             .Build();
 
         _windowAccessor = _app.Services.GetRequiredService<CurrentWindowAccessor>();
+
+        // token：BuildApp 完成（Ryn 应用/windowAccessor/icon/tray 探测已落字段），供后续阶段按类型承诺串联。
+        return default;
     }
 
     private void RegisterServices(IServiceCollection services)
@@ -146,7 +149,7 @@ public sealed partial class DesktopBootstrap
         });
     }
 
-    private void ShowTray()
+    private void ShowTray(AppToken app)
     {
         // 托盘就绪化（批次三）：装菜单并显示。失败只降级记日志——无托盘环境是合法运行环境；
         // 但下方 hide-to-tray 拦截必须与托盘同 gate：没有召回通道还拦截关窗等于把窗口藏死。

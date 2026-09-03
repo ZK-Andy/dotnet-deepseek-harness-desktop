@@ -58,6 +58,8 @@ Status: implemented
 
 **判据用法**：逐一对照上述，任一命中 → 重三审；全部未命中且测试/门禁绿 → 轻审。**宁可保守**：判据模棱两可时就重三审（轻审只省时间，漏审的代价是行为缺陷漏网）。
 
+> **防逃逸机械前置**：上述判据是**缺省档**——FULL 档路径（组合根级/门禁判据改动/承诺三重审核的 proposed ADR/行为契约面）由 `scripts/verify-review-tier.py` 机械判定并强制重三审，执行者不得以「零行为变更」覆盖。机制见 [2026-09-03-review-tier-escape-proofing](2026-09-03-review-tier-escape-proofing.md)（implemented）。
+
 ### 4. 轮次/工具上限给默认值
 
 每个审核代理设**默认上限**（可被主会话覆盖）：

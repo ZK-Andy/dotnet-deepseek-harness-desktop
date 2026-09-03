@@ -11,7 +11,7 @@ namespace DeepSeek.Harness.Desktop;
 /// </summary>
 public sealed partial class DesktopBootstrap
 {
-    private void InitCloseGateAndUpdateStack()
+    private UpdateToken InitCloseGateAndUpdateStack(RuntimeToken runtime)
     {
         // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：托盘「退出」与自更新安装路径
         // 先批准再 Close。用户普通关窗是否转隐藏由 closeBehavior 偏好裁决（默认 true 保持
@@ -30,6 +30,9 @@ public sealed partial class DesktopBootstrap
             Environment.GetEnvironmentVariable(Services.Update.UpdateOptions.ForceDevEnv));
         _readyNotified = false;
         LoadUpdateMachine();
+
+        // token：InitCloseGateAndUpdateStack 完成（关窗闸门/closeBehavior/自更新栈已落字段）。
+        return default;
     }
 
     /// <summary>装载自更新状态机（仅 ready 对外可见；机制见 ADR desktop-shell-self-update）。
@@ -91,7 +94,7 @@ public sealed partial class DesktopBootstrap
         Services.HostLog.Write($"[host] 自更新：当前版本 {Services.Update.AppVersion.Current()}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}，feed 超时 {updateOptions.FeedTimeoutSeconds}s 下载超时 {updateOptions.DownloadTimeoutMinutes}m");
     }
 
-    private void RunBootstrapIfNeeded()
+    private void RunBootstrapIfNeeded(AppToken app)
     {
         // 首启引导（ADR online-first-unbundled-runtime）：窗口先亮（wwwroot 引导页），后台任务完成
         // 检测/下载/安装/验证状态机，成功后绑定运行时、起 dsh 并导航进主界面；失败推错误态等待
@@ -191,7 +194,7 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    private void SetupSupervisor()
+    private SupervisorToken SetupSupervisor(AppToken app, HostToken host)
     {
         // 原 `using var supervisorCts`：生命周期由 Run 的 finally 释放（本方法赋值）。
         _supervisorCts = new CancellationTokenSource();
@@ -239,6 +242,9 @@ public sealed partial class DesktopBootstrap
 
         // 有序退出编排 + 自更新兜底收割器接线（WireExitHandlers）
         WireExitHandlers(_app.Services.GetRequiredService<IRynWindow>());
+
+        // token：SetupSupervisor 完成（supervisorCts/监督器/退出编排已接线），供后续阶段按类型承诺串联。
+        return default;
     }
 
     /// <summary>有序退出编排 + 自更新兜底收割器接线（ADR child-process-reaping-port-drift /
@@ -272,7 +278,7 @@ public sealed partial class DesktopBootstrap
         };
     }
 
-    private void SetupHealthMonitor()
+    private void SetupHealthMonitor(SupervisorToken supervisor)
     {
         // 页面健康观测 + 有界恢复（ADR page-health-monitor / reference-alignment 批次五）：
         // 宿主只读探针轮询，不注入不依赖 companion——「dsh 在跑但页面空白」类事故（历史三起全靠
@@ -291,7 +297,7 @@ public sealed partial class DesktopBootstrap
         _ = _healthMonitor.RunAsync(TimeSpan.FromSeconds(10), _supervisorCts.Token);
     }
 
-    private void StartUpdateCheck()
+    private void StartUpdateCheck(SupervisorToken supervisor)
     {
         // 自更新启动对账 + 后台检查一次（失败静默转 error 态，不影响首屏）
         if (_updateMachine is not null)
@@ -327,7 +333,7 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    private void SharedHomeBannerTask()
+    private void SharedHomeBannerTask(SupervisorToken supervisor)
     {
         // 共享 home 切换的启动期告知（ADR shared-home-desktop-profile）：版本底线检查 + 旧 home 一次性提示。
         // 随包插件现于 spawn dsh 前安装（不再「启动后装 → 覆写页面并重启运行时」），横幅无需等安装收尾，

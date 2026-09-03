@@ -48,11 +48,30 @@ public sealed partial class DesktopBootstrap
     private Services.Tray.CloseBehaviorPreference _closeBehavior = null!;
     private bool _updateEnabled;
 
+    // —— 启动编排阶段 token（ADR composition-root-stage-typing）——
+    // 组合根的启动阶段存在严格依赖序，旧形态靠"注释 + 字段赋值时点"维持、编译器不检查。
+    // 阶段方法签名收上一阶段 token、返回本阶段 token，把**产生者的执行序**钉进类型——
+    // 想跨过产生者直接用其产出（如不经 StartRuntime 拿 webUrl）在编译期即缺值不可用。
+    // 保护是**偏序非全序**：token 锁产生者必须先跑，但不锁消费段——整段漏调消费方法
+    //（如删 ShowTray）、或两个同 token 消费段乱序，编译仍通过（与重构前同风险，非本
+    // 机制承诺面）。唯一例外：`UpdateToken` 被 BuildApp 消费，省略 InitCloseGateAndUpdateStack
+    // 会让 BuildApp 缺参编译失败——这是 6 个 token 中唯一"缺失即编译失败"的硬约束，勿简化掉。
+    // token 为空载荷 marker（空 record struct）：只承载"本阶段已执行"的类型承诺，实际状态
+    // 仍留在字段（后台 Task 闭包/DI 回调/事件委托大量跨阶段捕获字段——下沉为参数即字段归属
+    // 迁移，违反 ADR "不迁移字段归属"纪律）。私有嵌套：只作组合根签名间传递，不构成根命名
+    // 空间独立类型（A5 门禁放行依据）。
+    private readonly record struct PreflightToken;      // ResolveRuntimeAndDev 完成：运行时/env/单实例前提已解析
+    private readonly record struct HostToken;           // SetupHostAndMarker 完成：host/marker 已建
+    private readonly record struct RuntimeToken;        // StartRuntime 完成：dsh web 已起（webUrl 落字段）
+    private readonly record struct UpdateToken;         // InitCloseGateAndUpdateStack 完成：关窗闸门/自更新栈已建
+    private readonly record struct AppToken;            // BuildApp 完成：Ryn 应用与 windowAccessor 就绪
+    private readonly record struct SupervisorToken;     // SetupSupervisor 完成：监督器/退出编排已接线
+
     /// <summary>组合根入口：按原 <c>Program.Main</c> 语句序执行全部编排并返回进程退出码。</summary>
     public int Run()
     {
-        ResolveRuntimeAndDev();
-        if (!AcquireSingleInstance())
+        PreflightToken preflight = ResolveRuntimeAndDev();
+        if (!AcquireSingleInstance(preflight))
         {
             return 0;
         }
@@ -60,18 +79,18 @@ public sealed partial class DesktopBootstrap
         EnsureDesktopProfile();
         try
         {
-            SetupHostAndMarker();
-            InstallCompanionBeforeSpawn();
-            StartRuntime();
-            InitCloseGateAndUpdateStack();
-            BuildApp();
-            RunBootstrapIfNeeded();
-            ShowTray();
-            SetupSupervisor();
-            SetupHealthMonitor();
-            StartUpdateCheck();
-            SharedHomeBannerTask();
-            return RunAppLoop();
+            HostToken host = SetupHostAndMarker(preflight);
+            InstallCompanionBeforeSpawn(host);
+            RuntimeToken runtime = StartRuntime(host);
+            UpdateToken update = InitCloseGateAndUpdateStack(runtime);
+            AppToken app = BuildApp(runtime, update);
+            RunBootstrapIfNeeded(app);
+            ShowTray(app);
+            SupervisorToken supervisor = SetupSupervisor(app, host);
+            SetupHealthMonitor(supervisor);
+            StartUpdateCheck(supervisor);
+            SharedHomeBannerTask(supervisor);
+            return RunAppLoop(supervisor, host);
         }
         finally
         {
@@ -81,7 +100,7 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    private void ResolveRuntimeAndDev()
+    private PreflightToken ResolveRuntimeAndDev()
     {
         // 运行时来源（ADR simple-shell-single-global-dsh）：桌面是简单壳，依赖全机唯一的系统全局 node +
         // 全局 dsh（都在 PATH 上），桌面与终端共用同一套；没有系统 node 时由桌面装 node 到系统全局前缀
@@ -136,6 +155,9 @@ public sealed partial class DesktopBootstrap
             // DSH_DESKTOP_DEV=1 —— 判定按设计走打包产品语义，但值得一条 host.log 诊断指路
             Services.HostLog.Write("[host] 疑似仓库内开发运行但未设 DSH_DESKTOP_DEV=1：按打包产品处理（共享真实 home，无 dev 隔离）");
         }
+
+        // token：ResolveRuntimeAndDev 完成（配置已落字段），供后续阶段按类型承诺串联。
+        return default;
     }
 
     /// <summary>把"系统全局 node 的 global bin"暴露到进程 PATH（ADR simple-shell-single-global-dsh：无系统 node
@@ -149,8 +171,9 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：false = 已有主实例，调用方直接返回 0。</summary>
-    private bool AcquireSingleInstance()
+    /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：false = 已有主实例，调用方直接返回 0。
+    /// 依赖 <paramref name="preflight"/>（ResolveRuntimeAndDev 产出的 _isDev 已解析）。</summary>
+    private bool AcquireSingleInstance(PreflightToken preflight)
     {
         // hide-to-tray 唤回的最大化保持样本（ADR tray-recall-maximize-and-check-feedback）：
         // 隐藏前采样（1=最大化 / 0=非 / -1=未知），唤回路径按判据消费后在 finally 无条件清零。
@@ -236,7 +259,7 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    private void SetupHostAndMarker()
+    private HostToken SetupHostAndMarker(PreflightToken preflight)
     {
         // 原 `using var host`：生命周期由 Run 的 finally 释放（本方法赋值）。
         // 全局 dsh 模型：宿主恒以 PATH dsh（bundled=null）形态运行（ADR simple-shell-single-global-dsh）。
@@ -250,9 +273,12 @@ public sealed partial class DesktopBootstrap
         {
             Services.HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
         }
+
+        // token：SetupHostAndMarker 完成（host/marker 已落字段），供后续阶段按类型承诺串联。
+        return default;
     }
 
-    private void InstallCompanionBeforeSpawn()
+    private void InstallCompanionBeforeSpawn(HostToken host)
     {
         // 对齐参照（dsh-tauri-desk launch.rs）：随包插件（companion）在 spawn dsh 前安装，绝不
         // 「启动后 3s 装 → 重启」。全局 dsh 模型（ADR simple-shell-single-global-dsh）：dsh 在 PATH 上，
@@ -278,7 +304,7 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    private void StartRuntime()
+    private RuntimeToken StartRuntime(HostToken host)
     {
         // CLI shim 注册（ADR simple-shell-single-global-dsh）：dsh 已全局在 PATH，仅注册 pnpm shim。
         // best-effort——注册内部吞预期异常（见 CliShimRegistrar），此处再兜底意外异常。
@@ -299,9 +325,12 @@ public sealed partial class DesktopBootstrap
                 Services.HostLog.Write($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', _host.StderrTail.TakeLast(8))}");
             }
         }
+
+        // token：StartRuntime 完成（webUrl 已落字段），供后续阶段按类型承诺串联。
+        return default;
     }
 
-    private int RunAppLoop()
+    private int RunAppLoop(SupervisorToken supervisor, HostToken host)
     {
         Services.HostLog.Write("[host] Ryn Run 开始（阻塞直到窗口关闭）");
         try

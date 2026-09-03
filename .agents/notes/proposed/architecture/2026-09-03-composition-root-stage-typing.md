@@ -62,10 +62,49 @@ public int Run()
 2. **零行为变更拆分**：纯结构重构，语句顺序/分支/异常边界/日志语料逐一对应；不得夹带任何行为修正。
 3. **三重审核**（R1/R2/R3 串行）：确认"零行为变更"成立，ADR 与代码同步收口。
 
-**配套清理（同批或前置小批）**：收掉组合根现存的三处"名不副实"字段（独立 TODO 项，见 Related）：
-- `_updateWindow` = `_windowAccessor` 恒等别名（TODO `window-accessor-alias`）→ **fold**：BuildApp 末赋值一次、永不分化，全部使用等价；折叠到 `_windowAccessor`，保留空检注释。
-- `_startupNavigationSettled`（TODO `navigation-settled-unconsumed`）→ **cut**：只被 `RynNavigationCallbacks.SetOnNavigated` 写入、无任何消费者。ADR `ryn-navigation-callbacks` 所述"横幅导航门控"机制在后续重构中已死（`ShowBannerWhenReadyAsync` 自带 30×1s 重试环、崩溃恢复走 `showRecovery` 直注入），字段与接线残留却让人误以为门控仍活——删字段 + 删 `SetOnNavigated` 接线，并留注释说明"为何不再需要 TCS 门控"，防后人误读为丢了信号。
-- `_supervisorCtsRef` = `_supervisorCts` 第二引用（评估未提）→ **保留但补注释**：它是"服务注册时点早于 `_supervisorCts` 赋值时点"的延迟捕获模式（`DesktopUpdateCommandRouter` 的 backgroundToken 在赋值前捕获引用），非恒等别名、有真实存在理由；注释钉死成因防误删。
+### 依赖图定稿（2026-09-03 画图后拍板）
+
+**36 字段消费模式三分（这是划分依据，非新方案）：**
+- **A 启动配置**（`ResolveRuntimeAndDev` 一次解析、5+ 远亲消费）：`_bootstrapOptions/_bootstrapNeeded/_bootstrapGate/_preinstallGate/_isDev/_devAutoIsolated` → **保持字段**（全壳事实性配置，强行参数流=BootstrapContext 覆辙）。
+- **B 顺序资源**（主链"先建后用"、消费集中在相邻后续阶段）：`_closeGate/_closeBehavior/_updateMachine/_updateEnabled/_readyNotified/_iconPath/_trayAvailable` → 候选进阶段句柄。
+- **C 跨线程共享态**（被后台 Task 闭包/激活回调/更新 install 委托捕获、或跨阶段被多异步改写）：`_host/_supervisorCts/_webUrl/_windowAccessor/_marker/_previousRunUnclean/_maximizedAtHide/_instanceListener/_supervisor/_supervisorTask/_orderlyQuit/_updateExitReaper/_healthMonitor/_uiLocale/_bootstrapSettled/_bootstrapCts/_trayReady/_app/_supervisorCtsRef` → **保持字段**（ADR Risks"不迁移字段归属"即指此；后台闭包零改动，字段迁移范围受控）。
+
+**顺序依赖边（改错即启动怪病，由类型流锁定）：**
+`Resolve→Acquire(读isDev)`、`SetupHost→InstallCompanion→StartRuntime`（companion 必须 spawn 前装）、
+`StartRuntime→BuildApp`（BuildApp 消费 webUrl）、`InitCloseGate→BuildApp`（注册消费 closeGate/updateMachine）、
+`BuildApp→ShowTray/SetupSupervisor`（需 app/windowAccessor）、`SetupSupervisor→Health/UpdateCheck/Banner/RunAppLoop`（需 supervisorCts）。
+
+### 最终签名定稿（阶段 token 链，2026-09-03 拍板）
+
+```csharp
+public int Run()
+{
+    PreflightToken preflight = ResolveRuntimeAndDev();        // A 类解析，产 PreflightToken
+    if (!AcquireSingleInstance(preflight)) return 0;          // 读 isDev，仅早退
+    EnsureDesktopProfile();
+    try
+    {
+        HostToken host = SetupHostAndMarker(preflight);       // SetupHostAndMarker
+        InstallCompanionBeforeSpawn(host);                    // 顺序语句
+        RuntimeToken runtime = StartRuntime(host);            // StartRuntime → webUrl
+        UpdateToken update = InitCloseGateAndUpdateStack(runtime); // InitCloseGate
+        AppToken app = BuildApp(runtime, update);             // BuildApp
+        RunBootstrapIfNeeded(app);                            // 原 RunBootstrapIfNeeded
+        ShowTray(app);                                        // 原 ShowTray
+        SupervisorToken sup = SetupSupervisor(app, host);     // SetupSupervisor
+        StartBackgroundServices(sup);                         // 三后台（Health+Update+Banner）
+        return RunAppLoop(sup, host);                         // 原 RunAppLoop
+    }
+    finally { /* 等价释放 */ }
+}
+```
+
+**token 链机制**：阶段方法签名收上一阶段 token、返回本阶段 token；方法**体保持字段读写零动**（后台闭包/辅助方法仍读字段），token 只承载"本阶段已执行"的类型承诺。保护是**偏序非全序**（R1/R2 评审定稿）：token 把**产生者的执行序**钉进类型——跨过产生者直接消费其产出在编译期即缺值；但不锁消费段——整段漏调某消费方法、或两个同 token 消费段乱序，编译仍通过（与重构前同风险，非本机制承诺面）。6 个 token 中唯一例外：`UpdateToken` 被 `BuildApp(runtime, update)` 消费，省略 `InitCloseGateAndUpdateStack` 会让 BuildApp 缺参编译失败——这是唯一"缺失即编译失败"的硬约束，勿简化折叠（折叠会让省略 InitCloseGate 重新可编译）。
+
+**新类型 = `DesktopBootstrap` 嵌套私有 `readonly record struct` token**（A5 判据微调放行嵌套于组合根的类型，理由：编排产物语义上是组合根一部分，进 Services/ 污染子域）。
+
+**配套清理（已完成，前置批 `62d3ca2`，见 [composition-root-field-cleanup](../../implemented/process/2026-09-03-composition-root-field-cleanup.md)）**：原列三处字段收口已由字段清理批落地：
+- `_updateWindow` 折叠 → `_windowAccessor`、`_startupNavigationSettled` 删除（留注释说明为何不再需要 TCS 门控）、`_supervisorCtsRef` 保留 + 补注释。本 ADR 执行时此三处已清，无待办。
 
 ## Alternatives considered
 
@@ -77,10 +116,11 @@ public int Run()
 ## Acceptance criteria
 
 - `Run()` 阶段链重构落地：依赖序由阶段返回类型表达，缺前置产出的调用在编译期失败。
+- 阶段 token 为 `DesktopBootstrap` 嵌套私有类型；A5 门禁判据同步放行（ArchitectureTests 改判据）。
 - 重构为**零行为变更**：语句顺序/分支/异常边界/日志语料逐一对应；`dotnet test` 全绿（当前 449/449）、0 警告、`dotnet format` 绿。
 - 三重审核（R1/R2/R3）确认零行为变更成立，无 Blocker。
-- 配套三字段清理完成：`_updateWindow` 折叠、`_startupNavigationSettled` 删除（留注释）、`_supervisorCtsRef` 补注释；2 个 TODO 摘除。
-- 无新 TODO 引入；`DesktopBootstrap` 总行数不因重构膨胀（阶段方法内聚，允许新增阶段记录类型）。
+- 配套三字段清理已完成（前置批 `62d3ca2`）：`_updateWindow` 折叠、`_startupNavigationSettled` 删除、`_supervisorCtsRef` 补注释；2 个 TODO 摘除。
+- 无新 TODO 引入；`DesktopBootstrap` 总行数不因重构膨胀。
 
 ## Risks
 

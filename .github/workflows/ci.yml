@@ -43,6 +43,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0   # 评审档位硬闸需 base..HEAD 历史（--since 比较已提交变更）
       - name: 文档门禁
         run: |
           python3 scripts/verify-adr-format.py
@@ -57,6 +58,16 @@ jobs:
       - name: 契约扫描（R3 边界/日志）
         run: |
           python3 scripts/verify-code-conventions.py --enforce
+      - name: 评审档位硬闸（FULL 档变更须携 Review 证据；ADR review-tier-escape-proofing）
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "无可用 base（首推/分支新建），fallback 工作树扫描"
+            python3 scripts/verify-review-tier.py --enforce
+          else
+            echo "review-tier --since $BASE"
+            python3 scripts/verify-review-tier.py --since "$BASE" --enforce
+          fi
 
   build-test:
     needs: changes
