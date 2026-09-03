@@ -17,6 +17,7 @@ A brief is a fixed-structure Markdown file at `<repo>/.review-briefs/R<N>-<topic
     - base: <git ref>  head: <git ref>
     - 需深审面（精读，逐行判读）：<files this lane reads line-by-line>
     - 陪跑文件（机器门禁已盖，扫读确认即可）：<other changed files; 无 when none>
+    - 门禁自证（主会话实跑，exit 随行）：<script>:<exit>，…（如 dotnet-format:0，dotnet-test:0）
     - diff 面相邻件（一层以内，按需引用）：<list or 无>
 
     ## Directed checks（≤5 条）
@@ -33,6 +34,10 @@ A brief is a fixed-structure Markdown file at `<repo>/.review-briefs/R<N>-<topic
 Rules enforced:
   - lanes R1/R2/R3 each require exactly one brief under .review-briefs/
   - Scope carries `base:`/`head:`, a non-empty 需深审面 list, and a 陪跑文件 line
+  - 陪跑文件 (claims machine-gated) ⇒ a 门禁自证 line must exist with all-zero
+    exit codes — the "已盖" claim must be backed by the main session's real runs
+    (ADR review-brief-gate-self-assertion; format exit-2 miss on 2026-09-04 made
+    R2 re-verify gates it was told were green)
   - Directed checks: 1–5, each a `- [ ]` line
   - Explicitly out of scope: ≥1 line
   - Report contract: the fixed Blocker/Suggestion sentence present
@@ -71,6 +76,12 @@ BASE_RE = re.compile(r"base:\s*\S+")
 HEAD_RE = re.compile(r"head:\s*\S+")
 DEEP_RE = re.compile(r"需深审面[^\n]*?[:：]")
 COMPANION_RE = re.compile(r"陪跑文件[^\n]*?[:：]")
+# 门禁自证行：声明陪跑文件「机器门禁已盖」必须由主会话实跑的 exit 码背书
+# （ADR review-brief-gate-self-assertion）。形如「门禁自证：dotnet-format:0，dotnet-test:0」。
+SELFASSERT_RE = re.compile(r"门禁自证[^\n]*?[:：]")
+# 自证单项 <name>:<exit>（容忍全角冒号「：」——中文语境书写易混，S1/S2 评审发现）。name 容忍脚本
+# 短名（dotnet-format/test/code-health…），exit 必须 0/1/2。
+SELFASSERT_ITEM_RE = re.compile(r"([A-Za-z0-9._\-]+)[:：]([012])\b")
 
 
 def _violations_for_lane(path: Path, lane: str) -> list[str]:
@@ -106,6 +117,18 @@ def _violations_for_lane(path: Path, lane: str) -> list[str]:
     if COMPANION_RE.search(text) is None:
         v.append(f"{lane}: {path.name} Scope must list 陪跑文件 (machine-gated files scanned only; write 无 when none)")
 
+    # 门禁自证（ADR review-brief-gate-self-assertion）：声明「陪跑文件机器门禁已盖」必须携带
+    # 主会话实跑的 exit 码背书——缺失或含非 0 都违规（"已盖"声明无实跑支撑 = 把门禁成本转嫁给
+    # 评审代理实测；2026-09-04 format exit-2 漏跑教训）。「陪跑文件：无」不声明已盖，免自证。
+    companion_declares_gated = COMPANION_RE.search(text) is not None and not _companion_is_none(text)
+    if companion_declares_gated:
+        if SELFASSERT_RE.search(text) is None:
+            v.append(f"{lane}: {path.name} 陪跑文件声明机器门禁已盖，但缺「门禁自证」行——主会话须实跑门禁并随行 exit 码（如「门禁自证：dotnet-format:0，dotnet-test:0」）")
+        else:
+            bad = [m.group(1) for m in SELFASSERT_ITEM_RE.finditer(_selfassert_text(text)) if m.group(2) != "0"]
+            if bad:
+                v.append(f"{lane}: {path.name} 门禁自证含非 0 exit（{', '.join(bad)}）——红门禁文件不得列陪跑（声言已盖却实际红 = 未证；格式样例「门禁自证：dotnet-format:0，dotnet-test:0」）")
+
     # Directed checks: 1–5 checkbox items under the heading.
     checks_zone = _zone(text, CHECKS_HEADING, OUTSCOPE_HEADING)
     checks = [ln for ln in checks_zone.splitlines() if CHECK_ITEM_RE.match(ln)]
@@ -125,6 +148,30 @@ def _violations_for_lane(path: Path, lane: str) -> list[str]:
         v.append(f"{lane}: {path.name} Report contract must carry '{REPORT_SENTENCE}'")
 
     return v
+
+
+def _companion_is_none(text: str) -> bool:
+    """True when the 陪跑文件 line declares 无 (no companion files claimed)."""
+    m = COMPANION_RE.search(text)
+    if m is None:
+        return True
+    line_end = text.find("\n", m.end())
+    inline = text[m.end(): line_end if line_end >= 0 else len(text)].strip()
+    return inline == "无" or inline.startswith("无。")
+
+
+def _selfassert_text(text: str) -> str:
+    """Extract the 门禁自证 line's content (after the key's colon); empty when absent.
+
+    Non-zero-exit scanning is bound to THIS line only — the brief body may carry
+    arbitrary `<token>:1` / `:2` fragments (file:line refs) that a whole-text
+    finditer would misreport as a failing gate (R2/R3 review, 2026-09-04).
+    """
+    m = SELFASSERT_RE.search(text)
+    if m is None:
+        return ""
+    line_end = text.find("\n", m.end())
+    return text[m.end(): line_end if line_end >= 0 else len(text)]
 
 
 def _zone(text: str, start_heading: str, end_heading: str) -> str:
@@ -244,10 +291,11 @@ def self_test() -> int:
         # Fixture 1: well-formed R1/R2/R3 briefs -> pass.
         def w(name: str, lane: str, scope_body: str, checks: str = "- [ ] c\n",
               outscope: str = "- d\n") -> Path:
-            """Write one brief fixture with fixed report contract."""
+            """Write one brief fixture with fixed report contract + gate self-assertion."""
             p = root / BRIEFS_DIR / name
             p.write_text(
-                f"# {lane} 评审简报（lane）\n\n## Scope\n- base: a  head: b\n{scope_body}\n\n"
+                f"# {lane} 评审简报（lane）\n\n## Scope\n- base: a  head: b\n{scope_body}\n"
+                f"- 门禁自证：dotnet-format:0，dotnet-test:0\n\n"
                 f"## Directed checks\n{checks}\n## Explicitly out of scope\n{outscope}\n"
                 "## Report contract\n- 返回 `Blocker[]/Suggestion[]`；空即无发现\n",
                 encoding="utf-8")
@@ -298,7 +346,7 @@ def self_test() -> int:
         root5 = Path(td) / "f5"
         (root5 / BRIEFS_DIR).mkdir(parents=True)
         (root5 / BRIEFS_DIR / "R2-a.md").write_text(
-            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 陪跑文件：x\n\n"
+            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 陪跑文件：x\n- 门禁自证：dotnet-format:0\n\n"
             "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
             "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         vs5 = check_repo(root5, lanes=list(LANES))
@@ -316,12 +364,35 @@ def self_test() -> int:
         if not any("R2" in s and "需深审面 must name ≥1 file" in s for s in vs6):
             failures.append("fixture 6 (需深审面：无) should flag R2")
 
+        # Fixture 7: 陪跑声明已盖但缺门禁自证 -> violation (gate-self-assertion).
+        root7 = Path(td) / "f7"
+        (root7 / BRIEFS_DIR).mkdir(parents=True)
+        (root7 / BRIEFS_DIR / "R2-a.md").write_text(
+            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：x\n- 陪跑文件：src/A.cs（机器门禁已盖）\n\n"
+            "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
+            "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
+        vs7 = check_repo(root7, lanes=list(LANES))
+        if not any("R2" in s and "门禁自证" in s for s in vs7):
+            failures.append("fixture 7 (companion without gate self-assertion) should flag R2")
+
+        # Fixture 8: 门禁自证含非 0 exit -> violation (red gate may not ride companion).
+        root8 = Path(td) / "f8"
+        (root8 / BRIEFS_DIR).mkdir(parents=True)
+        (root8 / BRIEFS_DIR / "R2-a.md").write_text(
+            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：x\n- 陪跑文件：src/A.cs（机器门禁已盖）\n"
+            "- 门禁自证：dotnet-format:2，dotnet-test:0\n\n"
+            "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
+            "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
+        vs8 = check_repo(root8, lanes=list(LANES))
+        if not any("R2" in s and "非 0 exit" in s for s in vs8):
+            failures.append("fixture 8 (self-assertion with non-zero exit) should flag R2")
+
     if failures:
         print("self-test: FAIL")
         for f in failures:
             print(" -", f)
         return 1
-    print("self-test: OK (6 fixtures)")
+    print("self-test: OK (8 fixtures)")
     return 0
 
 

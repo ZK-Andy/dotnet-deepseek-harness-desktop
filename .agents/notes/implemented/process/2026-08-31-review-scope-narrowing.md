@@ -83,6 +83,7 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 - base: <git ref>  head: <git ref>（评审对象 = `git diff <base>..<head>`）
 - 需深审面（精读，逐行判读）：<文件清单——真正承载本路语义判断的文件>
 - 陪跑文件（机器门禁已盖，扫读确认即可）：<其余变更文件；无则写"无">
+- 门禁自证（主会话实跑，exit 随行）：<脚本短名>:<exit>，…（如 `dotnet-format:0，dotnet-test:0，code-health:0`）
 - diff 面相邻件（一层以内，按需引用）：<清单或"无">
 
 ## Directed checks（≤5 条）
@@ -99,6 +100,7 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 
 **字段规则**（脚本强制）：
 - `Scope` 必须给出 `base:`/`head:`（脚本校验存在性；与 `change-scope.sh` 输出的一致性是主会话写简报时的责任，脚本不比对两工具输出）；**「需深审面」必须列出实际承载本路语义判断的文件，且不得为空**（脚本校验非空——`需深审面：无` 属违规）；「陪跑文件」可写"无"。
+- **「门禁自证」与「陪跑文件」耦合**（ADR [2026-09-04-review-brief-gate-self-assertion](2026-09-04-review-brief-gate-self-assertion.md)）：陪跑文件行声明「机器门禁已盖」→ **同简报必须含「门禁自证」行**，逐项 `<脚本短名>:<exit>` 且 **exit 全部为 0**（脚本校验：缺自证或含非 0 均违规）。语义：门禁自证 = 主会话**实跑过且绿**的背书——把文件列陪跑的前提是主会话自己先跑绿对应门禁，不许把门禁成本转嫁给评审代理实测（2026-09-04 format exit-2 漏跑教训：主会话漏跑 format 却写「已盖」，R2 实测发现 CI 必红）。`陪跑文件：无` 不声明已盖，免自证。自证只覆盖机器门禁（build/test/format/verify-*.py 等）；**ADR↔代码一致性、语义判读类永远不属"已盖"**，代理仍需核。
 - `Directed checks` 必须 1–5 条、每条可证伪（含验证对象与证据位置），不得为空。
 - `Explicitly out of scope` 必须至少 1 条（没有不做清单 = 简报未收窄，等同无界任务）。
 - `Report contract` 固定（Blocker/Suggestion 契约）。
@@ -129,6 +131,6 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 - 触发枚举可能漏 case。缓解：保留"用户显式指定"兜底 + 门禁（D004/D005/A 系）仍机器兜底结构面。
 - 简报量化参考（视野 ≤200、检查项 ≤5）为经验默认，可能需调。缓解：主会话按 diff 规模调整简报宽度，不必动机制。
 
-**Testing**：流程契约，机械校验用 `scripts/verify-review-brief.py`（简报模板/字段/面收窄，`--self-test` 6 夹具）与 `scripts/verify-review-tier.py`（档位判定，`--self-test` 10 夹具）；门禁验证用 `verify-adr-format.py`（校验本 ADR 通过）与 `verify-md-links.py`（校验 `feature-flow.md` 指向本 ADR 的相对链接可解析）。`feature-flow.md` 步骤 5 已同步改写为指向本 ADR 的触发枚举 + 面收窄 + 轻审判据 + 有界并行（上限两路、禁止三路同时并行）+ 简报定界（§4，启动评审前跑 `verify-review-brief.py --enforce`）。
+**Testing**：流程契约，机械校验用 `scripts/verify-review-brief.py`（简报模板/字段/面收窄/门禁自证，`--self-test` 8 夹具）与 `scripts/verify-review-tier.py`（档位判定，`--self-test` 10 夹具）；门禁验证用 `verify-adr-format.py`（校验本 ADR 通过）与 `verify-md-links.py`（校验 `feature-flow.md` 指向本 ADR 的相对链接可解析）。`feature-flow.md` 步骤 5 已同步改写为指向本 ADR 的触发枚举 + 面收窄 + 轻审判据 + 有界并行（上限两路、禁止三路同时并行）+ 简报定界（§4，启动评审前跑 `verify-review-brief.py --enforce`）。
 
 ---

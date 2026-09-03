@@ -40,3 +40,4 @@ C# 胖后端 + 伴生插件瘦 UI：
 - `2026-08-22-companion-plugin-version-aware-upgrade` / `2026-08-22-companion-update-settings-section`：本笔记遗留两项（插件版本感知、手动检查入口）的现役 owner。
 - `2026-08-22-self-update-review-hardening`：本机制的代码审核加固（dev 门禁/SHA 校验收严/状态机兜底）。
 - `2026-08-22-self-update-relaunch-env-hardening`：安装链二代实例环境与会话归属加固。
+- `2026-09-04-self-update-prune-consumed-packages`（proposed，同批）：装包用后即清 + 启动对账清陈旧包——本机制装包落地后的资源停止留据增量。已加指针（先例 review-tier-escape-proofing 回补母 ADR）。
