@@ -24,11 +24,58 @@ public static class DesktopProfileBootstrap
     /// <summary>改名前的旧 profile 名（ADR desktop-profile-rename）：仅作迁移源，不再写入。</summary>
     internal const string LegacyProfileName = "desktop";
 
+    /// <summary>官方 Electron 桌面端项目标识文件（ADR desktop-profile-rename）：<c>profiles/desktop</c>
+    /// 在官方端安装后归其所有，这些文件由官方 package transaction / seed 复制与 host 启动写入。</summary>
+    private static readonly string[] s_officialDesktopMarkers =
+    {
+        "desktop.cordis.yml",
+        "desktop-packages.json",
+        "desktop-release.json",
+    };
+
+    /// <summary>官方 Electron 端项目清单名（上游 <c>project-manager.ts</c> 的 <c>PROJECT_NAME</c>）：
+    /// profile 一经官方端激活即写入，用作仅带清单的残留目录的兜底判据。</summary>
+    internal const string OfficialProjectManifestName = "@deepseek-ai/dsh-desktop-runtime";
+
+    /// <summary>
+    /// 该 profile 目录是否归官方 Electron 桌面端所有（存在任一标识文件、已装官方 host 依赖，
+    /// 或清单名即官方项目名）。判别只用在「不搬官方数据」的 fail-safe 一侧：识别不出官方特征即按我方存量迁移。
+    /// </summary>
+    /// <param name="profileDir">候选 profile 目录。</param>
+    /// <returns>归官方端所有返回 true。</returns>
+    internal static bool IsOfficialDesktopProject(string profileDir) =>
+        s_officialDesktopMarkers.Any(marker => File.Exists(Path.Combine(profileDir, marker)))
+        || Directory.Exists(Path.Combine(profileDir, "node_modules", "@deepseek-ai", "dsh-desktop-host"))
+        || HasOfficialManifestName(profileDir);
+
+    /// <summary>清单名是否为官方项目名：缺失/不可读/非法 JSON 一律判否——无法证明是官方项目时按我方存量迁移。</summary>
+    private static bool HasOfficialManifestName(string profileDir)
+    {
+        string manifest = Path.Combine(profileDir, "package.json");
+        if (!File.Exists(manifest))
+        {
+            return false;
+        }
+
+        try
+        {
+            return JsonNode.Parse(File.ReadAllText(manifest))?["name"]?.GetValue<string>() == OfficialProjectManifestName;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            // 吞掉的是「读不到 / 解析不了 / name 非字符串」：三种都无法证明官方归属，
+            // 一律按存量迁移（fail-safe 偏向不误伤我方用户，绝不因清单异常而放弃迁移）
+            return false;
+        }
+    }
+
     /// <summary>
     /// 旧 profile 名一次性迁移（ADR desktop-profile-rename）：上游 dsh 0.1.5-alpha.1 起 CLI 把字面名
     /// <c>desktop</c> 圈占给官方 Electron 桌面端（无条件硬拒），壳的 profile 改名 <see cref="HarnessRuntimeHost.DesktopProfileName"/>，
     /// 存量 <c>profiles/desktop</c> 在 spawn 前改名迁移。规则：
     /// 新目录已存在 → no-op（绝不合并两目录，新目录所有权归 dsh/用户）；
+    /// 旧目录归官方 Electron 端所有（<see cref="IsOfficialDesktopProject"/>）→ no-op，绝不搬官方数据，
+    /// 由 <see cref="EnsureProfile"/> 自举全新 <c>dotnet-desktop</c>；
     /// 旧目录存在 → 同卷 <c>Directory.Move</c>（原子 rename，插件装配/端口记忆/PID 文件整体保留）；
     /// 移动失败 → 日志留痕、不抛出——降级为全新 profile 自举（<see cref="EnsureProfile"/> 兜底）；
     /// 旧目录保留，目标位让出前后续启动会继续尝试迁移并留痕，新目录一经自举成功即命中
@@ -51,10 +98,15 @@ public static class DesktopProfileBootstrap
             return;
         }
 
+        if (IsOfficialDesktopProject(legacyDir))
+        {
+            log($"[host] 桌面 profile 迁移跳过：profiles/{LegacyProfileName} 归官方 Electron 桌面端所有，不搬其数据（自举全新 profiles/{HarnessRuntimeHost.DesktopProfileName}）");
+            return;
+        }
+
         try
         {
             Directory.Move(legacyDir, newDir);
-            log($"[host] 桌面 profile 已迁移：profiles/{LegacyProfileName} → profiles/{HarnessRuntimeHost.DesktopProfileName}");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -62,7 +114,11 @@ public static class DesktopProfileBootstrap
             // 自举兜底；旧目录保留——目标位让出前（如用户清掉占位文件）后续启动会继续尝试并留痕，
             // 新目录一经自举即命中「新目录已存在」跳过分支——绝不静默吞掉：日志给足人可判读信号
             log($"[host] 桌面 profile 迁移失败（将自举全新 profile，旧 {LegacyProfileName} 目录保留）：{ex.Message}");
+            return;
         }
+
+        // 成功日志在 try 之外（编码契约：try 只包一个语句）——日志写入失败不得被误报成「迁移失败」
+        log($"[host] 桌面 profile 已迁移：profiles/{LegacyProfileName} → profiles/{HarnessRuntimeHost.DesktopProfileName}");
     }
 
     /// <summary>与上游 dsh-app-boot 的 PROFILE_PATCH_TEMPLATE 逐字一致。</summary>

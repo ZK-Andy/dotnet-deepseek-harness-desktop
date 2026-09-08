@@ -18,6 +18,7 @@ Review: FULL/2026-09-09/R1=ok R2=ok R3=ok
 - **名字取向**：官方圈的全是品类词（web/headless/sdk/acp/desktop），技术栈专名 `dotnet-desktop` 落在其圈名域之外——反向隔离，被再次圈占的风险趋近于零。
 - **迁移**（`DesktopProfileBootstrap.MigrateLegacyProfileName`，在 `EnsureProfile` 之前执行）：
   - `profiles/dotnet-desktop` 已存在 → no-op（绝不合并两目录，新目录所有权归 dsh/用户）；
+  - 旧目录归官方 Electron 端所有（`IsOfficialDesktopProject`：`desktop.cordis.yml` / `desktop-packages.json` / `desktop-release.json` 任一文件，或已装 `node_modules/@deepseek-ai/dsh-desktop-host`）→ no-op，**绝不搬官方数据**，改由 `EnsureProfile` 自举全新 `dotnet-desktop`；判别只用在「不搬官方数据」一侧，识别不出官方特征即按我方存量迁移；
   - 否则 `profiles/desktop` 存在 → 同卷 `Directory.Move`（原子 rename，插件装配/端口记忆/PID 文件整体保留）；
   - 移动失败（如目标位被占）→ 日志留痕、不阻断启动——降级为全新 profile 自举（`EnsureProfile` 兜底）；旧目录保留，目标位让出前后续启动会继续尝试迁移并留痕，新目录一经自举成功即命中「新目录已存在」跳过分支，绝不合并。
 - **迁移时机**：`EnsureDesktopProfile` 内、spawn 前（与自举/reconcile 同一前置块）。
@@ -28,14 +29,16 @@ Review: FULL/2026-09-09/R1=ok R2=ok R3=ok
 - **`dsh-desktop`**：落败——与上游 Electron 包名 `@deepseek-ai/dsh-desktop` 字面同名，语义上易被误认为官方桌面端的名字。
 - **钉版 `DshSpec` 退出 `@alpha` 跟版**：落败——回退 online-first「内核升级与壳发版解耦」契约（重蹈 2026-08-31 钉版 ADR 已否决的形态），且治标：用户全局 dsh 与桌面共享，下一版上游任何 breaking 都会再踩；改名后跟版照常。
 - **不迁移存量 `profiles/desktop`（干净起步）**：落败——旧插件装配/端口记忆凭空作废需全部重装，用户已拍板迁移。
+- **不做归属判别、等官方端发布后删除迁移**：落败——删除只对升级后的客户端生效，旧版本仍会把官方 `profiles/desktop` 搬走；判别让迁移对官方目录天然失效，不依赖升级节奏。
 - **向上游申请绕过令牌**（如 env 白名单）：落败——现版检查无任何绕过面；即便上游加，也等于把我方 profile 永久绑在其 Electron 端的所有权模型上。
 
 ## Consequences
 
-- 与官方 Electron 桌面端同一 home 共存有前提：存量迁移把 `profiles/desktop` 整体 `Directory.Move` 搬走——该目录在官方端安装后归其所有，迁移即劫持其数据。故官方端正式发布后须移除迁移（连同调用点与 `DesktopProfileMigrationTests`），只保留 `dotnet-desktop` 名；在那之前，同一 home 里已存在官方端时不得首启本壳。
+- 与官方 Electron 桌面端可在同一 home 共存：迁移前按官方项目标识判别归属，归官方端即让路、自举全新 `dotnet-desktop`，绝不搬官方数据。
+- 迁移是绕过官方端圈占字面名 `desktop` 的过渡手段：官方端正式发布后随版本移除（连同调用点与 `DesktopProfileMigrationTests`），只保留 `dotnet-desktop` 名——那是死代码清理，不再承担数据安全职责。
 - 存量用户首启一次目录改名，插件装配与端口记忆无感保留；迁移失败可见于 host.log 且不阻断启动。
 - 用户在终端手动 `dsh --profile dotnet-desktop ...` 仍可用（CLI 不拒新名）；继续用旧名 `--profile desktop` 会被 0.1.5+ CLI 拒——那是官方 CLI 对其 Electron 端 profile 的所有权语义，文档已同步。
-- `DiagnosticsExporter` 白名单随常量取新路径；旧名目录不再收录（迁移后不存在；迁移失败时其端口文件缺失仅影响诊断包完整度，非运行态）。
+- `DiagnosticsExporter` 白名单随常量取新路径；旧名目录不再收录（迁移后不存在；迁移失败或归官方端让路时仍存在，其端口文件缺失仅影响诊断包完整度，非运行态）。
 
 ## Related
 
