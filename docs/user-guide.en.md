@@ -47,7 +47,7 @@ Unsigned builds: this project is open source and ships without paid code signing
 
 ## Data & Logs
 
-The desktop shares **one data directory with the DeepSeek Harness ecosystem** — sessions, credentials and workspaces interoperate with CLI/TUI/Web; the desktop keeps plugin assembly in its own `profiles/desktop` subdirectory:
+The desktop shares **one data directory with the DeepSeek Harness ecosystem** — sessions, credentials and workspaces interoperate with CLI/TUI/Web; the desktop keeps plugin assembly in its own `profiles/dotnet-desktop` subdirectory (when upgrading from an earlier version, the old `profiles/desktop` subdirectory is renamed automatically on first launch — no manual step):
 
 | Platform | Data directory |
 |---|---|

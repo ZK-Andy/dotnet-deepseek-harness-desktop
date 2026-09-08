@@ -47,7 +47,7 @@
 
 ## 数据与日志位置
 
-桌面端与 DeepSeek Harness 生态**共享同一数据目录**——会话、凭据、工作区与 CLI/TUI/Web 互通；桌面使用其中专属的 `profiles/desktop` 子目录承载插件装配：
+桌面端与 DeepSeek Harness 生态**共享同一数据目录**——会话、凭据、工作区与 CLI/TUI/Web 互通；桌面使用其中专属的 `profiles/dotnet-desktop` 子目录承载插件装配（升级自早期版本时，旧 `profiles/desktop` 子目录会在首次启动自动改名，无需手动操作）：
 
 | 平台 | 数据目录 |
 |---|---|

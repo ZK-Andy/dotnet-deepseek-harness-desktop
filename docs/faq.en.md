@@ -18,7 +18,7 @@ Yes within the same data directory (v0.3+ upgrades). Sessions persist locally an
 Everything stays in the shared data directory `~/.dsh` on your machine (`%USERPROFILE%\.dsh` on Windows; paths in [user-guide.en.md](user-guide.en.md)). Model calls go straight from your machine to the provider you configured.
 
 **Q: Does it share data with the dsh CLI / TUI?**
-Yes. The desktop uses the same canonical home as CLI/TUI/Web (`~/.dsh`, overridable via `DSH_HOME`), so sessions, credentials and workspaces interoperate; desktop plugin assembly lives in a dedicated `profiles/desktop` subdirectory. Upgrading from v0.2.x or earlier is a breaking switch — the old private directory is not migrated automatically; back up first, see [user-guide.en.md](user-guide.en.md).
+Yes. The desktop uses the same canonical home as CLI/TUI/Web (`~/.dsh`, overridable via `DSH_HOME`), so sessions, credentials and workspaces interoperate; desktop plugin assembly lives in a dedicated `profiles/dotnet-desktop` subdirectory. Upgrading from v0.2.x or earlier is a breaking switch — the old private directory is not migrated automatically; back up first, see [user-guide.en.md](user-guide.en.md).
 
 **Q: System tray / minimize to tray / autostart?**
 All included: a resident tray icon (menu: Show window / Check for updates / Quit), close hides to the tray by default, and launch-at-login toggles under Settings → "Desktop Settings". See [user-guide.en.md](user-guide.en.md).

@@ -19,8 +19,10 @@ public sealed partial class HarnessRuntimeHost
     /// <summary>上游规范 home 目录名（对齐上游 util/home-paths 的 <c>DSH_HOME_DIR_NAME</c>）。</summary>
     public const string DefaultHomeDirName = ".dsh";
 
-    /// <summary>桌面专属 profile 名：启动组装与随包插件装配共用此单点，防两处漂移。</summary>
-    internal const string DesktopProfileName = "desktop";
+    /// <summary>桌面专属 profile 名：启动组装与随包插件装配共用此单点，防两处漂移。
+    /// 不用字面名 <c>desktop</c>——上游 dsh 0.1.5-alpha.1 起 CLI 将其圈占给官方 Electron
+    /// 桌面端（<c>rejectElectronProfile</c> 无条件硬拒），本壳用技术栈专名避让（ADR desktop-profile-rename）。</summary>
+    internal const string DesktopProfileName = "dotnet-desktop";
 
     private const string PortFileName = ".dsh-web-port";
 

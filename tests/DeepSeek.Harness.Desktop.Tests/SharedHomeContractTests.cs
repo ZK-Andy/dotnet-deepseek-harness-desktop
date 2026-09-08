@@ -67,7 +67,7 @@ public class SharedHomeContractTests
         }
     }
 
-    /// <summary>验证端口记忆写入 profiles/desktop 下按 profile 隔离，旧全局位置仅保留作迁移回读不再写入。</summary>
+    /// <summary>验证端口记忆写入 profile 目录下按 profile 隔离，旧全局位置仅保留作迁移回读不再写入。</summary>
     [Fact]
     public void PortMemory_LivesUnderDesktopProfile_LegacyPathKeptForMigrationRead()
     {
@@ -79,7 +79,7 @@ public class SharedHomeContractTests
         try
         {
             Assert.Equal(
-                Path.Combine(home, "profiles", "desktop", ".dsh-web-port"),
+                Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, ".dsh-web-port"),
                 HarnessRuntimeHost.ResolvePortFilePath());
             Assert.Equal(
                 Path.Combine(home, ".dsh-web-port"),
@@ -108,7 +108,7 @@ public class SharedHomeContractTests
         try
         {
             // 契约链路 = 壳的启动顺序：先自举 desktop profile（上游对自定义名不自动初始化，缺清单拒启），
-            // 再以 --profile desktop 启动成功
+            // 再以 --profile <DesktopProfileName> 启动成功
             Assert.True(DesktopProfileBootstrap.EnsureProfile(home));
 
             using var host = new HarnessRuntimeHost();
@@ -123,12 +123,12 @@ public class SharedHomeContractTests
 
             host.Stop();
 
-            // 实证布局（rc.1/rc.2）：profile 装配落 <home>/profiles/desktop；会话/凭据居 home 层
+            // 实证布局（rc.1/rc.2）：profile 装配落 <home>/profiles/<DesktopProfileName>；会话/凭据居 home 层
             // （凭据 = <home>/.credentials.yaml，上游 credentials-local 源码钉死；sessions 懒建，
             // 但绝不落 profile 目录内）。storages/ 是启动即建的 home 层状态。
             Assert.True(
                 Directory.Exists(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName)),
-                $"desktop profile 应已装配：{home}/profiles/desktop");
+                $"desktop profile 应已装配：{home}/profiles/{HarnessRuntimeHost.DesktopProfileName}");
             Assert.False(Directory.Exists(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "sessions")));
             Assert.True(Directory.Exists(Path.Combine(home, "storages")), $"storages 应在 home 层：{home}/storages");
         }

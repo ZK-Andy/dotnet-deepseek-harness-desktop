@@ -18,7 +18,7 @@
 全部存在本机共享数据目录 `~/.dsh`（Windows `%USERPROFILE%\.dsh`，各平台路径见 [user-guide.md](user-guide.md)）。模型调用直接从你的机器发往你配置的服务商；应用本身不上传你的数据。
 
 **Q：它和终端版 dsh / TUI 共享数据吗？**
-共享。桌面端使用与 CLI/TUI/Web 相同的规范 home（`~/.dsh`，可用 `DSH_HOME` 覆盖），会话、凭据、工作区天然互通；桌面自己的插件装配放在专属的 `profiles/desktop` 子目录，不干扰其他前端。从 v0.2.x 及更早版本升级属于破坏性切换，旧私有目录不自动迁移——升级前备份，详见 [user-guide.md](user-guide.md)。
+共享。桌面端使用与 CLI/TUI/Web 相同的规范 home（`~/.dsh`，可用 `DSH_HOME` 覆盖），会话、凭据、工作区天然互通；桌面自己的插件装配放在专属的 `profiles/dotnet-desktop` 子目录，不干扰其他前端。从 v0.2.x 及更早版本升级属于破坏性切换，旧私有目录不自动迁移——升级前备份，详见 [user-guide.md](user-guide.md)。
 
 **Q：有系统托盘 / 最小化到托盘 / 开机自启吗？**
 都有：托盘图标常驻（菜单含显示主窗 / 检查更新 / 退出），点击关闭按钮默认隐藏到托盘；开机自启在 设置 →「桌面设置」开启。详见 [user-guide.md](user-guide.md)。

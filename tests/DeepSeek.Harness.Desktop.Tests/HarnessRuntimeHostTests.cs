@@ -189,7 +189,7 @@ public class HarnessRuntimeHostTests
     {
         // 迁移回读：0.3.5 及之前把端口记忆写在 home 根；升级后首次启动应零感知沿用
         string home = Path.Combine(Path.GetTempPath(), "dsh-port-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(home, "profiles", "desktop"));
+        Directory.CreateDirectory(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         try
         {
@@ -206,7 +206,7 @@ public class HarnessRuntimeHostTests
         }
     }
 
-    /// <summary>验证 PersistPort 只写 profiles/desktop 路径下的端口文件，绝不回写 home 根旧位置文件，跨 profile 争抢不能借尸还魂。</summary>
+    /// <summary>验证 PersistPort 只写 profile 路径下的端口文件，绝不回写 home 根旧位置文件，跨 profile 争抢不能借尸还魂。</summary>
     [Fact]
     public void Persist_WritesProfilePathOnly_LegacyFileUntouched()
     {
@@ -263,7 +263,7 @@ public class HarnessRuntimeHostTests
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         try
         {
-            Directory.CreateDirectory(Path.Combine(home, "profiles", "desktop"));
+            Directory.CreateDirectory(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName));
             File.WriteAllText(HarnessRuntimeHost.ResolvePortFilePath(), "not-a-number");
             Assert.Null(HarnessRuntimeHost.TryLoadPersistedPort());
 

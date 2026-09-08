@@ -25,7 +25,7 @@ public static class OrphanDshReaper
     public const string TokenEnv = "DSH_DESKTOP_SPAWN_TOKEN";
 
     /// <summary>读取一次 spawn 的 (pid, token)：PID 文件不存在/损坏 → null（无可清扫，静默）。</summary>
-    /// <param name="pidPath">PID 文件路径（profiles/desktop/.dsh-pid）。</param>
+    /// <param name="pidPath">PID 文件路径（profiles/<see cref="HarnessRuntimeHost.DesktopProfileName"/>/.dsh-pid）。</param>
     public static (int Pid, string Token)? ReadSpawnRecord(string pidPath)
     {
         try

@@ -255,7 +255,7 @@ public class MarketInstallHelperTests
                 "node", "/dsh/bin.js", home, logs.Add, RunFake, CancellationToken.None);
 
             Assert.NotNull(capturedPsi);
-            // 参数形状：dsh bin.js plugin --profile desktop add dshmarket@latest
+            // 参数形状：dsh bin.js plugin --profile <DesktopProfileName> add dshmarket@latest
             Assert.Equal(["/dsh/bin.js", "plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", MarketInstallHelper.MarketSpec], args);
             Assert.Equal(home, capturedPsi!.Environment["DSH_HOME"]);
             // allowBuilds 已放行（ESBuild 至少一条）
@@ -346,7 +346,7 @@ public class MarketInstallHelperTests
                 "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, CancellationToken.None);
 
             Assert.NotNull(capturedPsi);
-            // 参数形状：dsh bin.js plugin --profile desktop add <companion tgz>
+            // 参数形状：dsh bin.js plugin --profile <DesktopProfileName> add <companion tgz>
             Assert.Equal(
                 ["/dsh/bin.js", "plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz")],
                 args);
@@ -476,7 +476,7 @@ public class MarketInstallHelperTests
 
             Assert.NotNull(capturedPsi);
             Assert.Equal("dsh", capturedPsi!.FileName);
-            // 参数形状：dsh plugin --profile desktop add <companion tgz>（无 bin.js 入口）
+            // 参数形状：dsh plugin --profile <DesktopProfileName> add <companion tgz>（无 bin.js 入口）
             Assert.Equal(
                 ["plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz")],
                 args);

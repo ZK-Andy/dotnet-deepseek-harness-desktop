@@ -5,8 +5,9 @@ namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
 /// 桌面专属 profile 自举（ADR shared-home-desktop-profile）。上游 app-boot 只对内置模板
-/// （web/headless）自动初始化 profile；自定义名（desktop）在 <c>profiles/&lt;name&gt;/package.json</c>
-/// 缺失时直接拒启。因此壳在首次 spawn 前按上游 <c>initProfile</c>（dsh-app-boot）同款三件套
+/// （web/headless）自动初始化 profile；自定义名（<see cref="HarnessRuntimeHost.DesktopProfileName"/>）在
+/// <c>profiles/&lt;name&gt;/package.json</c> 缺失时直接拒启。因此壳在首次 spawn 前按上游
+/// <c>initProfile</c>（dsh-app-boot）同款三件套
 /// 自举：<c>package.json</c>（bundles 对齐 web 模板——缺 <c>dsh-web-app</c> 则永远出不了
 /// <c>dsh web:</c> URL）+ 空 <c>cordis.patch.yml</c> + <c>pnpm-workspace.yaml</c>。
 /// 幂等且永不覆写已存在文件：profile 一经初始化（含用户手工管理），所有权归 dsh/用户。
@@ -19,6 +20,50 @@ public static class DesktopProfileBootstrap
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-web-app",
     };
+
+    /// <summary>改名前的旧 profile 名（ADR desktop-profile-rename）：仅作迁移源，不再写入。</summary>
+    internal const string LegacyProfileName = "desktop";
+
+    /// <summary>
+    /// 旧 profile 名一次性迁移（ADR desktop-profile-rename）：上游 dsh 0.1.5-alpha.1 起 CLI 把字面名
+    /// <c>desktop</c> 圈占给官方 Electron 桌面端（无条件硬拒），壳的 profile 改名 <see cref="HarnessRuntimeHost.DesktopProfileName"/>，
+    /// 存量 <c>profiles/desktop</c> 在 spawn 前改名迁移。规则：
+    /// 新目录已存在 → no-op（绝不合并两目录，新目录所有权归 dsh/用户）；
+    /// 旧目录存在 → 同卷 <c>Directory.Move</c>（原子 rename，插件装配/端口记忆/PID 文件整体保留）；
+    /// 移动失败 → 日志留痕、不抛出——降级为全新 profile 自举（<see cref="EnsureProfile"/> 兜底）；
+    /// 旧目录保留，目标位让出前后续启动会继续尝试迁移并留痕，新目录一经自举成功即命中
+    /// 「新目录已存在」跳过分支，绝不合并。
+    /// </summary>
+    /// <param name="dshHome">共享 DSH_HOME 绝对路径。</param>
+    /// <param name="log">诊断日志出口（host.log 同款行文）。</param>
+    public static void MigrateLegacyProfileName(string dshHome, Action<string> log)
+    {
+        string legacyDir = Path.Combine(dshHome, "profiles", LegacyProfileName);
+        if (!Directory.Exists(legacyDir))
+        {
+            return;
+        }
+
+        string newDir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        if (Directory.Exists(newDir))
+        {
+            log($"[host] 桌面 profile 迁移跳过：{HarnessRuntimeHost.DesktopProfileName} 已存在（旧 {LegacyProfileName} 目录保留不合并）");
+            return;
+        }
+
+        try
+        {
+            Directory.Move(legacyDir, newDir);
+            log($"[host] 桌面 profile 已迁移：profiles/{LegacyProfileName} → profiles/{HarnessRuntimeHost.DesktopProfileName}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // best-effort 迁移位（同 PersistPort 契约）：失败不阻断启动，全新 profile 由 EnsureProfile
+            // 自举兜底；旧目录保留——目标位让出前（如用户清掉占位文件）后续启动会继续尝试并留痕，
+            // 新目录一经自举即命中「新目录已存在」跳过分支——绝不静默吞掉：日志给足人可判读信号
+            log($"[host] 桌面 profile 迁移失败（将自举全新 profile，旧 {LegacyProfileName} 目录保留）：{ex.Message}");
+        }
+    }
 
     /// <summary>与上游 dsh-app-boot 的 PROFILE_PATCH_TEMPLATE 逐字一致。</summary>
     internal const string PatchTemplate =

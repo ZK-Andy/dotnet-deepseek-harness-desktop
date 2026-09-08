@@ -235,13 +235,15 @@ public sealed partial class DesktopBootstrap
 
     private void EnsureDesktopProfile()
     {
-        // 桌面专属 profile 自举（ADR shared-home-desktop-profile）：上游对自定义 profile 名不自动初始化，
-        // 缺清单直接拒启；必须在 spawn 前确保 desktop profile 就绪（幂等，已存在则零写入）。
+        // 桌面专属 profile 前置（ADR shared-home-desktop-profile / desktop-profile-rename）：
+        // 先迁移旧名目录（上游 0.1.5-alpha.1 起 CLI 圈占字面名 desktop），再自举——上游对自定义 profile 名
+        // 不自动初始化，缺清单直接拒启；必须在 spawn 前确保 profile 就绪（幂等，已存在则零写入）。
         try
         {
+            DesktopProfileBootstrap.MigrateLegacyProfileName(HarnessRuntimeHost.ResolveDshHome(), Services.HostLog.Write);
             if (DesktopProfileBootstrap.EnsureProfile(HarnessRuntimeHost.ResolveDshHome()))
             {
-                Services.HostLog.Write("[host] 已初始化 profiles/desktop（bundles 对齐 web 模板）");
+                Services.HostLog.Write($"[host] 已初始化 profiles/{HarnessRuntimeHost.DesktopProfileName}（bundles 对齐 web 模板）");
             }
 
             // 启动前 reconcile 不可解析的 bundle 引用（ADR online-first-unbundled-runtime 批次三，
@@ -255,7 +257,7 @@ public sealed partial class DesktopBootstrap
         }
         catch (Exception ex)
         {
-            Services.HostLog.Write($"[host] profiles/desktop 初始化失败（dsh 可能拒启，详见后续降级链路）：{ex.Message}");
+            Services.HostLog.Write($"[host] profiles/{HarnessRuntimeHost.DesktopProfileName} 初始化失败（dsh 可能拒启，详见后续降级链路）：{ex.Message}");
         }
     }
 

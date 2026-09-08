@@ -18,11 +18,11 @@ public class DiagnosticsExporterTests
         {
             // home 内同时布置「应收录」与「必须排除」的文件
             WriteFile(home, "logs/host.log", "host log line");
-            WriteFile(home, "profiles/desktop/.dsh-web-port", "4242");
+            WriteFile(home, $"profiles/{HarnessRuntimeHost.DesktopProfileName}/.dsh-web-port", "4242");
             WriteFile(home, ".dsh-web-port", "1111");
             WriteFile(home, ".credentials.yaml", "SECRET-CREDENTIALS");
             WriteFile(home, "sessions/session.json", "SECRET-SESSION");
-            WriteFile(home, "profiles/desktop/package.json", "{}");
+            WriteFile(home, $"profiles/{HarnessRuntimeHost.DesktopProfileName}/package.json", "{}");
             WriteFile(home, "storages/workspace.json", "{}");
 
             DiagnosticsExportResult result = DiagnosticsExporter.Export(home, outDir, appVersion: "9.9.9-test");
@@ -44,7 +44,7 @@ public class DiagnosticsExporterTests
             // 敏感面绝不进包（内容级断言，防止仅路径巧合）
             Assert.DoesNotContain(".credentials.yaml", names);
             Assert.DoesNotContain("sessions/session.json", names);
-            Assert.DoesNotContain("profiles/desktop/package.json", names);
+            Assert.DoesNotContain($"profiles/{HarnessRuntimeHost.DesktopProfileName}/package.json", names);
             foreach (ZipArchiveEntry entry in zip.Entries)
             {
                 using var reader = new StreamReader(entry.Open());
