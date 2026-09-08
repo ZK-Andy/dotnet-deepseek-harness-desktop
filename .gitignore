@@ -3,6 +3,9 @@
 /HANDOFF-todos.md
 /.plan/
 
+# noogenesis 本地工作区（含独立 .git 的 genes-cache，防 git add -A 误入暂存）
+/.noogenesis/
+
 # .NET 通用忽略
 bin/
 obj/
