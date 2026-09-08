@@ -10,7 +10,7 @@ v0.3.5 自更新实机事故：升级拉起后桌面端反复显示恢复屏（�
 
 ## Decision
 
-1. **端口记忆按 profile 隔离**：`ResolvePortFilePath()` 改为 `<home>/profiles/desktop/.dsh-web-port`；web 侧实例不读该文件（上游 dsh 不认识此约定，仅我方壳读写），从此互不影响。
+1. **端口记忆按 profile 隔离**：`ResolvePortFilePath()` 改为 `<home>/profiles/dotnet-desktop/.dsh-web-port`（profile 名历经 `desktop` → `dotnet-desktop` 改名，见 [desktop-profile-rename](../architecture/2026-09-09-desktop-profile-rename.md)）；web 侧实例不读该文件（上游 dsh 不认识此约定，仅我方壳读写），从此互不影响。
 2. **迁移回读零感知**：新位置缺失时回读旧版 home 根文件（`TryLoadPersistedPort` 内置 legacy fallback），存量用户升级后首启端口不变；写入只落新位置，绝不回流旧文件。
 3. **诊断包同步**：DiagnosticsExporter 白名单收录新旧两个位置（`state/web-port.txt` + `state/web-port-legacy.txt`），便于事后取证。
 

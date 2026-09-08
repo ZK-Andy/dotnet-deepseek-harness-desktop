@@ -44,4 +44,5 @@ Status: implemented
 - [dev 运行时隔离](../process/2026-08-22-dev-runtime-isolation.md)：dev 隔离守卫保留，本决定仅改变产品态 home；其判定所依赖的捆绑闭包信号在本形态下不受影响。
 - [simple-shell-single-global-dsh](2026-08-31-simple-shell-single-global-dsh.md)（implemented）：本篇共享 home 决定不变；该 ADR 进一步**取消"桌面自备运行时"**这一会造成与 CLI 版本分叉的来源（无系统 node 时桌面装 node 到系统全局，桌面与终端共用同一份 node/dsh）。
 - [online-first 去捆绑运行时](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：**部分取代本篇**——「闭包保留为预览期形态、去捆绑是远期选项」条款与 dev 判定挂账由该 ADR 接管（去捆绑启动后 `IsDevRuntime` 信号重构为前置义务）；共享 home / desktop profile 决定不变。
+- [desktop-profile-rename](2026-09-09-desktop-profile-rename.md)（implemented）：**部分取代本篇**——专属 profile 名由 `desktop` 改为 `dotnet-desktop`（上游 dsh 0.1.5-alpha.1 起 CLI 圈占字面名 `desktop`）并加存量目录迁移；共享 home / 壳自举 / reconcile 决定不变。本篇行文中的 `profiles/desktop` 均按此理解。
 - [split-program-main-god-function](../architecture/2026-08-30-split-program-main-god-function.md)（implemented）：本篇的 `Program.cs` 插件任务位置随 P0 拆 Main 迁至 `DesktopBootstrap`。
