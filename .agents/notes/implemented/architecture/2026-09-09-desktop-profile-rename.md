@@ -35,7 +35,7 @@ Review: FULL/2026-09-09/R1=ok R2=ok R3=ok
 ## Consequences
 
 - 与官方 Electron 桌面端可在同一 home 共存：迁移前按官方项目标识判别归属，归官方端即让路、自举全新 `dotnet-desktop`，绝不搬官方数据。
-- 迁移是绕过官方端圈占字面名 `desktop` 的过渡手段：官方端正式发布后随版本移除（连同调用点与 `DesktopProfileMigrationTests`），只保留 `dotnet-desktop` 名——那是死代码清理，不再承担数据安全职责。
+- 迁移长期保留：归属判别已让它对官方目录天然失效，官方端发布后无需删除；存量用户的装配与端口记忆继续无感保留。
 - 存量用户首启一次目录改名，插件装配与端口记忆无感保留；迁移失败可见于 host.log 且不阻断启动。
 - 用户在终端手动 `dsh --profile dotnet-desktop ...` 仍可用（CLI 不拒新名）；继续用旧名 `--profile desktop` 会被 0.1.5+ CLI 拒——那是官方 CLI 对其 Electron 端 profile 的所有权语义，文档已同步。
 - `DiagnosticsExporter` 白名单随常量取新路径；旧名目录不再收录（迁移后不存在；迁移失败或归官方端让路时仍存在，其端口文件缺失仅影响诊断包完整度，非运行态）。
