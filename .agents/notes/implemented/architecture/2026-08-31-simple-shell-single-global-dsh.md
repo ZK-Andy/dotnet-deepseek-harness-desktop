@@ -18,6 +18,7 @@ Status: implemented
 - **删除独立运行时**：不再有 `~/.dsh-desktop/runtime`、不再"下载 Node 装到桌面自备私有目录"；dsh 探测直接走 PATH（`RuntimeVersionGate.ProbeAsync`，无独立 `RuntimeLocator`）。
 - **`RuntimeVersionGate.MinimumVersion` 保留**：全局 dsh 低于兼容线时提示（更新失败/用户自装极旧版的兜底）。
 - **代价（已拍板）**：依赖全局 node + 全局 dsh；上游预发布（alpha）breaking 直触达；装/更新需联网且可能耗时；无 node 机器需先装 Node（提示用户）。
+- **上游缺陷只能壳侧消化**：deepseek-harness 本体不接受外部 PR/issue（2026-09-09 用户确认）——跟版撞上的上游缺陷只能在壳侧规避或自研，别指望上游合入；Ryn / saucer / commandcode 等第三方上游不受此限，按既有惯例提。
 
 ## Alternatives considered
 
