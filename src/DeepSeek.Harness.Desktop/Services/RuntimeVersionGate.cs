@@ -64,6 +64,25 @@ public static class RuntimeVersionGate
             uiLocale?.OkLabel ?? "知道了");
     }
 
+    /// <summary>构造版本探针的 <c>dsh --version</c> 进程启动信息：先剥离宿主继承噪声
+    /// （ADR spawn-env-and-plugin-spec-hardening），避免宿主 <c>NODE_OPTIONS</c> 在探针期执行任意代码。</summary>
+    /// <returns>已配好参数与环境净化的启动信息。</returns>
+    internal static ProcessStartInfo BuildProbePsi()
+    {
+        var psi = new ProcessStartInfo
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        EnvironmentHygiene.StripInherited(psi);
+        HarnessRuntimeHost.UseUtf8TextStreams(psi);
+        psi.FileName = "dsh";
+        psi.ArgumentList.Add("--version");
+        return psi;
+    }
+
     /// <summary>
     /// 只读探测 PATH 上全局 dsh 的版本（<c>dsh --version</c>；全局 dsh 模型下无捆绑形态）。
     /// </summary>
@@ -74,16 +93,7 @@ public static class RuntimeVersionGate
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(ProbeTimeout);
-            var psi = new ProcessStartInfo
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            HarnessRuntimeHost.UseUtf8TextStreams(psi);
-            psi.FileName = "dsh";
-            psi.ArgumentList.Add("--version");
+            ProcessStartInfo psi = BuildProbePsi();
 
             using Process p = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 dsh --version 进程");
             string stdout = await p.StandardOutput.ReadToEndAsync(cts.Token).WaitAsync(cts.Token).ConfigureAwait(false);

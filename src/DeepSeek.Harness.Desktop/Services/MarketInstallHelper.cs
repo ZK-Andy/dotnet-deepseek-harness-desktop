@@ -39,7 +39,7 @@ public static partial class MarketInstallHelper
 
         log($"[host] 引导：registry 安装市场（{MarketSpec}）");
         (int exitCode, string? outText, string? errText) =
-            await RunPluginAddAsync(nodeExe, dshEntry, dshHome, MarketSpec, log, runPluginAdd, ct).ConfigureAwait(false);
+            await RunPluginAddAsync(nodeExe, dshEntry, dshHome, MarketSpec, PluginSpecOrigin.Registry, log, runPluginAdd, ct).ConfigureAwait(false);
         if (exitCode != 0)
         {
             log($"[host] 市场安装失败 exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}（市场缺失不阻塞首启，可稍后经设置/手动安装）");
@@ -94,7 +94,7 @@ public static partial class MarketInstallHelper
         {
             log($"[host] 随包插件安装（{pkg}）spec={spec}");
             (int exitCode, string? outText, string? errText) =
-                await RunPluginAddAsync(nodeExe, dshEntry, dshHome, spec, log, runPluginAdd, ct).ConfigureAwait(false);
+                await RunPluginAddAsync(nodeExe, dshEntry, dshHome, spec, PluginSpecOrigin.Bundled, log, runPluginAdd, ct).ConfigureAwait(false);
             if (exitCode != 0)
             {
                 log($"[host] 随包插件安装失败（{pkg}）exit={exitCode}（常见：ERR_PNPM_IGNORED_BUILDS——workspace 已自动修复，下次启动自愈；详情见 stderr）");
@@ -121,16 +121,25 @@ public static partial class MarketInstallHelper
     /// 构建并运行一次 <c>dsh plugin add</c>（写入桌面 profile）：minReleaseAge 政策拒绝时放宽重试一次。
     /// BuildPsi 与 RunOnce 在此集中（两个安装驱动共用，消除重复）；<paramref name="nodeExe"/> 为 null =
     /// PATH-dsh 运行时（用 PATH 上 dsh 命令，无独立入口参数）。
+    /// <paramref name="origin"/> 为 registry 时先过 <see cref="IsValidRegistrySpec"/>——不合法即拒装留日志，
+    /// 绝不把形状可疑的 spec 透传下游（ADR spawn-env-and-plugin-spec-hardening）。
     /// </summary>
-    private static async Task<(int Exit, string Out, string Err)> RunPluginAddAsync(
+    internal static async Task<(int Exit, string Out, string Err)> RunPluginAddAsync(
         string? nodeExe,
         string? dshEntry,
         string dshHome,
         string spec,
+        PluginSpecOrigin origin,
         Action<string> log,
         Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> runPluginAdd,
         CancellationToken ct)
     {
+        if (origin == PluginSpecOrigin.Registry && !IsValidRegistrySpec(spec, out string reason))
+        {
+            log($"[host] 拒绝不合法的市场插件 spec（{reason}）：{spec}");
+            return (1, string.Empty, reason);
+        }
+
         System.Diagnostics.ProcessStartInfo BuildPsi(bool relaxPolicy)
         {
             var psi = new System.Diagnostics.ProcessStartInfo
@@ -140,6 +149,7 @@ public static partial class MarketInstallHelper
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             };
+            EnvironmentHygiene.StripInherited(psi);
             if (dshEntry is not null)
             {
                 psi.ArgumentList.Add(dshEntry);

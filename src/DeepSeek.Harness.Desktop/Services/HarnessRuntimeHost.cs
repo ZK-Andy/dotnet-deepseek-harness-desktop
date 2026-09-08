@@ -117,11 +117,12 @@ public sealed partial class HarnessRuntimeHost : IDisposable
         return url;
     }
 
-    /// <summary>构造 dsh web 子进程的 ProcessStartInfo（PATH dsh 形态 + 环境注入）。</summary>
+    /// <summary>构造 dsh web 子进程的 ProcessStartInfo（PATH dsh 形态 + 环境注入）。
+    /// 先剥离宿主继承噪声（ADR spawn-env-and-plugin-spec-hardening）再写我方变量。</summary>
     /// <param name="port">固定端口；<c>null</c> 时让 OS 分配（<c>--port 0</c>）。</param>
     /// <param name="home">共享 DSH_HOME。</param>
     /// <param name="spawnToken">孤儿清扫 token（注入环境变量，与落盘 pid 对应）。</param>
-    private ProcessStartInfo BuildStartPsi(int? port, string home, string spawnToken)
+    internal ProcessStartInfo BuildStartPsi(int? port, string home, string spawnToken)
     {
         var psi = new ProcessStartInfo
         {
@@ -130,6 +131,7 @@ public sealed partial class HarnessRuntimeHost : IDisposable
             UseShellExecute = false,
             WorkingDirectory = AppContext.BaseDirectory,
         };
+        EnvironmentHygiene.StripInherited(psi);
         UseUtf8TextStreams(psi);
         psi.FileName = "dsh";
 

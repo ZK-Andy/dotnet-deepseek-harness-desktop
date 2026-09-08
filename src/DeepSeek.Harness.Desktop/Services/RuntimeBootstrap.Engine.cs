@@ -9,8 +9,15 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// </summary>
 public static partial class RuntimeBootstrap
 {
-    private static async Task<(int Exit, string Stdout, string Stderr)> RunCaptureAsync(
-        Action<string> log, string exe, IReadOnlyList<string> args, CancellationToken ct)
+    /// <summary>
+    /// 构造引导子进程（node/npm/dsh）的启动信息：先剥离宿主继承噪声（ADR
+    /// spawn-env-and-plugin-spec-hardening）——宿主 <c>npm_config_registry</c> 之类可改写全局安装的
+    /// 解析来源（供应链面），<c>NODE_OPTIONS</c> 可注入任意代码。
+    /// </summary>
+    /// <param name="exe">可执行路径（允许 Windows 扩展前缀，内部剥离）。</param>
+    /// <param name="args">参数列表。</param>
+    /// <returns>已配好参数、环境净化与 npm 专属堆上限的启动信息。</returns>
+    internal static ProcessStartInfo BuildCapturePsi(string exe, IReadOnlyList<string> args)
     {
         var psi = new ProcessStartInfo
         {
@@ -21,6 +28,7 @@ public static partial class RuntimeBootstrap
             // GUI 子系统壳 spawn node/npm 不能闪控制台窗（Windows）
             CreateNoWindow = true,
         };
+        EnvironmentHygiene.StripInherited(psi);
         HarnessRuntimeHost.UseUtf8TextStreams(psi);
         foreach (string arg in args)
         {
@@ -34,6 +42,14 @@ public static partial class RuntimeBootstrap
         {
             psi.Environment["NODE_OPTIONS"] = "--max-old-space-size=3072";
         }
+
+        return psi;
+    }
+
+    private static async Task<(int Exit, string Stdout, string Stderr)> RunCaptureAsync(
+        Action<string> log, string exe, IReadOnlyList<string> args, CancellationToken ct)
+    {
+        ProcessStartInfo psi = BuildCapturePsi(exe, args);
 
         log?.Invoke($"[bootstrap] run: {psi.FileName} {string.Join(' ', args)}");
         using Process p = Process.Start(psi)
