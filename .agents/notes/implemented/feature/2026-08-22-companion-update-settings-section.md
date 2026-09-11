@@ -12,7 +12,7 @@ Status: implemented
 
 - 页面内容：当前版本行 + 状态行（尚未检查/检查中/下载中 vX.Y.Z/已最新/vX.Y.Z 就绪/安装中）+ 「检查更新」按钮（busy 态禁用）；`ready` 追加「立即安装并重启」主按钮；`error` 状态行显宿主传回的具体原因。
 - 契约扩展：`UpdateState.ToJson` 增加 `current` 字段（`Transition` 单点补齐自 `_currentVersion`，推送与订阅回调统一发补齐后的帧）与 error 态 `message`（经 AppJsonContext 源生成转义）；旧字段形状不动，向后兼容。
-- dev 门禁（自更新栈未装载、路由未注册）：`getState` invoke 失败 → 区块页内显示「不可用」提示行，导航项保留（用户拍板页内提示而非整项隐藏）。
+- 失败降级（自更新栈未装载或命令通道失效）：`getState` invoke 失败 → 区块页内显示提示行，导航项保留（用户拍板页内提示而非整项隐藏）；两种成因分别出文案——dev 门禁（路由未注册）与命令通道整体失效（如端口漂移后的 [IPC origin 错配](../bug-fix/2026-09-12-port-drift-ipc-origin-mismatch.md)），用无条件注册的桌面命令探同一通道来判别。
 - 插件 version `0.0.1 → 0.0.2`：首次践行版本感知升级的 bump 约定，随下一版壳分发即构成该机制的首个真实升级样本。
 
 ## Alternatives considered
@@ -32,3 +32,4 @@ Status: implemented
 - `2026-08-22-desktop-shell-self-update`：状态机、命令路由与侧栏按钮本体。
 - `2026-08-22-companion-plugin-version-aware-upgrade`：本次 version bump 即其约定首次执行。
 - [AOT JSON 源生成收敛](../bug-fix/2026-08-26-aot-json-source-generation.md)：本批引入的状态帧转义机制的现归属。
+- [端口漂移后的 IPC origin 错配](../bug-fix/2026-09-12-port-drift-ipc-origin-mismatch.md)：失败降级从「一种因」细化为「dev 门禁 / 命令通道失效」两种因的来处。

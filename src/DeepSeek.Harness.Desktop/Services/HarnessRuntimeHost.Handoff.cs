@@ -76,9 +76,17 @@ public sealed partial class HarnessRuntimeHost
         StartAttempt fallback = await StartCoreAsync(null, timeout, ct).ConfigureAwait(false);
         if (fallback.Url is not null)
         {
-            // 漂移告警（ADR child-process-reaping-port-drift）：观测位不是修复位——
-            // origin 变化意味着上一会话选中态不保留，日志给出人可判读的残留信号
-            _log?.Invoke($"[host] 首选端口 {preferred} 被占（疑似残留实例或孤儿 dsh），本次漂移至 {fallback.Url.Port}；上一会话选中态将不保留");
+            // 漂移告警（ADR child-process-reaping-port-drift）：观测位不是修复位——origin 变化意味着
+            // 上一会话选中态不保留。页面命令通道的后果只在**窗口已按 dsh URL 建好之后**再换端口时成立
+            // （Ryn IPC 的 CORS 允许源按建窗时的 opts.Url 钉死，ADR port-drift-ipc-origin-mismatch）：
+            // `_port` 非空即「此前已成功起过一次运行时」，非引导路径下那次启动之后窗口才按它的 URL 建好。
+            // 首次成功启动即漂移不追加——非引导路径下窗口随后才按漂移后的 origin 创建，允许源与页面
+            // origin 一致；无 PATH dsh 的首启引导路径另有形态（opts.Url 为 null、窗口先以占位页创建），
+            // 其页面 origin 与允许源的关系不由本判据断言。
+            string pageChannelConsequence = _port is not null
+                ? "；页面命令通道（自更新/设置开关/诊断）本次会话失效，需重启应用"
+                : string.Empty;
+            _log?.Invoke($"[host] 首选端口 {preferred} 被占（疑似残留实例或孤儿 dsh），本次漂移至 {fallback.Url.Port}；上一会话选中态将不保留{pageChannelConsequence}");
         }
 
         return fallback.Url;

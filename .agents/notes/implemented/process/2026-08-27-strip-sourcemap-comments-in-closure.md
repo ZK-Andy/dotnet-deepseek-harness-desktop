@@ -42,4 +42,4 @@ Status: implemented
 
 - [online-first 去捆绑运行时](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：**本篇宿主机器随其批次二退役**——正文机制仅对存量 tag 包（v0.3.12 及更早）有判别/复现价值，新包无闭包不再产生所述形态。
 
-- 上游待办（无关本仓交付物，记 HANDOFF 待办）：Ryn `LocalWebServer.HandleIpcEvalAsync` 缺 CORS 头（`/ipc/eval/` 响应不带 `Access-Control-Allow-Origin`），与本文档同一实机调试会话发现，拟提上游 PR。
+- 上游面（该机制的唯一活跃家在 [port-drift-ipc-origin-mismatch](../bug-fix/2026-09-12-port-drift-ipc-origin-mismatch.md)）：Ryn `LocalWebServer.HandleIpcEvalAsync` 缺 CORS 头（`/ipc/eval/` 响应不带 `Access-Control-Allow-Origin`）——已随该篇提上游 [PR #91](https://github.com/Yupmoh/Ryn/pull/91)。
