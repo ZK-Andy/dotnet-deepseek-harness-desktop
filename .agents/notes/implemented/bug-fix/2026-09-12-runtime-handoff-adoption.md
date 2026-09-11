@@ -67,6 +67,7 @@ Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
 - `RuntimeLineageTests`（19 个测试方法 / 22 个用例）：home 不符、无关命令行 → None；helper 标记优先于其内嵌的 `--profile`，且 `node -e`+`restart` 形状兜底可判 helper；端口签名须同时命中标记与端口且端口后不接数字；父链归属三态（Inside / Outside / Unknown，自环与超深归 Unknown）；运行时面排除（在管树后代、**在管运行时祖先**、父链不可证者，冷启动无在管时全收）；处置计划矩阵（新生续任者收养且无关残留入收割面 / **续任者祖先绝不入收割面（B1 回归）** / 端口无监听时不收养 / 更早残留收割重试 / 端口忙无残留回退 / 端口空无残留重试 / 无参照不收养 / 起始时刻未知不收养）。
 - `HarnessRuntimeHostTests` 增 `BuildStartPsi_CarriesLineageTokenAndHome`：spawn 环境注入血统 token 环境变量 `DSH_DESKTOP_SPAWN_TOKEN`（`RuntimeLineage.TokenEnv`）与生效 `DSH_HOME`（血统判据、清扫与交接处置的共同前提）。
 - 全量 `dotnet test` 569 通过（原 546 + 23 新）；`verify-code-health --enforce`、`verify-code-conventions --enforce`、`dotnet format --verify-no-changes` 全绿。
+- 覆盖率按 CI 同款命令实测 `line-rate=0.5537`（55.37%，`-c Debug --collect:"XPlat Code Coverage"` cobertura）——新增面以 `/proc` 探针与 host 交接接线为主，走实机验收路径而非单测，故总额随被测面扩大略降；README 双语徽章与 `docs/testing.md` 基线同批同步为 569/569、55.37%。
 - 实机验收清单（发布后逐条过）：①市场装插件→点重启：URL/origin 不变、只有一个桌面 dsh、残留端口无占用、host.log 有收养行；②`kill -9` 在管 dsh：恢复不慢于今天；③端口被无关进程占：仍是漂移＋告警；④冷启动前人为留残留：被血统收割且 origin 不变；⑤人为制造端口冲突：失败尝试被立即收割、无悬挂残留。
 - 取证方法可复现：`/tmp/dsh-market-restart-*.out.log`、`~/.dsh/profiles/dotnet-desktop/.dsh-market/log.ndjson`、`~/.dsh/logs/host.log`、`curl /dsh-market/api/v1/capabilities`、`ps -o pid,ppid,lstart,cmd` 与 `/proc/<pid>/environ` 交叉核对。
 

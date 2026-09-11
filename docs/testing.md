@@ -1,10 +1,10 @@
 # Testing
 
-> 测试基线以 README 双语徽章为准（当前 473/473，覆盖率 53%+）；`dotnet test` 全绿 0 警告是每次提交的硬门。
+> 测试基线以 README 双语徽章为准（当前 569/569，覆盖率 55.37%）；`dotnet test` 全绿 0 警告是每次提交的硬门。
 
 ## 单测
 
-* 框架：`xunit 2.9.3`，`dotnet test dotnet-deepseek-harness-desktop.slnx`；测试工程 `tests/DeepSeek.Harness.Desktop.Tests/`（37 个测试文件）。
+* 框架：`xunit 2.9.3`，`dotnet test dotnet-deepseek-harness-desktop.slnx`；测试工程 `tests/DeepSeek.Harness.Desktop.Tests/`。
 * 覆盖面（按域分组，逐类细节见各文件头 `<summary>`）：
   * **壳与运行时**：`HarnessUrlParserTests`（`dsh web:` 行解析）、`HarnessRuntimeHostTests`（端口分配/记忆/占位回退/生命周期门/取消契约）、`RuntimeVersionGateTests`（版本底线判定 + 底线横幅）、`DesktopProfileBootstrapTests`/`SharedHomeContractTests`（desktop profile 自举与共享 home 契约）、`RunMarkerTests`（非受控退出标记与横幅）、`DesktopBannerTests`（横幅工厂幂等/堆叠/转义）。
   * **监督与观测**：`PageHealthMonitorTests`（页面健康探针）、`HostLogAndDiagnosticsTests`（HostLog 出口脱敏集成）、`SecretMaskerTests`（凭据形状遮罩纯函数）、`DiagnosticsTests`（诊断包导出）、`RecoveryPageTests`（恢复页脚本构建）。
