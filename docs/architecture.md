@@ -28,13 +28,13 @@
 
 * **运行时来源 = 系统全局 node + 全局 dsh**（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）：安装器不携带运行时；dsh 版本探测走 PATH（`RuntimeVersionGate.ProbeAsync`，无独立 RuntimeLocator）。PATH 上无全局 dsh 时进入**首启引导**：`RuntimeBootstrap` 确保**系统全局 node**（复用 PATH 上用户 node/npm；无则桌面下载最新官方 node 装到系统全局前缀——默认 `~/.local`、写系统位需 sudo 时提示手动命令，不自备私有 node），用其 npm `npm install -g @deepseek-ai/dsh@alpha`（装/更新到 alpha 预发布通道，落到系统全局位），验证 `dsh --version` 可解析；dsh `npm install -g` 因权限需 sudo 时提示手动命令。失败进度页可见、可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
 * dsh 版本只读探测：`Services/RuntimeVersionGate.ProbeAsync` 直跑 PATH `dsh --version`（全局 dsh 模型无捆绑形态），不维护任何下载运行时目录。
-* `Services/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`，占位回退 `0`。
+* `Services/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`。首选端口失败（stderr `EADDRINUSE` 签名或子进程早退，失败尝试即时整树回收）由 `Services/RuntimeLineage` 的血统判据处置（ADR `implemented/bug-fix/2026-09-12-runtime-handoff-adoption`）：新生续任者 → 收养（登记 pid＋token、退出整树收割）；更早血统残留 → 收割后重试首选端口；占用者非我方血统 → 回退 OS 分配并写漂移告警。冷启动并用 `.dsh-pid` 记录复验与血统扫描收敛残留。
 * `Services/HarnessUrlParser`：单行解析 `dsh web: http://127.0.0.1:<port>`。
 
 ## 单实例与退出
 
 * `Services/LauncherActivation`：UDS 单实例仲裁（`$XDG_RUNTIME_DIR` 锁地址，dev 隔离同源）——首实例 `bind/listen` 持锁，launcher 二启发 `show` 命令请主实例显示主窗后退出；残留 socket 探活自愈，清理失败降级无监听主实例（绝不挡启动）。Windows 不启用。
-* 托盘「退出」走有序编排：取消监督器 → `host.Stop()` 整树回收 dsh → marker Release → 关窗 → 8s 看门狗强制终结；端口被占回退 OS 分配时写漂移告警。
+* 托盘「退出」走有序编排：取消监督器 → `host.Stop()` 整树回收在管运行时（本进程子进程或收养的续任者）→ marker Release → 关窗 → 8s 看门狗强制终结；端口被非血统进程占而回退 OS 分配时写漂移告警。
 
 ## 崩溃监督
 

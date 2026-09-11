@@ -26,6 +26,7 @@ Status: implemented
 
 ## Related
 
+- [收养市场接力的 dsh 续任者（运行时交接）](2026-09-12-runtime-handoff-adoption.md)：**部分取代**——本决策 Alternatives 落败「attach 存活 dsh」的**理由**（探活猜归属）已换为「血统可证＋可证新生」，但**结论方向未翻转**：仍不做泛化 attach，收养只针对市场接力的续任者，漂移告警仍是最后兜底。
 - [单实例 launcher 激活](../architecture/2026-08-26-single-instance-launcher-activation.md)：同批姊妹决策——多实例诱因的根治面。
 - [端口记忆按 profile 隔离](2026-08-26-port-memory-per-profile.md)：首选端口持久化机制的出处。
 - [托盘与关闭最小化](../architecture/2026-08-24-shell-tray-hide-to-tray.md)：ApproveExit→Close 顺序契约与本编排放大后的关系。

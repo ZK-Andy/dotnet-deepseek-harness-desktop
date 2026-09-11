@@ -3,7 +3,8 @@ using System.Diagnostics;
 namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>托管 dsh 运行时子进程：spawn dsh（`--profile <see cref="HarnessRuntimeHost.DesktopProfileName"/> --port 0`），解析 `dsh web:` URL，管理生命周期。
-/// 静态路径/环境解析面见 <c>HarnessRuntimeHost.Paths.cs</c>（partial）。</summary>
+/// 静态路径/环境解析面见 <c>HarnessRuntimeHost.Paths.cs</c>；端口冲突的交接处置（收养市场接力的续任者 /
+/// 收割血统残留 / 回退漂移）见 <c>HarnessRuntimeHost.Handoff.cs</c>（两者皆 partial）。</summary>
 /// <remarks>对应 implemented architecture ADR shared-home-desktop-profile：壳只负责运行时生命周期，组合的 Harness
 /// 插件树即应用运行时；产品态默认上游规范共享 home `~/.dsh`，专属 `profiles/dotnet-desktop` 承载插件装配
 /// （0.1.5-alpha.1 起上游 CLI 圈占字面名 desktop 给官方 Electron 端，故改名，见 ADR desktop-profile-rename）。
@@ -11,6 +12,36 @@ namespace DeepSeek.Harness.Desktop.Services;
 public sealed partial class HarnessRuntimeHost : IDisposable
 {
     private const int StderrTailCapacity = 40;
+
+    /// <summary>单次启动尝试的失败原因（决定首选端口冲突的后续处置与日志措辞）。</summary>
+    private enum StartFailure
+    {
+        /// <summary>stderr 命中端口被占签名（EADDRINUSE）：子进程仍会悬挂约 40s 才退出，签名是最早信号。</summary>
+        PortConflict,
+
+        /// <summary>子进程未给出 URL 即退出。</summary>
+        EarlyExit,
+
+        /// <summary>时限内未给出 URL。</summary>
+        NoUrl,
+
+        /// <summary>取消（终态，不再 spawn）。</summary>
+        Cancelled,
+    }
+
+    /// <summary>单次启动尝试的结果：成功带 URL，失败带原因（null = 成功）。</summary>
+    /// <param name="Url">成功时的 `dsh web:` URL。</param>
+    /// <param name="Failure">失败原因；null 表示本次尝试成功。</param>
+    private readonly record struct StartAttempt(Uri? Url, StartFailure? Failure)
+    {
+        /// <summary>成功结果。</summary>
+        /// <param name="url">解析出的 URL。</param>
+        public static StartAttempt Success(Uri url) => new(url, null);
+
+        /// <summary>失败结果。</summary>
+        /// <param name="failure">失败原因。</param>
+        public static StartAttempt Failed(StartFailure failure) => new(null, failure);
+    }
 
     private readonly Action<string>? _log;
     private int? _port;
@@ -77,34 +108,32 @@ public sealed partial class HarnessRuntimeHost : IDisposable
         }
     }
 
-    /// <summary>StartAsync 的门内主体（Stop 之后的部分）：冷启动清扫 + spawn + 端口记忆。</summary>
+    /// <summary>StartAsync 的门内主体（Stop 之后的部分）：残留收敛 + spawn + 交接处置 + 端口记忆。</summary>
     private async Task<Uri?> StartInnerAsync(TimeSpan timeout, CancellationToken ct)
     {
-        // 冷启动（_port 未初始化）时清扫上次宿主异常死亡遗留的孤儿 dsh（ADR self-update-exit-reaps-dsh-child
-        // 缺口 B）。仅冷启动做：进程内崩溃恢复（RestartAsync）时 _port 已设、PID 记录已被本次 spawn
-        // 覆盖为新 token，重复清扫反而可能误评。token 复验不匹配/读不到一律不杀（零误杀）。
-        if (_port is null)
+        // 冷启动（_port 未初始化）时收敛上次遗留的运行时残留（ADR self-update-exit-reaps-dsh-child 缺口 B）。
+        // 两条判据并用：.dsh-pid 记录复验（跨平台快路径）+ 血统扫描（记录被后续 spawn 覆盖后的主路径）。
+        // 仅冷启动做：进程内重启时在管运行时由 StopCore 与交接处置负责。
+        bool coldStart = _port is null;
+        if (coldStart)
         {
             _log?.Invoke($"[host] 冷启动：清扫孤儿 dsh（{ResolvePidFilePath()}）");
             OrphanDshReaper.Reap(
                 ResolvePidFilePath(),
-                OrphanDshReaper.ReadTokenLinux(),
-                OrphanDshReaper.KillTreeProcessTree(),
+                RuntimeLineage.ReadToken,
+                RuntimeLineage.KillTree,
                 _log);
+            HarvestLineageResidue("冷启动");
         }
 
         int? preferred = _port ?? TryLoadPersistedPort();
-        Uri? url = await StartCoreAsync(preferred, timeout, ct);
-        if (url is null && preferred is not null)
+        // 交接判据的参照：刚退出那个运行时的起始时刻（必须在本次尝试覆盖 _runtimeStartedUtc 之前取）
+        DateTimeOffset? supervisedStart = _runtimeStartedUtc;
+        StartAttempt attempt = await StartCoreAsync(preferred, timeout, ct).ConfigureAwait(false);
+        Uri? url = attempt.Url;
+        if (url is null && preferred is not null && attempt.Failure is StartFailure failure && failure != StartFailure.Cancelled)
         {
-            // 固定端口被占（kill 后未及时释放 / 其他进程占用）：回退 OS 分配
-            url = await StartCoreAsync(null, timeout, ct);
-            if (url is not null)
-            {
-                // 漂移告警（ADR child-process-reaping-port-drift）：观测位不是修复位——
-                // origin 变化意味着上一会话选中态不保留，日志给出人可判读的残留信号
-                _log?.Invoke($"[host] 首选端口 {preferred} 被占（疑似残留实例或孤儿 dsh），本次漂移至 {url.Port}；上一会话选中态将不保留");
-            }
+            url = await RecoverFromFailureAsync(preferred.Value, failure, supervisedStart, timeout, ct).ConfigureAwait(false);
         }
 
         if (url is not null)
@@ -112,6 +141,12 @@ public sealed partial class HarnessRuntimeHost : IDisposable
             _port = url.Port;
             // 跨进程持久化：冷启动复用同端口（origin 不变）才能恢复 dsh Web 端的上一会话
             PersistPort(url.Port);
+            // 启动成功后收敛一次：抢端口输给我们的市场 helper/续任者此刻正等端口空出，就地收割。
+            // 冷启动那次已在 spawn 前全量收敛，且此刻市场 UI 尚未起来，不重复扫描。
+            if (!coldStart)
+            {
+                HarvestLineageResidue("启动成功后收敛");
+            }
         }
 
         return url;
@@ -149,42 +184,74 @@ public sealed partial class HarnessRuntimeHost : IDisposable
             home,
             Path.PathSeparator);
 
-        // 孤儿清扫 token（ADR self-update-exit-reaps-dsh-child，缺口 B）：宿主异常死亡时 dsh 成
-        // systemd 收养孤儿占端口。给本次 spawn 的 dsh 注入唯一 token（经环境变量），并把 pid+token
-        // 落盘；下次冷启动清扫时靠 /proc/<pid>/environ 复验 token 才杀——PID 复用指向无关进程时
-        // 读不到本 token，绝不误杀。跨平台可测核心见 <see cref="OrphanDshReaper"/>。
-        psi.Environment["DSH_DESKTOP_SPAWN_TOKEN"] = spawnToken;
+        // 血统 token（ADR self-update-exit-reaps-dsh-child 缺口 B；血统判据见 RuntimeLineage）：
+        // 宿主异常死亡时 dsh 成 systemd 收养孤儿占端口。给本次 spawn 的 dsh 注入唯一 token（经环境变量），
+        // 并把 pid+token 落盘；清扫时复验该 PID 进程环境带的 token。市场自重启的 helper 与续任者由 dsh
+        // 以 `env: process.env` 转发同一变量，故同属血统——端口冲突时据此收养续任者或收割残留。
+        psi.Environment[RuntimeLineage.TokenEnv] = spawnToken;
         return psi;
     }
 
-    private async Task<Uri?> StartCoreAsync(int? port, TimeSpan timeout, CancellationToken ct = default)
+    /// <summary>单次启动尝试：spawn + 等 URL，失败即回收该次子进程（绝不留下无人认领的悬挂 dsh）。</summary>
+    /// <param name="port">固定端口；<c>null</c> 时让 OS 分配。</param>
+    /// <param name="timeout">等待 URL 的时限。</param>
+    /// <param name="ct">取消令牌。</param>
+    /// <returns>成功带 URL；失败带原因（端口冲突 / 早退 / 超时 / 取消）。</returns>
+    private async Task<StartAttempt> StartCoreAsync(int? port, TimeSpan timeout, CancellationToken ct = default)
     {
         // 退出编排已取消：绝不 spawn 新子进程——否则孤儿 dsh 会越过 Stop 存活到壳死后，
         // 复现冷启动端口漂移（ADR child-process-reaping-port-drift）。取消是终态，按「起不来」返回。
         if (ct.IsCancellationRequested)
         {
-            return null;
+            return StartAttempt.Failed(StartFailure.Cancelled);
         }
 
         string home = ResolveDshHome();
         Directory.CreateDirectory(home);
         string spawnToken = Guid.NewGuid().ToString("N");
         ProcessStartInfo psi = BuildStartPsi(port, home, spawnToken);
+        DateTimeOffset startedUtc = DateTimeOffset.UtcNow;
 
-        _process = Process.Start(psi)
+        Process process = Process.Start(psi)
             ?? throw new InvalidOperationException("无法启动 dsh 进程。");
+        _process = process;
         // spawn 成功立即落盘 pid+token：崩溃监督重启（RestartAsync）复用同一路径覆盖为新 token。
-        PersistSpawn(_process.Id, spawnToken);
+        PersistSpawn(process.Id, spawnToken);
         if (ct.IsCancellationRequested)
         {
             // 取消落在上方检查点与 spawn 之间的窄窗：立即整树回收再返回，
             // 绝不让刚起的进程成为无人认领的孤儿（监督器此刻已在收摊，不会再 Stop 它）。
             // 门内语境：必须调 StopCore——公共 Stop 会因本方法已持有生命周期门而 3s 超时跳过。
             StopCore();
-            return null;
+            return StartAttempt.Failed(StartFailure.Cancelled);
         }
 
-        _process.ErrorDataReceived += (_, e) =>
+        StartAttempt outcome = await WaitForUrlAsync(process, port, timeout, ct).ConfigureAwait(false);
+        if (outcome.Url is not null)
+        {
+            // 起始时刻即「新生续任者」的参照：只有诞生于它之后的血统服务端才是接力产物
+            _runtimeStartedUtc = startedUtc;
+            return outcome;
+        }
+
+        // 失败尝试整树回收：它已不可能提供服务，留活只会变成无人认领的悬挂进程（实测约 40s 才自退）
+        StopCore();
+        return outcome;
+    }
+
+    /// <summary>等待本次尝试给出 URL：三条失败信号竞争，先到者胜。</summary>
+    /// <param name="process">本次 spawn 的子进程。</param>
+    /// <param name="port">本次尝试的固定端口（用于识别端口冲突签名）；<c>null</c> 时无签名可认。</param>
+    /// <param name="timeout">等待 URL 的时限。</param>
+    /// <param name="ct">取消令牌。</param>
+    /// <returns>成功带 URL；失败带原因。</returns>
+    /// <remarks>信号：①stderr 命中 EADDRINUSE 且点名该端口（实测 1–2s 内即到，而进程还要悬挂约 40s
+    /// 才自行退出）；②子进程早退且未给出 URL；③时限耗尽/取消。</remarks>
+    private async Task<StartAttempt> WaitForUrlAsync(Process process, int? port, TimeSpan timeout, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<Uri?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool portConflict = false;
+        process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is null)
             {
@@ -199,13 +266,18 @@ public sealed partial class HarnessRuntimeHost : IDisposable
                     _stderrTail.RemoveRange(0, _stderrTail.Count - StderrTailCapacity);
                 }
             }
+
+            if (port is int boundPort && RuntimeLineage.IsPortConflictStderr(e.Data, boundPort))
+            {
+                portConflict = true;
+                tcs.TrySetResult(null);
+            }
         };
-        _process.BeginErrorReadLine();
+        process.BeginErrorReadLine();
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(timeout);
-        var tcs = new TaskCompletionSource<Uri?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _process.OutputDataReceived += (_, e) =>
+        process.OutputDataReceived += (_, e) =>
         {
             if (e.Data is null)
             {
@@ -218,15 +290,24 @@ public sealed partial class HarnessRuntimeHost : IDisposable
                 tcs.TrySetResult(uri);
             }
         };
-        _process.BeginOutputReadLine();
+        process.BeginOutputReadLine();
+        // 子进程早退（无 URL）即失败：不再空等满 timeout
+        process.EnableRaisingEvents = true;
+        process.Exited += (_, _) => tcs.TrySetResult(null);
 
         try
         {
-            return await tcs.Task.WaitAsync(cts.Token);
+            Uri? url = await tcs.Task.WaitAsync(cts.Token).ConfigureAwait(false);
+            if (url is not null)
+            {
+                return StartAttempt.Success(url);
+            }
+
+            return StartAttempt.Failed(portConflict ? StartFailure.PortConflict : StartFailure.EarlyExit);
         }
         catch (OperationCanceledException)
         {
-            return null;
+            return StartAttempt.Failed(ct.IsCancellationRequested ? StartFailure.Cancelled : StartFailure.NoUrl);
         }
     }
 
@@ -240,12 +321,15 @@ public sealed partial class HarnessRuntimeHost : IDisposable
         return StartAsync(timeout, ct);
     }
 
-    /// <summary>当 dsh 子进程退出时完成（用于崩溃监督；子进程不存在时立即完成）。</summary>
+    /// <summary>当在管运行时退出时完成（用于崩溃监督；无在管运行时立即完成）。本进程子进程挂
+    /// <c>Exited</c> 事件；收养的市场续任者非本进程子进程，改由 <see cref="WaitAdoptedExitAsync"/> 轮询判活。</summary>
     public Task WaitForExitAsync()
     {
         if (_process is not { HasExited: false } p)
         {
-            return Task.CompletedTask;
+            return _adoptedPid is int adopted && _adoptedToken is string token
+                ? WaitAdoptedExitAsync(adopted, token)
+                : Task.CompletedTask;
         }
 
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -275,7 +359,8 @@ public sealed partial class HarnessRuntimeHost : IDisposable
         }
     }
 
-    /// <summary>门内的实际回收：kill 进程树 + 等 3s，未退透留痕（冷启动孤儿清扫兜底残留）。</summary>
+    /// <summary>门内的实际回收：kill 在管运行时（本进程子进程 + 收养的续任者）进程树，未退透留痕
+    /// （残留交冷启动清扫与血统收割兜底）。</summary>
     private void StopCore()
     {
         if (_process is { HasExited: false } p)
@@ -291,12 +376,13 @@ public sealed partial class HarnessRuntimeHost : IDisposable
 
             if (!p.WaitForExit(3000))
             {
-                // 观测位不是修复位：kill 已发出但未确认死亡，残留由冷启动孤儿清扫兜底
+                // 观测位不是修复位：kill 已发出但未确认死亡，残留由冷启动清扫兜底
                 _log?.Invoke($"[host] dsh（pid {p.Id}）kill 后 3s 未确认退出，残留交冷启动孤儿清扫兜底");
             }
         }
 
         _process = null;
+        KillAdoptedRuntime();
     }
 
     /// <inheritdoc />

@@ -41,6 +41,17 @@ public class HarnessRuntimeHostTests
         Assert.Equal("/home/u/.local/bin", HarnessRuntimeHost.BuildEnrichedPath(current, "/home/u", ':'));
     }
 
+    /// <summary>验证 spawn 环境注入血统 token 与生效 home：血统扫描、孤儿清扫、端口交接处置全依赖这两项。</summary>
+    [Fact]
+    public void BuildStartPsi_CarriesLineageTokenAndHome()
+    {
+        using var host = new HarnessRuntimeHost();
+        System.Diagnostics.ProcessStartInfo psi = host.BuildStartPsi(port: 0, home: "/home/u/.dsh", spawnToken: "token-xyz");
+
+        Assert.Equal("token-xyz", psi.Environment[RuntimeLineage.TokenEnv]);
+        Assert.Equal("/home/u/.dsh", psi.Environment["DSH_HOME"]);
+    }
+
     /// <summary>验证 ~/.local/bin 未出现在既有 PATH 中时被追加到末尾，原有各段相对顺序保持不变。</summary>
     [Fact]
     public void BuildEnrichedPath_MissingLocalBin_AppendsAfterExisting()

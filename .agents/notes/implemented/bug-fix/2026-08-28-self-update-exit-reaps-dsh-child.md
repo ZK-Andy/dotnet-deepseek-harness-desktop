@@ -58,9 +58,9 @@ v0.3.11 实机复现：自更新 0.3.6→0.3.11 后，宿主退出时其 dsh 子
 **核心「零误杀」设计**：绝不裸用 PID 匹配（PID 复用指向无关进程会误杀，不可逆）。改为——
 
 1. **spawn 时注入唯一 token**：`HarnessRuntimeHost.StartCoreAsync` spawn dsh 时设环境变量 `DSH_DESKTOP_SPAWN_TOKEN=<uuid>`（Guid.NewGuid），并把 `pid\ntoken` 写入 profile 的 `.dsh-pid` 文件（`PersistSpawn`）。
-2. **冷启动清扫**：`HarnessRuntimeHost.StartAsync` 开头（仅 `_port is null` 的冷启动时）调 `OrphanDshReaper.Reap`：读 `.dsh-pid`,取 `(pid, token)`;用 `ReadTokenLinux()`（读 `/proc/<pid>/environ` 找 `DSH_DESKTOP_SPAWN_TOKEN`）复验该 PID 进程环境带的 token 是否与记录一致。**一致才整树杀**；`readToken` 读不到（进程已死）/不一致（PID 复用）/非 Linux——一律**不杀**，只记日志，端口漂移告警兜底。
+2. **冷启动清扫**：`HarnessRuntimeHost.StartAsync` 开头（仅 `_port is null` 的冷启动时）先调 `OrphanDshReaper.Reap`（记录路径），再调血统扫描（`HarvestLineageResidue("冷启动")`，覆盖记录已被后续 spawn 覆盖的情形）：读 `.dsh-pid`,取 `(pid, token)`;用 `ReadTokenLinux()`（读 `/proc/<pid>/environ` 找 `DSH_DESKTOP_SPAWN_TOKEN`）复验该 PID 进程环境带的 token 是否与记录一致。**一致才整树杀**；`readToken` 读不到（进程已死）/不一致（PID 复用）/非 Linux——一律**不杀**，只记日志，端口漂移告警兜底。
 
-跨平台可测：`OrphanDshReaper.Reap` 接受注入的 `readToken(pid)` 与 `killTree(pid)` 委托，纯逻辑可 xunit 单测（见 Testing）。生产封装 `ReadTokenLinux()` 与 `KillTreeProcessTree()`（`Process.Kill(entireProcessTree)`）。
+跨平台可测：`OrphanDshReaper.Reap` 接受注入的 `readToken(pid)` 与 `killTree(pid)` 委托，纯逻辑可 xunit 单测（见 Testing）。生产由组合点直接注入 `RuntimeLineage.ReadToken` 与 `RuntimeLineage.KillTree`（`Process.Kill(entireProcessTree)`；原两个转发工厂已随 [运行时交接收养](2026-09-12-runtime-handoff-adoption.md) 删除）。
 
 ## Alternatives considered
 
@@ -87,6 +87,7 @@ v0.3.11 实机复现：自更新 0.3.6→0.3.11 后，宿主退出时其 dsh 子
 
 ## Related
 
+- [收养市场接力的 dsh 续任者（运行时交接）](2026-09-12-runtime-handoff-adoption.md)：扩展本决策缺口 B 的清扫判据——`.dsh-pid` 单一记录之外并上血统扫描（记录被后续 spawn 覆盖后仍能收敛）。
 - [子进程收割与端口漂移](2026-08-26-child-process-reaping-port-drift.md)：本决策收口其第 3 点自更新留白；有序退出编排的姊妹决策。
 - [端口记忆按 profile 隔离](2026-08-26-port-memory-per-profile.md)：首启端口持久化与漂移兜底的出处。
 - [GUI 冻结取证探针](../process/2026-08-28-gui-freeze-forensics-probe.md)：本次事故的现场来自探针脚本（`probe-gui-freeze.sh`）与 host.log/install.log 交叉核对。

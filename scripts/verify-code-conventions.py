@@ -53,6 +53,8 @@ D005_WHITELIST = {
     "RunMarker.cs",
     "Autostart.cs",
     "OrphanDshReaper.cs",
+    # runtime lineage probes (/proc reads, tree kill, loopback probe; ADR runtime-handoff-adoption)
+    "RuntimeLineage.Probes.cs",
     "DiagnosticsExporter.cs",
     "PluginVersionCheck.cs",
     "DesktopProfileBootstrap.cs",

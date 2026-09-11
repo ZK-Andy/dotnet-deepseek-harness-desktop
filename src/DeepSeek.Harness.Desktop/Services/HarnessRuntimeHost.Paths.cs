@@ -26,8 +26,9 @@ public sealed partial class HarnessRuntimeHost
 
     private const string PortFileName = ".dsh-web-port";
 
-    /// <summary>dsh 子进程 PID 记忆文件名（落于当前 profile 目录）：宿主异常死亡时 dsh 成孤儿被
-    /// systemd 收养、继续占住首选端口（ADR self-update-exit-reaps-dsh-child，v0.3.11 实机
+    /// <summary>在管运行时 PID 记忆文件名（落于当前 profile 目录）：记录当前服务中的那个 dsh——
+    /// 本进程子进程，或收养的市场接力续任者（非子进程，ADR runtime-handoff-adoption）。宿主异常死亡时
+    /// dsh 成孤儿被 systemd 收养、继续占住首选端口（ADR self-update-exit-reaps-dsh-child，v0.3.11 实机
     /// PPID=systemd --user 实证）。下次冷启动据此清扫残留——跨平台，不全靠 Linux 的 PDEATHSIG。</summary>
     private const string PidFileName = ".dsh-pid";
 
@@ -47,7 +48,8 @@ public sealed partial class HarnessRuntimeHost
     internal static string ResolvePidFilePath() =>
         Path.Combine(ResolveDshHome(), "profiles", DesktopProfileName, PidFileName);
 
-    /// <summary>记录本次 spawn 的 dsh PID + 孤儿清扫 token（尽力而为：写失败仅导致下次冷启动清扫落空，端口漂移告警兜底）。</summary>
+    /// <summary>记录在管运行时的 PID + 血统 token（本次 spawn 的子进程，或收养的续任者；尽力而为：
+    /// 写失败仅导致下次冷启动清扫落空，端口漂移告警兜底）。</summary>
     internal static void PersistSpawn(int pid, string token)
     {
         try
