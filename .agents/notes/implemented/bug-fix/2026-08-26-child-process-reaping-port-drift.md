@@ -9,7 +9,7 @@ Status: implemented
 ## Decision
 
 1. **托盘退出升级为确定性有序退出编排**：退出路由不再裸调 `trayWindow.Close()`，改走编排委托——`ApproveExit` → 取消监督器令牌 → `host.Stop()`（整树击杀 dsh，先于关窗执行，运行时回收不再依赖 GTK loop 行为）→ marker Release → `Close()` → **8s 退出看门狗**（主循环届时仍未返回则记日志并 `Environment.Exit(0)`，把静默滞留变成确定性终结）。编排委托经持有器延迟接线（注册期早于 supervisorCts 声明），恢复页退出路由维持原序不扩批。监督器的崩溃重启受取消令牌双检查护航（StartAsync 入口与 spawn 点各一道）：取消后绝不再 spawn 新子进程，看门狗 Exit 路径同样没有孤儿可漏。
-2. **端口漂移显式告警**：`HarnessRuntimeHost.StartAsync` 首选端口绑定失败回退 OS 分配成功时，写 host.log warning——点明疑似残留实例/孤儿占用、本次 origin 将变化、上一会话选中态不保留。运行时宿主新增可选日志依赖（缺省 null 安全）。
+2. **端口漂移显式告警**：`HarnessRuntimeHost.StartAsync` 首选端口绑定失败回退 OS 分配成功时，写 host.log warning——点明疑似残留实例/孤儿占用、本次 origin 将变化、上一会话选中态不保留，以及**窗口已按 dsh URL 建好之后**再换端口时的连带后果（页面→壳命令通道本会话失效、需重启应用，见 [IPC origin 错配](2026-09-12-port-drift-ipc-origin-mismatch.md)）。运行时宿主新增可选日志依赖（缺省 null 安全）。
 3. **自更新 `Environment.Exit(0)` 兜底路径维持现状**：该路径由 pkexec 脚本接管进程接力，强退前补 Stop 的收益与脚本时序耦合，留待实机复现孤儿后再议。
 
 ## Alternatives considered
@@ -27,6 +27,7 @@ Status: implemented
 ## Related
 
 - [收养市场接力的 dsh 续任者（运行时交接）](2026-09-12-runtime-handoff-adoption.md)：**部分取代**——本决策 Alternatives 落败「attach 存活 dsh」的**理由**（探活猜归属）已换为「血统可证＋可证新生」，但**结论方向未翻转**：仍不做泛化 attach，收养只针对市场接力的续任者，漂移告警仍是最后兜底。
+- [端口漂移后的 IPC origin 错配](2026-09-12-port-drift-ipc-origin-mismatch.md)：本篇告警**未覆盖的后果面**——origin 变化不只影响会话选中态，还让「页面→壳」命令通道本会话失效（Ryn IPC 的 CORS 允许源在窗口创建时钉死）。
 - [单实例 launcher 激活](../architecture/2026-08-26-single-instance-launcher-activation.md)：同批姊妹决策——多实例诱因的根治面。
 - [端口记忆按 profile 隔离](2026-08-26-port-memory-per-profile.md)：首选端口持久化机制的出处。
 - [托盘与关闭最小化](../architecture/2026-08-24-shell-tray-hide-to-tray.md)：ApproveExit→Close 顺序契约与本编排放大后的关系。

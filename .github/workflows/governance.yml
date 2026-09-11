@@ -17,30 +17,39 @@ jobs:
         with:
           persist-credentials: false
       - name: 校验 Issue/PR 输入
+        # 事件载荷（标题/正文/labels）一律经 env 传入，**禁止**在 run: 里插值 ${{ github.event.* }}：
+        # 正文里的反引号会被 shell 当命令替换执行（脚本注入；模板本身就用反引号），
+        # 且注入内容一旦不是命令即 exit 127 把这条提示级校验变成红。见 PR #1 的实跑证据。
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set -euo pipefail
           echo "== governance 输入校验（Owner/优先级/分类 + PR checklist）=="
-          # 此校验为轻量提示，不阻断合并（continue-on-error 思想），但会在日志中 fail loud
+          # 此校验为轻量提示，不阻断合并（正文不合模板只出 warning），但会在日志中 fail loud
           # Issue：检查标题与正文含 Owner/priority/class（模板已强制，空白 Issue 已禁）
           # PR：检查描述含 Reviewer Checklist 与 ADR 链接（若为非平凡变更）
-          EVENT="${{ github.event_name }}"
-          echo "event=$EVENT"
-          if [[ "$EVENT" == "issues" ]]; then
-            echo "Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}"
-            echo "labels: ${{ join(github.event.issue.labels.*.name, ', ') }}"
+          echo "event=$EVENT_NAME"
+          if [[ "$EVENT_NAME" == "issues" ]]; then
+            echo "Issue #$ISSUE_NUMBER: $ISSUE_TITLE"
+            echo "labels: $ISSUE_LABELS"
             # 仅提示：模板已强制 Owner/priority，额外检查正文长度
-            BODY="${{ github.event.issue.body }}"
-            if [[ -z "$BODY" ]]; then
+            if [[ -z "$ISSUE_BODY" ]]; then
               echo "::warning::Issue 正文为空"
             fi
           fi
-          if [[ "$EVENT" == "pull_request" ]]; then
-            echo "PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
-            BODY="${{ github.event.pull_request.body }}"
-            if ! echo "$BODY" | grep -q "Reviewer Checklist"; then
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "PR #$PR_NUMBER: $PR_TITLE"
+            if ! grep -q "Reviewer Checklist" <<<"$PR_BODY"; then
               echo "::warning::PR 描述未包含 Reviewer Checklist（请用 .github/pull_request_template.md）"
             fi
-            if ! echo "$BODY" | grep -q "change-scope"; then
+            if ! grep -q "change-scope" <<<"$PR_BODY"; then
               echo "::warning::PR 未贴最小证据（scripts/change-scope.sh）"
             fi
           fi

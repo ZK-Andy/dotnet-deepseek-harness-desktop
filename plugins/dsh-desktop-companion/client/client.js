@@ -17,7 +17,9 @@
  *   click installs+restarts via desktop.update.install.
  * - Self-update section in Settings (settings.section): current version,
  *   manual check entry, full status line incl. host-reported error reason;
- *   shows an "unavailable" hint when the runtime has no update stack (dev).
+ *   when the query fails it distinguishes "the host has no update stack (dev)"
+ *   from "the page-to-host command channel is down" (e.g. the page origin moved
+ *   to a new loopback port after the window was created) and points at the fix.
  * - Tray event relay: forwards Ryn tray plugin events (tray.clicked,
  *   tray.menuItemClicked) to the host via desktop.tray.event; show /
  *   check-update / quit semantics are resolved on the host side.
@@ -201,6 +203,8 @@
             errPrefix: '\u68c0\u67e5\u5931\u8d25\uff1a',
             unknown: '\u672a\u77e5\u539f\u56e0',
             unavail: '\u684c\u9762\u81ea\u66f4\u65b0\u5728\u5f53\u524d\u8fd0\u884c\u65f6\u4e0d\u53ef\u7528\uff08\u5f00\u53d1\u8fd0\u884c\u65f6\u53ef\u8bbe DSH_DESKTOP_UPDATE_FORCE=1 \u5f00\u542f\uff09',
+            // 页面→壳命令通道整体失效（非 dev 门禁）：端口漂移后 origin 变化、命令被 CORS 拦下时的文案
+            unavailChannel: '\u65e0\u6cd5\u8fde\u63a5\u684c\u9762\u5bbf\u4e3b\uff1a\u672c\u4f1a\u8bdd\u7684\u9875\u9762\u547d\u4ee4\u901a\u9053\u4e0d\u53ef\u7528\uff0c\u91cd\u542f\u5e94\u7528\u53ef\u6062\u590d\u81ea\u66f4\u65b0',
             // opencode settings-v2 同款行的文案
             checkTitle: '检查更新',
             checkDesc: '检查是否有可用的新版本',
@@ -245,6 +249,7 @@
             errPrefix: 'Check failed: ',
             unknown: 'Unknown reason',
             unavail: 'Desktop self-update is unavailable in this runtime (set DSH_DESKTOP_UPDATE_FORCE=1 to enable in dev)',
+            unavailChannel: 'Cannot reach the desktop host: the page command channel is unavailable this session; restart the app to restore self-update',
             // opencode settings-v2 同款行的文案
             checkTitle: 'Check for updates',
             checkDesc: 'Check whether a new version is available',
@@ -309,17 +314,32 @@
             }
           }
 
-          // getState 兜底：宿主无自更新栈（dev 门禁）时命令路由不存在，invoke 应以失败
-          // 告终；再叠加 4s 超时——任何「既不成功也不失败」的异常路径都收敛到不可用提示，
-          // 设置页绝不留白。reason 仅进控制台，页面文案统一走 t('unavail')。
-          var queryState = function () {
+          // 命令通道调用：invoke + 结算锁 + 4s 兜底超时。桥接的 invoke 在 __ryn 不完整时会同步抛，
+          // 包一层 catch 转 reject——「既不成功也不失败」与同步抛都收敛到失败，不留悬挂 Promise。
+          var invokeWithTimeout = function (command) {
             return new Promise(function (resolve, reject) {
               var settled = false
               var once = function (fn) {
                 return function (v) { if (!settled) { settled = true; fn(v) } }
               }
-              window.__ryn.invoke('desktop.update.getState', {}).then(once(resolve), once(reject))
+              try {
+                window.__ryn.invoke(command, {}).then(once(resolve), once(reject))
+              } catch (e) { once(reject)(e) }
               setTimeout(once(reject), 4000)
+            })
+          }
+
+          var queryState = function () { return invokeWithTimeout('desktop.update.getState') }
+
+          // 失败分流（ADR port-drift-ipc-origin-mismatch）：getState 失败有两种因、处置不同——
+          // ① 宿主无自更新栈（dev 门禁，路由未注册）：给 dev 提示；② 页面→壳命令通道整体失效
+          // （如端口漂移后页面 origin 变化、命令被浏览器 CORS 拦下）：给「重启应用可恢复」提示。
+          // 判别不解析错误文案（那是桥接/宿主的实现细节）：用无条件注册的桌面命令探同一通道，
+          // 探通即说明通道好、只有自更新路由缺失。只在失败路径多发一次 invoke。
+          var probeCommandChannel = function () {
+            return invokeWithTimeout('desktop.autostart.getState').then(function () { return true }, function (e) {
+              console.warn(TAG, 'command channel probe failed:', e && e.message)
+              return false
             })
           }
 
@@ -337,7 +357,8 @@
             }, h('i'))
           }
 
-          // 设置页区块：undefined=查询中不渲染，null=宿主无自更新栈（页内提示），对象=正常状态帧
+          // 设置页区块：undefined=查询中不渲染；{unavailable:'nostack'|'channel'}=页内提示；
+          // 对象（宿主状态帧）=正常渲染。宿主推送的事件帧晚到会覆盖提示态（见 pushed 守卫）。
           function UpdateSection(props) {
             var p = props || {}
             var th = p.t || function (k) { return k }
@@ -345,21 +366,30 @@
             var state = pair[0]
             var setState = pair[1]
             reactMod.useEffect(function () {
-              var onEvt = function (e) { if (e.detail) setState(e.detail) }
+              // 宿主推送的状态帧优先：失败查询的异步结论不得覆盖已经到达的真实状态；
+              // cancelled 挡住卸载后到达的结论（两个 4s 定时器都不随卸载取消）
+              var pushed = false
+              var cancelled = false
+              var onEvt = function (e) { if (e.detail) { pushed = true; setState(e.detail) } }
               document.addEventListener('dsh-desktop-update', onEvt)
               queryState().then(function (s) {
-                setState(parseFrame(s) || null)
+                if (!pushed && !cancelled) setState(parseFrame(s) || { unavailable: 'nostack' })
               }).catch(function (e3) {
-                console.warn(TAG, 'update section unavailable:', e3 && e3.message)
-                setState(null)
+                console.warn(TAG, 'update getState failed:', e3 && e3.message)
+                probeCommandChannel().then(function (channelOk) {
+                  if (!pushed && !cancelled) setState({ unavailable: channelOk ? 'nostack' : 'channel' })
+                })
               })
-              return function () { document.removeEventListener('dsh-desktop-update', onEvt) }
+              return function () {
+                cancelled = true
+                document.removeEventListener('dsh-desktop-update', onEvt)
+              }
             }, [])
             if (state === undefined) return null
-            if (state === null) {
+            if (state.unavailable) {
               return h('div', { className: 'ddc-group' },
                 h('div', { className: 'ddc-gtitle' }, th('updGroup')),
-                h('div', { className: 'ddc-desc' }, th('unavail')))
+                h('div', { className: 'ddc-desc' }, th(state.unavailable === 'channel' ? 'unavailChannel' : 'unavail')))
             }
             var busy = state.status === 'checking' || state.status === 'downloading' || state.status === 'installing'
             // 按钮标签随状态机切换（opencode updater-action 同款）：ready 即安装入口，不再单设主按钮
