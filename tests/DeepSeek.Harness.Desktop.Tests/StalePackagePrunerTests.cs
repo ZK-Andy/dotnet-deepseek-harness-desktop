@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using DeepSeek.Harness.Desktop.Services.Update;
 
 namespace DeepSeek.Harness.Desktop.Tests;
@@ -176,6 +177,65 @@ public class StalePackagePrunerTests
     {
         // 不存在的目录：无异常静默返回
         StalePackagePruner.Run(Path.Combine(Path.GetTempPath(), $"absent-{Guid.NewGuid():N}"), currentVersion: "0.4.4");
+    }
+
+    /// <summary>验证下载锁被**另一进程**持有时整个清扫跳过——FileShare.None 的 OS 级跨进程语义
+    /// （同进程模拟覆盖不到的盲区；子进程持锁机制见 <see cref="ExternalFileLockHolder"/>）。</summary>
+    [Fact]
+    public void Run_HeldDownloadLockByOtherProcess_AbortsEntireSweep()
+    {
+        string dir = CreateTempUpdatesDir();
+        string stale = Path.Combine(dir, "deepseek-harness-desktop-0.4.3_linux-x86_64.rpm");
+        string installSh = Path.Combine(dir, "install.sh");
+        string lockFile = Path.Combine(dir, ".download.lock");
+        File.WriteAllBytes(stale, [1]);
+        File.WriteAllBytes(installSh, [1]);
+        File.WriteAllBytes(lockFile, []);
+        Process holder = ExternalFileLockHolder.Start(lockFile);
+        try
+        {
+            StalePackagePruner.Run(dir, currentVersion: "0.4.4");
+
+            // 持锁 = 他实例下载中：过期包与 install.sh 都不该删（跨进程句柄同样拦住）
+            Assert.True(File.Exists(stale), "他进程持锁期间过期包不得删除");
+            Assert.True(File.Exists(installSh), "他进程持锁期间废弃残留不得删除");
+        }
+        finally
+        {
+            ExternalFileLockHolder.Stop(holder);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证他进程释放锁后清扫恢复执行——证明上一测试的跳过确实来自跨进程锁而非环境噪声。</summary>
+    [Fact]
+    public void Run_LockReleasedByOtherProcess_SweepResumes()
+    {
+        string dir = CreateTempUpdatesDir();
+        string stale = Path.Combine(dir, "deepseek-harness-desktop-0.4.3_linux-x86_64.rpm");
+        string lockFile = Path.Combine(dir, ".download.lock");
+        File.WriteAllBytes(stale, [1]);
+        File.WriteAllBytes(lockFile, []);
+        Process holder = ExternalFileLockHolder.Start(lockFile);
+        try
+        {
+            StalePackagePruner.Run(dir, currentVersion: "0.4.4");
+            Assert.True(File.Exists(stale), "他进程持锁期间过期包不得删除");
+        }
+        finally
+        {
+            ExternalFileLockHolder.Stop(holder);
+        }
+
+        try
+        {
+            StalePackagePruner.Run(dir, currentVersion: "0.4.4");
+            Assert.False(File.Exists(stale), "锁释放后过期包应被正常清扫");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     private static string CreateTempUpdatesDir()

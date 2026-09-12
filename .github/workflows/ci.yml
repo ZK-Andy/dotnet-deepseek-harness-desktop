@@ -75,7 +75,13 @@ jobs:
   build-test:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 三平台测试腿：FileShare.None 跨进程锁语义等 OS 级行为只有跑在真内核上才算数
+        # （Windows 是多实例可达面；ubuntu 腿额外承担 format 门禁与覆盖率基线）
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,11 +94,16 @@ jobs:
       # 编码规范门禁（ADR csharp-coding-standard）：按仓库根 .editorconfig 强制格式/风格。
       # --verify-no-changes：有差异即 exit 非 0，fail loud；新代码必须符合规范才能过门禁。
       - name: format (coding standards gate)
+        if: runner.os == 'Linux'
         run: dotnet format dotnet-deepseek-harness-desktop.slnx --verify-no-changes --severity warn
       - name: test with coverage
+        if: runner.os == 'Linux'
         run: dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build --collect:"XPlat Code Coverage" --results-directory TestResults -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+      - name: test (os-level semantics leg)
+        if: runner.os != 'Linux'
+        run: dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build --filter "FullyQualifiedName~StalePackagePrunerTests|FullyQualifiedName~ReleaseAssetTests"
       - name: coverage summary
-        if: always()
+        if: always() && runner.os == 'Linux'
         run: |
           echo "== coverage files =="
           find TestResults -name "*.xml" -type f | head -20
@@ -101,7 +112,7 @@ jobs:
             grep -E "line-rate|branch-rate" TestResults/**/coverage.cobertura.xml | head -20
           fi
       - name: upload coverage
-        if: always()
+        if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-cobertura

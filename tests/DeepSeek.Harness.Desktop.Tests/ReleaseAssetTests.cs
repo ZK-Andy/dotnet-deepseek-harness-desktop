@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using DeepSeek.Harness.Desktop.Services.Update;
 
 namespace DeepSeek.Harness.Desktop.Tests;
@@ -161,5 +162,27 @@ public class ReleaseAssetTests
             Assert.NotNull(second);
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    /// <summary>验证下载锁被**另一进程**持有时 TryAcquireDownloadLock 返回 null——FileShare.None 的
+    /// OS 级跨进程语义（Windows 多实例可达面的直接防线；同进程模拟覆盖不到，见 ExternalFileLockHolder）。</summary>
+    [Fact]
+    public void DownloadLock_ReturnsNull_WhenHeldByOtherProcess()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "dl-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        // 锁文件先落地（OpenOrCreate 由持锁者或本方完成均可，但持有者需要已有文件——Windows 'Open' 语义）
+        string lockFile = Path.Combine(dir, ".download.lock");
+        File.WriteAllBytes(lockFile, []);
+        Process holder = ExternalFileLockHolder.Start(lockFile);
+        try
+        {
+            Assert.Null(InstallerDownloader.TryAcquireDownloadLock(dir));
+        }
+        finally
+        {
+            ExternalFileLockHolder.Stop(holder);
+            Directory.Delete(dir, true);
+        }
     }
 }
