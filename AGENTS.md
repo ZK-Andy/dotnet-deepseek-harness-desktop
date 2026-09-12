@@ -56,6 +56,8 @@ web 检索一律 anysearch 插件（唯一搜索后端，已 Provider 级接管�
 
 ## Git 纪律
 
+- **等待纪律**：任何 shell 等待单次 ≤ 30 秒；等 CI 等长事件用 `gh run watch` / 间隔轮询，期间并行做收尾作业，禁止长 sleep。
+
 - 改写历史必须 `--force-with-lease=<branch>:<observed-oid>`；**raw `--force` 永远禁止**；改写后重新审计评审状态。
 - push 前最小证据：按 diff 面选最窄检查（先用 `scripts/change-scope.sh`）；禁止默认全量跑、禁止为掩盖未覆盖文件收窄覆盖率。
 - hooks 只做快检查，CI 拥有穷尽矩阵。
