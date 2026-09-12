@@ -2,9 +2,9 @@
 
 Status: implemented
 
-Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
-
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
+
+Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Problem
 
@@ -13,6 +13,8 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 差值不是代码差异，已定位到行：逐类比对**当前代码面**的两份 cobertura（CI 作业 `34648102527` 的 artifact `coverage-cobertura` 3714/6725，对本机 `TestResults` 3718/6725）得**唯一的覆盖状态差异** = `Services/HostLog.cs:40-43`（另有 4 个文件的命中计数不同，但不翻转覆盖状态），即 `HostLog.Write` 的落盘失败 `catch`。命中剖面把抛点钉到一行：两处 `Write` 各调用一次（第 19 行 hits=1、方法入口 hits=2），同方法内 `Directory.CreateDirectory` 与 `RotateIfNeeded` 两次都正常返回，而 `File.AppendAllText`（第 37 行 hits=2）之后 try 闭合行只剩 hits=1——本机那次抛了，CI 的同一调用写盘成功（try 闭合行 hits=2、`catch` 全 0）。【推断 · 未证】抛因是只读 home：本机 `/home/<user>` 不可写（`touch` 报 `只读文件系统`），CI runner 的 home 可写。这条 `catch` 只反映环境能否写盘，不反映被测行为。
 
 测量设置（2026-09-12）：CI——`34641155703`（0.4.9，含 PR #1 之前的代码面）3718/6722 = `0.5531`；`34647696070`（PR #1 合并）与 `34648102527`（0.4.10 bump）指向 PR #1 之后的同一代码面，两作业逐字一致地记 3714/6725 = `0.5522`。本机——`-c Debug --collect:"XPlat Code Coverage"` 本批两次（artifact `TestResults/coverage-baseline`、`coverage-repeat`）均 3718/6725 = 55.29%【探索性，n=2】；同日更早一次的本机记录为 3721–3722/6725（相对 CI 的 3714 是 +7~8 行），其 artifact 已不在盘、不可复核，与本节那个 4 行差不对账——本机值随环境态变化，正是本决定要摆脱的变量。本机同命令 `-c Release` 两次均 2724/4891 = 55.69%【探索性，n=2】，序列点集合与 Debug 不同口径（有效行 4891 对 6725），不与徽章可比。
+
+后续跟值（2026-09-13）：`34711883394`（基线 583 批次代码面）3739/6798 = 55.00%；`34719513999`（插件体检探针 `d1df7e1` 代码面）3782/6909 = 54.74%——新增测试（6 用例 + e2e 门控体）摊薄覆盖率属预期，基线行随值更新，无异常信号。
 
 ## Decision
 
