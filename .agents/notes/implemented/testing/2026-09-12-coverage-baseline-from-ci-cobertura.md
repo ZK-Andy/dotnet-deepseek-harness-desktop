@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
+Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
