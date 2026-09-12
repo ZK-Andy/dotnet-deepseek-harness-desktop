@@ -60,8 +60,10 @@ jobs:
         run: |
           python3 scripts/verify-code-conventions.py --enforce
       - name: 评审档位硬闸（FULL 档变更须携 Review 证据；ADR review-tier-escape-proofing）
+        env:
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          BASE="$REVIEW_BASE"
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             echo "无可用 base（首推/分支新建），fallback 工作树扫描"
             python3 scripts/verify-review-tier.py --enforce

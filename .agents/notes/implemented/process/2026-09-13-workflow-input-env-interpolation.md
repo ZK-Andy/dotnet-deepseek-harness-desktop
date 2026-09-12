@@ -31,7 +31,7 @@ GitHub 对 `${{ }}` 插值是先拼接进脚本再解析——事件输入值含
 
 - 收益：事件输入直插 `run:` 的形态在本仓 workflows 清零（含 `GITHUB_ENV` 回流的间接通道）；版本号到脚本的唯一通道是环境变量。
 - 代价：`package-windows.yml` publish 步从 pwsh 换为 bash——语义上更贴近同构的 macos/linux 步；bash 在 windows runner 由 Git Bash 提供，该步此前已有多处 bash 步先例。
-- 跟进：`verify-governance.py` 机械化检查另行立项，落地前本判据靠评审清单与字符面清点维持。
+- 跟进：机械化检查已落地——见 [run-payload-interpolation-gate](2026-09-13-run-payload-interpolation-gate.md)。
 
 ## Testing
 
