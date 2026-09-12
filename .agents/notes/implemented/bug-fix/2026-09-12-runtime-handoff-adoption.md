@@ -60,7 +60,7 @@ Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
 
 - **残留/收养状态未进诊断包**：`DiagnosticsExporter.IncludedFiles` 白名单仍只收 host.log、端口状态文件与 run-marker，未新增 `.dsh-pid`（本次语义扩为「在管运行时，可能是收养的非子进程」，属 pid 面数据）。刻意不扩：本次未新增 home 内路径，诊断包不应在无决策的情况下扩收进程数据。**复访触发 = 出现首个「靠诊断包才定位得到」的残留案例**。
 - **以 helper 出现作为接力意图信号**：端口冲突的等待代价（≈48s）来自「注定失败的 spawn 走完 bind 失败路径」。市场 helper 在旧 dsh 退出后约 1s 内即出现且带本壳 token，可作为「接力正在进行」的正向信号 → 此时改为等续任者 bind（有界）而非抢端口。本次不做：会引入新机制，需独立评审与测试；且它对**真崩溃**路径零收益（无 helper）。
-- **dsh 沙箱内后代不可见**：`scrubbedParentEnv` 剥掉全部 `DSH_*`，本判据收不到这类孤儿。**跟进方 = [dsh 沙箱子进程孤儿泄漏](../../proposed/bug-fix/2026-09-12-dsh-sandbox-child-orphan-leak.md)**（proposed，独立立项）。
+- **dsh 沙箱内后代不可见**：`scrubbedParentEnv` 剥掉全部 `DSH_*`，本判据收不到这类孤儿。**跟进方 = [dsh 沙箱子进程孤儿泄漏](2026-09-12-dsh-sandbox-child-orphan-leak.md)**（已 implemented，本篇为判据盲区的补集收割）。
 
 ## Testing
 
@@ -75,4 +75,4 @@ Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
 
 - [自更新退出路径确定性收割 dsh 子进程](2026-08-28-self-update-exit-reaps-dsh-child.md)：本决策扩展其缺口 B 的清扫判据（单一记录 → 记录＋血统扫描并用）。
 - [子进程收割与端口漂移](2026-08-26-child-process-reaping-port-drift.md)：其 Alternatives 否掉「attach 存活 dsh」的理由是「探活猜归属」，本决策以血统可证＋新生判据取代该理由，方向仍不同（收养只针对接力产物）。
-- [dsh 沙箱子进程孤儿泄漏](../../proposed/bug-fix/2026-09-12-dsh-sandbox-child-orphan-leak.md)：本判据的已知盲区（proposed，单列跟进）。
+- [dsh 沙箱子进程孤儿泄漏](2026-09-12-dsh-sandbox-child-orphan-leak.md)：本判据的已知盲区（已 implemented，scope 收割补集）。

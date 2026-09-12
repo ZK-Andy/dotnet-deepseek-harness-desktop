@@ -87,6 +87,7 @@ v0.3.11 实机复现：自更新 0.3.6→0.3.11 后，宿主退出时其 dsh 子
 
 ## Related
 
+- [dsh 沙箱子进程孤儿泄漏](2026-09-12-dsh-sandbox-child-orphan-leak.md)：scope 收割与本决策的 token 复验清扫同接 `HarvestLineageResidue` 收敛点（token 被剥不可见的补集面）。
 - [收养市场接力的 dsh 续任者（运行时交接）](2026-09-12-runtime-handoff-adoption.md)：扩展本决策缺口 B 的清扫判据——`.dsh-pid` 单一记录之外并上血统扫描（记录被后续 spawn 覆盖后仍能收敛）。
 - [子进程收割与端口漂移](2026-08-26-child-process-reaping-port-drift.md)：本决策收口其第 3 点自更新留白；有序退出编排的姊妹决策。
 - [端口记忆按 profile 隔离](2026-08-26-port-memory-per-profile.md)：首启端口持久化与漂移兜底的出处。

@@ -120,9 +120,13 @@ public sealed partial class HarnessRuntimeHost
             DesktopProfileName,
             RuntimeLineage.ReadParentPid);
 
-    /// <summary>冷启动 / 启动成功后的一次全量血统收敛。</summary>
+    /// <summary>冷启动 / 启动成功后的一次全量血统收敛（血统扫描之外顺带收割 dsh 下游 scope，见 ADR dsh-sandbox-child-orphan-leak）。</summary>
     /// <param name="reason">日志里的收敛时机说明。</param>
-    private void HarvestLineageResidue(string reason) => HarvestResidue(FindLineageResidue(), reason);
+    private void HarvestLineageResidue(string reason)
+    {
+        HarvestResidue(FindLineageResidue(), reason);
+        DshSubprocessScopeReaper.Reap(_log);
+    }
 
     /// <summary>整树收割血统残留（best-effort：单个失败只留痕，绝不阻断启动）。</summary>
     /// <param name="residue">残留项。</param>

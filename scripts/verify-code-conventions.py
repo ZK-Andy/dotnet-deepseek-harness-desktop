@@ -53,6 +53,8 @@ D005_WHITELIST = {
     "RunMarker.cs",
     "Autostart.cs",
     "OrphanDshReaper.cs",
+    # dsh 下游 scope 收割（systemctl spawn + /proc 判活；ADR dsh-sandbox-child-orphan-leak）
+    "DshSubprocessScopeReaper.cs",
     # runtime lineage probes (/proc reads, tree kill, loopback probe; ADR runtime-handoff-adoption)
     "RuntimeLineage.Probes.cs",
     "DiagnosticsExporter.cs",
