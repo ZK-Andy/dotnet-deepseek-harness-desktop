@@ -135,12 +135,9 @@ public sealed partial class DesktopBootstrap
             RegisterCliShim();
 
             bool pluginsInstalled = await InstallBootstrapPluginsAsync(bootCt);
-
-            // 体检探针（ADR plugin-install-health-probe）：本轮确有插件装成功时、正式启动前验证
-            // dsh web 可出 URL；失败自愈，仍失败放行——best-effort 不阻断启动。
             if (pluginsInstalled)
             {
-                await RunInstallProbeBestEffortAsync(bootCt);
+                Services.HostLog.Write("[host] 本轮有插件经事务管线换入 active（staged 体检已过，无需再探）");
             }
 
             Uri? url = await _host.StartAsync(timeout: TimeSpan.FromSeconds(60), bootCt);

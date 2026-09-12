@@ -41,6 +41,6 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Related
 
+- [事务化插件管线](2026-09-13-transactional-plugin-pipeline.md)（已落地，部分替代本 ADR）：探针收敛为 staged 体检（换入前对 staging 副本验证，不过即放弃激活）；「对 active 事后探针 + reconcile 重试」分支与两个驱动的 best-effort 探针收口退役。
 - [spawn 环境净化与插件 spec 校验](2026-09-09-spawn-env-and-plugin-spec-hardening.md)：探针 psi 复用同一净化与 spec 防线。
 - [端口等待压缩](2026-09-13-port-wait-compression.md)：探针用 `--port 0` 避开首选端口，不与 bind 探测/交接处置交互。
-- 事务化插件管线（HANDOFF-todos 大件）：staging 全量形态，本探针是其子集与前置。

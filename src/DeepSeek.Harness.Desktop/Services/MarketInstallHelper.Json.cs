@@ -213,8 +213,9 @@ public static partial class MarketInstallHelper
         AtomicWriteFile(profilePkg, RenderProfileJson(root));
     }
 
-    /// <summary>同目录临时文件 + 原子替换写文本（失败清理临时文件；目标不可写时抛，由调用方决定 fail-safe）。</summary>
-    private static void AtomicWriteFile(string path, string text)
+    /// <summary>同目录临时文件 + 原子替换写文本（失败清理临时文件；目标不可写时抛，由调用方决定 fail-safe）。
+    /// internal：事务 journal（<see cref="PluginProfileTransaction"/>）与 profile 清单写回共用同一原子写实现。</summary>
+    internal static void AtomicWriteFile(string path, string text)
     {
         string dir = Path.GetDirectoryName(path) ?? ".";
         string temp = Path.Combine(dir, $".{Path.GetFileName(path)}.tmp-{Guid.NewGuid():N}");

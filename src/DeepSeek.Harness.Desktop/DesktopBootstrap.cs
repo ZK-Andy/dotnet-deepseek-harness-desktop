@@ -241,6 +241,12 @@ public sealed partial class DesktopBootstrap
         try
         {
             DesktopProfileBootstrap.MigrateLegacyProfileName(HarnessRuntimeHost.ResolveDshHome(), Services.HostLog.Write);
+
+            // 事务管线 recover（ADR transactional-plugin-pipeline）：上轮插件事务被中断时按 journal
+            // 重放/回滚，并清扫 stray staging/rollback 目录。必须在 EnsureProfile/探针/spawn 之前——
+            // journal 损坏在此 fail loud（异常进入下方 catch 记日志，dsh 起不来的后果由降级链路兜底）。
+            PluginProfileTransaction.Recover(HarnessRuntimeHost.ResolveDshHome(), Services.HostLog.Write);
+
             if (DesktopProfileBootstrap.EnsureProfile(HarnessRuntimeHost.ResolveDshHome()))
             {
                 Services.HostLog.Write($"[host] 已初始化 profiles/{HarnessRuntimeHost.DesktopProfileName}（bundles 对齐 web 模板）");
@@ -298,6 +304,7 @@ public sealed partial class DesktopBootstrap
                     Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
                     Services.HostLog.Write,
                     Services.PluginProcessRunner.RunAsync,
+                    Services.PluginProcessRunner.RunProbeAsync,
                     CancellationToken.None).GetAwaiter().GetResult();
             }
             catch (Exception ex)
@@ -305,11 +312,10 @@ public sealed partial class DesktopBootstrap
                 Services.HostLog.Write($"[host] 随包插件 spawn 前安装失败（跳过，不阻断启动）：{ex.Message}");
             }
 
-            // 体检探针（ADR plugin-install-health-probe）：本轮确有插件装成功时、正式启动前验证
-            // dsh web 可出 URL；失败自愈（reconcile 重试一次），仍失败放行——best-effort 不阻断启动。
             if (installed)
             {
-                RunInstallProbeBestEffortAsync(CancellationToken.None).GetAwaiter().GetResult();
+                // 事务管线（ADR transactional-plugin-pipeline）：staged 体检在换入前已过，active 即新完整态
+                Services.HostLog.Write("[host] 随包插件经事务管线换入 active（staged 体检已过）");
             }
         }
     }

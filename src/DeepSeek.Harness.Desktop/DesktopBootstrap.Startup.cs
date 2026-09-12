@@ -250,6 +250,7 @@ public sealed partial class DesktopBootstrap
                 Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
                 Services.HostLog.Write,
                 Services.PluginProcessRunner.RunAsync,
+                Services.PluginProcessRunner.RunProbeAsync,
                 bootCt);
         }
         catch (Exception ex)
@@ -260,42 +261,19 @@ public sealed partial class DesktopBootstrap
         // 首启插件引导（ADR reference-alignment 批次二）：dshmarket（preset）经引导页
         // chip 确认/跳过 + 日志回流；用户确认后才装（StartAsync 前，与 batch-1 合流）。
         // 跳过则该次不装（less-bootstrapped，dsh 起动后可从应用内市场/设置自愈补装）。
-        bool preinstallInstalled = false;
         try
         {
-            preinstallInstalled = await RunPreinstallPhaseAsync(RunDshPluginAddStreamingAsync, bootCt);
+            await RunPreinstallPhaseAsync(RunDshPluginAddStreamingAsync, bootCt);
         }
         catch (Exception ex)
         {
             Services.HostLog.Write($"[host] 插件引导异常跳过：{ex.Message}");
         }
 
-        return bundledInstalled || preinstallInstalled;
-    }
-
-    /// <summary>体检探针的 best-effort 收口（ADR plugin-install-health-probe）：本轮确有插件装成功时执行
-    /// <see cref="Services.PluginInstallProbe.VerifyAfterInstallAsync"/>（失败自愈 reconcile 重试一次），
-    /// 任何异常只留日志放行正式启动——探针绝不阻断启动。pre-spawn 与引导两个安装驱动共用。</summary>
-    private async Task RunInstallProbeBestEffortAsync(CancellationToken ct)
-    {
-        try
-        {
-            await Services.PluginInstallProbe.VerifyAfterInstallAsync(
-                HarnessRuntimeHost.ResolveDshHome(),
-                Services.HostLog.Write,
-                Services.PluginProcessRunner.RunProbeAsync,
-                DesktopProfileBootstrap.ReconcileProfile,
-                ct);
-        }
-        catch (OperationCanceledException)
-        {
-            // 应用退出不是探针失败：取消沿既有 OCE 收口上抛，绝不冒充「探针异常放行」后继续启动链
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Services.HostLog.Write($"[host] 插件体检探针异常（放行正式启动）：{ex.Message}");
-        }
+        // 事务管线（ADR transactional-plugin-pipeline）：市场驱动自带 staged 探针 + journal 换入，
+        // 换入前已证明能活——两个安装驱动均已事务化（ADR transactional-plugin-pipeline），
+        // 启动前的 active 事后探针（RunInstallProbeBestEffortAsync）随其 reconcile 分支一并退役。
+        return bundledInstalled;
     }
 
     /// <summary>流式执行器：把 <c>dsh plugin add</c> 的每行输出推给插件引导页日志区。
@@ -313,7 +291,8 @@ public sealed partial class DesktopBootstrap
     /// 首启插件引导相（ADR reference-alignment 批次二）：全局 dsh 就位后（StartAsync 前），
     /// 若存在待装可选插件（preset），引导页呈现 chip + 确认/跳过 + 日志回流；用户确认才安装，跳过则不装。
     /// 5 分钟无决策默认跳过（避免壳永久挂在安装前、dsh 永不启动；跳过可经应用内市场补装）。
-    /// 返回本次是否确有插件装成功（体检探针的触发条件，ADR plugin-install-health-probe）。</summary>
+    /// 安装走事务管线（ADR transactional-plugin-pipeline）：staged 探针 + journal 换入，自带体检。
+    /// 返回值仅保留给引导页「安装完成/未成功」帧使用。</summary>
     private async Task<bool> RunPreinstallPhaseAsync(
         Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> runPluginAddStreaming,
         CancellationToken ct)
@@ -365,6 +344,7 @@ public sealed partial class DesktopBootstrap
                 home,
                 Services.HostLog.Write,
                 runPluginAddStreaming,
+                Services.PluginProcessRunner.RunProbeAsync,
                 ct);
             bool installed = Services.MarketInstallHelper.IsBundleInstalled(profilePkg, Services.PresetPluginCatalog.Market);
             await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame(

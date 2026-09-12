@@ -71,6 +71,8 @@ D005_WHITELIST = {
     "CliShimRegistrar.cs",
     # process-spawn boundary (extracted from compose root, ADR 组合根只装配)
     "PluginProcessRunner.cs",
+    # plugin profile transaction boundary (staging copy / journal / rename swap; ADR transactional-plugin-pipeline)
+    "PluginProfileTransaction.cs",
     # settings/legacy persistence boundary (read-only file I/O)
     "LegacyHomeNotice.cs",
     "CloseBehaviorPreference.cs",

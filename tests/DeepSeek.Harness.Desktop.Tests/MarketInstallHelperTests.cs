@@ -220,14 +220,20 @@ public class MarketInstallHelperTests
         Assert.False(await MarketInstallHelper.EnsureBundlesContainsAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dshmarket"));
     }
 
-    /// <summary>验证安装市场时拼装的进程参数形状与 DSH_HOME 环境变量，并回填 allowBuilds 与 bundles 缺失项。</summary>
+    /// <summary>探针 fake：恒出 URL（staged 体检通过面）。</summary>
+    private static Task<Uri?> ProbeOk(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        => Task.FromResult<Uri?>(new Uri("http://127.0.0.1:40010"));
+
+    /// <summary>验证安装市场时拼装的进程参数形状与 staging DSH_HOME（事务管线：变更加在 staging 副本），
+    /// staged 探针通过后 journal 换入 active（bundles 补写落在 active 清单、staging home 清除）。</summary>
     [Fact]
     public async Task EnsureMarketFromRegistry_BuildsCorrectArgsAndEnv_AndBackfillsBundles()
     {
         string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName));
-        string workspace = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "pnpm-workspace.yaml");
-        string profilePkg = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        Directory.CreateDirectory(profileDir);
+        string workspace = Path.Combine(profileDir, "pnpm-workspace.yaml");
+        string profilePkg = Path.Combine(profileDir, "package.json");
         // profile 清单：bundles 尚缺 dshmarket → 装后应补写。
         File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
         // workspace 尚缺 allowBuilds → helper 应先放行。
@@ -252,18 +258,24 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
-                "node", "/dsh/bin.js", home, logs.Add, RunFake, CancellationToken.None);
+                "node", "/dsh/bin.js", home, logs.Add, RunFake, ProbeOk, CancellationToken.None);
 
             Assert.True(installed);
             Assert.NotNull(capturedPsi);
             // 参数形状：dsh bin.js plugin --profile <DesktopProfileName> add dshmarket@latest
             Assert.Equal(["/dsh/bin.js", "plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", MarketInstallHelper.MarketSpec], args);
-            Assert.Equal(home, capturedPsi!.Environment["DSH_HOME"]);
-            // allowBuilds 已放行（ESBuild 至少一条）
-            Assert.Contains("allowBuilds", File.ReadAllText(workspace));
-            // bundles 已补写
+            // DSH_HOME 指向 staging home（同卷、前缀 .tx-），不再是 active home 本身
+            string stagingHome = capturedPsi!.Environment["DSH_HOME"]!;
+            Assert.StartsWith(home, stagingHome);
+            Assert.Contains(".tx-", stagingHome);
+            Assert.NotEqual(home, stagingHome);
+            // 换入后 active 清单含 dshmarket；allowBuilds 已在（staging→active）workspace 放行
             Assert.Contains("dshmarket", File.ReadAllText(profilePkg));
+            Assert.Contains("allowBuilds", File.ReadAllText(workspace));
             Assert.Contains(logs, l => l.Contains("已补写 bundles dshmarket"));
+            // staging home 与 journal 已收口
+            Assert.Empty(Directory.GetDirectories(home, ".tx-*"));
+            Assert.False(File.Exists(Path.Combine(home, "profiles", ".pending.json")));
         }
         finally
         {
@@ -300,7 +312,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
-                "node", "/dsh/bin.js", home, logs.Add, RunFake, CancellationToken.None);
+                "node", "/dsh/bin.js", home, logs.Add, RunFake, ProbeOk, CancellationToken.None);
 
             Assert.True(installed);
             Assert.Equal(2, runs);
@@ -345,7 +357,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, CancellationToken.None);
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, ProbeOk, CancellationToken.None);
 
             Assert.True(installed);
             Assert.NotNull(capturedPsi);
@@ -353,8 +365,11 @@ public class MarketInstallHelperTests
             Assert.Equal(
                 ["/dsh/bin.js", "plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz")],
                 args);
-            Assert.Equal(home, capturedPsi!.Environment["DSH_HOME"]);
-            // companion 已补写 bundles
+            // DSH_HOME 指向 staging home（事务管线）
+            string stagingHome = capturedPsi!.Environment["DSH_HOME"]!;
+            Assert.StartsWith(home, stagingHome);
+            Assert.Contains(".tx-", stagingHome);
+            // 换入后 active 清单已含 companion 与 web-app（staged 补写随换入生效）
             Assert.Contains("dsh-desktop-companion", File.ReadAllText(profilePkg));
             Assert.Contains(logs, l => l.Contains("已补写 bundles dsh-desktop-companion"));
             // 桌面核心不变量：web-app 层缺失时被补回
@@ -391,7 +406,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, CancellationToken.None);
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, ProbeOk, CancellationToken.None);
             Assert.False(installed);
             Assert.Equal(0, runs);
             Assert.Contains(logs, l => l.Contains("无需安装"));
@@ -433,7 +448,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, CancellationToken.None);
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, ProbeOk, CancellationToken.None);
             Assert.True(installed);
             Assert.Equal(2, runs);
             Assert.True(relaxSeen, "放宽重试应带 pnpm_config_minimum_release_age=0");
@@ -477,7 +492,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                null, null, home, installerPluginsDir, _ => { }, RunFake, CancellationToken.None);
+                null, null, home, installerPluginsDir, _ => { }, RunFake, ProbeOk, CancellationToken.None);
 
             Assert.True(installed);
             Assert.NotNull(capturedPsi);
@@ -494,12 +509,17 @@ public class MarketInstallHelperTests
         }
     }
 
-    /// <summary>验证市场安装失败（plugin add 非零退出）时返回 false——体检探针据此跳过。</summary>
+    /// <summary>验证市场安装失败（plugin add 非零退出）时返回 false：staging 作废、active 清单原封不动、
+    /// 无 journal 残留（事务管线结构性消除半变更态的核心断言）。</summary>
     [Fact]
     public async Task EnsureMarketFromRegistry_ReturnsFalse_WhenInstallFails()
     {
         string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName));
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        Directory.CreateDirectory(profileDir);
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        string original = """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""";
+        File.WriteAllText(profilePkg, original);
         var logs = new List<string>();
 
         async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
@@ -508,8 +528,115 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
-                "node", "/dsh/bin.js", home, logs.Add, RunFake, CancellationToken.None);
+                "node", "/dsh/bin.js", home, logs.Add, RunFake, ProbeOk, CancellationToken.None);
             Assert.False(installed);
+            // active 全程未被触碰，staging/journal 无残留
+            Assert.Equal(original, File.ReadAllText(profilePkg));
+            Assert.Empty(Directory.GetDirectories(home, ".tx-*"));
+            Assert.False(File.Exists(Path.Combine(home, "profiles", ".pending.json")));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    /// <summary>验证 staged 探针未出 URL 时放弃激活：active 清单原封不动、staging/journal 已收口
+    /// （「换血前先证明能活」的事务语义——原事后 reconcile 补丁由本分支替代退役）。</summary>
+    [Fact]
+    public async Task EnsureMarketFromRegistry_DiscardsStaging_WhenProbeFails()
+    {
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        Directory.CreateDirectory(profileDir);
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        string original = """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""";
+        File.WriteAllText(profilePkg, original);
+        var logs = new List<string>();
+
+        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+            => (0, "installed", string.Empty);
+        Task<Uri?> ProbeDead(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+            => Task.FromResult<Uri?>(null);
+
+        try
+        {
+            bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
+                "node", "/dsh/bin.js", home, logs.Add, RunFake, ProbeDead, CancellationToken.None);
+            Assert.False(installed);
+            Assert.Equal(original, File.ReadAllText(profilePkg));
+            Assert.Empty(Directory.GetDirectories(home, ".tx-*"));
+            Assert.False(File.Exists(Path.Combine(home, "profiles", ".pending.json")));
+            Assert.Contains(logs, l => l.Contains("放弃激活"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    /// <summary>验证随包驱动 staged 探针未出 URL 时放弃激活：active 清单原封不动、staging/journal 已收口。</summary>
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_DiscardsStaging_WhenProbeFails()
+    {
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        Directory.CreateDirectory(profileDir);
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        string original = """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""";
+        File.WriteAllText(profilePkg, original);
+        string installerPluginsDir = Path.Combine(home, "plugins");
+        Directory.CreateDirectory(installerPluginsDir);
+        File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
+        var logs = new List<string>();
+
+        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+            => (0, "installed", string.Empty);
+        Task<Uri?> ProbeDead(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+            => Task.FromResult<Uri?>(null);
+
+        try
+        {
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, ProbeDead, CancellationToken.None);
+            Assert.False(installed);
+            Assert.Equal(original, File.ReadAllText(profilePkg));
+            Assert.Empty(Directory.GetDirectories(home, ".tx-*"));
+            Assert.False(File.Exists(Path.Combine(home, "profiles", ".pending.json")));
+            Assert.Contains(logs, l => l.Contains("放弃激活"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    /// <summary>验证随包驱动全部安装失败时 staging 作废：active 清单原封不动、无残留（全失败 ≠ 半变更）。</summary>
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_AllInstallFail_DiscardsStaging()
+    {
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        Directory.CreateDirectory(profileDir);
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        string original = """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""";
+        File.WriteAllText(profilePkg, original);
+        string installerPluginsDir = Path.Combine(home, "plugins");
+        Directory.CreateDirectory(installerPluginsDir);
+        File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
+        var logs = new List<string>();
+
+        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+            => (1, string.Empty, "boom");
+
+        try
+        {
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, ProbeOk, CancellationToken.None);
+            Assert.False(installed);
+            Assert.Equal(original, File.ReadAllText(profilePkg));
+            Assert.Empty(Directory.GetDirectories(home, ".tx-*"));
+            Assert.False(File.Exists(Path.Combine(home, "profiles", ".pending.json")));
         }
         finally
         {
