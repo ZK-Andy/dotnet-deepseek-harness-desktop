@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
@@ -15,7 +14,7 @@ public static class DshSubprocessScopeReaper
     internal static readonly Regex ScopeNamePattern = new(@"^dsh-subprocess-(\d+)-[0-9a-f]+\.scope$", RegexOptions.Compiled);
 
     /// <summary>单次 systemctl 调用的等待上限（收割位于生命周期门内的同步路径）。</summary>
-    private const int s_waitTimeoutMs = 15_000;
+    private const int WaitTimeoutMs = 15_000;
 
     /// <summary>收割残留 scope 的生产入口：非 Linux 无 systemd user scope 语义，no-op。</summary>
     /// <param name="log">日志回调（可选）：收割/失败留痕 host.log。</param>
@@ -110,14 +109,14 @@ public static class DshSubprocessScopeReaper
             psi.ArgumentList.Add(arg);
         }
 
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 systemctl。");
+        using Process? process = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 systemctl。");
 
         // stderr 并发消费防双管道互等；等待有界（收割在 _lifecycleGate 门内，绝不长时间挂住 spawn 路径）
-        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(s_waitTimeoutMs))
+        System.Threading.Tasks.Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(WaitTimeoutMs))
         {
             process.Kill(entireProcessTree: true);
-            throw new InvalidOperationException($"systemctl {args[0]} {s_waitTimeoutMs}ms 未退出，已终止");
+            throw new InvalidOperationException($"systemctl {args[0]} {WaitTimeoutMs}ms 未退出，已终止");
         }
 
         string stdout = process.StandardOutput.ReadToEnd();
