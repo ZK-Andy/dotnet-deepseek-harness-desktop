@@ -29,11 +29,12 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-cookbook.py` | 踩坑记录格式/阶段标签封闭集 | `python3 scripts/verify-cookbook.py` |
 | `verify-doc-budgets.py` | 四份 durable 文档字数预算 | `python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json` |
 | `verify-md-links.py` | 相对链接/锚点 | `python3 scripts/verify-md-links.py` |
+| `verify-readme-badges.py` | README 双语 `tests`/`coverage` 徽章 == 本文件基线行 | `python3 scripts/verify-readme-badges.py` |
 | `verify-handoff-structure.py` | HANDOFF 滚动窗/状态区 | `python3 scripts/verify-handoff-structure.py` |
 | `verify-governance.py` | Issue/PR 模板治理字段 | `python3 scripts/verify-governance.py` |
 | `change-scope.sh` | `push` 前最小证据（`merge-base` diff） | `scripts/change-scope.sh` |
 
-`CI` (`ci.yml`)：`docs` job 无条件跑六文档门禁；`build-test` job 只在 code 面命中时跑 `dotnet build` + `test with coverage --collect:"XPlat Code Coverage" cobertura`（`upload-artifact 7d`）。`hooks` 只做快检查，`CI` 拥有穷尽矩阵。
+`CI` (`ci.yml`)：`docs` job 无条件跑七文档门禁；`build-test` job 只在 code 面命中时跑 `dotnet build` + `test with coverage --collect:"XPlat Code Coverage" cobertura`（`upload-artifact 7d`）。`hooks` 只做快检查，`CI` 拥有穷尽矩阵。
 
 ## 冒烟与集成
 

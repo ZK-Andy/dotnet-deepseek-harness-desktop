@@ -131,6 +131,6 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 - 触发枚举可能漏 case。缓解：保留"用户显式指定"兜底 + 门禁（D004/D005/A 系）仍机器兜底结构面。
 - 简报量化参考（视野 ≤200、检查项 ≤5）为经验默认，可能需调。缓解：主会话按 diff 规模调整简报宽度，不必动机制。
 
-**Testing**：流程契约，机械校验用 `scripts/verify-review-brief.py`（简报模板/字段/面收窄/门禁自证，`--self-test` 8 夹具）与 `scripts/verify-review-tier.py`（档位判定，`--self-test` 10 夹具）；门禁验证用 `verify-adr-format.py`（校验本 ADR 通过）与 `verify-md-links.py`（校验 `feature-flow.md` 指向本 ADR 的相对链接可解析）。`feature-flow.md` 步骤 5 已同步改写为指向本 ADR 的触发枚举 + 面收窄 + 轻审判据 + 有界并行（上限两路、禁止三路同时并行）+ 简报定界（§4，启动评审前跑 `verify-review-brief.py --enforce`）。
+**Testing**：流程契约，机械校验用 `scripts/verify-review-brief.py`（简报模板/字段/面收窄/门禁自证，`--self-test` 8 夹具）与 `scripts/verify-review-tier.py`（档位判定，`--self-test` 18 夹具）；门禁验证用 `verify-adr-format.py`（校验本 ADR 通过）与 `verify-md-links.py`（校验 `feature-flow.md` 指向本 ADR 的相对链接可解析）。`feature-flow.md` 步骤 5 已同步改写为指向本 ADR 的触发枚举 + 面收窄 + 轻审判据 + 有界并行（上限两路、禁止三路同时并行）+ 简报定界（§4，启动评审前跑 `verify-review-brief.py --enforce`）。
 
 ---

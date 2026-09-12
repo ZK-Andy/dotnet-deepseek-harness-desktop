@@ -21,9 +21,9 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 **LIGHT（可轻审 R2）**：其余。
 
 **Review 证据（机器可查，须随变更携带）**：变更集内（同批暂存/提交）的 ADR 头部含
-`Review: FULL/yyyy-mm-dd/R1=ok R2=ok R3=ok` 行——证据必须与触发变更**同批**，仓库历史中的旧证据不清除新的 FULL 变更。`--enforce` 下 FULL 档 diff 无证据 → exit 1 拦截。执行者想「轻审跳过」必须物理改门禁（改脚本本身又触发 FULL 的 gate-criteria 规则）——逃逸成本从「自觉」升为「对抗机器」。
+`Review: FULL/yyyy-mm-dd/R1=ok R2=ok R3=ok` 行。`--enforce` 下 FULL 档 diff 无证据 → exit 1 拦截。执行者想「轻审跳过」必须物理改门禁（改脚本本身又触发 FULL 的 gate-criteria 规则）——逃逸成本从「自觉」升为「对抗机器」。
 
-**已知边界**：脚本的证据判定是「变更集内**任一** implemented ADR 带合法 `Review:` 行」，分不出该行是本批新产还是变更集里顺带改动的旧 ADR 自带——同一天有多次 FULL 变更时，后者可替新变更顶包。本节文字要求与脚本头注释都写「证据须与触发变更同批」，但判定实现只校验 `Review:` 行的日期合法（`--staged`/`--since` 下都不做窗口比较），故「证据须本批新产」目前只有文字承载，尚无机器判据。
+**证据新鲜度判据**：证据须由本批**新产**（`Review:` 行是新增行，且不是从本批删除/改名离开的笔记继承来的）；变更集无法判定即违规，不回退。动机、机制与边界见 [review-evidence-freshness-gate](../../implemented/process/2026-09-13-review-evidence-freshness-gate.md)。`--since` 以 base..HEAD 为一批，跨批归属仍是执行者动作面。
 
 **既有判据关系**：本机制不取代 review-scope-narrowing 的触发枚举/零行为变更判据（判据仍在彼处），而是其**更高档优先**的机械前置——FULL 档路径命中即强制重三审，通用轻审判据不得覆盖。脚本分类规则为本机制单一事实源；文字细则见 [review-scope-narrowing](../../implemented/process/2026-08-31-review-scope-narrowing.md)（已加指针）。
 
@@ -45,7 +45,7 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 
 ## Testing
 
-`python3 scripts/verify-review-tier.py --self-test`：10 隔离夹具全绿（LIGHT 通过 / FULL 组合根拦截 / 证据随变更放行 / gate-criteria 分类 / proposed ADR 承诺分类 / `--since` 抓 outgoing 已提交变更 / 范围内证据放行 / 重触旧证据窗口 best-effort / `R1=fail` 不计数 / proposed 自证不放行）。真实仓库复验：本批 diff 判 FULL 且 `--enforce` exit 1（9 触发点被拦，因缺证据载体）。
+`python3 scripts/verify-review-tier.py --self-test`：18 例夹具全绿——覆盖 LIGHT 放行、FULL 组合根拦截、证据随变更放行、gate-criteria 分类、proposed ADR 承诺分类、`--since` 抓 outgoing 已提交变更与证据放行、「顺带改动旧 ADR、`Review:` 行非新增」拦截、`R1=fail` 不计数、proposed 自证不放行，以及 2026-09-13 收窄批新增的八例（清单见 [review-evidence-freshness-gate](../../implemented/process/2026-09-13-review-evidence-freshness-gate.md) 的 Testing）。真实仓库复验：2026-09-03 那批 diff 判 FULL 且 `--enforce` exit 1（9 个触发点被拦，因缺证据载体）。
 
 ## Related
 

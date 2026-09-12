@@ -31,7 +31,7 @@ Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
 
 - 徽章、`docs/testing.md` 基线行与 CI 打印值三者同源，可用 `gh run view <id> --log | grep line-rate` 或下载 artifact 复核（`HOME` 只读的环境下 gh 写 `~/.cache/gh` 会失败，需 `XDG_CACHE_HOME=<可写目录>`）。
 - 本机自测的覆盖率不再要求与徽章一致；口径写在 `docs/testing.md`。
-- 跟值义务无机械门禁兜底（`verify-*.py` 不跑 `dotnet test`，CI 也不校验徽章）：触发条件 = 收尾检查单「README 双语同步」条，其对象是 README 徽章（要求核对测试徽章与实测基线/覆盖率），`docs/testing.md` 基线行靠同一动作顺手同步、无独立门禁；本批即由该条发现徽章停在旧值。把「徽章 ↔ 基线值一致」机械化是候选，本批未实施。
+- 跟值义务的**人工面** = 收尾检查单「README 双语同步」条：其对象是 README 徽章（要求核对测试徽章与实测基线/覆盖率），`docs/testing.md` 基线行靠同一动作顺手同步。**机械面** = [README 徽章与基线行一致性门禁](2026-09-13-readme-badge-baseline-gate.md)（`verify-readme-badges.py`）：只断言两个家相等，不校验值是否等于 CI 实测——`verify-*.py` 不跑 `dotnet test`，跟值仍是人工作业。本批即由收尾条发现徽章停在旧值。
 - 同批修正 `README` 双语、`docs/faq{,.en}.md` 与 `docs/user-guide{,.en}.md` 对端口稳定性的无条件断言：首选端口被非血统进程占用时本次启动漂移，origin 变、页面级会话记忆不保留；漂移发生在页面已加载之后时才追加「该会话设置页命令面失效，重启应用恢复」。事实源为 [port-drift-ipc-origin-mismatch](../bug-fix/2026-09-12-port-drift-ipc-origin-mismatch.md)。
 - 本批零 `src/tests` 变更；`verify-md-links.py`、`verify-doc-budgets.py`、`verify-adr-format.py`、`verify-handoff-structure.py` 全绿。
 

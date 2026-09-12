@@ -10,7 +10,7 @@ Status: implemented
 
 把「文档门禁」从 `build-test` 中拆出为**独立的 `docs` job**，**无条件触发**（不依赖 `changes.code`）；`build-test` 缩减为纯 dotnet 面（build + test with coverage + coverage summary + upload），仍只在 `code` 面命中时跑。
 
-- `docs` job：checkout + 6 个 `verify-*` 脚本。对任何 push/PR 都跑——ADR、文档、插件（`plugins/`）、脚本、C# 改动一律过文档门禁。
+- `docs` job：checkout + 文档门禁步（`verify-adr-format`/`verify-cookbook`/`verify-doc-budgets`/`verify-md-links`/`verify-readme-badges`/`verify-handoff-structure`/`verify-governance`）+ 机械闸（`verify-code-health`/`verify-code-conventions`）+ 评审档硬闸（`verify-review-tier`）。对任何 push/PR 都跑——ADR、文档、插件（`plugins/`）、脚本、C# 改动一律过文档门禁。
 - `build-test` job：仅 dotnet build/test/coverage。只在 `changes.code=='true'` 时跑（`src/tests/scripts/*.slnx/ci.yml`），避免纯文档/插件改动白跑 dotnet。
 
 分工：`docs` gate 覆盖所有改动面的文档/ADR 合规；`build-test` 覆盖真实代码面（C#）。两者职责分离，互不拖累。

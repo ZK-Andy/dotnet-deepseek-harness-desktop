@@ -5,16 +5,24 @@ Mechanizes the review-tier decision that used to be the executor's discretion
 (the 2026-09-03 escape: a compose-root refactor whose ADR explicitly promised
 a full three-way review was run through a single R2 light review because the
 general "zero-behavior-change => light review" rule won by default). Tier
-classification rules live in the ADR `.agents/notes/proposed/process/
+classification rules live in the ADR `.agents/notes/implemented/process/
 2026-09-03-review-tier-escape-proofing.md`; this script is their mechanical
 enforcement (single source of truth for the path patterns).
 
 A diff touching any FULL tier path requires review evidence travelling WITH
 the change before it may be committed/pushed; without evidence the gate fails
 (`--enforce`). Evidence = an ADR under .agents/notes that is part of THIS
-change set (same staged set / same base..HEAD range) and whose header carries
-a valid `Review:` line dated inside the change window — a stale evidence ADR
-touched only to re-arm does not count (its Review date predates the window).
+change set (same staged set / same base..HEAD range; in --staged mode read from
+the index, the tree being committed) and whose header zone carries a valid
+`Review:` line ADDED by this change — a pre-existing Review: line merely
+carried along in the diff does not count, whether its ADR is touched by the
+batch or removed and re-created under a new name by it (rule:
+`.agents/notes/implemented/process/2026-09-13-review-evidence-freshness-gate.md`).
+
+An undeterminable diff is a violation, not an empty change set: when the base
+ref cannot be resolved (`--since` after a force-push / rebase / shallow clone)
+or git fails, the gate reports `cannot determine the change set` and `--enforce`
+exits 1. A gate that silently passes on an unresolvable base is not a gate.
 
 Diff scope (caller picks the mode matching the git moment):
   --staged            index vs HEAD        -> pre-commit
@@ -35,9 +43,9 @@ Tier classification (no executor discretion):
 
 Review evidence format (header zone of an implemented ADR):
     Review: FULL/yyyy-mm-dd/R1=ok R2=ok R3=ok
-  - date must be a real calendar date inside the change window
-  - the ADR must be part of the same change set
-  - Status must be implemented (a proposed ADR cannot self-certify its review)
+  - the ADR must be part of this change set, Status must be implemented (a
+    proposed ADR cannot self-certify), and the line must satisfy the freshness
+    rule stated above
 
 Default is report-only (exit 0). `--enforce` exits 1 when a FULL-tier diff
 lacks review evidence. `--self-test` runs offline fixtures.
@@ -86,7 +94,7 @@ FULL_TRIGGERS = (
     ("gate-criteria", lambda rel, p: p.name.startswith("verify-") and p.suffix in (".py", ".sh")),
     ("gate-criteria", lambda rel, p: p.name == ".editorconfig"),
     ("gate-criteria", lambda rel, p: ".githooks" in p.parts),
-    ("behavior-surface", lambda rel, p: ".github/workflows" in p.parts),
+    ("behavior-surface", lambda rel, p: rel.startswith(".github/workflows/")),
     ("behavior-surface", lambda rel, p: "resources" in p.parts),
     ("behavior-surface", lambda rel, p: "templates" in p.parts),
     ("behavior-surface", lambda rel, p: "docs" in p.parts),
@@ -103,10 +111,14 @@ def _valid_date(s: str) -> bool:
         return False
 
 
-def _repo_changed_paths(repo: Path, staged_only: bool = False,
-                        since: str | None = None) -> list[str]:
-    """Changed paths for the selected git moment:
-    --staged => index vs HEAD; --since => <base>..HEAD; default => working tree."""
+def _changed_paths_or_error(repo: Path, staged_only: bool = False,
+                            since: str | None = None) -> tuple[list[str] | None, str | None]:
+    """Changed paths for the selected git moment, or (None, error) — see
+    _repo_changed_paths for the moments. An undeterminable diff (unreachable
+    --since base, unborn HEAD, git failure) is an ERROR, never an empty change
+    set: an empty set passes the gate, and the shapes that lose the base ref
+    (force-push before-hash, rebase-orphaned base.sha, shallow clone) are exactly
+    the ones where the FULL-tier gate must not fall silent."""
     out: set[str] = set()
     if staged_only:
         cmds = (["git", "diff", "--cached", "--name-only"],)
@@ -119,22 +131,34 @@ def _repo_changed_paths(repo: Path, staged_only: bool = False,
             ["git", "diff", "--name-only"],
         )
     for cmd in cmds:
-        try:
-            r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, check=False)
-            if r.returncode == 0:
-                out.update(x for x in r.stdout.splitlines() if x.strip())
-        except Exception:
-            pass
+        r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, errors="replace", check=False)
+        if r.returncode != 0:
+            first = r.stderr.strip().splitlines()
+            return None, (f"`{' '.join(cmd)}` failed (rc={r.returncode}): "
+                          f"{first[0] if first else 'no stderr'}")
+        out.update(x for x in r.stdout.splitlines() if x.strip())
     if not staged_only and not since:
         # untracked (not in HEAD, not ignored)
-        try:
-            r = subprocess.run(["git", "ls-files", "--others", "--exclude-standard"],
-                               cwd=repo, capture_output=True, text=True, check=False)
-            if r.returncode == 0:
-                out.update(x for x in r.stdout.splitlines() if x.strip())
-        except Exception:
-            pass
-    return sorted(out)
+        r = subprocess.run(["git", "ls-files", "--others", "--exclude-standard"],
+                           cwd=repo, capture_output=True, text=True, errors="replace", check=False)
+        if r.returncode != 0:
+            return None, f"`git ls-files --others` failed (rc={r.returncode})"
+        out.update(x for x in r.stdout.splitlines() if x.strip())
+    return sorted(out), None
+
+
+def _repo_changed_paths(repo: Path, staged_only: bool = False,
+                        since: str | None = None) -> list[str]:
+    """Changed paths for the selected git moment:
+    --staged => index vs HEAD; --since => <base>..HEAD; default => working tree.
+
+    List form kept as the consumption contract for verify-review-brief.py (lane
+    derivation). Callers that must fail loud on an undeterminable diff use
+    _changed_paths_or_error; here the failure is dropped, so the brief gate's
+    lane derivation degrades to LIGHT — the tier gate itself is the one that
+    fails loud on the same condition."""
+    paths, _err = _changed_paths_or_error(repo, staged_only, since)
+    return paths or []
 
 
 def _adr_commits_full(rel: str, repo: Path) -> bool:
@@ -173,41 +197,180 @@ def _classify(paths: list[str], repo: Path) -> tuple[bool, list[str]]:
     return full, reasons
 
 
-def _evidence_in_change(paths: list[str], repo: Path) -> str | None:
+def _note_text(rel: str, repo: Path, staged_only: bool = False) -> str | None:
+    """Note content as it will land: the index version in --staged mode (the tree
+    being committed), else the file on disk. None = absent there."""
+    if staged_only:
+        r = subprocess.run(["git", "show", f":{rel}"], cwd=repo,
+                           capture_output=True, text=True, errors="replace", check=False)
+        return r.stdout if r.returncode == 0 else None
+    try:
+        return (repo / rel).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None  # listed as changed but gone from the working tree
+
+
+def _header_zone(text: str) -> list[str]:
+    """The note's header zone: everything above the first `## ` section heading
+    (capped), where `Status:` and `Review:` live however long the front matter is."""
+    lines = text.splitlines()[:60]
+    for i, ln in enumerate(lines):
+        if ln.startswith("## "):
+            return lines[:i]
+    return lines
+
+
+def _inherited_review_lines(repo: Path, staged_only: bool = False,
+                            since: str | None = None
+                            ) -> tuple[set[tuple[str, str]], dict[str, set[str]]] | None:
+    """Review: lines a note inherits from a note this change set deletes or
+    renames away, read at the base revision. Two keys, because `git diff -U0 --
+    <new path>` shows a rename destination as fully added: by note title (catches
+    a heavy rewrite that defeats rename detection) and by rename destination path
+    (catches a rename whose title the batch also changed). None = git could not
+    determine the removed set; the caller fails loud rather than treating an
+    unknown set as "nothing was inherited"."""
+    base = since if since else "HEAD"
+    if staged_only:
+        cmd = ["git", "diff", "--cached", "--name-status", "-M"]
+    elif since:
+        cmd = ["git", "diff", "--name-status", "-M", f"{since}..HEAD"]
+    else:
+        cmd = ["git", "diff", "--name-status", "-M", "HEAD"]
+    r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, errors="replace", check=False)
+    if r.returncode != 0:
+        return None
+    gone: list[tuple[str, str | None]] = []
+    for row in r.stdout.splitlines():
+        fields = row.split("\t")
+        if len(fields) < 2:
+            continue
+        status, old = fields[0], fields[1]
+        if not (old.startswith(NOTES_DIR) and old.endswith(".md")):
+            continue
+        if status.startswith("D"):
+            gone.append((old, None))
+        elif status.startswith("R") and len(fields) >= 3:
+            gone.append((old, fields[2]))
+    by_title: set[tuple[str, str]] = set()
+    by_path: dict[str, set[str]] = {}
+    for old, dest in gone:
+        # errors="replace": an undecodable pre-image must not abort the gate with a
+        # traceback; replacement chars simply fail the Review: line match (fail closed)
+        r = subprocess.run(["git", "show", f"{base}:{old}"], cwd=repo,
+                           capture_output=True, text=True, errors="replace", check=False)
+        if r.returncode != 0:
+            continue  # pre-image unreadable at base: nothing to key the exclusion on
+        lines = r.stdout.splitlines()
+        title = next((ln.strip() for ln in lines if ln.startswith("# Agent Note:")), "")
+        for ln in lines:
+            stripped = ln.strip()
+            m = REVIEW_LINE_RE.match(stripped)
+            if not (m and _valid_date(m.group("date"))):
+                continue
+            by_title.add((title, stripped))
+            if dest:
+                by_path.setdefault(dest, set()).add(stripped)
+    return by_title, by_path
+
+
+def _added_lines_for(rel: str, repo: Path, staged_only: bool = False,
+                     since: str | None = None) -> set[str] | None:
+    """The lines ADDED to `rel` in the selected git moment (`git diff -U0`, the
+    `+` lines minus the `+++` file header), stripped. Working-tree mode treats an
+    untracked file as fully added. None = git could not produce the diff; the
+    caller fails loud rather than reading it as "nothing was added"."""
+    added: set[str] = set()
+
+    def collect(args: list[str]) -> bool:
+        r = subprocess.run(["git", *args, "--", rel], cwd=repo,
+                           capture_output=True, text=True, errors="replace", check=False)
+        if r.returncode != 0:
+            return False
+        for line in r.stdout.splitlines():
+            if line.startswith("+") and not line.startswith("+++"):
+                added.add(line[1:].strip())
+        return True
+
+    if staged_only:
+        return added if collect(["diff", "--cached", "-U0"]) else None
+    if since:
+        return added if collect(["diff", "-U0", f"{since}..HEAD"]) else None
+    # `git diff HEAD` already spans staged + unstaged changes
+    if not collect(["diff", "-U0", "HEAD"]):
+        return None
+    r = subprocess.run(["git", "ls-files", "--others", "--exclude-standard",
+                        "--", rel], cwd=repo, capture_output=True, text=True, errors="replace",
+                       check=False)
+    if r.returncode != 0:
+        return None
+    if r.stdout.strip():
+        try:
+            text = (repo / rel).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None  # untracked but unreadable: no evidence, fail loud upstream
+        added.update(x.strip() for x in text.splitlines())
+    return added
+
+
+def _evidence_in_change(paths: list[str], repo: Path, staged_only: bool = False,
+                        since: str | None = None) -> str | None:
     """Return a violation string when the change set lacks valid review evidence,
-    else None. Evidence = an implemented ADR in THIS change set whose header has
-    Review: FULL/<date>/R1=ok R2=ok R3=ok with a real date (window check is the
-    caller's since/staged working-tree best effort — date is validated, staleness
-    vs the change window is reported by the caller when since is known)."""
+    else None. Evidence = an implemented ADR in THIS change set whose header zone
+    carries a `Review: FULL/<date>/R1=ok R2=ok R3=ok` line ADDED by this change and
+    not inherited from a note the same change set removes."""
     for rel in paths:
         if not rel.startswith(NOTES_DIR) or not rel.endswith(".md"):
             continue
-        adr = repo / rel
-        if not adr.is_file():
+        raw = _note_text(rel, repo, staged_only)
+        if raw is None:
             continue
-        try:
-            head = adr.read_text(encoding="utf-8", errors="replace").splitlines()[:15]
-            text = "\n".join(head)
-        except Exception:
-            continue
-        if "Status: implemented" not in text:
+        head = _header_zone(raw)
+        if "Status: implemented" not in "\n".join(head):
             continue  # proposed cannot self-certify
+        title = next((ln.strip() for ln in head if ln.startswith("# Agent Note:")), "")
+        added: set[str] | None = None
+        inherited: tuple[set[tuple[str, str]], dict[str, set[str]]] | None = None
         for line in head:
-            m = REVIEW_LINE_RE.match(line.strip())
-            if m and _valid_date(m.group("date")):
-                return None
+            stripped = line.strip()
+            m = REVIEW_LINE_RE.match(stripped)
+            if not (m and _valid_date(m.group("date"))):
+                continue
+            if added is None:
+                added = _added_lines_for(rel, repo, staged_only, since)
+                if added is None:
+                    return (f"cannot read the diff of {rel} (git failed) — the evidence "
+                            "gate fails loud instead of guessing")
+            if stripped not in added:
+                continue  # not written by this change: no need to look further
+            if inherited is None:
+                inherited = _inherited_review_lines(repo, staged_only, since)
+                if inherited is None:
+                    return ("cannot determine which notes this change set removes "
+                            "(git failed) — the evidence gate fails loud instead of "
+                            "treating an unknown inherited set as empty")
+            by_title, by_path = inherited
+            if (title, stripped) in by_title or stripped in by_path.get(rel, ()):
+                continue  # inherited from a note this batch removes or renames away
+            return None
     return ("no implemented ADR in the change set carries a valid "
-            "Review: FULL/<date>/R1=ok R2=ok R3=ok line")
+            "Review: FULL/<date>/R1=ok R2=ok R3=ok line added by this change "
+            "(evidence must be newly produced by the batch; an existing Review: "
+            "line carried along in the diff — including via a renamed or rewritten "
+            "note — does not count)")
 
 
 def _scan(repo: Path, staged_only: bool = False, since: str | None = None) -> list[str]:
-    paths = _repo_changed_paths(repo, staged_only, since)
+    paths, err = _changed_paths_or_error(repo, staged_only, since)
+    if err is not None:
+        return ["cannot determine the change set: " + err +
+                " — an undeterminable diff must not pass the review-tier gate"]
     if not paths:
         return []
     full, reasons = _classify(paths, repo)
     if not full:
         return []
-    bad = _evidence_in_change(paths, repo)
+    bad = _evidence_in_change(paths, repo, staged_only=staged_only, since=since)
     if bad is None:
         return []
     return [f"FULL-tier change lacks review evidence ({len(reasons)} trigger(s)): "
@@ -314,8 +477,9 @@ def _self_test() -> int:
         rows = _scan(r, since="HEAD~1")
         ok(rows == [], "--since passes when the range carries Review evidence")
 
-        # 8) stale evidence re-armed by a touch does NOT clear (B2): evidence ADR
-        #    committed earlier, later FULL change touches it one line + new code
+        # 8) stale evidence re-armed by a touch does NOT clear (B2): the evidence
+        #    ADR was committed earlier; a later FULL change touches it one line.
+        #    Its Review: line is not an added line of this batch, so it is inert.
         r = _new_repo(Path(td), "f8")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md", EVIDENCE)
         _commit_all(r, "evidence first")
@@ -324,12 +488,9 @@ def _self_test() -> int:
             EVIDENCE + "\n<!-- touched later -->\n", encoding="utf-8")
         _write(r, "src/App/DesktopBootstrap.cs", "// brand new")
         _commit_all(r, "touch evidence + new FULL change")
-        # default working-tree mode now sees nothing (clean); --since sees both.
-        # The evidence ADR Review date (2026-09-03) equals the change date, so it
-        # passes the window — this documents the current machine-checkable bound:
-        # date windowing is best-effort; semantic freshness is the reviewer's job.
         rows = _scan(r, since="HEAD~1")
-        ok(rows == [], "--since with re-touched same-dated evidence passes (window best-effort)")
+        ok(any("FULL-tier change lacks review evidence" in x for x in rows),
+           "--since blocks a touch-only re-armed stale evidence ADR")
 
         # 9) review values strictly checked: R1=fail does NOT count as evidence
         r = _new_repo(Path(td), "f9")
@@ -348,6 +509,116 @@ def _self_test() -> int:
         rows = _scan(r)
         ok(any("FULL-tier change lacks review evidence" in x for x in rows),
            "proposed ADR self-Review does not clear a FULL change")
+
+        # 11) freshly produced evidence clears even when an old ADR is touched in
+        #     the same batch (the freshness rule narrows the filler, not the batch)
+        r = _new_repo(Path(td), "f11")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md", EVIDENCE)
+        _commit_all(r, "evidence first")
+        (r / NOTES_DIR / "implemented" / "process" / "2026-09-03-x.md").write_text(
+            EVIDENCE + "\n<!-- touched later -->\n", encoding="utf-8")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-13-y.md", EVIDENCE)
+        _write(r, "src/App/DesktopBootstrap.cs", "// brand new")
+        _commit_all(r, "touch old evidence + new evidence + FULL change")
+        rows = _scan(r, since="HEAD~1")
+        ok(rows == [],
+           "newly produced evidence clears a FULL batch that also touches an old ADR")
+
+        # 12) an inherited Review: line must not travel by rename: whether or not
+        #     git pairs the notes, the line was not ADDED by this change
+        r = _new_repo(Path(td), "f12")
+        header = ("# Agent Note: x\n\nStatus: implemented\n\n"
+                  "Review: FULL/2026-09-03/R1=ok R2=ok R3=ok\n\n")
+        body_old = "\n".join(f"old body line {i}" for i in range(40))
+        body_new = "\n".join(f"fully rewritten body line {i}" for i in range(40))
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
+               header + "## Problem\n\n" + body_old +
+               "\n\n## Alternatives considered\n\n- a\n\n## Consequences\n\n" + body_old + "\n")
+        _commit_all(r, "old evidence")
+        old = r / NOTES_DIR / "implemented" / "process" / "2026-09-03-x.md"
+        (r / NOTES_DIR / "implemented" / "process" / "2026-09-13-renamed.md").write_text(
+            header + "## Problem\n\n" + body_new +
+            "\n\n## Alternatives considered\n\n- b\n\n## Consequences\n\n" + body_new + "\n",
+            encoding="utf-8")
+        old.unlink()
+        _write(r, "src/App/DesktopBootstrap.cs", "// brand new")
+        _commit_all(r, "rename+rewrite evidence + FULL change")
+        rows = _scan(r, since="HEAD~1")
+        ok(any("FULL-tier change lacks review evidence" in x for x in rows),
+           "a Review: line inherited via rename+rewrite does not count as evidence")
+
+        # 13) an unresolvable --since base must fail loud, never pass as empty
+        r = _new_repo(Path(td), "f13")
+        rows = _scan(r, since="nosuchref")
+        ok(any("cannot determine the change set" in x for x in rows),
+           "an unreachable --since base is a violation (no silent green)")
+
+        # 14) --staged reads the note from the index: staging evidence and then
+        #     deleting the working-tree copy (a partial-commit flow) still clears
+        r = _new_repo(Path(td), "f14")
+        _commit_all(r, "base")
+        _write(r, "src/App/DesktopBootstrap.cs", "// new FULL change")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md", EVIDENCE)
+        (r / NOTES_DIR / "implemented" / "process" / "2026-09-03-x.md").unlink()
+        ok(_scan(r, staged_only=True) == [],
+           "--staged clears when the staged index carries the evidence ADR")
+
+        # 15) default working-tree mode: an ADR written but not `git add`-ed is
+        #     untracked, so it counts as fully added (ad-hoc local check)
+        r = _new_repo(Path(td), "f15")
+        _commit_all(r, "base")
+        (r / "src" / "App" / "DesktopBootstrap.cs").write_text("// new FULL change",
+                                                               encoding="utf-8")
+        note = r / NOTES_DIR / "implemented" / "process" / "2026-09-03-x.md"
+        note.parent.mkdir(parents=True, exist_ok=True)
+        note.write_text(EVIDENCE, encoding="utf-8")
+        ok(_scan(r) == [],
+           "an untracked ADR counts as fully added in working-tree mode")
+
+        # 16) .github/workflows/** is a behavior-surface FULL trigger
+        r = _new_repo(Path(td), "f16")
+        _write(r, ".github/workflows/ci.yml", "name: ci\n")
+        rows = _scan(r)
+        ok(any("behavior-surface: .github/workflows/ci.yml" in x for x in rows),
+           "a workflow change classifies FULL (behavior-surface)")
+
+        # 17) a detected rename whose title the batch also changed: the Review:
+        #     line travels with the same note, so the destination path keys it
+        r = _new_repo(Path(td), "f17")
+        header_alpha = ("# Agent Note: alpha\n\nStatus: implemented\n\n"
+                        "Review: FULL/2026-09-03/R1=ok R2=ok R3=ok\n\n")
+        body = "\n".join(f"body line {i}" for i in range(40))
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-alpha.md",
+               header_alpha + "## Problem\n\n" + body +
+               "\n\n## Alternatives considered\n\n- a\n\n## Consequences\n\n" + body + "\n")
+        _commit_all(r, "old evidence")
+        (r / NOTES_DIR / "implemented" / "process" / "2026-09-03-alpha.md").unlink()
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-13-beta.md",
+               header_alpha.replace("alpha", "beta") + "## Problem\n\n" + body +
+               "\n\n## Alternatives considered\n\n- a\n\n## Consequences\n\n" + body + "\n")
+        _write(r, "src/App/DesktopBootstrap.cs", "// brand new")
+        _commit_all(r, "rename + retitle evidence + FULL change")
+        rows = _scan(r, since="HEAD~1")
+        ok(any("FULL-tier change lacks review evidence" in x for x in rows),
+           "a retitled rename does not launder the inherited Review: line")
+
+        # 18) the other direction: at a rename destination a FRESH Review: line
+        #     (different text) is newly produced evidence and clears — the
+        #     exclusion is keyed on the line text, not on the destination path
+        r = _new_repo(Path(td), "f18")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-alpha.md",
+               header_alpha + "## Problem\n\n" + body +
+               "\n\n## Alternatives considered\n\n- a\n\n## Consequences\n\n" + body + "\n")
+        _commit_all(r, "old evidence")
+        (r / NOTES_DIR / "implemented" / "process" / "2026-09-03-alpha.md").unlink()
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-13-beta.md",
+               header_alpha.replace("alpha", "beta").replace("2026-09-03/R1", "2026-09-14/R1")
+               + "## Problem\n\n" + body +
+               "\n\n## Alternatives considered\n\n- a\n\n## Consequences\n\n" + body + "\n")
+        _write(r, "src/App/DesktopBootstrap.cs", "// brand new")
+        _commit_all(r, "rename + fresh evidence + FULL change")
+        ok(_scan(r, since="HEAD~1") == [],
+           "a rename destination carrying a fresh Review: line clears")
 
     if failed == 0:
         print("== verify-review-tier self-test passed ==")

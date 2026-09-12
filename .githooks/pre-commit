@@ -52,4 +52,10 @@ python3 scripts/verify-code-conventions.py --enforce
 echo "-> verify-review-tier.py --staged"
 python3 scripts/verify-review-tier.py --staged --enforce
 
+# 11) README 徽章 ↔ 基线行一致性（ADR readme-badge-baseline-gate）：README 双语的
+#     tests/coverage 徽章与 docs/testing.md 基线行是同一事实的两个家，漂移即拦。
+#     --staged：判 index（即将入库的树），与第 10 步同款——工作树被改回一致不能顶包。
+echo "-> verify-readme-badges.py --staged"
+python3 scripts/verify-readme-badges.py --staged
+
 echo "pre-commit OK"
