@@ -134,7 +134,14 @@ public sealed partial class DesktopBootstrap
             // CLI shim 注册（dsh 已全局在 PATH；仅注册内容恒定的 pnpm shim）。
             RegisterCliShim();
 
-            await InstallBootstrapPluginsAsync(bootCt);
+            bool pluginsInstalled = await InstallBootstrapPluginsAsync(bootCt);
+
+            // 体检探针（ADR plugin-install-health-probe）：本轮确有插件装成功时、正式启动前验证
+            // dsh web 可出 URL；失败自愈，仍失败放行——best-effort 不阻断启动。
+            if (pluginsInstalled)
+            {
+                await RunInstallProbeBestEffortAsync(bootCt);
+            }
 
             Uri? url = await _host.StartAsync(timeout: TimeSpan.FromSeconds(60), bootCt);
             if (url is null)
@@ -160,43 +167,6 @@ public sealed partial class DesktopBootstrap
         finally
         {
             _bootstrapSettled!.TrySetResult();
-        }
-    }
-
-    /// <summary>引导刚落定后的插件装配（ADR reference-alignment 批次一/二）：companion（internal）spawn 前
-    /// 静默自愈，dshmarket（preset）经引导页确认装/跳过。dsh 已在全局 PATH，nodeExe/dshEntry 双 null →
-    /// 走 PATH dsh 命令。best-effort：失败只告警不阻断启动。</summary>
-    private async Task InstallBootstrapPluginsAsync(CancellationToken bootCt)
-    {
-        // 对齐参照：companion（internal）在 spawn dsh 前静默自愈（batch-1），不出现在
-        // 引导勾选清单（对齐 ensure_internal_plugins）；best-effort：失败只告警不阻断
-        // （缺 companion 不阻塞 dsh 起动，下次启动自愈）。
-        try
-        {
-            await Services.MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                nodeExe: null,
-                dshEntry: null,
-                HarnessRuntimeHost.ResolveDshHome(),
-                Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
-                Services.HostLog.Write,
-                Services.PluginProcessRunner.RunAsync,
-                bootCt);
-        }
-        catch (Exception ex)
-        {
-            Services.HostLog.Write($"[host] 引导：随包插件安装失败（跳过）：{ex.Message}");
-        }
-
-        // 首启插件引导（ADR reference-alignment 批次二）：dshmarket（preset）经引导页
-        // chip 确认/跳过 + 日志回流；用户确认后才装（StartAsync 前，与 batch-1 合流）。
-        // 跳过则该次不装（less-bootstrapped，dsh 起动后可从应用内市场/设置自愈补装）。
-        try
-        {
-            await RunPreinstallPhaseAsync(RunDshPluginAddStreamingAsync, bootCt);
-        }
-        catch (Exception ex)
-        {
-            Services.HostLog.Write($"[host] 插件引导异常跳过：{ex.Message}");
         }
     }
 

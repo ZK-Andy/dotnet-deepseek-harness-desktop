@@ -288,9 +288,10 @@ public sealed partial class DesktopBootstrap
         // dev 显式覆盖共享 home 时跳过（防串扰）。
         if (!_bootstrapNeeded && !(_isDev && !_devAutoIsolated))
         {
+            bool installed = false;
             try
             {
-                Services.MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                installed = Services.MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
                     nodeExe: null,
                     dshEntry: null,
                     HarnessRuntimeHost.ResolveDshHome(),
@@ -302,6 +303,13 @@ public sealed partial class DesktopBootstrap
             catch (Exception ex)
             {
                 Services.HostLog.Write($"[host] 随包插件 spawn 前安装失败（跳过，不阻断启动）：{ex.Message}");
+            }
+
+            // 体检探针（ADR plugin-install-health-probe）：本轮确有插件装成功时、正式启动前验证
+            // dsh web 可出 URL；失败自愈（reconcile 重试一次），仍失败放行——best-effort 不阻断启动。
+            if (installed)
+            {
+                RunInstallProbeBestEffortAsync(CancellationToken.None).GetAwaiter().GetResult();
             }
         }
     }

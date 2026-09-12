@@ -81,4 +81,45 @@ internal static class PluginProcessRunner
             onLine?.Invoke(line);
         }
     }
+
+    /// <summary>探针执行器（ADR plugin-install-health-probe）：spawn 后不等服务完成，只等 <c>dsh web:</c>
+    /// URL（超时/早退即败），finally 整树击杀。防御不变量对齐 RunAsync/RunStreamingAsync——OCE 会跳过
+    /// 等待、using dispose 只关句柄不杀进程，取消/异常路径必须击杀，否则探针 dsh 成带血统 token 的孤儿
+    /// （残留虽可被下次启动收割，但当次会占端口）。</summary>
+    /// <param name="psi">探针启动信息（<see cref="PluginInstallProbe.BuildProbePsi"/> 产物）。</param>
+    /// <param name="ct">取消令牌；取消以 OCE 上抛（探针随调用链路收口），仅超时按失败返回 null。</param>
+    /// <returns>探针给出的 <c>dsh web:</c> URL；超时或早退返回 null。</returns>
+    internal static async Task<Uri?> RunProbeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+    {
+        using System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi)
+            ?? throw new InvalidOperationException("无法启动探针 dsh 进程");
+        var urlSignal = new TaskCompletionSource<Uri?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        p.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is not null && HarnessUrlParser.TryParse(e.Data) is { } url)
+            {
+                urlSignal.TrySetResult(url);
+            }
+        };
+        // Exited 订阅先于 EnableRaisingEvents：启用后再订阅会漏掉两行之间发生的早退，
+        // urlSignal 将无人置位、探针烧满 60s 超时（坏插件秒退场景必踩）
+        p.Exited += (_, _) => urlSignal.TrySetResult(null);
+        p.EnableRaisingEvents = true;
+        p.BeginOutputReadLine();
+        // 双流并发读排空 stderr：探针失败时 dsh 的错误输出可超 pipe buffer（~64KB），不排空会互等死锁
+        p.BeginErrorReadLine();
+        try
+        {
+            return await urlSignal.Task.WaitAsync(PluginInstallProbe.ProbeTimeout, ct).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            HostLog.Write($"[host] 插件体检探针超时（{PluginInstallProbe.ProbeTimeout.TotalSeconds:s}s 未出 URL），回收探针进程");
+            return null;
+        }
+        finally
+        {
+            KillTree(p);
+        }
+    }
 }

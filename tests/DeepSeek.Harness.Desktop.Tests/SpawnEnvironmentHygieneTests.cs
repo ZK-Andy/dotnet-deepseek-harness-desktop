@@ -59,8 +59,7 @@ public class SpawnEnvironmentHygieneTests
     [Fact]
     public async Task BuildStartPsi_StripsNoise_KeepsOwnInjection() => await WithNoiseAsync(() =>
     {
-        using var host = new HarnessRuntimeHost();
-        ProcessStartInfo psi = host.BuildStartPsi(0, "/home/u/.dsh", "tok");
+        ProcessStartInfo psi = HarnessRuntimeHost.BuildStartPsi(0, "/home/u/.dsh", "tok");
 
         AssertInheritanceProof(psi);
         Assert.Equal("/home/u/.dsh", psi.Environment["DSH_HOME"]);

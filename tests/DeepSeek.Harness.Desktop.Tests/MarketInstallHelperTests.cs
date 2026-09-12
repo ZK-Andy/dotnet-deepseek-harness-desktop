@@ -251,9 +251,10 @@ public class MarketInstallHelperTests
 
         try
         {
-            await MarketInstallHelper.EnsureMarketFromRegistryAsync(
+            bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
                 "node", "/dsh/bin.js", home, logs.Add, RunFake, CancellationToken.None);
 
+            Assert.True(installed);
             Assert.NotNull(capturedPsi);
             // 参数形状：dsh bin.js plugin --profile <DesktopProfileName> add dshmarket@latest
             Assert.Equal(["/dsh/bin.js", "plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", MarketInstallHelper.MarketSpec], args);
@@ -298,9 +299,10 @@ public class MarketInstallHelperTests
 
         try
         {
-            await MarketInstallHelper.EnsureMarketFromRegistryAsync(
+            bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
                 "node", "/dsh/bin.js", home, logs.Add, RunFake, CancellationToken.None);
 
+            Assert.True(installed);
             Assert.Equal(2, runs);
             Assert.True(relaxSeen, "放宽重试应带 pnpm_config_minimum_release_age=0");
             Assert.Contains(logs, l => l.Contains("minimumReleaseAge 政策拒绝"));
@@ -342,9 +344,10 @@ public class MarketInstallHelperTests
 
         try
         {
-            await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
                 "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, CancellationToken.None);
 
+            Assert.True(installed);
             Assert.NotNull(capturedPsi);
             // 参数形状：dsh bin.js plugin --profile <DesktopProfileName> add <companion tgz>
             Assert.Equal(
@@ -387,8 +390,9 @@ public class MarketInstallHelperTests
 
         try
         {
-            await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
                 "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, CancellationToken.None);
+            Assert.False(installed);
             Assert.Equal(0, runs);
             Assert.Contains(logs, l => l.Contains("无需安装"));
         }
@@ -428,8 +432,9 @@ public class MarketInstallHelperTests
 
         try
         {
-            await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
                 "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, CancellationToken.None);
+            Assert.True(installed);
             Assert.Equal(2, runs);
             Assert.True(relaxSeen, "放宽重试应带 pnpm_config_minimum_release_age=0");
             Assert.Contains(logs, l => l.Contains("minimumReleaseAge 政策拒绝"));
@@ -471,9 +476,10 @@ public class MarketInstallHelperTests
 
         try
         {
-            await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
                 null, null, home, installerPluginsDir, _ => { }, RunFake, CancellationToken.None);
 
+            Assert.True(installed);
             Assert.NotNull(capturedPsi);
             Assert.Equal("dsh", capturedPsi!.FileName);
             // 参数形状：dsh plugin --profile <DesktopProfileName> add <companion tgz>（无 bin.js 入口）
@@ -481,6 +487,29 @@ public class MarketInstallHelperTests
                 ["plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz")],
                 args);
             Assert.Contains("dsh-desktop-companion", File.ReadAllText(profilePkg));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    /// <summary>验证市场安装失败（plugin add 非零退出）时返回 false——体检探针据此跳过。</summary>
+    [Fact]
+    public async Task EnsureMarketFromRegistry_ReturnsFalse_WhenInstallFails()
+    {
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName));
+        var logs = new List<string>();
+
+        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+            => (1, string.Empty, "boom");
+
+        try
+        {
+            bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
+                "node", "/dsh/bin.js", home, logs.Add, RunFake, CancellationToken.None);
+            Assert.False(installed);
         }
         finally
         {

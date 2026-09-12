@@ -25,7 +25,8 @@ public static partial class MarketInstallHelper
     /// <param name="log">诊断日志出口。</param>
     /// <param name="runPluginAdd">执行一次 <c>dsh plugin add</c> 的注入委托（接收已配好 env 的 ProcessStartInfo）。</param>
     /// <param name="ct">取消令牌。</param>
-    public static async Task EnsureMarketFromRegistryAsync(
+    /// <returns>本次是否确有插件装成功（体检探针的触发条件；失败 best-effort 只留日志）。</returns>
+    public static async Task<bool> EnsureMarketFromRegistryAsync(
         string nodeExe,
         string dshEntry,
         string dshHome,
@@ -43,7 +44,7 @@ public static partial class MarketInstallHelper
         if (exitCode != 0)
         {
             log($"[host] 市场安装失败 exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}（市场缺失不阻塞首启，可稍后经设置/手动安装）");
-            return;
+            return false;
         }
 
         string profilePkg = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json");
@@ -51,6 +52,8 @@ public static partial class MarketInstallHelper
         {
             log("[host] 已补写 bundles dshmarket");
         }
+
+        return true;
     }
 
     /// <summary>
@@ -68,7 +71,8 @@ public static partial class MarketInstallHelper
     /// <param name="log">诊断日志出口。</param>
     /// <param name="runPluginAdd">执行一次 <c>dsh plugin add</c> 的注入委托。</param>
     /// <param name="ct">取消令牌。</param>
-    public static async Task EnsureBundledPluginsBeforeSpawnAsync(
+    /// <returns>本次是否确有插件装成功（体检探针的触发条件；无待装/全失败返回 false）。</returns>
+    public static async Task<bool> EnsureBundledPluginsBeforeSpawnAsync(
         string? nodeExe,
         string? dshEntry,
         string dshHome,
@@ -84,12 +88,13 @@ public static partial class MarketInstallHelper
         if (pending.Count == 0)
         {
             log("[host] 随包插件无需安装（companion 已就位），跳过");
-            return;
+            return false;
         }
 
         await CleanupBogusAppDependencyAsync(profilePkg).ConfigureAwait(false);
         EnsureWorkspaceAllowBuilds(Path.Combine(profileDir, "pnpm-workspace.yaml"));
 
+        bool anyInstalled = false;
         foreach ((string? pkg, string? spec) in pending)
         {
             log($"[host] 随包插件安装（{pkg}）spec={spec}");
@@ -101,6 +106,7 @@ public static partial class MarketInstallHelper
                 continue;
             }
 
+            anyInstalled = true;
             if (await EnsureBundlesContainsAsync(profilePkg, pkg).ConfigureAwait(false))
             {
                 log($"[host] 已补写 bundles {pkg}");
@@ -115,6 +121,8 @@ public static partial class MarketInstallHelper
                 log($"[host] 已补回桌面必需 bundle {builtin}");
             }
         }
+
+        return anyInstalled;
     }
 
     /// <summary>

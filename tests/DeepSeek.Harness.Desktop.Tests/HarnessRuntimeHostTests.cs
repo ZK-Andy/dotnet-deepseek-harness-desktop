@@ -47,8 +47,7 @@ public class HarnessRuntimeHostTests
     [Fact]
     public void BuildStartPsi_CarriesLineageTokenAndHome()
     {
-        using var host = new HarnessRuntimeHost();
-        System.Diagnostics.ProcessStartInfo psi = host.BuildStartPsi(port: 0, home: "/home/u/.dsh", spawnToken: "token-xyz");
+        System.Diagnostics.ProcessStartInfo psi = HarnessRuntimeHost.BuildStartPsi(port: 0, home: "/home/u/.dsh", spawnToken: "token-xyz");
 
         Assert.Equal("token-xyz", psi.Environment[RuntimeLineage.TokenEnv]);
         Assert.Equal("/home/u/.dsh", psi.Environment["DSH_HOME"]);

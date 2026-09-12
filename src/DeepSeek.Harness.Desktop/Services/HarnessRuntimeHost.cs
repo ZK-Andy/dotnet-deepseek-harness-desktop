@@ -143,7 +143,7 @@ public sealed partial class HarnessRuntimeHost : IDisposable
     /// <param name="port">固定端口；<c>null</c> 时让 OS 分配（<c>--port 0</c>）。</param>
     /// <param name="home">共享 DSH_HOME。</param>
     /// <param name="spawnToken">孤儿清扫 token（注入环境变量，与落盘 pid 对应）。</param>
-    internal ProcessStartInfo BuildStartPsi(int? port, string home, string spawnToken)
+    internal static ProcessStartInfo BuildStartPsi(int? port, string home, string spawnToken)
     {
         var psi = new ProcessStartInfo
         {
