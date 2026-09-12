@@ -41,6 +41,15 @@ Rules enforced:
   - Directed checks: 1–5, each a `- [ ]` line
   - Explicitly out of scope: ≥1 line
   - Report contract: the fixed Blocker/Suggestion sentence present
+  - Worktree freeze (ADR review-freeze-worktree-discipline): `git status
+    --porcelain` on the real repo must show staged-only entries — a non-space
+    worktree column (post-freeze edits not re-staged: the reviewed index is
+    not what will be committed) or an untracked `??` line (the stray-blob
+    `git add` entry form) blocks the launch. Checked in main() against the
+    real repo only (the brief-shape fixtures are non-git temp dirs; the freeze
+    check is covered by fixture 9's real temp git repo); `--since`
+    post-hoc reviews of committed batches have no worktree semantics, so this
+    never runs in CI.
   - brief files are NOT part of the git change set (gitignored); this gate is
     a local pre-launch check, not a CI gate
 
@@ -55,6 +64,7 @@ Exit code 0 = pass, 1 = violations.
 
 import argparse
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -234,6 +244,34 @@ def _brief_paths(repo: Path) -> tuple[dict[str, Path], list[str]]:
     return {lane: found.get(lane) for lane in LANES}, duplicates
 
 
+def _freeze_violations(repo: Path) -> list[str]:
+    """Worktree must be frozen onto the staged set (review-object freeze).
+
+    Both the --staged tier classification and the review diff read the index;
+    a worktree that has drifted from it (post-freeze edits not re-staged) or
+    that carries stray untracked files (2026-09-13: an unknown-origin blob was
+    `git add`ed into the index unnoticed) means the review object is not what
+    will be committed. Porcelain XY semantics: any non-space worktree column,
+    or an untracked `??` line, is a violation. Ignored paths (briefs, .plan)
+    never appear in the output, so they cannot false-positive.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo), "status", "--porcelain"],
+            capture_output=True, text=True)
+    except OSError:
+        return ["review-freeze: cannot run git — worktree freeze unverifiable"]
+    if proc.returncode != 0:
+        return [f"review-freeze: git status failed: {proc.stderr.strip() or proc.returncode}"]
+    out: list[str] = []
+    for ln in proc.stdout.splitlines():
+        if ln.startswith("?? "):
+            out.append(f"review-freeze: untracked file outside the frozen review object: {ln[3:]}")
+        elif len(ln) >= 2 and ln[1] != " ":
+            out.append(f"review-freeze: worktree drifts from staged index (re-stage or discard before review): {ln}")
+    return out
+
+
 def _tier_lanes(repo: Path) -> list[str]:
     """Lanes required by the review tier of the current git moment.
 
@@ -387,12 +425,45 @@ def self_test() -> int:
         if not any("R2" in s and "非 0 exit" in s for s in vs8):
             failures.append("fixture 8 (self-assertion with non-zero exit) should flag R2")
 
+        # Fixture 9: worktree freeze on a real temp git repo (ADR
+        # review-freeze-worktree-discipline) — staged-only passes; a
+        # post-freeze edit without re-staging and a stray untracked file
+        # each violate; ignored paths never appear.
+        root9 = Path(td) / "f9"
+        root9.mkdir()
+        def _git(*argv: str) -> None:
+            subprocess.run(["git", "-C", str(root9), *argv],
+                           check=True, capture_output=True, text=True)
+        _git("init", "-q")
+        _git("config", "user.email", "t@t")
+        _git("config", "user.name", "t")
+        (root9 / "a.txt").write_text("one\n", encoding="utf-8")
+        (root9 / ".gitignore").write_text(".review-briefs/\n", encoding="utf-8")
+        _git("add", ".")
+        _git("commit", "-qm", "base")
+        if _freeze_violations(root9):
+            failures.append("fixture 9 (clean staged-only repo) should pass")
+        (root9 / "a.txt").write_text("two\n", encoding="utf-8")
+        if not any("re-stage or discard" in s for s in _freeze_violations(root9)):
+            failures.append("fixture 9 (post-freeze unstaged edit) should flag worktree drift")
+        _git("add", "a.txt")
+        if _freeze_violations(root9):
+            failures.append("fixture 9 (re-staged) should pass")
+        (root9 / "stray.txt").write_text("?\n", encoding="utf-8")
+        (root9 / BRIEFS_DIR).mkdir()
+        (root9 / BRIEFS_DIR / "R2-a.md").write_text("x\n", encoding="utf-8")
+        vs9 = _freeze_violations(root9)
+        if not any("untracked file" in s and "stray.txt" in s for s in vs9):
+            failures.append("fixture 9 (stray untracked file) should flag")
+        if any(BRIEFS_DIR in s for s in vs9):
+            failures.append("fixture 9 (ignored briefs dir) must not appear in violations")
+
     if failures:
         print("self-test: FAIL")
         for f in failures:
             print(" -", f)
         return 1
-    print("self-test: OK (8 fixtures)")
+    print("self-test: OK (9 fixtures)")
     return 0
 
 
@@ -406,15 +477,20 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
-    violations = check_repo(Path(args.repo).resolve())
+    repo = Path(args.repo).resolve()
+    violations = check_repo(repo)
     for lane in LANES:
         lane_v = [s for s in violations if s.startswith(lane + ":")]
         for s in lane_v:
             print(s)
-    if violations:
-        print(f"review-brief: {len(violations)} violation(s)")
+    freeze_v = _freeze_violations(repo)
+    for s in freeze_v:
+        print(s)
+    total = violations + freeze_v
+    if total:
+        print(f"review-brief: {len(total)} violation(s)")
         return 1 if args.enforce else 0
-    print("review-brief: OK (R1/R2/R3 briefs present and well-formed)")
+    print("review-brief: OK (briefs well-formed; worktree frozen onto the staged set)")
     return 0
 
 
