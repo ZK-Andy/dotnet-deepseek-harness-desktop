@@ -92,9 +92,10 @@ public class HarnessRuntimeHostTests
         string home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
-
         try
         {
+            // 新 home 无 profile 时 dsh 立即退出（拿不到 URL）——先做 profile 引导（入 try 保证环境清理）
+            Assert.True(DesktopProfileBootstrap.EnsureProfile(home));
             using var host = new HarnessRuntimeHost();
             Uri? url;
             try
@@ -122,7 +123,7 @@ public class HarnessRuntimeHostTests
         }
     }
 
-    /// <summary>验证子进程被终止后 RestartAsync 能重建新实例且端口保持不变——重启前后 URL 相等，Web UI 才能记住上一会话。</summary>
+    /// <summary>验证子进程被终止后 RestartAsync 能重建新实例且 origin 保持不变（端口相等）——Web UI 才能记住上一会话；launch token 每进程必新。</summary>
     [Fact]
     public async Task RestartAsync_AfterChildKilled_YieldsNewUrl_WhenEnabled()
     {
@@ -135,9 +136,10 @@ public class HarnessRuntimeHostTests
         string home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
-
         try
         {
+            // 新 home 无 profile 时 dsh 立即退出（拿不到 URL）——先做 profile 引导（入 try 保证环境清理）
+            Assert.True(DesktopProfileBootstrap.EnsureProfile(home));
             using var host = new HarnessRuntimeHost();
             Uri? first;
             try
@@ -158,8 +160,8 @@ public class HarnessRuntimeHostTests
             host.Stop();
 
             Assert.NotNull(restarted);
-            // 稳定端口：重启后 URL 相同（origin 不变），Web UI 才能记住上一会话
-            Assert.Equal(first, restarted);
+            // 稳定端口：重启后 origin 不变，Web UI 才能记住上一会话；per-process launch token 每次必新，不参与断言
+            Assert.Equal(first!.GetLeftPart(UriPartial.Authority), restarted.GetLeftPart(UriPartial.Authority));
         }
         finally
         {
@@ -306,9 +308,10 @@ public class HarnessRuntimeHostTests
         string home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
-
         try
         {
+            // 新 home 无 profile 时 dsh 立即退出（拿不到 URL）——先做 profile 引导（入 try 保证环境清理）
+            Assert.True(DesktopProfileBootstrap.EnsureProfile(home));
             Uri? first;
             using (var firstHost = new HarnessRuntimeHost())
             {
@@ -333,7 +336,8 @@ public class HarnessRuntimeHostTests
                 Uri? second = await secondHost.StartAsync(TimeSpan.FromSeconds(30));
                 secondHost.Stop();
                 Assert.NotNull(second);
-                Assert.Equal(first, second);
+                // origin 不变（同冷启动端口记忆）；per-process launch token 每次必新，不参与断言
+                Assert.Equal(first!.GetLeftPart(UriPartial.Authority), second.GetLeftPart(UriPartial.Authority));
             }
             catch (Win32Exception)
             {
@@ -365,14 +369,14 @@ public class HarnessRuntimeHostTests
         string home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
         Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
-        // 新 home 无 profile 时 dsh 立即退出（回退 spawn 拿不到 URL）——先做 profile 引导
-        Assert.True(DesktopProfileBootstrap.EnsureProfile(home));
 
         // 占位者：bind 但不 accept——bind 探测必须连这种占用者也能判出（与连接探测互补）
         var squatter = new TcpListener(IPAddress.Loopback, 0);
         squatter.Start();
         try
         {
+            // 新 home 无 profile 时 dsh 立即退出（回退 spawn 拿不到 URL）——先做 profile 引导（入 try 保证环境清理）
+            Assert.True(DesktopProfileBootstrap.EnsureProfile(home));
             int occupied = ((IPEndPoint)squatter.LocalEndpoint).Port;
             HarnessRuntimeHost.PersistPort(occupied);
 
