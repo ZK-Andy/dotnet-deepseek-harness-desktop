@@ -39,8 +39,10 @@ jobs:
           dotnet-version: '10.0.x'
       - name: 确定版本
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          V="${{ inputs.version }}"; V="${V#v}"
+          V="$INPUT_VERSION"; V="${V#v}"
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then V="${GITHUB_REF_NAME#v}"; fi
           # 输入留空时回退 csproj <Version>（版本单一来源；空值会令 -p:Version= 触发 MSB4044，前置 fail loud）
           if [[ -z "$V" ]]; then
@@ -53,7 +55,8 @@ jobs:
           echo "VERSION=$V" >> "$GITHUB_ENV"
           echo "打包版本: $V (ref=${{ github.ref }} event=${{ github.event_name }})"
       - name: dotnet publish
-        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r win-x64 --self-contained true -p:Version=${{ env.VERSION }} -o artifacts/publish-win-x64
+        shell: bash
+        run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r win-x64 --self-contained true -p:Version="$VERSION" -o artifacts/publish-win-x64
       - name: 打 Windows 包（安装器 exe，文件名含 windows 标识；不再产独立 zip）
         shell: bash
         run: bash scripts/package-windows.sh artifacts/publish-win-x64
