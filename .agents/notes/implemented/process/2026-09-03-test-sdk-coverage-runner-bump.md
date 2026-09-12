@@ -33,7 +33,7 @@ Status: implemented
 ## Consequences
 
 - 三包 bump 后验证：build **0 警告**、`dotnet test` **449/449 通过**。
-- 覆盖率收集实证：`dotnet test --collect:"XPlat Code Coverage" -- DataCollectionRunSettings...Format=cobertura` 正常产出 `coverage.cobertura.xml`，`line-rate = 0.5216`（≈ 52.2%，与既有 README 基线一致）——coverlet 10.x 数据收集器行为无回归，CI 覆盖率步骤无需改动。
+- 覆盖率收集实证：`dotnet test --collect:"XPlat Code Coverage" -- DataCollectionRunSettings...Format=cobertura` 正常产出 `coverage.cobertura.xml`，`line-rate = 0.5216`（≈ 52.2%，与当时的 README 基线一致）——coverlet 10.x 数据收集器行为无回归，CI 覆盖率步骤无需改动。（该行 0.5216 是当日本机实测；基线口径见 [coverage-baseline-from-ci-cobertura](../testing/2026-09-12-coverage-baseline-from-ci-cobertura.md)。）
 - CI（ci.yml build-test job）沿用既有 `dotnet test` 命令与覆盖率参数，无配置文件需要跟随修改。
 - 唯一仓库面改动 = `tests/DeepSeek.Harness.Desktop.Tests/DeepSeek.Harness.Desktop.Tests.csproj`。
 

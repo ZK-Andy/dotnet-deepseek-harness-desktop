@@ -31,6 +31,6 @@ Status: implemented
 
 ## Related
 
-- [test-sdk-coverage-runner-bump](../process/2026-09-03-test-sdk-coverage-runner-bump.md)（implemented）：测试三包升级后覆盖率收集基线（0.5216）；本篇在其上补低覆盖纯逻辑面测试。
+- [test-sdk-coverage-runner-bump](../process/2026-09-03-test-sdk-coverage-runner-bump.md)（implemented）：测试三包升级后覆盖率收集实测（0.5216；基线取值口径见 [coverage-baseline-from-ci-cobertura](../testing/2026-09-12-coverage-baseline-from-ci-cobertura.md)）；本篇在其上补低覆盖纯逻辑面测试。
 - [reference-alignment](../architecture/2026-08-29-reference-alignment.md)（implemented）：其批次一/五确立「判定核心纯逻辑可单测」模式（`MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync` 注入、`PageHealthRecovery` 纯逻辑），本篇沿同一模式推广到配置解析/平台命令构造/文件持久化面。
 - [desktop-shell-self-update](../process/2026-08-22-desktop-shell-self-update.md)（implemented）与 [self-update-review-hardening](../bug-fix/2026-08-22-self-update-review-hardening.md)（implemented）：ready.json 持久化契约的主 note（状态机 ready 记录 + 跨启动恢复）；本篇 FileReadyPersistence 往返补测实为该契约族的 IO 面测试，双向交叉引用。

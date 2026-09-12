@@ -12,7 +12,7 @@ It bundles the complete DeepSeek Harness runtime (Node + dependency closure) for
 Yes. First launch prepares the runtime, then the "Plugin setup" step lets you install/skip the plugin market and installs the companion plugin; choosing Install continues into the UI. All plugins settle before dsh starts — no "install then restart runtime".
 
 **Q: Are my sessions preserved after an upgrade?**
-Yes within the same data directory (v0.3+ upgrades). Sessions persist locally and the app keeps a stable port, so it returns to your last session automatically.
+Yes within the same data directory (v0.3+ upgrades). Sessions persist locally, so it returns to your last session automatically (if the preferred port is taken and it drifts, the origin changes: the page's selection has to be picked again, and the Update, Launch at sign-in, Minimize to tray on close and Export diagnostics controls in Settings may stop working until you restart the app).
 
 **Q: Where does my data live? Is it uploaded?**
 Everything stays in the shared data directory `~/.dsh` on your machine (`%USERPROFILE%\.dsh` on Windows; paths in [user-guide.en.md](user-guide.en.md)). Model calls go straight from your machine to the provider you configured.

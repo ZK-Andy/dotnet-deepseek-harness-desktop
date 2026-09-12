@@ -23,6 +23,8 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 **Review 证据（机器可查，须随变更携带）**：变更集内（同批暂存/提交）的 ADR 头部含
 `Review: FULL/yyyy-mm-dd/R1=ok R2=ok R3=ok` 行——证据必须与触发变更**同批**，仓库历史中的旧证据不清除新的 FULL 变更。`--enforce` 下 FULL 档 diff 无证据 → exit 1 拦截。执行者想「轻审跳过」必须物理改门禁（改脚本本身又触发 FULL 的 gate-criteria 规则）——逃逸成本从「自觉」升为「对抗机器」。
 
+**已知边界**：脚本的证据判定是「变更集内**任一** implemented ADR 带合法 `Review:` 行」，分不出该行是本批新产还是变更集里顺带改动的旧 ADR 自带——同一天有多次 FULL 变更时，后者可替新变更顶包。本节文字要求与脚本头注释都写「证据须与触发变更同批」，但判定实现只校验 `Review:` 行的日期合法（`--staged`/`--since` 下都不做窗口比较），故「证据须本批新产」目前只有文字承载，尚无机器判据。
+
 **既有判据关系**：本机制不取代 review-scope-narrowing 的触发枚举/零行为变更判据（判据仍在彼处），而是其**更高档优先**的机械前置——FULL 档路径命中即强制重三审，通用轻审判据不得覆盖。脚本分类规则为本机制单一事实源；文字细则见 [review-scope-narrowing](../../implemented/process/2026-08-31-review-scope-narrowing.md)（已加指针）。
 
 ## Alternatives considered
