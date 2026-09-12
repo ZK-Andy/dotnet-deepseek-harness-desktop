@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Net;
+using System.Net.Sockets;
 using DeepSeek.Harness.Desktop.Services;
 
 namespace DeepSeek.Harness.Desktop.Tests;
@@ -340,6 +342,62 @@ public class HarnessRuntimeHostTests
         }
         finally
         {
+            Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
+            Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", null);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>验证首选端口被占时 spawn 前 bind 探测拦下注定失败的尝试（ADR port-wait-compression）：
+    /// 日志出现「探测已被占」跳过行，启动经漂移回退成功且端口不等于被占端口——不经过 42–47s 的注定尝试。</summary>
+    [Fact]
+    public async Task StartAsync_PreferredPortProbeOccupied_SkipsDoomedSpawn_AndDrifts_WhenEnabled()
+    {
+        if (Environment.GetEnvironmentVariable("DSH_TEST_E2E") != "1")
+        {
+            // 未启用——保持绿色
+            return;
+        }
+
+        string home = Path.Combine(Path.GetTempPath(), "dsh-test-" + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
+        Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
+        // 新 home 无 profile 时 dsh 立即退出（回退 spawn 拿不到 URL）——先做 profile 引导
+        Assert.True(DesktopProfileBootstrap.EnsureProfile(home));
+
+        // 占位者：bind 但不 accept——bind 探测必须连这种占用者也能判出（与连接探测互补）
+        var squatter = new TcpListener(IPAddress.Loopback, 0);
+        squatter.Start();
+        try
+        {
+            int occupied = ((IPEndPoint)squatter.LocalEndpoint).Port;
+            HarnessRuntimeHost.PersistPort(occupied);
+
+            var logs = new List<string>();
+            using var host = new HarnessRuntimeHost(logs.Add);
+            Uri? url;
+            try
+            {
+                url = await host.StartAsync(TimeSpan.FromSeconds(60));
+            }
+            catch (Win32Exception)
+            {
+                return; // PATH 没有 dsh——跳过
+            }
+
+            host.Stop();
+
+            Assert.NotNull(url);
+            Assert.NotEqual(occupied, url.Port);
+            Assert.Contains(logs, l => l.Contains($"首选端口 {occupied} 探测已被占"));
+            Assert.Contains(logs, l => l.Contains("漂移至"));
+        }
+        finally
+        {
+            squatter.Stop();
             Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
             Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", null);
             if (Directory.Exists(home))

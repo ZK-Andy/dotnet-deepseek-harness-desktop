@@ -1,6 +1,8 @@
 # Agent Note: 首选端口注定失败的启动尝试前置探测压缩
 
-Status: proposed
+Status: implemented
+
+Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
@@ -12,14 +14,14 @@ Status: proposed
 
 结论：**等待压缩不能靠更早读到签名**（签名不可能早于 bind），只能让壳在 spawn 前就用自有探测判死注定失败的尝试。
 
-## Proposal
+## Decision
 
-spawn 首选端口前，壳做一次**自有 bind 探测**（`Socket` 以 `ReuseAddress=false` 试 bind 该端口，即时、无子进程）：
+spawn 首选端口前，壳做一次**自有 bind 探测**（`RuntimeLineage.ProbeLoopbackBind`，试 bind 回环端口，即时、无子进程；不可判定按空闲处理 fail open 向现状）：
 
 - **探测被占** → 本次尝试必败（TOCTOU 例外见 Consequences），跳过 spawn，直接进 `RecoverFromFailureAsync` 既有处置链（血统收养 → scope 残留收割 → 漂移回退），省掉整个 42–47s 的注定尝试。
 - **探测空闲** → 照常 spawn（自由端口/接力窗口的现有语义不变：探测后 47s 窗口内被续任者抢 bind 的竞态与今天相同，由既有 EADDRINUSE 收养路径兜底）。
 
-同批修正 `HarnessRuntimeHost.cs` 三处失实注释（StartFailure.PortConflict、WaitForUrlAsync remarks、StartCoreAsync 失败回收行）为实测口径，并把实测数据落 docs/cookbook（[调试] 踩坑）。
+同批修正 `HarnessRuntimeHost.cs` 三处失实注释（StartFailure.PortConflict、WaitForUrlAsync remarks、StartCoreAsync 失败回收行）为实测口径。
 
 ## Alternatives considered
 
@@ -30,18 +32,18 @@ spawn 首选端口前，壳做一次**自有 bind 探测**（`Socket` 以 `Reuse
 
 ## Consequences
 
-- 收益：③ 类场景用户可感恢复时间 54s → ~13s（省 42–47s 注定尝试；剩余为回退 spawn 的 12s）。
+- 收益：③ 类场景用户可感恢复时间 54s → 12–13s（省 42–47s 注定尝试；剩余为回退 spawn 的 12s 实测）。
 - 代价：探测与 dsh 实际 bind 之间存在 TOCTOU 窗口——探测空闲、spawn 后被占的竞态与今天完全相同（既有收养链兜底），不新增风险；探测被占但占位者恰在毫秒内退出则少付一次「其实能成」的尝试（概率极低，后果 = 直接漂移一次）。
 - 非目标：回退 spawn 的 12s（dsh 正常启动时间）不压缩；漂移本身（localStorage 会话态丢失）不因本改动变化。
 
-## Testing（拟）
+## Testing
 
-- 纯逻辑：bind 探测函数对「空闲端口 / 被占端口 / 无权限」三态的判定（注入式探针，xunit）。
-- 行为级：StartInnerAsync 在探测被占时**不 spawn**（进程计数断言）且直接走处置链；探测空闲时行为与现状逐字节一致。
-- 实机：复刻 ③ 场景（无关占位者），断言「尝试开始 → 漂移完成」显著小于 42s。
+- 纯逻辑：`ProbeLoopbackBind` 空闲/被占两态 + Linux「已 bind 未 listen = Free」平台行为固化（内核只对 LISTEN 态判 EADDRINUSE；真实占用者恒为监听态，主判据不受影响）——xunit 3 例。
+- 行为级（`DSH_TEST_E2E=1`，真实 dsh + `EnsureProfile` 引导隔离 home）：首选端口被 TcpListener 占住时，`StartAsync` 日志出现「探测已被占：跳过注定失败的启动尝试」、经漂移回退成功且端口 ≠ 被占端口；全程 12s【探索性，n=1】（对照改造前同场景实测 54s，n=3）。
+- 基线：587/587、0 警告（E2E 未启时 4 例自跳过，与既有门控口径一致）。
 
 ## Related
 
-- [端口漂移与 IPC origin 错配](../../implemented/bug-fix/2026-09-12-port-drift-ipc-origin-mismatch.md)：漂移后果与回退路径的行为事实源。
-- [运行时交接收养](../../implemented/bug-fix/2026-09-12-runtime-handoff-adoption.md)：探测被占时收养分支的既有语义。
-- [dsh 沙箱子进程孤儿泄漏](../../implemented/bug-fix/2026-09-12-dsh-sandbox-child-orphan-leak.md)：上游跟进面（bind 时序可与之合并提 Discussions）。
+- [端口漂移与 IPC origin 错配](../bug-fix/2026-09-12-port-drift-ipc-origin-mismatch.md)：漂移后果与回退路径的行为事实源。
+- [运行时交接收养](../bug-fix/2026-09-12-runtime-handoff-adoption.md)：探测被占时收养分支的既有语义。
+- [dsh 沙箱子进程孤儿泄漏](../bug-fix/2026-09-12-dsh-sandbox-child-orphan-leak.md)：上游跟进面（bind 时序可与之合并提 Discussions）。

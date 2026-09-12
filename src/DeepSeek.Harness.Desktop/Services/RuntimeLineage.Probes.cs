@@ -153,6 +153,46 @@ public static partial class RuntimeLineage
         }
     }
 
+    /// <summary>bind 探测结果三态。</summary>
+    public enum LoopbackBindProbe
+    {
+        /// <summary>端口可 bind：dsh 此刻 bind 该端口不会立即失败。</summary>
+        Free,
+
+        /// <summary>端口被占（EADDRINUSE）：dsh bind 必败——dsh 在 bind 前要先加载整棵插件树（实测 42–47s，
+        /// ADR port-wait-compression），注定失败的 spawn 是纯延迟。</summary>
+        Occupied,
+
+        /// <summary>不可判定（权限等其他 bind 失败）：按空闲处理，走既有 spawn 路径（fail open 向现状）。</summary>
+        Indeterminate,
+    }
+
+    /// <summary>自有 bind 探测：以独占 bind 试占该回环端口，判定 dsh 的固定端口 bind 是否必败（ADR port-wait-compression）。
+    /// 与 <see cref="IsLoopbackServingAsync"/> 的连接探测互补——bind 探测连「已 bind 未 accept」的占用者也能判出。</summary>
+    /// <param name="port">端口。</param>
+    /// <returns>三态判定。</returns>
+    public static LoopbackBindProbe ProbeLoopbackBind(int port)
+    {
+        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        try
+        {
+            socket.Bind(new IPEndPoint(IPAddress.Loopback, port));
+            return LoopbackBindProbe.Free;
+        }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse)
+        {
+            return LoopbackBindProbe.Occupied;
+        }
+        catch (SocketException)
+        {
+            return LoopbackBindProbe.Indeterminate;
+        }
+        finally
+        {
+            socket.Dispose();
+        }
+    }
+
     /// <summary>读取单个 pid 的血统候选快照；非血统（无 token）或不可读返回 null。</summary>
     /// <param name="pid">进程 id。</param>
     /// <returns>候选快照或 null。</returns>
