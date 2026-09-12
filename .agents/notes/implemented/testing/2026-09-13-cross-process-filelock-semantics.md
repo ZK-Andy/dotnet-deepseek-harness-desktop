@@ -31,7 +31,7 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Testing
 
-本批自体：3 个新测试本机全绿；三平台腿由 CI run 实跑验证（见提交后的 run 号）。
+本批自体：3 个新测试本机全绿；三平台腿由 CI run `34717200538` 实跑全绿（ubuntu/windows/macos 三 job success）。
 
 ## Related
 
