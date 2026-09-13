@@ -22,7 +22,7 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 - 零误杀边界：命名形状不符（上游改名/非该形状 unit）→ 静默跳过（no-op，绝不猜）；owner pid 仍活 → 不动（覆盖另一壳实例在管的 dsh：其 pid 活，其 scope 永不被收割）；pid 复用使死者看似存活 → 同样跳过（安全方向，残留留待下次收敛，绝不把复用者当猎物）。
 - stop 失败（无权限/恰好退出）留痕日志不抛——收割是增强，绝不阻断启动（对齐 `OrphanDshReaper` 的 fail-safe 风格）。
 - 接线 `HarnessRuntimeHost.HarvestLineageResidue`（冷启动 + 启动成功后收敛两个时机共用该单点）：冷启动清跨 App 残留；进程内重启（市场接力后）清旧 dsh 的下游。非 Linux no-op（systemd user scope 是 Linux 形态）。
-- 上游侧收敛（原方向 1：dsh SIGTERM 时按 scope/cgroup 收敛自己的下游）仍是真正的归属方，保持开放跟进——上游修复后本收割即冗余，**退役条件 = 上游实现 SIGTERM 下游收敛**；scope 命名上游改名即静默失效（no-op 方向安全）。
+- 上游侧收敛（原方向 1：dsh SIGTERM 时按 scope/cgroup 收敛自己的下游）不另行跟进（2026-09-14 收口）：泄漏在原生 dsh 下同样存在、属上游内部质量事项，且收割在退役条件触发时**自动静默退场**（scope 单元不再出现 → 判据 no-op，方向安全），跟进无本仓边际收益。
 
 ## Alternatives considered
 
@@ -38,7 +38,7 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 - 代价：收割依赖上游 scope 命名形状（`dsh-subprocess-<pid>-<hash>.scope`）——上游改名即静默失效（no-op，方向安全但功能消失）；依赖 systemd user scope（Linux-only，其他平台本来也无此泄漏形态）。
 - 边界：pid 复用的窄窗内（死 dsh 的 pid 被新进程复用）收割跳过——残留留待复用者退出后的下一次收敛，不影响正确性只延迟清扫。
 - 边界：本收割只覆盖「scope 内无主进程」形态；若上游未来改用非 scope 的拉起方式，判据自然失效（同命名改名）。
-- 上游跟进（原方向 1）保持开放：上游若承接 SIGTERM 收敛，落地后本收割按退役条件删除。
+- 上游跟进（原方向 1）已收口（2026-09-14）：不立项；收割保持为长期兜底，退役无需人工干预（见 Consequences）。
 
 ## Testing
 
