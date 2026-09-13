@@ -42,7 +42,7 @@ Linux 不接腿：ZK 本机即 Linux 真机与部署机（日常实机验收覆�
 
 ## Deferred
 
-- **win 图像解码原生崩溃**（首轮实跑实锤）：对打包产物 `saucer-bindings.dll!saucer_icon_new_from_file` 调用 0xC0000005，同签名 mac 腿通过——win 侧 `saucer` 原生解码路径缺陷，壳以 `opts.IconPath` 同路径设托盘/窗口图标，属产品级风险。修复归上游 Ryn（bump 跟进），落地前该用例在 win 腿持续 fail loud 即拦截带病产物出包。
+- **win 图像解码原生崩溃**（首轮实跑实锤，上游 issue `Yupmoh/Ryn#92`）：对打包产物 `saucer-bindings.dll!saucer_icon_new_from_file` 调用 0xC0000005，同签名 mac 腿通过——win 侧 `saucer` 原生解码路径缺陷，且 `RynWindow` 以 `opts.IconPath` 走同一 API 设托盘/窗口图标，属产品级风险（Windows 首启即崩）。修复归上游 Ryn（bump 跟进）；落地前该用例在 win 腿持续 fail loud，win 包流水线保持红即拦截带病产物出包。
 
 ## Related
 
