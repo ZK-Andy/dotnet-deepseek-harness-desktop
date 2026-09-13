@@ -22,9 +22,11 @@ public static class DesktopBanner
     public sealed record Palette(string Background, string Foreground, string Border, string Button);
 
     /// <summary>生成横幅注入脚本（纯函数可单测）：幂等 id 守卫 + 运行时堆叠偏移。</summary>
-    /// <param name="okLabel">确认按钮文案（宿主按注入时刻 locale 选择，ADR host-ui-locale）。</param>
-    public static string Build(string id, string text, Palette palette, string okLabel = "知道了")
+    /// <param name="okLabel">确认按钮文案（宿主按注入时刻 locale 选择，ADR host-ui-locale；
+    /// 缺省中文「知道了」，单一事实源在 <see cref="UiCopy"/>）。</param>
+    public static string Build(string id, string text, Palette palette, string? okLabel = null)
     {
+        okLabel ??= UiCopy.OkLabel(english: false);
         string known = string.Join(",", KnownIds.Select(k => "'" + k + "'"));
         return "(function(){" +
                "var id='" + id + "';" +

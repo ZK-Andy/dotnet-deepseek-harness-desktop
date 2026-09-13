@@ -17,8 +17,8 @@ public sealed class UiLocale
     /// <summary>UI 文案是否取英文分支。</summary>
     public bool IsEnglish => _locale.StartsWith("en", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>确认按钮文案（横幅共用，随当前 locale）。</summary>
-    public string OkLabel => IsEnglish ? "OK" : "知道了";
+    /// <summary>确认按钮文案（横幅共用，随当前 locale；字面量单一事实源在 <see cref="UiCopy"/>）。</summary>
+    public string OkLabel => UiCopy.OkLabel(IsEnglish);
 
     /// <summary>locale 发生实际变化时触发（托盘菜单重建等消费方订阅）。</summary>
     public event Action? Changed;

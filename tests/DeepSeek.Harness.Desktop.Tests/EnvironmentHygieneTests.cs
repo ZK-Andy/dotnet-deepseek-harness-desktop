@@ -12,6 +12,8 @@ public class EnvironmentHygieneTests
     [Theory]
     [InlineData("NODE_OPTIONS", true)]
     [InlineData("node_options", true)]
+    [InlineData("NODE_PATH", true)]
+    [InlineData("node_path", true)]
     [InlineData("npm_config_registry", true)]
     [InlineData("NPM_CONFIG_REGISTRY", true)]
     [InlineData("pnpm_config_minimum_release_age", true)]
@@ -30,6 +32,7 @@ public class EnvironmentHygieneTests
     {
         var psi = new ProcessStartInfo();
         psi.Environment["NODE_OPTIONS"] = "--require /evil.js";
+        psi.Environment["NODE_PATH"] = "/evil/node/modules";
         psi.Environment["npm_config_registry"] = "https://evil.example";
         psi.Environment["pnpm_config_store_dir"] = "/tmp/store";
         psi.Environment["corepack_home"] = "/tmp/corepack";
@@ -40,6 +43,7 @@ public class EnvironmentHygieneTests
         EnvironmentHygiene.StripInherited(psi);
 
         Assert.False(psi.Environment.ContainsKey("NODE_OPTIONS"));
+        Assert.False(psi.Environment.ContainsKey("NODE_PATH"));
         Assert.False(psi.Environment.ContainsKey("npm_config_registry"));
         Assert.False(psi.Environment.ContainsKey("pnpm_config_store_dir"));
         Assert.False(psi.Environment.ContainsKey("corepack_home"));

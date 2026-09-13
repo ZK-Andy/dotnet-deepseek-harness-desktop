@@ -115,7 +115,7 @@ public static partial class RuntimeBootstrap
     }
 
     /// <summary>步骤级超时包装：应用退出（appCt）取消仍以 OCE 上抛；仅步超时转异常走失败重试页。</summary>
-    private static Task WithStepTimeout(int minutes, CancellationToken appCt, Func<CancellationToken, Task> action) =>
+    private static Task WithStepTimeoutAsync(int minutes, CancellationToken appCt, Func<CancellationToken, Task> action) =>
         WithStepTimeoutAsync<object?>(minutes, appCt, async token =>
         {
             await action(token).ConfigureAwait(false);

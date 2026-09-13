@@ -147,7 +147,7 @@ public static partial class RuntimeBootstrap
             }
 
             report(new BootstrapProgress(BootstrapStep.EnsureNode, $"下载 Node {nodeVersion}"));
-            await WithStepTimeout(options.StepTimeoutMinutes, ct,
+            await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct,
                 token => DownloadWithFallbackAsync(candidates, archivePath, hooks, token)).ConfigureAwait(false);
 
             report(new BootstrapProgress(BootstrapStep.EnsureNode, "校验 SHA256"));
@@ -160,7 +160,7 @@ public static partial class RuntimeBootstrap
             report(new BootstrapProgress(BootstrapStep.EnsureNode, "解压 Node"));
             string extractDir = Path.Combine(workRoot, "extract");
             Directory.CreateDirectory(extractDir);
-            await WithStepTimeout(options.StepTimeoutMinutes, ct,
+            await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct,
                 token => hooks.ExtractArchiveAsync(archivePath, extractDir, token)).ConfigureAwait(false);
             string inner = Directory.EnumerateDirectories(extractDir).FirstOrDefault()
                 ?? throw new InvalidOperationException("Node 发行包解压结果无内容目录");

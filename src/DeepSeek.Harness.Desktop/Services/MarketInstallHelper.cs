@@ -235,15 +235,15 @@ public static partial class MarketInstallHelper
             return psi;
         }
 
-        async Task<(int Exit, string Out, string Err)> RunOnce(bool relaxPolicy)
+        async Task<(int Exit, string Out, string Err)> RunOnceAsync(bool relaxPolicy)
             => await runPluginAdd(BuildPsi(relaxPolicy), ct).ConfigureAwait(false);
 
-        (int exitCode, string? outText, string? errText) = await RunOnce(relaxPolicy: false).ConfigureAwait(false);
+        (int exitCode, string? outText, string? errText) = await RunOnceAsync(relaxPolicy: false).ConfigureAwait(false);
         log($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
         if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
         {
             log("[host] lockfile 被 minimumReleaseAge 政策拒绝；放宽该政策重试一次（仅本次安装生效）");
-            (exitCode, outText, errText) = await RunOnce(relaxPolicy: true).ConfigureAwait(false);
+            (exitCode, outText, errText) = await RunOnceAsync(relaxPolicy: true).ConfigureAwait(false);
             log($"[host] dsh plugin add(重试) exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
         }
 

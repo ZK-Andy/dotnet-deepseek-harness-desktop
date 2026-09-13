@@ -47,15 +47,15 @@ public static class TrayMenuActions
         bool english = uiLocale?.IsEnglish == true;
         var items = new List<TrayMenuItem>
         {
-            new() { Id = ShowItemId, Label = english ? "Show Main Window" : "显示主窗" },
+            new() { Id = ShowItemId, Label = UiCopy.TrayShowMainWindow(english) },
         };
         if (includeUpdateItem)
         {
-            items.Add(new() { Id = CheckUpdateItemId, Label = english ? "Check for Updates" : "检查更新" });
+            items.Add(new() { Id = CheckUpdateItemId, Label = UiCopy.TrayCheckForUpdates(english) });
         }
 
         items.Add(new() { Id = "", Label = "", Separator = true });
-        items.Add(new() { Id = QuitItemId, Label = english ? "Quit" : "退出" });
+        items.Add(new() { Id = QuitItemId, Label = UiCopy.TrayQuit(english) });
         return items;
     }
 

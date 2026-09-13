@@ -77,6 +77,17 @@ dotnet_diagnostic.IDE0011.severity = warning
 # ======== nameof() 而非字符串字面量 ========
 dotnet_diagnostic.CA1507.severity = warning
 
+# ======== 异步方法命名 Async 尾缀（D001 的机器化，评审兜底清单转 build 门禁） ========
+# Microsoft.VisualStudio.Threading.Analyzers（VSTHRD 系列）：误报面大的并发误用规则逐条
+# none（002/003 同步等待与上下文、103/110 未观察 awaitable——壳的组合根/监督同步等待场景
+# 属既有设计）；只保留命名规则 VSTHRD200 为 warning（新代码起强制）。
+dotnet_diagnostic.VSTHRD002.severity = none
+dotnet_diagnostic.VSTHRD003.severity = none
+dotnet_diagnostic.VSTHRD103.severity = none
+dotnet_diagnostic.VSTHRD110.severity = none
+dotnet_diagnostic.VSTHRD100.severity = warning # async void（D002 机器化；事件处理器白名单语义由评审面复核）
+dotnet_diagnostic.VSTHRD200.severity = warning
+
 # ======== 类型设计：static/sealed（审计项「类型 static/sealed」的强制载体） ========
 dotnet_diagnostic.CA1052.severity = warning   # 静态持有者类型应声明 static/NotInheritable
 dotnet_diagnostic.CA1813.severity = warning   # 特性类应 sealed（避免无谓派生面）

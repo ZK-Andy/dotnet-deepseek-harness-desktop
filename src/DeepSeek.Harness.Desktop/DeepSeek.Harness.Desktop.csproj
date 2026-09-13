@@ -34,6 +34,7 @@
     <PackageReference Include="Ryn.Plugins.Tray" Version="0.35.1" />
     <PackageReference Include="Ryn.Callbacks" Version="0.35.1" />
     <PackageReference Include="StyleCop.Analyzers" Version="1.1.118" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23" PrivateAssets="all" />
     <PackageReference Include="Ryn.Ipc.Generator" Version="0.35.1"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>

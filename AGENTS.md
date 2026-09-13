@@ -30,6 +30,7 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 - **架构规范**：系统怎么被组织（层/依赖方向/边界）见 [docs/architecture-standards.md](docs/architecture-standards.md)；组合根只装配、外部边界经接口、反上帝对象健康闸——非平凡结构变更按此执行。
 - **行为契约**：async/取消、异常、日志约定见 [coding-standards](docs/coding-standards.md)「行为契约」节（fail loud、空 catch 命名、`try` 只包一个语句、`HostLog` 单点等细则单一事实源在彼，不重复）。
 - 可调参数进配置模型（Config/appsettings），禁止硬编码；协议常量与安全不变量保持固定。
+- **新规范默认问「能不能进 verify/analyzer」**：机器可查的不变量必须接进可执行门禁（门禁脚本或 Roslyn analyzer——编译器内门禁优先）；机器化不了的才落「评审检查项（AI 兜底）」，且该清单只减不增（已机器化的条目随激活移出）。
 - 跨界 ID 用强类型/Branded，禁止裸 string 跨包传递。
 - 公共 API 带 XML doc 契约（`<summary>/<param>/<returns>`）。
 - 测试：`dotnet test`（xunit）；覆盖边界、错误路径、事件顺序、并发；**行为级变更必须配套回归/快照**；mock 只用于昂贵/非确定性边界。
@@ -39,7 +40,7 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 
 以下**「留评审/语义」规则机器无法强制**（机械化门禁未覆盖），由三重审核代理在**仓库约定**下额外执行——上游 dsh-code-review 技能只含通用清单、不含本项目规则，须显式补审（见 [feature-flow](.agents/workflows/feature-flow.md) 步骤 5）：
 
-- **D001–D003**：`async` 方法名应含 `Async` 尾缀；非事件处理器的 `void` `async` 方法；`catch` 空体须命名所吞（[coding-standards](docs/coding-standards.md) 行为契约）。
+- **D003**：`catch` 空体须命名所吞（[coding-standards](docs/coding-standards.md) 行为契约）。D001（`Async` 尾缀 = VSTHRD200）/D002（`async void` = VSTHRD100）已机器化进 build 门禁，评审不再兜底；D003 暂无现成 analyzer，留兜底（自定义 analyzer 试点另立项）。
 - **R1 组合根只装配**：`DesktopBootstrap`/`DesktopBootstrap.Startup` 不得夹带业务/领域逻辑（[architecture-standards](docs/architecture-standards.md) R1）。
 - **R3 边界抽象完备**：外部交互（Ryn/native、dsh 进程、companion IPC、文件/网络、更新 feed、注册表/rc）是否都经接口、未直漏进业务层（R3）。
 - **IPC 强类型**：跨界/事件帧 ID 不用裸 `string` 跨包；帧形状经 `AppJsonContext` 源生成（R3）。
@@ -74,6 +75,7 @@ python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/
 python3 scripts/verify-governance.py     # Issue/PR 模板治理字段 + 工作流 run: 禁插值事件载荷/env 回读
 python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（report 默认；--enforce 才 fail）
 python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）
+python3 scripts/verify-ui-copy.py    # UI 文案单一词典（UiCopy.cs 为唯一家；消费文件零 CJK 字面量 + index.html 登记）
 python3 scripts/verify-skill-format.py    # 技能格式（frontmatter/目录束/内链/结构）
 python3 scripts/verify-review-tier.py     # 评审档机械判定（--staged/--since；FULL 缺 Review 证据即拦——进 pre-commit/pre-push/CI）
 python3 scripts/verify-review-brief.py    # 评审简报（本地评审启动门禁：FULL 需 R1/R2/R3 简报齐、LIGHT 需 R2；简报 gitignore 不入 CI——见 review-scope-narrowing §4）

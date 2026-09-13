@@ -182,7 +182,7 @@ public sealed partial class DesktopBootstrap
                 // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
                 var tail = _host.StderrTail.TakeLast(12).ToList();
                 _ = _windowAccessor.Current.EvaluateJavaScriptAsync(
-                    Services.RecoveryPageBuilder.BuildScript("运行时进程意外退出，正在自动重启", tail));
+                    Services.RecoveryPageBuilder.BuildScript(Services.UiCopy.ReasonRuntimeCrashed(english: false), tail));
                 return ValueTask.CompletedTask;
             },
             // 崩溃恢复导航同步刷新 webUrl——健康监视器（有界恢复）靠它作为 reload 靶点；若

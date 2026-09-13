@@ -10,14 +10,11 @@ public static class UpdateBanner
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
     public static string ReadyScript(string version, UiLocale? uiLocale = null)
     {
-        bool english = uiLocale?.IsEnglish == true;
-        string text = english
-            ? $"New version {version} is ready. Install it in Settings → Desktop Settings."
-            : "新版本 " + version + " 已就绪，可在 设置 → 桌面设置 中一键安装。";
+        string text = UiCopy.UpdateReadyText(version, uiLocale?.IsEnglish == true);
         return DesktopBanner.Build(
             "dsh-desktop-update-ready-banner",
             text,
             new DesktopBanner.Palette("#14251b", "#d9f2e3", "#1f3a2a", "#2f855a"),
-            uiLocale?.OkLabel ?? "知道了");
+            uiLocale?.OkLabel);
     }
 }
