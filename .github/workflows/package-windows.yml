@@ -57,6 +57,12 @@ jobs:
       - name: dotnet publish
         shell: bash
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r win-x64 --self-contained true -p:Version="$VERSION" -o artifacts/publish-win-x64
+      - name: 载荷冒烟探针（publish 产物 native 面：FFI 加载/导出、图像解码、ConPTY）
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          dotnet publish tests/DeepSeek.Harness.Desktop.PayloadSmoke -c Release -o artifacts/payload-smoke
+          dotnet artifacts/payload-smoke/DeepSeek.Harness.Desktop.PayloadSmoke.dll artifacts/publish-win-x64
       - name: 打 Windows 包（安装器 exe，文件名含 windows 标识；不再产独立 zip）
         shell: bash
         run: bash scripts/package-windows.sh artifacts/publish-win-x64

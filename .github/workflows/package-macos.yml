@@ -66,6 +66,11 @@ jobs:
           echo "打包版本: $V (ref=${{ github.ref }} event=${{ github.event_name }}) arch=${{ matrix.arch }} rid=${{ matrix.rid }}"
       - name: dotnet publish
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} --self-contained true -p:Version="$VERSION" -o artifacts/publish-${{ matrix.rid }}
+      - name: 载荷冒烟探针（publish 产物 native 面：FFI 加载/导出、图像解码、PTY）
+        timeout-minutes: 5
+        run: |
+          dotnet publish tests/DeepSeek.Harness.Desktop.PayloadSmoke -c Release -o artifacts/payload-smoke
+          dotnet artifacts/payload-smoke/DeepSeek.Harness.Desktop.PayloadSmoke.dll artifacts/publish-${{ matrix.rid }}
       - name: 打 macOS 包（dmg，文件名含 macos 标识；不再产独立 zip）
         run: bash scripts/package-macos.sh artifacts/publish-${{ matrix.rid }}
       - name: 校验最终 dmg 内容（挂载断言布局与随包插件一致性，批次一）
