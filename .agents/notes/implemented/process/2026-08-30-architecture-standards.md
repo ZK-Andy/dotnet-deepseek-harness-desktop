@@ -37,7 +37,7 @@ Status: implemented
 
 ## Related
 
-- [docs/architecture-standards.md](../../../../docs/architecture-standards.md)：架构规范正文（本 ADR 落地文档）。
+- [docs/architecture-standards.md](../../../../docs/architecture-standards.md)：架构规范正文（本 ADR 落地文档；2026-09-14 起由 [2026-09-14-official-clean-architecture-adoption](../architecture/2026-09-14-official-clean-architecture-adoption.md) 取代本笔记「采纳原理、不照抄模板」条款——规范已重写为官方三项目解组织）。
 - [docs/architecture.md](../../../../docs/architecture.md)：现状描述（描述性，非规范）。
 - [docs/coding-standards.md](../../../../docs/coding-standards.md)：C# 编码规范（R5 分工）。对应 ADR [2026-08-30-csharp-coding-standard](2026-08-30-csharp-coding-standard.md)（implemented）。
 - [README](../../../../README.md)/根 [AGENTS.md](../../../../AGENTS.md)：架构规范入口与预算。
