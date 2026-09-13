@@ -4,7 +4,7 @@ Status: implemented
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
-Review: FULL/2026-09-13/R1=ok  R2=ok R3=ok
+Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 
 ## Problem
 
@@ -39,6 +39,9 @@ Review: FULL/2026-09-13/R1=ok  R2=ok R3=ok
 - 本批零 `src/tests` 变更；`verify-md-links.py`、`verify-doc-budgets.py`、`verify-adr-format.py`、`verify-handoff-structure.py` 全绿。
 
 ## Related
+
+- 跟值台账：2026-09-12 `3714/6725`→2026-09-13 `3782/6909`→2026-09-13 `3942/7075`→**2026-09-14 `3994/7158`（CI `34778153958`，612/612、55.79%，v0.4.11 发布收尾）**。
+
 
 - [端口漂移与 IPC origin 错配](../bug-fix/2026-09-12-port-drift-ipc-origin-mismatch.md)：同批用户文档「端口保持稳定」例外句的行为事实源。
 - [运行时交接收养](../bug-fix/2026-09-12-runtime-handoff-adoption.md)：其 Testing 段的覆盖率事实行随本篇口径改写（只改事实，决定未动）。
