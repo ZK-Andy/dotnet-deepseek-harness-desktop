@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using DeepSeek.Harness.Desktop.Services.Tray;
 
 namespace DeepSeek.Harness.Desktop.Services;
 
@@ -12,4 +13,5 @@ namespace DeepSeek.Harness.Desktop.Services;
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     GenerationMode = JsonSourceGenerationMode.Serialization)]
 [JsonSerializable(typeof(RunMarker.MarkerFile))]
+[JsonSerializable(typeof(CloseBehaviorPreference.PreferencesFile))]
 internal partial class InfrastructureJsonContext : JsonSerializerContext;
