@@ -4,8 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- 编码规范强制与主工程同规（见 docs/coding-standards.md 与根 .editorconfig）；
-         Core 的差异仅一条硬约束：项目引用必须为空（R2 依赖方向，编译器强制）。 -->
+    <!-- 编码规范强制与主工程同规（见 docs/coding-standards.md 与根 .editorconfig）。
+         Infrastructure 的硬约束：只准引用 Core（R2 依赖方向，编译器强制）——
+         主工程（Presentation）单向引用本工程，反向引用即成环编译失败。
+         端口（接口）在 Core、适配器实现在本工程，组合根注入（R3）。 -->
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
@@ -18,8 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DeepSeek.Harness.Desktop.Core\DeepSeek.Harness.Desktop.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="DeepSeek.Harness.Desktop" />
-    <InternalsVisibleTo Include="DeepSeek.Harness.Desktop.Infrastructure" />
     <InternalsVisibleTo Include="DeepSeek.Harness.Desktop.Tests" />
   </ItemGroup>
 

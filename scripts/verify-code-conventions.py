@@ -28,7 +28,11 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_SRC = ("src/DeepSeek.Harness.Desktop", "src/DeepSeek.Harness.Desktop.Core")
+DEFAULT_SRC = (
+    "src/DeepSeek.Harness.Desktop",
+    "src/DeepSeek.Harness.Desktop.Core",
+    "src/DeepSeek.Harness.Desktop.Infrastructure",
+)
 IGNORE_MARK = "verify-code-conventions: ignore"
 
 # Console use is allowed only in the log sink and the entry diagnostics.

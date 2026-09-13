@@ -47,23 +47,6 @@ public static class RuntimeVersionGate
     public static bool IsBelowFloor(string version) =>
         Update.UpdateVersion.Compare(version, MinimumVersion) < 0;
 
-    /// <summary>低于底线时的界面横幅注入脚本（纯函数可单测）：告知探测版本、底线与后果。</summary>
-    /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
-    public static string BelowFloorBannerScript(string detectedVersion, UiLocale? uiLocale = null)
-    {
-        bool english = uiLocale?.IsEnglish == true;
-        string text = english
-            ? $"Current dsh version {detectedVersion} is below the minimum supported by this desktop ({MinimumVersion}); data or behavior may be incompatible. Upgrade dsh to the alpha channel."
-            : "当前 dsh 版本 " + detectedVersion +
-              " 低于桌面支持的最低版本 " + MinimumVersion +
-              "，可能出现数据或行为不兼容；请升级 dsh 至 alpha 通道。";
-        return DesktopBanner.Build(
-            "dsh-desktop-version-floor-banner",
-            text,
-            new DesktopBanner.Palette("#3a1d1d", "#ffe6e6", "#5a2a2a", "#a13a3a"),
-            uiLocale?.OkLabel ?? "知道了");
-    }
-
     /// <summary>构造版本探针的 <c>dsh --version</c> 进程启动信息：先剥离宿主继承噪声
     /// （ADR spawn-env-and-plugin-spec-hardening），避免宿主 <c>NODE_OPTIONS</c> 在探针期执行任意代码。</summary>
     /// <returns>已配好参数与环境净化的启动信息。</returns>

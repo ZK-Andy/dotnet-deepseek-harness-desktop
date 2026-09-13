@@ -95,4 +95,21 @@ public class ArchitectureTests
             .ToArray();
         Assert.True(bad.Length == 0, $"R2 violate: Core assembly references outer assemblies: {string.Join(", ", bad)}");
     }
+
+    /// <summary>R2 种子 · Infrastructure 零表示层引用（architecture-standards）：Infrastructure 程序集
+    /// 不得引用壳主程序（Presentation）或任何 Ryn 程序集；对 Core 的单向引用是唯一合法项目依赖——
+    /// 反向引用即成环、编译器已拦，本测试兜运行时反射面（B4 升级为 csproj 项目引用断言）。</summary>
+    [Fact]
+    public void InfrastructureAssembly_HasZeroPresentationReferences()
+    {
+        Assembly infra = typeof(Services.HarnessRuntimeHost).Assembly;
+        string[] referenced = infra.GetReferencedAssemblies().Select(a => a.Name ?? string.Empty).ToArray();
+        string[] bad = referenced
+            .Where(n => n.StartsWith("Ryn", StringComparison.Ordinal) ||
+                (n.StartsWith("DeepSeek.Harness.Desktop", StringComparison.Ordinal) &&
+                 !n.Equals("DeepSeek.Harness.Desktop.Core", StringComparison.Ordinal)))
+            .ToArray();
+        Assert.True(bad.Length == 0,
+            $"R2 violate: Infrastructure assembly references presentation assemblies: {string.Join(", ", bad)}");
+    }
 }

@@ -46,4 +46,31 @@ public static class DesktopBanner
                "(document.body||document.documentElement).appendChild(b);" +
                "})();";
     }
+
+    /// <summary>dsh 版本底线横幅注入脚本（纯函数可单测）：告知探测版本、底线与后果。
+    /// 判定核（探测/底线比较）在 Infrastructure <c>RuntimeVersionGate</c>；横幅属表示面，随本工厂收拢。</summary>
+    /// <param name="detectedVersion">探测到的 dsh 版本串。</param>
+    /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
+    public static string BuildVersionFloorBanner(string detectedVersion, UiLocale? uiLocale = null)
+    {
+        bool english = uiLocale?.IsEnglish == true;
+        return Build(
+            "dsh-desktop-version-floor-banner",
+            UiCopy.VersionFloorBannerText(detectedVersion, RuntimeVersionGate.MinimumVersion, english),
+            new Palette("#3a1d1d", "#ffe6e6", "#5a2a2a", "#a13a3a"),
+            uiLocale?.OkLabel);
+    }
+
+    /// <summary>非受控退出横幅注入脚本（纯函数可单测）：不暗示应用故障，引导导出诊断。
+    /// 取证核（run-marker 落盘/清理）在 Infrastructure <c>RunMarker</c>；横幅属表示面，随本工厂收拢。</summary>
+    /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
+    public static string BuildUncleanExitBanner(UiLocale? uiLocale = null)
+    {
+        bool english = uiLocale?.IsEnglish == true;
+        return Build(
+            "dsh-desktop-run-marker-banner",
+            UiCopy.UncleanExitBannerText(english),
+            new Palette("#1b1b26", "#e6e6ea", "#2a2a3a", "#7c3aed"),
+            uiLocale?.OkLabel);
+    }
 }

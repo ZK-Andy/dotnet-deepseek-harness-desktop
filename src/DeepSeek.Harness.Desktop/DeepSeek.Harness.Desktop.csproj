@@ -41,6 +41,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DeepSeek.Harness.Desktop.Core\DeepSeek.Harness.Desktop.Core.csproj" />
+    <ProjectReference Include="..\DeepSeek.Harness.Desktop.Infrastructure\DeepSeek.Harness.Desktop.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

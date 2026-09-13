@@ -38,6 +38,18 @@ public static class UiCopy
         ? $"New version {version} is ready. Install it in Settings → Desktop Settings."
         : "新版本 " + version + " 已就绪，可在 设置 → 桌面设置 中一键安装。";
 
+    /// <summary>dsh 版本底线横幅正文（检测版本低于底线）。</summary>
+    public static string VersionFloorBannerText(string detectedVersion, string minimumVersion, bool english) => english
+        ? $"Current dsh version {detectedVersion} is below the minimum supported by this desktop ({minimumVersion}); data or behavior may be incompatible. Upgrade dsh to the alpha channel."
+        : "当前 dsh 版本 " + detectedVersion +
+          " 低于桌面支持的最低版本 " + minimumVersion +
+          "，可能出现数据或行为不兼容；请升级 dsh 至 alpha 通道。";
+
+    /// <summary>非受控退出横幅正文。</summary>
+    public static string UncleanExitBannerText(bool english) => english
+        ? "The app did not exit cleanly last time (e.g. the process was killed). If it behaves oddly, export diagnostics in Settings."
+        : "上次运行未正常退出（如手动结束进程）。若应用行为异常，请在设置页导出诊断信息。";
+
     // ======== 恢复页（RecoveryPageBuilder） ========
 
     /// <summary>恢复页：导出诊断包按钮。</summary>

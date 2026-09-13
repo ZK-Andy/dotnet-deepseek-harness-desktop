@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/DeepSeek.Harness.Desktop/DeepSeek.Harness.Desktop.csproj" />
     <Project Path="src/DeepSeek.Harness.Desktop.Core/DeepSeek.Harness.Desktop.Core.csproj" />
+    <Project Path="src/DeepSeek.Harness.Desktop.Infrastructure/DeepSeek.Harness.Desktop.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DeepSeek.Harness.Desktop.Tests/DeepSeek.Harness.Desktop.Tests.csproj" />

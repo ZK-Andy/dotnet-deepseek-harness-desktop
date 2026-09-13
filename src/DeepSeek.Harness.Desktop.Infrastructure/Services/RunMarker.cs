@@ -38,10 +38,10 @@ public static class RunMarker
 
         string token = Guid.NewGuid().ToString("N");
         string temp = path + $".tmp-{token}";
-        // 经 AppJsonContext 源生成（AOT 安全）；Release 读方只认 token 键
+        // 经 InfrastructureJsonContext 源生成（AOT 安全）；Release 读方只认 token 键
         string json = JsonSerializer.Serialize(
             new MarkerFile(token, Environment.ProcessId, DateTimeOffset.Now),
-            AppJsonContext.Default.MarkerFile);
+            InfrastructureJsonContext.Default.MarkerFile);
         File.WriteAllText(temp, json);
         File.Move(temp, path, overwrite: true);
         return new RunMarkerResult(previousUnclean, token);
@@ -82,21 +82,7 @@ public static class RunMarker
         }
     }
 
-    /// <summary>非受控退出提示横幅脚本（纯函数可单测）：不暗示应用故障，引导导出诊断。</summary>
-    /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
-    public static string UncleanBannerScript(UiLocale? uiLocale = null)
-    {
-        bool english = uiLocale?.IsEnglish == true;
-        return DesktopBanner.Build(
-            "dsh-desktop-run-marker-banner",
-            english
-                ? "The app did not exit cleanly last time (e.g. the process was killed). If it behaves oddly, export diagnostics in Settings."
-                : "上次运行未正常退出（如手动结束进程）。若应用行为异常，请在设置页导出诊断信息。",
-            new DesktopBanner.Palette("#1b1b26", "#e6e6ea", "#2a2a3a", "#7c3aed"),
-            uiLocale?.OkLabel ?? "知道了");
-    }
-
-    /// <summary>run-marker.json 落盘帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>
+    /// <summary>run-marker.json 落盘帧；internal 供 <see cref="InfrastructureJsonContext"/> 源生成注册。</summary>
     /// <param name="Token">本轮 owner token（Release 清理凭据）。</param>
     /// <param name="Pid">进程号（取证线索）。</param>
     /// <param name="StartedAt">启动时刻（ISO 8601 round-trip 形态）。</param>
