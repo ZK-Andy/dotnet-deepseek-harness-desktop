@@ -4,7 +4,7 @@ namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>外部链接判定与打开策略（纯逻辑，可单测）。</summary>
 /// <remarks>桌面 WebView 内把站外 <c>http(s)</c> 链接交给系统默认浏览器打开（见 implemented ADR
-/// open-external-links-in-system-browser；Ryn 0.32.0 起由导航层 <see cref="RynNavigationCallbacks"/>
+/// open-external-links-in-system-browser；Ryn 0.32.0 起由导航层（主工程 <c>RynNavigationCallbacks</c>）
 /// 在 <c>WebViewNavigating</c> 里消费本判定）。本类只做判定/规约，不依赖 Ryn；打开动作由调用方注入。</remarks>
 public static class ExternalLinkPolicy
 {

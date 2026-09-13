@@ -45,6 +45,10 @@ public sealed class FileReadyPersistence(string dir) : UpdateStateMachine.IPersi
     }
 
     /// <inheritdoc />
+    public Task<bool> AssetExistsAsync(string assetPath, CancellationToken cancellationToken) =>
+        Task.FromResult(File.Exists(assetPath));
+
+    /// <inheritdoc />
     public Task ClearAsync(CancellationToken cancellationToken)
     {
         if (File.Exists(_path))

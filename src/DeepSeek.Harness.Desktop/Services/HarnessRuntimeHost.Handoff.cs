@@ -44,12 +44,12 @@ public sealed partial class HarnessRuntimeHost
         TimeSpan timeout,
         CancellationToken ct)
     {
-        bool portBusy = await RuntimeLineage.IsLoopbackServingAsync(preferred).ConfigureAwait(false);
+        bool portBusy = await RuntimeLineageProbes.IsLoopbackServingAsync(preferred).ConfigureAwait(false);
         RuntimeLineage.PortConflictPlan plan = RuntimeLineage.PlanPortConflict(
             portBusy,
             supervisedStart,
             FindLineageResidue(),
-            RuntimeLineage.ReadParentPid);
+            RuntimeLineageProbes.ReadParentPid);
         _log?.Invoke($"[host] 首选端口 {preferred} 启动失败（{DescribeFailure(failure)}）：处置 {plan.Action}"
             + $"（端口{(portBusy ? "仍被占" : "已空")}，血统残留 {plan.Harvest.Count} 项）");
 
@@ -114,11 +114,11 @@ public sealed partial class HarnessRuntimeHost
     /// <returns>残留项（含市场 helper：它只会催生竞争者）。</returns>
     private IReadOnlyList<RuntimeLineage.Subject> FindLineageResidue() =>
         RuntimeLineage.SelectResidue(
-            RuntimeLineage.Enumerate(),
+            RuntimeLineageProbes.Enumerate(),
             TrackedPid,
             ResolveDshHome(),
             DesktopProfileName,
-            RuntimeLineage.ReadParentPid);
+            RuntimeLineageProbes.ReadParentPid);
 
     /// <summary>冷启动 / 启动成功后的一次全量血统收敛（血统扫描之外顺带收割 dsh 下游 scope，见 ADR dsh-sandbox-child-orphan-leak）。</summary>
     /// <param name="reason">日志里的收敛时机说明。</param>
@@ -138,7 +138,7 @@ public sealed partial class HarnessRuntimeHost
             RuntimeLineage.Candidate candidate = subject.Candidate;
             try
             {
-                RuntimeLineage.KillTree(candidate.Pid);
+                RuntimeLineageProbes.KillTree(candidate.Pid);
                 _log?.Invoke($"[host] 收割桌面运行时残留（{reason}）：pid {candidate.Pid} kind={subject.Kind}");
             }
             catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception or NotSupportedException)
@@ -159,7 +159,7 @@ public sealed partial class HarnessRuntimeHost
 
         try
         {
-            RuntimeLineage.KillTree(adopted);
+            RuntimeLineageProbes.KillTree(adopted);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception or NotSupportedException)
         {
@@ -182,12 +182,12 @@ public sealed partial class HarnessRuntimeHost
     {
         while (true)
         {
-            if (!RuntimeLineage.TryIsAlive(pid))
+            if (!RuntimeLineageProbes.TryIsAlive(pid))
             {
                 return;
             }
 
-            string? token = RuntimeLineage.ReadToken(pid);
+            string? token = RuntimeLineageProbes.ReadToken(pid);
             if (token is not null && !string.Equals(token, expectedToken, StringComparison.Ordinal))
             {
                 // pid 已复用给别的进程：当初收养的运行时已经退出

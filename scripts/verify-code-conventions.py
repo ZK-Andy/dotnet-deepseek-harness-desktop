@@ -28,7 +28,7 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_SRC = "src/DeepSeek.Harness.Desktop"
+DEFAULT_SRC = ("src/DeepSeek.Harness.Desktop", "src/DeepSeek.Harness.Desktop.Core")
 IGNORE_MARK = "verify-code-conventions: ignore"
 
 # Console use is allowed only in the log sink and the entry diagnostics.
@@ -57,9 +57,11 @@ D005_WHITELIST = {
     # dsh 下游 scope 收割（systemctl spawn + /proc 判活；ADR dsh-sandbox-child-orphan-leak）
     "DshSubprocessScopeReaper.cs",
     # runtime lineage probes (/proc reads, tree kill, loopback probe; ADR runtime-handoff-adoption)
-    "RuntimeLineage.Probes.cs",
+    "RuntimeLineageProbes.cs",
     "DiagnosticsExporter.cs",
     "PluginVersionCheck.cs",
+    # profile package.json presence/version reads (B1 Core 边界; ADR official-clean-architecture-adoption)
+    "ProfilePackageCheck.cs",
     "DesktopProfileBootstrap.cs",
     "DevEnvironment.cs",
     "RuntimeBootstrapOptions.cs",
@@ -217,12 +219,14 @@ def main() -> int:
         return _self_test()
 
     parser = argparse.ArgumentParser(description="Verify D004/D005 code conventions")
-    parser.add_argument("--src", default=DEFAULT_SRC)
+    parser.add_argument("--src", nargs="+", default=list(DEFAULT_SRC))
     parser.add_argument("--enforce", action="store_true",
                         help="exit 1 on any violation (default: report only)")
     args = parser.parse_args()
 
-    rows = _scan(Path(args.src))
+    rows: list[str] = []
+    for s in args.src:
+        rows.extend(_scan(Path(s)))
     if rows:
         print(f"code-conventions: {len(rows)} violation(s)")
         for r in rows:

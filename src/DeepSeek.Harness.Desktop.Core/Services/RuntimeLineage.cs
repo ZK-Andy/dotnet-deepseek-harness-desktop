@@ -12,9 +12,9 @@ namespace DeepSeek.Harness.Desktop.Services;
 ///
 /// 判定一律「证据可证才动手」：token 缺失、home 不一致、父链归属不可证（读不到/自环/超深）一律按
 /// 「不动」处理——零误杀优先于收全，收不到的残留按端口漂移告警留给人工判读。
-/// 生产探针（<c>/proc</c> 读取、进程树杀、回环探活）见 <c>RuntimeLineage.Probes.cs</c>（partial）。
+/// 生产探针（<c>/proc</c> 读取、进程树杀、回环探活）见主工程的 <c>RuntimeLineageProbes</c>（Infrastructure 侧）。
 /// </remarks>
-public static partial class RuntimeLineage
+public static class RuntimeLineage
 {
     /// <summary>壳 spawn dsh 时注入的血统 token 环境变量名（唯一 GUID；市场 helper 与续任者继承）。</summary>
     public const string TokenEnv = "DSH_DESKTOP_SPAWN_TOKEN";
@@ -153,7 +153,7 @@ public static partial class RuntimeLineage
     /// <param name="trackedPid">在管运行时 pid；无在管运行时传 null（此时凡血统可证者皆残留）。</param>
     /// <param name="expectedHome">本次生效的 DSH home。</param>
     /// <param name="profileName">桌面 profile 名。</param>
-    /// <param name="readParentPid">读父进程 id 的探针（注入；生产用 <see cref="ReadParentPid"/>）。</param>
+    /// <param name="readParentPid">读父进程 id 的探针（注入；生产用 <see cref="RuntimeLineageProbes.ReadParentPid"/>）。</param>
     /// <returns>残留列表；空即无残留。</returns>
     /// <remarks>「在管运行时面」= 在管进程自身、其后代（同一次 spawn 的整棵子树共享同一 token，只比 token
     /// 会把在跑的 MCP/后台作业当残留）、以及它的**祖先**（杀祖先的整树会连带杀死在管运行时，收养场景下

@@ -16,7 +16,7 @@ namespace DeepSeek.Harness.Desktop.Services;
 ///
 /// 跨平台可测：核心判定 <see cref="Reap"/> 接受注入的 <c>readToken</c>（pid→token）与
 /// <c>killTree</c>（pid→void）委托，纯逻辑可 xunit 单测；生产由组合点直接注入
-/// <see cref="RuntimeLineage.ReadToken"/> 与 <see cref="RuntimeLineage.KillTree"/>。
+/// <see cref="RuntimeLineageProbes.ReadToken"/> 与 <see cref="RuntimeLineageProbes.KillTree"/>。
 /// </remarks>
 public static class OrphanDshReaper
 {

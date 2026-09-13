@@ -29,7 +29,7 @@
 
 ### R3 · 端口/适配器（Ports/Adapters）
 - 与外部世界交互（Ryn/native、dsh 进程、companion IPC、文件/网络、更新 feed、注册表/rc）一律：**接口定义在 Core，实现进 Infrastructure，组合根注入**；测试经 fake/mock（与既有 mock 策略一致）；纯逻辑保持可单测。
-- **IPC/帧契约**：跨界 ID 用强类型/Branded（禁裸 `string` 跨包）；帧形状经 `AppJsonContext` 源生成（AOT 安全）；帧契约演进须留痕。
+- **IPC/帧契约**：跨界 ID 用强类型/Branded（禁裸 `string` 跨包）；帧形状经源生成上下文（主工程 `AppJsonContext` / Core `UpdateJsonContext`，AOT 安全）；帧契约演进须留痕。
 
 ### R4 · 反上帝对象 / 尺寸健康闸（健康提示，非编码规范）
 组件超 ~400 行、方法超 ~80 行、组合根内含业务逻辑 → 评审/门禁提示。定位为「开发完成即检」的健康检查；规范不设行数上限（见 [coding-standards.md](coding-standards.md)）。

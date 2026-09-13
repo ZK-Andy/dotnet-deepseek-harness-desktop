@@ -19,19 +19,21 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SRC = REPO / "src" / "DeepSeek.Harness.Desktop"
+CORE = REPO / "src" / "DeepSeek.Harness.Desktop.Core"
 
-UI_COPY = SRC / "Services" / "UiCopy.cs"
+# B1 起词典随 UiLocale 迁 Core（eShopOnWeb Core 亦有 Resources 先例）；UiCopy 是唯一事实源不变。
+UI_COPY = CORE / "Services" / "UiCopy.cs"
 
-# UI 消费文件（相对 SRC）：这些文件里禁止出现 CJK 字符串字面量（文案一律走 UiCopy）。
+# UI 消费文件（相对各自工程根）：这些文件里禁止出现 CJK 字符串字面量（文案一律走 UiCopy）。
 # 新增 UI 消费文件时把文件加进此表并把文案迁入 UiCopy。
 # 已知盲区：CS_LITERAL 不覆盖 @"..." 逐字串与 """...""" 原始串——消费文件引入该形态时须同步扩提取器。
 CS_CONSUMERS = [
-    "Services/Tray/TrayMenuActions.cs",
-    "Services/Update/UpdateBanner.cs",
-    "Services/UiLocale.cs",
-    "Services/RecoveryPageBuilder.cs",
-    "Services/DesktopBanner.cs",
-    "Services/PagePump.cs",
+    (SRC, "Services/Tray/TrayMenuActions.cs"),
+    (SRC, "Services/Update/UpdateBanner.cs"),
+    (CORE, "Services/UiLocale.cs"),
+    (SRC, "Services/RecoveryPageBuilder.cs"),
+    (SRC, "Services/DesktopBanner.cs"),
+    (SRC, "Services/PagePump.cs"),
 ]
 
 INDEX_HTML = SRC / "wwwroot" / "index.html"
@@ -90,7 +92,7 @@ def _check(vocab_literals: list[str], cs_files: list[tuple[str, str]], html_text
 
 def verify() -> list[str]:
     vocab_literals = extract_cs_literals(UI_COPY.read_text(encoding="utf-8"))
-    cs_files = [(rel, (SRC / rel).read_text(encoding="utf-8")) for rel in CS_CONSUMERS]
+    cs_files = [((base.name + "/" + rel), (base / rel).read_text(encoding="utf-8")) for base, rel in CS_CONSUMERS]
     return _check(vocab_literals, cs_files, INDEX_HTML.read_text(encoding="utf-8"))
 
 

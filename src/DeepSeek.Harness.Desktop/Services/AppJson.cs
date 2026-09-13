@@ -32,7 +32,6 @@ internal sealed record ExternalLinkOpenerFailedFrame(string Url);
 [JsonSerializable(typeof(CloseBehaviorPreference.PreferencesFile))]
 [JsonSerializable(typeof(RunMarker.MarkerFile))]
 [JsonSerializable(typeof(DesktopDiagnosticsCommandRouter.PathFrame))]
-[JsonSerializable(typeof(Update.UpdateStateFrame))]
 [JsonSerializable(typeof(Update.UpdateStateMachine.ReadyRecord))]
 [JsonSerializable(typeof(RecoveryPageBuilder.Payload))]
 [JsonSerializable(typeof(ExternalLinkOpenerFailedFrame))]

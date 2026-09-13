@@ -90,8 +90,8 @@ public sealed partial class HarnessRuntimeHost : IDisposable
             _log?.Invoke($"[host] 冷启动：清扫孤儿 dsh（{ResolvePidFilePath()}）");
             OrphanDshReaper.Reap(
                 ResolvePidFilePath(),
-                RuntimeLineage.ReadToken,
-                RuntimeLineage.KillTree,
+                RuntimeLineageProbes.ReadToken,
+                RuntimeLineageProbes.KillTree,
                 _log);
             HarvestLineageResidue("冷启动");
         }
@@ -105,7 +105,7 @@ public sealed partial class HarnessRuntimeHost : IDisposable
             // 已取消：跳过探测与处置链直接短路，避免多付一次注定取消的 bind 探测与日志副作用
             url = null;
         }
-        else if (preferred is int busyPort && RuntimeLineage.ProbeLoopbackBind(busyPort) == RuntimeLineage.LoopbackBindProbe.Occupied)
+        else if (preferred is int busyPort && RuntimeLineageProbes.ProbeLoopbackBind(busyPort) == RuntimeLineageProbes.LoopbackBindProbe.Occupied)
         {
             // spawn 前自有 bind 探测（ADR port-wait-compression）：dsh 要先加载整棵插件树才 bind
             // （实测 42–47s），端口已被占时这个尝试注定失败——跳过 spawn 直接进交接处置。

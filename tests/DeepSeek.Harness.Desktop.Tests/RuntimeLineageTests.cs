@@ -301,7 +301,7 @@ public class RuntimeLineageTests
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
 
-        Assert.Equal(RuntimeLineage.LoopbackBindProbe.Free, RuntimeLineage.ProbeLoopbackBind(port));
+        Assert.Equal(RuntimeLineageProbes.LoopbackBindProbe.Free, RuntimeLineageProbes.ProbeLoopbackBind(port));
     }
 
     /// <summary>bind 探测：被监听者占住的端口判 Occupied——正是要拦掉的「注定失败尝试」形态。</summary>
@@ -313,7 +313,7 @@ public class RuntimeLineageTests
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         try
         {
-            Assert.Equal(RuntimeLineage.LoopbackBindProbe.Occupied, RuntimeLineage.ProbeLoopbackBind(port));
+            Assert.Equal(RuntimeLineageProbes.LoopbackBindProbe.Occupied, RuntimeLineageProbes.ProbeLoopbackBind(port));
         }
         finally
         {
@@ -335,6 +335,6 @@ public class RuntimeLineageTests
         socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         int port = ((IPEndPoint)socket.LocalEndPoint!).Port;
 
-        Assert.Equal(RuntimeLineage.LoopbackBindProbe.Free, RuntimeLineage.ProbeLoopbackBind(port));
+        Assert.Equal(RuntimeLineageProbes.LoopbackBindProbe.Free, RuntimeLineageProbes.ProbeLoopbackBind(port));
     }
 }

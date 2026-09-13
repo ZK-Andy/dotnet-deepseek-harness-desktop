@@ -1,11 +1,9 @@
 namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
-/// 随包插件清单（ADR bundled-plugin-version-aware-catalog + online-first-unbundled-runtime 批次三）：
-/// online-first 后随包仅桌面伴生插件（companion），安装器资源是唯一供给源；dshmarket 改由首启引导
-/// 经 registry 安装（见 RuntimeBootstrap），不再作为随包/种子条目。
-/// 启动装配对清单逐项执行统一判定——未装即装、已装而来源版本更新即升、与来源同版或更高即跳过。
-/// 清单是唯一扩展点，新增随包插件只在此登记，装配逻辑零改动；「是否随包」逐案拍板决定成员。
+/// 随包插件装配判定（ADR bundled-plugin-version-aware-catalog + online-first-unbundled-runtime 批次三；
+/// B1 迁 Core）：对供给清单逐项执行统一判定——未装即装、已装而来源版本更新即升、与来源同版或更高即跳过。
+/// 具体供给清单（成员与来源解析器）在主工程组合侧 <c>BundledPluginSupply</c> 登记，装配逻辑零改动。
 /// </summary>
 public static class BundledPluginCatalog
 {
@@ -13,12 +11,6 @@ public static class BundledPluginCatalog
     /// 解析器抛出的异常按单插件跳过处理，不影响其余清单项。
     /// 参数为安装器自带插件资源目录（resources/plugins，可为 null）——online-first 后随包唯一供给源。</summary>
     public sealed record Entry(string Package, Func<string?, string?> ResolveSpec);
-
-    /// <summary>清单顺序即单条 <c>plugin add</c> 的 spec 顺序。</summary>
-    public static readonly IReadOnlyList<Entry> All =
-    [
-        new("dsh-desktop-companion", MarketInstallHelper.ResolveCompanionSpec),
-    ];
 
     /// <summary>
     /// 组装本次启动需要安装/升级的插件待装清单（纯逻辑，可单测）。
@@ -60,7 +52,7 @@ public static class BundledPluginCatalog
                 continue;
             }
 
-            if (!MarketInstallHelper.IsBundleInstalled(profilePkg, entry.Package))
+            if (!ProfilePackageCheck.IsBundleInstalled(profilePkg, entry.Package))
             {
                 log($"[host] 随包插件 {entry.Package} 未就位，加入待装清单");
                 pending.Add((entry.Package, spec));

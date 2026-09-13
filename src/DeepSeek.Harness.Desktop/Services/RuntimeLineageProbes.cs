@@ -6,11 +6,11 @@ using System.Net.Sockets;
 namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
-/// <see cref="RuntimeLineage"/> 的生产探针面（partial）：<c>/proc</c> 读取、进程树击杀、回环端口探活。
+/// <see cref="RuntimeLineage"/> 策略核（Core）的生产探针面：<c>/proc</c> 读取、进程树击杀、回环端口探活。
 /// 判定逻辑（分类/树内排除/处置计划）留在 <c>RuntimeLineage.cs</c>，本文件只做外部世界交互，
 /// 故列在 D005 边界白名单（verify-code-conventions）。
 /// </summary>
-public static partial class RuntimeLineage
+public static class RuntimeLineageProbes
 {
     /// <summary>端口探活的单次超时（TCP 连接本机回环：连不上即无人监听）。</summary>
     private static readonly TimeSpan s_portProbeTimeout = TimeSpan.FromMilliseconds(500);
@@ -19,7 +19,7 @@ public static partial class RuntimeLineage
     /// <returns>候选快照列表；空表示无血统进程（也包含「平台不支持读取」这一保守退化）。</returns>
     /// <remarks>逐 pid 读 <c>/proc/&lt;pid&gt;/environ</c> 是唯一能发现血统进程的手段：先做 token 子串粗筛，
     /// 命中才解析 env 与命令行；读不到（他人进程/已退出）静默跳过，绝不因此误判为血统。</remarks>
-    public static IReadOnlyList<Candidate> Enumerate()
+    public static IReadOnlyList<RuntimeLineage.Candidate> Enumerate()
     {
         if (!OperatingSystem.IsLinux())
         {
@@ -27,7 +27,7 @@ public static partial class RuntimeLineage
             return [];
         }
 
-        var candidates = new List<Candidate>();
+        var candidates = new List<RuntimeLineage.Candidate>();
         try
         {
             foreach (string directory in Directory.EnumerateDirectories("/proc"))
@@ -37,7 +37,7 @@ public static partial class RuntimeLineage
                     continue;
                 }
 
-                Candidate? candidate = TryReadCandidate(pid);
+                RuntimeLineage.Candidate? candidate = TryReadCandidate(pid);
                 if (candidate is not null)
                 {
                     candidates.Add(candidate);
@@ -53,7 +53,7 @@ public static partial class RuntimeLineage
         return candidates;
     }
 
-    /// <summary>读某进程 env 里的血统 token（<see cref="TokenEnv"/>）。</summary>
+    /// <summary>读某进程 env 里的血统 token（<see cref="RuntimeLineage.TokenEnv"/>）。</summary>
     /// <param name="pid">进程 id。</param>
     /// <returns>token；进程已死/无权限/非 Linux 返回 null（调用方按「不匹配」处理，零误杀）。</returns>
     public static string? ReadToken(int pid)
@@ -65,7 +65,7 @@ public static partial class RuntimeLineage
 
         try
         {
-            return EnvValue(File.ReadAllText($"/proc/{pid}/environ"), TokenEnv);
+            return EnvValue(File.ReadAllText($"/proc/{pid}/environ"), RuntimeLineage.TokenEnv);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -196,19 +196,19 @@ public static partial class RuntimeLineage
     /// <summary>读取单个 pid 的血统候选快照；非血统（无 token）或不可读返回 null。</summary>
     /// <param name="pid">进程 id。</param>
     /// <returns>候选快照或 null。</returns>
-    private static Candidate? TryReadCandidate(int pid)
+    private static RuntimeLineage.Candidate? TryReadCandidate(int pid)
     {
         try
         {
             string environ = File.ReadAllText($"/proc/{pid}/environ");
-            string? token = EnvValue(environ, TokenEnv);
+            string? token = EnvValue(environ, RuntimeLineage.TokenEnv);
             if (string.IsNullOrEmpty(token))
             {
                 return null;
             }
 
             string cmdLine = File.ReadAllText($"/proc/{pid}/cmdline").Replace('\0', ' ').Trim();
-            return new Candidate(
+            return new RuntimeLineage.Candidate(
                 pid,
                 token,
                 EnvValue(environ, HarnessRuntimeHost.EcosystemHomeEnv),

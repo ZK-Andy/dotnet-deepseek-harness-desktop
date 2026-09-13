@@ -40,6 +40,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DeepSeek.Harness.Desktop.Core\DeepSeek.Harness.Desktop.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="ryn.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />

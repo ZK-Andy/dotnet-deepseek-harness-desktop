@@ -1,3 +1,4 @@
+using System.Reflection;
 using NetArchTest.Rules;
 
 namespace DeepSeek.Harness.Desktop.Tests;
@@ -78,5 +79,20 @@ public class ArchitectureTests
             .That().ResideInNamespace("DeepSeek.Harness.Desktop.Services.Update")
             .Should().NotHaveDependencyOn(TrayNs).GetResult();
         Assert.True(result.IsSuccessful, $"A2 violate: {Describe(result)}");
+    }
+
+    /// <summary>R2 种子 · Core 零外层引用（architecture-standards）：Application Core 程序集
+    /// 不得引用壳主程序或任何 Ryn 程序集——B4 将升级为 csproj 项目引用断言，本测试先以反射兜住。</summary>
+    [Fact]
+    public void CoreAssembly_HasZeroOuterReferences()
+    {
+        Assembly core = typeof(Services.Update.UpdateStateMachine).Assembly;
+        string[] referenced = core.GetReferencedAssemblies().Select(a => a.Name ?? string.Empty).ToArray();
+        string self = core.GetName().Name ?? string.Empty;
+        string[] bad = referenced
+            .Where(n => n != self &&
+                (n.StartsWith("DeepSeek.Harness.Desktop", StringComparison.Ordinal) || n.StartsWith("Ryn", StringComparison.Ordinal)))
+            .ToArray();
+        Assert.True(bad.Length == 0, $"R2 violate: Core assembly references outer assemblies: {string.Join(", ", bad)}");
     }
 }

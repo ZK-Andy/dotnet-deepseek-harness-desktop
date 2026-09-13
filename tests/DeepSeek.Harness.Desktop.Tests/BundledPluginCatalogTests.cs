@@ -247,7 +247,7 @@ public class BundledPluginCatalogTests
 
             string profile = NewProfile(root);
             (List<(string Package, string Spec)>? pending, List<string>? logs) = Assemble(
-                BundledPluginCatalog.All, profile, pluginsDir: pluginsDir);
+                BundledPluginSupply.All, profile, pluginsDir: pluginsDir);
 
             // 运行时目录 tgz/目录分支退役：companion 只能来自安装器资源；dshmarket 不再随包
             // （catalog 仅 companion），故 pending 仅 companion 一条。（不装 dshmarket，市场由引导经 registry 安装。）
@@ -268,7 +268,7 @@ public class BundledPluginCatalogTests
             // 开发用 PATH dsh 场景（安装器资源与运行时目录均未携带 companion 种子）：
             // companion 无来源返回 null，catalog 的 companion 条目跳过、无人待装。
             string profile = NewProfile(root);
-            (List<(string Package, string Spec)>? pending, List<string>? logs) = Assemble(BundledPluginCatalog.All, profile, pluginsDir: null);
+            (List<(string Package, string Spec)>? pending, List<string>? logs) = Assemble(BundledPluginSupply.All, profile, pluginsDir: null);
 
             Assert.Empty(pending);
             Assert.Contains(logs, l => l.Contains("dsh-desktop-companion") && l.Contains("无可用来源"));

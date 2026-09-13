@@ -28,6 +28,9 @@ public sealed class UpdateStateMachine
 
         /// <summary>清除记录（已装完或确认无更新）。</summary>
         Task ClearAsync(CancellationToken cancellationToken);
+
+        /// <summary>探测 ready 记录指向的安装包文件是否仍在（状态机不得直触文件系统——端口位）。</summary>
+        Task<bool> AssetExistsAsync(string assetPath, CancellationToken cancellationToken);
     }
 
     /// <summary>ready 持久化记录。</summary>
@@ -41,6 +44,7 @@ public sealed class UpdateStateMachine
     private readonly InstallDelegate _install;
     private readonly IPersistence _persistence;
     private readonly Action<UpdateState>? _onTransition;
+    private readonly Action<string>? _log;
 
     private UpdateState _state = new(UpdateStatus.Idle);
     private Task? _pending;
@@ -54,13 +58,16 @@ public sealed class UpdateStateMachine
     /// <param name="install">安装委托。</param>
     /// <param name="persistence">ready 持久化。</param>
     /// <param name="onTransition">每次状态变化的回调（UI 推送）；回调异常由状态机兜住并记日志。</param>
+    /// <param name="log">诊断日志出口（可选；组合根注入 host.log 同款行文）。缺省 null 时
+    /// Transition 兜住的回调异常静默吞掉不留痕——生产方必须注入，否则异常面不可排查。</param>
     public UpdateStateMachine(
         string currentVersion,
         CheckDelegate check,
         DownloadDelegate download,
         InstallDelegate install,
         IPersistence persistence,
-        Action<UpdateState>? onTransition = null)
+        Action<UpdateState>? onTransition = null,
+        Action<string>? log = null)
     {
         _currentVersion = currentVersion;
         _check = check;
@@ -68,6 +75,7 @@ public sealed class UpdateStateMachine
         _install = install;
         _persistence = persistence;
         _onTransition = onTransition;
+        _log = log;
     }
 
     /// <summary>当前状态快照。</summary>
@@ -88,14 +96,16 @@ public sealed class UpdateStateMachine
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         ReadyRecord? ready = await _persistence.GetAsync(cancellationToken).ConfigureAwait(false);
+        string? readyVersion = ready?.Version;
+        string? readyAssetPath = ready?.AssetPath;
         if (ready is not null && ShouldClearReady(ready.Version))
         {
             await _persistence.ClearAsync(cancellationToken).ConfigureAwait(false);
         }
-        else if (ready is not null && File.Exists(ready.AssetPath))
+        else if (readyAssetPath is not null && await _persistence.AssetExistsAsync(readyAssetPath, cancellationToken).ConfigureAwait(false))
         {
             // 跨启动仍有有效安装包：直接回 ready，不重复下载
-            Transition(new UpdateState(UpdateStatus.Ready, ready.Version));
+            Transition(new UpdateState(UpdateStatus.Ready, readyVersion));
             return;
         }
 
@@ -208,7 +218,8 @@ public sealed class UpdateStateMachine
 
         string version = _state.Version;
         ReadyRecord? record = await _persistence.GetAsync(cancellationToken).ConfigureAwait(false);
-        if (record is null || !File.Exists(record.AssetPath))
+        string? recordAssetPath = record?.AssetPath;
+        if (recordAssetPath is null || !await _persistence.AssetExistsAsync(recordAssetPath, cancellationToken).ConfigureAwait(false))
         {
             await _persistence.ClearAsync(cancellationToken).ConfigureAwait(false);
             Transition(new UpdateState(UpdateStatus.Idle));
@@ -218,7 +229,7 @@ public sealed class UpdateStateMachine
         Transition(new UpdateState(UpdateStatus.Installing, version));
         try
         {
-            await _install(record.AssetPath, version, cancellationToken).ConfigureAwait(false);
+            await _install(recordAssetPath, version, cancellationToken).ConfigureAwait(false);
             // 成功路径：进程随安装流程退出，不再迁移状态
         }
         catch (Exception)
@@ -244,7 +255,7 @@ public sealed class UpdateStateMachine
         {
             // 宿主推送回调（窗口未就绪/已销毁等）失败不拖垮状态机；与订阅者同等待遇。
             // 落盘收口：桌面形态 stdout 不可见（v0.2.1 实证），此类异常面必须进 host.log 才能排查
-            Services.HostLog.Write($"[update] 状态推送回调失败：{ex.Message}");
+            _log?.Invoke($"[update] 状态推送回调失败：{ex.Message}");
         }
 
         foreach (Action<UpdateState> listener in _listeners)
@@ -256,7 +267,7 @@ public sealed class UpdateStateMachine
             catch (Exception ex)
             {
                 // 单个订阅者（如 UI 推送在窗口未就绪时）失败不拖垮状态机
-                Services.HostLog.Write($"[update] 状态回调失败：{ex.Message}");
+                _log?.Invoke($"[update] 状态回调失败：{ex.Message}");
             }
         }
     }

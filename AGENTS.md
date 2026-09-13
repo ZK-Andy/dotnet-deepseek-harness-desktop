@@ -43,7 +43,7 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 - **D003**：`catch` 空体须命名所吞（[coding-standards](docs/coding-standards.md) 行为契约）。D001（`Async` 尾缀 = VSTHRD200）/D002（`async void` = VSTHRD100）已机器化进 build 门禁，评审不再兜底；D003 暂无现成 analyzer，留兜底（自定义 analyzer 试点另立项）。
 - **R1 组合根只装配**：`DesktopBootstrap`/`DesktopBootstrap.Startup` 不得夹带业务/领域逻辑（[architecture-standards](docs/architecture-standards.md) R1）。
 - **R3 边界抽象完备**：外部交互（Ryn/native、dsh 进程、companion IPC、文件/网络、更新 feed、注册表/rc）是否都经接口、未直漏进业务层（R3）。
-- **IPC 强类型**：跨界/事件帧 ID 不用裸 `string` 跨包；帧形状经 `AppJsonContext` 源生成（R3）。
+- **IPC 强类型**：跨界/事件帧 ID 不用裸 `string` 跨包；帧形状经源生成上下文（`AppJsonContext`/`UpdateJsonContext`，R3）。
 
 评审代理按上述清单核对；发现即作 blocker 或 suggestion。
 

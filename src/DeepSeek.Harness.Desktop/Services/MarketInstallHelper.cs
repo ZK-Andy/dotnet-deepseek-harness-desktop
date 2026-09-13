@@ -115,7 +115,7 @@ public static partial class MarketInstallHelper
         string profileDir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
         string profilePkg = Path.Combine(profileDir, "package.json");
         List<(string Package, string Spec)> pending = BundledPluginCatalog.AssemblePending(
-            BundledPluginCatalog.All, installerPluginsDir, profilePkg, profileDir, log);
+            BundledPluginSupply.All, installerPluginsDir, profilePkg, profileDir, log);
         if (pending.Count == 0)
         {
             log("[host] 随包插件无需安装（companion 已就位），跳过");

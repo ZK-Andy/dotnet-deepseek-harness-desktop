@@ -65,8 +65,7 @@ public sealed partial class DesktopBootstrap
             install: async (assetPath, version, ct) =>
             {
                 // 安装时点自 release SHA256SUMS 复取期望哈希（HTTPS 直达仓库，用户空间改写不了）：
-                // root 侧装前复验对照它——落盘的任何哈希都可被同权限改写，唯有 release 侧值是锚点。
-                // 离线时此处抛出拒装（状态机回 ready），不无复核安装。
+                // root 侧装前复验对照它——落盘哈希可被同权限改写，唯 release 侧值是锚点；离线时此处抛出拒装（状态机回 ready）。
                 string expectedSha = await new Services.Update.InstallerDownloader(updateHttp, Services.HostLog.Write)
                     .FetchSha256Async(updateOptions.Repository, version, Path.GetFileName(assetPath), ct);
                 // 授权通过（LaunchAsync 观察窗口内未取消）后：主动关闭窗口让进程退出，
@@ -96,7 +95,8 @@ public sealed partial class DesktopBootstrap
                     + (state.Version is null ? "" : $" {state.Version}")
                     + (state.Message is null ? "" : $"：{state.Message}"));
                 Services.PagePump.PushUpdateState(_windowAccessor, state);
-            });
+            },
+            log: Services.HostLog.Write);
         Services.HostLog.Write($"[host] 自更新：当前版本 {currentVersion}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}，feed 超时 {updateOptions.FeedTimeoutSeconds}s 下载超时 {updateOptions.DownloadTimeoutMinutes}m");
     }
 

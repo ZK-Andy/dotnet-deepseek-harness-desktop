@@ -4,8 +4,8 @@ namespace DeepSeek.Harness.Desktop.Services;
 /// 可选（preset）插件清单（ADR reference-alignment 批次二）：registry 安装、首启引导页可勾选。
 /// companion（internal）不在此列——companion 是桌面壳必需品，保持 spawn 前静默自愈（对齐参照
 /// <c>ensure_internal_plugins</c>，不出现在引导勾选清单）。
-/// 当前仅一个 preset（dshmarket 市场）；安装路径为市场特化（<see cref="MarketInstallHelper.EnsureMarketFromRegistryAsync"/>，
-/// 其 <see cref="MarketInstallHelper.MarketSpec"/> 即 dshmarket@latest）。新增可选插件时需在此登记
+/// 当前仅一个 preset（dshmarket 市场）；安装路径为市场特化（主工程 MarketInstallHelper.EnsureMarketFromRegistryAsync，
+/// 其 MarketSpec 即 dshmarket@latest）。新增可选插件时需在此登记
 /// 名称并扩展对应安装路径——本清单的「呈现（PendingForFirstBoot）」与「实际安装」当前都收敛到 market 一族。
 /// </summary>
 public static class PresetPluginCatalog
@@ -28,7 +28,7 @@ public static class PresetPluginCatalog
         var pending = new List<string>();
         foreach (string pkg in All)
         {
-            if (!MarketInstallHelper.IsBundleInstalled(profilePkg, pkg))
+            if (!ProfilePackageCheck.IsBundleInstalled(profilePkg, pkg))
             {
                 log?.Invoke($"[host] 可选插件 {pkg} 未就位，列入引导清单");
                 pending.Add(pkg);

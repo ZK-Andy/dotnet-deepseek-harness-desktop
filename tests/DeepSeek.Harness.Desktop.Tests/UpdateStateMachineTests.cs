@@ -16,6 +16,9 @@ public class UpdateStateMachineTests
             Record = record;
             return Task.CompletedTask;
         }
+        /// <summary>内存 fake 不落盘：按记录路径的真实文件存在性返回（与生产语义一致）。</summary>
+        public Task<bool> AssetExistsAsync(string assetPath, CancellationToken ct) =>
+            Task.FromResult(File.Exists(assetPath));
 
         public Task ClearAsync(CancellationToken ct)
         {

@@ -35,12 +35,12 @@ public enum UpdateStatus
 /// <param name="Current">当前壳版本（Transition 统一补齐；供更新页显示「当前版本/已是最新」）。</param>
 public sealed record UpdateState(UpdateStatus Status, string? Version = null, string? Message = null, string? Current = null)
 {
-    /// <summary>序列化为页面推送用的紧凑 JSON（经 <see cref="AppJsonContext"/> 源生成，AOT 安全）。
+    /// <summary>序列化为页面推送用的紧凑 JSON（经 <see cref="UpdateJsonContext"/> 源生成，AOT 安全）。
     /// 三个动态字段统一转义，不依赖「上游已把版本号校验为数字段」的隐式约定。</summary>
     public string ToJson() =>
         JsonSerializer.Serialize(
             new UpdateStateFrame(Status.ToString().ToLowerInvariant(), Version, Message, Current),
-            AppJsonContext.Default.UpdateStateFrame);
+            UpdateJsonContext.Default.UpdateStateFrame);
 }
 
 /// <summary><see cref="UpdateState"/> 的页面推送帧（键序 = 声明序，companion 消费契约）：
