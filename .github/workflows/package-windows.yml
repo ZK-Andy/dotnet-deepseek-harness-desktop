@@ -61,8 +61,8 @@ jobs:
         shell: bash
         timeout-minutes: 5
         run: |
-          dotnet publish tests/DeepSeek.Harness.Desktop.PayloadSmoke -c Release -o artifacts/payload-smoke
-          dotnet artifacts/payload-smoke/DeepSeek.Harness.Desktop.PayloadSmoke.dll artifacts/publish-win-x64
+          dotnet publish tests/DeepSeek.Harness.Desktop.PayloadSmoke -c Release -r win-x64 --self-contained true -o artifacts/payload-smoke
+          artifacts/payload-smoke/DeepSeek.Harness.Desktop.PayloadSmoke.exe artifacts/publish-win-x64
       - name: 打 Windows 包（安装器 exe，文件名含 windows 标识；不再产独立 zip）
         shell: bash
         run: bash scripts/package-windows.sh artifacts/publish-win-x64

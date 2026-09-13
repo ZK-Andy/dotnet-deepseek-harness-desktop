@@ -1,8 +1,13 @@
 // PayloadSmoke — 打包期载荷冒烟探针（ADR testing/2026-09-13-payload-smoke-probe）。
-// 用法: dotnet DeepSeek.Harness.Desktop.PayloadSmoke.dll <publish 目录>
+// 用法（父进程，随 package 工作流在 publish 后调用）:
+//   DeepSeek.Harness.Desktop.PayloadSmoke <publish 目录>
 // 对自包含 publish 产物的 native 载荷面冒烟：清单存在性 → FFI 加载+导出解析 →
-// 图像解码（saucer_icon_new_from_file）→ PTY 功能性（ryn_pty_spawn / ConPTY）。
-// 任一断言失败即 fail loud（逐条列因，exit 1）。
+// 功能用例（图像解码 saucer_icon_new_from_file、PTY ryn_pty_spawn / ConPTY）。
+// 功能用例在**子进程**中执行：native 侧硬崩溃/挂死被记为失败项并继续其余用例，
+// 诊断清单（逐条列因，exit 1）不被单点崩溃截断。
+// 子进程用法（探针自复用，工作流不直接调用）:
+//   DeepSeek.Harness.Desktop.PayloadSmoke --case image|pty <publish 目录> <库名>
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -10,8 +15,16 @@ namespace DeepSeek.Harness.Desktop.PayloadSmoke;
 
 internal static unsafe partial class Program
 {
+    private const int ChildTimeoutSeconds = 90;
+
     private static int Main(string[] args)
     {
+        // 子进程模式：单用例，崩溃即非零退出，由父进程收集
+        if (args.Length >= 2 && args[0] == "--case")
+        {
+            return RunCase(args[1], args.Skip(2).ToArray());
+        }
+
         if (args.Length != 1)
         {
             Console.Error.WriteLine("usage: PayloadSmoke <publish-dir>");
@@ -52,6 +65,89 @@ internal static unsafe partial class Program
         return 0;
     }
 
+    /// <summary>子进程入口：单用例执行。返回 0=通过；1=断言失败；非零异常退出由父进程定性。</summary>
+    private static int RunCase(string name, string[] rest)
+    {
+        if (rest.Length < 2)
+        {
+            Console.Error.WriteLine("usage: --case image|pty <publish-dir> <library>");
+            return 2;
+        }
+
+        string dir = Path.GetFullPath(rest[0]);
+        string library = rest[1];
+        List<string> failures = [];
+        switch (name)
+        {
+            case "image":
+                RunImageDecode(dir, library, failures);
+                break;
+            case "pty":
+                RunUnixPty(library, failures);
+                break;
+            default:
+                Console.Error.WriteLine($"unknown case: {name}");
+                return 2;
+        }
+
+        foreach (string failure in failures)
+        {
+            Console.Error.WriteLine($"  - {failure}");
+        }
+
+        return failures.Count == 0 ? 0 : 1;
+    }
+
+    /// <summary>以子进程执行功能用例：崩溃（含 native AV）、超时均记为失败项，不中断探针主流程。
+    /// libraryPath 为父进程清单断言已解析的库绝对路径（根或 runtimes/&lt;rid&gt;/native），子进程不自行重探。</summary>
+    private static void RunFunctionalCase(string name, string dir, string libraryPath, List<string> failures)
+    {
+        string host = Environment.ProcessPath ?? throw new InvalidOperationException("无法定位探针可执行体");
+        string assembly = typeof(Program).Assembly.Location;
+        // 宿主为 dotnet muxer（framework-dependent 运行）时首个参数须为托管 dll 路径；
+        // self-contained apphost 直跑时不插——apphost 不把首参解释为托管 dll
+        bool viaMuxer = host.EndsWith("dotnet", StringComparison.OrdinalIgnoreCase) ||
+                        host.EndsWith("dotnet.exe", StringComparison.OrdinalIgnoreCase);
+        ProcessStartInfo psi = new() { FileName = host };
+        if (viaMuxer)
+        {
+            psi.ArgumentList.Add(assembly);
+        }
+
+        psi.ArgumentList.Add("--case");
+        psi.ArgumentList.Add(name);
+        psi.ArgumentList.Add(dir);
+        psi.ArgumentList.Add(libraryPath);
+        psi.RedirectStandardError = true;
+        psi.RedirectStandardOutput = true;
+        using var child = Process.Start(psi);
+        if (child is null)
+        {
+            failures.Add($"{name} 用例子进程启动失败");
+            return;
+        }
+
+        // 子进程 stdout 仅数行；若未来用例输出接近管道缓冲（~64KB），须改异步双流读，否则先堵后超时误判挂死
+        string stderr = child.StandardError.ReadToEnd();
+        if (!child.WaitForExit(ChildTimeoutSeconds * 1000))
+        {
+            child.Kill(entireProcessTree: true);
+            failures.Add($"{name} 用例子进程 {ChildTimeoutSeconds}s 超时（挂死）");
+            return;
+        }
+
+        if (child.ExitCode != 0)
+        {
+            string detail = stderr.Trim();
+            failures.Add(child.ExitCode is 1
+                ? $"{name} 用例失败：{detail}"
+                : $"{name} 用例子进程异常退出（exit=0x{child.ExitCode:X}，native 硬崩溃？）：{detail}");
+            return;
+        }
+
+        Console.Write(child.StandardOutput.ReadToEnd());
+    }
+
     private static void CheckManagedPayload(string dir, List<string> failures)
     {
         if (!File.Exists(Path.Combine(dir, "DeepSeek.Harness.Desktop.dll")))
@@ -69,10 +165,10 @@ internal static unsafe partial class Program
             "saucer-bindings.dll",
             "saucer-bindings-desktop.dll",
         ];
-        Dictionary<string, nint> payload = CheckLibraryManifest(dir, libraries, failures);
+        Dictionary<string, nint> payload = CheckLibraryManifest(dir, libraries, failures, out Dictionary<string, string> resolvedPaths);
         CheckExport(payload, "WebView2Loader.dll", "GetAvailableCoreWebView2BrowserVersionString", failures);
         CheckExport(payload, "saucer-bindings.dll", "saucer_icon_new_from_file", failures);
-        CheckImageDecode(dir, "saucer-bindings.dll", payload, failures);
+        RunFunctionalCase("image", dir, resolvedPaths["saucer-bindings.dll"], failures);
         CheckConPty(failures);
     }
 
@@ -86,18 +182,20 @@ internal static unsafe partial class Program
             $"libsaucer-bindings-desktop{extension}",
             $"libryn-pty{extension}",
         ];
-        Dictionary<string, nint> payload = CheckLibraryManifest(dir, libraries, failures);
+        Dictionary<string, nint> payload = CheckLibraryManifest(dir, libraries, failures, out Dictionary<string, string> resolvedPaths);
         CheckExport(payload, $"libsaucer-bindings{extension}", "saucer_icon_new_from_file", failures);
         CheckExport(payload, $"libryn-pty{extension}", "ryn_pty_spawn", failures);
-        CheckImageDecode(dir, $"libsaucer-bindings{extension}", payload, failures);
-        CheckUnixPty(payload, $"libryn-pty{extension}", failures);
+        RunFunctionalCase("image", dir, resolvedPaths[$"libsaucer-bindings{extension}"], failures);
+        RunFunctionalCase("pty", dir, resolvedPaths[$"libryn-pty{extension}"], failures);
     }
 
-    /// <summary>按 OS 断言原生库逐个存在于产物目录（根或 runtimes/&lt;rid&gt;/native，同 Ryn NativeLibraryResolver 探测序），并 TryLoad 全部。</summary>
-    private static Dictionary<string, nint> CheckLibraryManifest(string dir, string[] libraries, List<string> failures)
+    /// <summary>按 OS 断言原生库逐个存在于产物目录（根或 runtimes/&lt;rid&gt;/native，同 Ryn NativeLibraryResolver 探测序），并 TryLoad 全部；
+    /// resolvedPaths 输出各库已解析绝对路径，供功能用例子进程直用（不重探）。</summary>
+    private static Dictionary<string, nint> CheckLibraryManifest(string dir, string[] libraries, List<string> failures, out Dictionary<string, string> resolvedPaths)
     {
         string rid = RuntimeInformation.RuntimeIdentifier;
         Dictionary<string, nint> payload = new(StringComparer.Ordinal);
+        resolvedPaths = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (string name in libraries)
         {
             string[] candidates =
@@ -119,6 +217,7 @@ internal static unsafe partial class Program
             }
 
             payload[name] = handle;
+            resolvedPaths[name] = path;
             Console.WriteLine($"  loaded: {name}");
         }
 
@@ -141,14 +240,19 @@ internal static unsafe partial class Program
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void SaucerIconFree(nint icon);
 
-    /// <summary>经 saucer-bindings 对产物内 icon.png 真解码（调用同时穿透 libsaucer 原生解码路径）。</summary>
-    private static void CheckImageDecode(string dir, string bindingsLibrary, Dictionary<string, nint> payload, List<string> failures)
+    /// <summary>经 saucer-bindings 对产物内 icon.png 真解码（调用同时穿透 libsaucer 原生解码路径）。仅子进程内调用；
+    /// bindingsLibraryPath 为父进程已解析的库绝对路径。</summary>
+    private static void RunImageDecode(string dir, string bindingsLibraryPath, List<string> failures)
     {
-        if (!payload.TryGetValue(bindingsLibrary, out nint bindings) ||
-            !NativeLibrary.TryGetExport(bindings, "saucer_icon_new_from_file", out nint newSymbol) ||
+        if (!NativeLibrary.TryLoad(bindingsLibraryPath, out nint bindings))
+        {
+            return; // 缺库在父进程清单断言已报过，此处静默退出（子进程 exit 0）
+        }
+
+        if (!NativeLibrary.TryGetExport(bindings, "saucer_icon_new_from_file", out nint newSymbol) ||
             !NativeLibrary.TryGetExport(bindings, "saucer_icon_free", out nint freeSymbol))
         {
-            return; // 缺库/缺导出已在清单与导出断言报过
+            return; // 缺导出已在父进程导出断言报过
         }
 
         string iconPath = Path.Combine(dir, "icon.png");
@@ -160,9 +264,9 @@ internal static unsafe partial class Program
 
         SaucerIconNewFromFile newFromFile = Marshal.GetDelegateForFunctionPointer<SaucerIconNewFromFile>(newSymbol);
         SaucerIconFree free = Marshal.GetDelegateForFunctionPointer<SaucerIconFree>(freeSymbol);
-        using Utf8String path = Utf8(iconPath);
+        using Utf8String nativePath = Utf8(iconPath);
         int error = 0;
-        nint handle = newFromFile(path.Ptr, &error);
+        nint handle = newFromFile(nativePath.Ptr, &error);
         if (handle == nint.Zero || error != 0)
         {
             // 当前 ABI 下 error 非零则句柄为 null；非零句柄仍释放，防御未来 ABI 演进
@@ -182,13 +286,14 @@ internal static unsafe partial class Program
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int RynPtySpawn(sbyte* command, sbyte** argv, sbyte** envp, sbyte* cwd, ushort cols, ushort rows, int* masterFd, int* childPid);
 
-    /// <summary>经 ryn-pty fork 真伪终端跑 `sh -c echo` 并读回 token（fork/exec/read/waitpid 全链）。</summary>
-    private static void CheckUnixPty(Dictionary<string, nint> payload, string ptyLibrary, List<string> failures)
+    /// <summary>经 ryn-pty fork 真伪终端跑 `sh -c echo` 并读回 token（fork/exec/read/waitpid 全链）。仅子进程内调用；
+    /// ptyLibraryPath 为父进程已解析的库绝对路径。</summary>
+    private static void RunUnixPty(string ptyLibraryPath, List<string> failures)
     {
-        if (!payload.TryGetValue(ptyLibrary, out nint library) ||
+        if (!NativeLibrary.TryLoad(ptyLibraryPath, out nint library) ||
             !NativeLibrary.TryGetExport(library, "ryn_pty_spawn", out nint symbol))
         {
-            return; // 缺库/缺导出已在清单与导出断言报过
+            return; // 缺库/缺导出已在父进程断言报过
         }
 
         const string token = "payload-smoke-pty-ok";
@@ -240,8 +345,6 @@ internal static unsafe partial class Program
         return output.ToString();
     }
 
-    // 一次性探针进程：管道句柄与 pty master fd 均不显式关闭，exit 即 OS 回收；
-    // 若将本探针逻辑搬入长活进程，须先补齐 CloseHandle/Close 清理。
     private static void CheckConPty(List<string> failures)
     {
         if (!CreatePipe(out nint readPipe, out nint writePipe, nint.Zero, 0) ||

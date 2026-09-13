@@ -2,9 +2,9 @@
 
 Status: implemented
 
-Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
-
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
+
+Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Problem
 
@@ -12,14 +12,14 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Decision
 
-新增独立控制台工程 `tests/DeepSeek.Harness.Desktop.PayloadSmoke`（框架依赖，net10.0，随 slnx `/tests/`），**以 publish 产物目录为参数**对产物 native 面冒烟；`package-windows.yml` 与 `package-macos.yml` 在 `dotnet publish`（壳）之后、打包脚本之前接线：publish 探针工程 → `dotnet <探针>.dll <publish 目录>`。探针用例四件（全部对 publish 目录内文件操作）：
+新增独立控制台工程 `tests/DeepSeek.Harness.Desktop.PayloadSmoke`（net10.0，随 slnx `/tests/`），**以 publish 产物目录为参数**对产物 native 面冒烟；`package-windows.yml` 与 `package-macos.yml` 在 `dotnet publish`（壳）之后、打包脚本之前接线：探针工程以产物同款 RID **自包含 publish**（apphost 直跑，保证探针进程架构 = 产物架构——macos-latest 为 ARM，osx-x64 腿经 Rosetta 以 x86_64 进程加载 x86_64 dylib）后执行。探针用例四件：
 
 1. **native 清单存在性**：按 OS 断言预期原生库在产物目录（根或 `runtimes/<rid>/native`，同 Ryn `NativeLibraryResolver` 探测序）——win x64：`WebView2Loader.dll`+`saucer*.dll`；osx：`libsaucer*.dylib`+`libryn-pty.dylib`。
-2. **FFI 加载 + 导出解析**：逐库 `NativeLibrary.TryLoad`（绝对路径）+ 哨兵导出 `GetProcAddress`（`saucer-bindings`→`saucer_icon_new_from_file`、`ryn-pty`→`ryn_pty_spawn`、`WebView2Loader`→`GetAvailableCoreWebView2BrowserVersionString`）；加载失败即缺依赖/rpath/执行位故障现形。`saucer`/`saucer-bindings-desktop` 无稳定哨兵名，只断言可加载。
-3. **图像解码**：经导出的 `saucer_icon_new_from_file` 对产物内 `icon.png` 真解码（断言非空句柄、error==0）再 `saucer_icon_free`——跨库调用同时穿透 `libsaucer` 原生解码路径。
-4. **PTY 功能性**：Unix 腿经导出的 `ryn_pty_spawn` fork 真伪终端跑 `/bin/sh -c echo` 并读回 token（fork/exec/read/waitpid 全链；工作流仅 macos 腿执行，linux 支持本地对产物自测）；win 腿对应面 = kernel32 `CreatePseudoConsole` 功能探针（ConPTY 由 OS 提供、非载荷，故只探 OS 面）。
+2. **FFI 加载 + 导出解析**：逐库 `NativeLibrary.TryLoad`（绝对路径）+ 哨兵导出 `GetProcAddress`（`saucer-bindings`→`saucer_icon_new_from_file`（win/macos 两腿都断言）、`ryn-pty`→`ryn_pty_spawn`、`WebView2Loader`→`GetAvailableCoreWebView2BrowserVersionString`）；加载失败即缺依赖/rpath/执行位故障现形。`saucer`/`saucer-bindings-desktop` 无稳定哨兵名，只断言可加载。
+3. **图像解码**（子进程执行）：经导出的 `saucer_icon_new_from_file` 对产物内 `icon.png` 真解码（断言非空句柄、error==0）再 `saucer_icon_free`——跨库调用同时穿透 `libsaucer` 原生解码路径。
+4. **PTY 功能性**（子进程执行）：Unix 腿经导出的 `ryn_pty_spawn` fork 真伪终端跑 `/bin/sh -c echo` 并读回 token（fork/exec/read/waitpid 全链；工作流仅 macos 腿执行，linux 支持本地对产物自测）；win 腿对应面 = kernel32 `CreatePseudoConsole` 功能探针（ConPTY 由 OS 提供、非载荷，故只探 OS 面）。
 
-失败 fail loud：逐条列出缺失文件/加载失败/断言失败原因，exit 1；workflow 步骤 `timeout-minutes: 5` 防只读阻塞挂死。
+用例 3 与用例 4 的 Unix PTY 腿在**子进程**中执行（探针 `--case` 自复用，90s 超时；父进程把清单断言已解析的库绝对路径传入，子进程不重探）：native 侧硬崩溃（如 0xC0000005）或挂死被定性为该用例的失败项，探针主流程继续跑完其余用例——「逐条列因、exit 1」的诊断契约不被单点崩溃截断；win ConPTY 面（OS 提供、非第三方载荷）在父进程内联执行。失败 fail loud，workflow 步骤 `timeout-minutes: 5` 兜底防挂死。
 
 Linux 不接腿：ZK 本机即 Linux 真机与部署机（日常实机验收覆盖），且 deb/rpm 已有安装冒烟；探针保持 win/macos 两腿——缺口所在即探针所在。
 
@@ -36,8 +36,13 @@ Linux 不接腿：ZK 本机即 Linux 真机与部署机（日常实机验收覆�
 
 ## Testing
 
-- 探针本机（linux-x64 对壳 Release publish 产物）实跑验证存在性/加载/图像解码用例（PTY 用例 linux 同源可跑）；win/macos 腿由 package 工作流 dispatch 实跑验证。
+- 探针本机（linux-x64 对壳 Release publish 产物）实跑验证正例（清单/加载/导出/图像解码/PTY 全过）与负例（双路径删 `libsaucer.so`/`libryn-pty.so` 均正确报失败项 exit 1，无崩溃路径绕过诊断清单）。
+- package 工作流 dispatch 实跑（2026-09-13，run 34755671965/34755674457）：osx-arm64 腿全过（含 PTY 真链）；首轮暴露两件——win 腿 `saucer_icon_new_from_file` 原生侧 0xC0000005（真信号，见 Deferred）、osx-x64 腿四 dylib 加载失败（探针进程架构错位的假阳性，本次以自包含 RID 架构修除）；探针 v2 修复后的二轮 dispatch 复验见后续 run 记录。
 - `dotnet test` 全绿 0 警告（探针工程随 slnx build）。
+
+## Deferred
+
+- **win 图像解码原生崩溃**（首轮实跑实锤）：对打包产物 `saucer-bindings.dll!saucer_icon_new_from_file` 调用 0xC0000005，同签名 mac 腿通过——win 侧 `saucer` 原生解码路径缺陷，壳以 `opts.IconPath` 同路径设托盘/窗口图标，属产品级风险。修复归上游 Ryn（bump 跟进），落地前该用例在 win 腿持续 fail loud 即拦截带病产物出包。
 
 ## Related
 
