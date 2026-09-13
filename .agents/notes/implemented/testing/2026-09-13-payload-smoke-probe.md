@@ -37,7 +37,7 @@ Linux 不接腿：ZK 本机即 Linux 真机与部署机（日常实机验收覆�
 ## Testing
 
 - 探针本机（linux-x64 对壳 Release publish 产物）实跑验证正例（清单/加载/导出/图像解码/PTY 全过）与负例（双路径删 `libsaucer.so`/`libryn-pty.so` 均正确报失败项 exit 1，无崩溃路径绕过诊断清单）。
-- package 工作流 dispatch 实跑（2026-09-13，run 34755671965/34755674457）：osx-arm64 腿全过（含 PTY 真链）；首轮暴露两件——win 腿 `saucer_icon_new_from_file` 原生侧 0xC0000005（真信号，见 Deferred）、osx-x64 腿四 dylib 加载失败（探针进程架构错位的假阳性，本次以自包含 RID 架构修除）；探针 v2 修复后的二轮 dispatch 复验见后续 run 记录。
+- package 工作流 dispatch 实跑（2026-09-13）：首轮 run 34755671965/34755674457 暴露两件——win 腿 `saucer_icon_new_from_file` 原生侧 0xC0000005（真信号，见 Deferred）、osx-x64 腿四 dylib 加载失败（探针进程架构错位的假阳性，以自包含 RID 架构修除）；v2 二轮 run 34756957450（win）/34756959525（mac，arm64 腿一次 artifact 上传超时平台抖动后重跑绿）——mac 两腿探针全过（含 PTY 真链），win 腿除图像解码失败项外全过，流水线按设计拦截带病产物。
 - `dotnet test` 全绿 0 警告（探针工程随 slnx build）。
 
 ## Deferred
