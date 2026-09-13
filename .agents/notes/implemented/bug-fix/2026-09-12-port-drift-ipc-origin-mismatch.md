@@ -24,7 +24,7 @@ Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
 1. **失败分流**（companion 客户端 0.0.18）：`getState` 失败后按成因分流，而不是一律判定为「无自更新栈」——用无条件注册的 `desktop.autostart.getState` 探**同一通道**——探通 = 通道好、只有自更新路由缺失（dev，沿用原提示）；探不通 = 命令通道整体失效，显示「无法连接桌面宿主：本会话的页面命令通道不可用，重启应用可恢复自更新」。判别不解析桥接/宿主的错误文案（那是实现细节），只用既有命令做行为判别，不新增帧契约；失败查询的异步结论不得覆盖已到达的宿主推送帧，也不得在组件卸载后落状态。
 2. **origin 变化的后果带上路径条件**（`HarnessRuntimeHost.Handoff` 的漂移告警）：仅当**本进程此前已成功起过一次运行时**（判据落成既有的 `_port is not null`，不新增状态——`_port` 只在成功块赋值、无清零点），告警才追加「页面命令通道（自更新/设置开关/诊断）本次会话失效，需重启应用」——**非引导路径**下为真即窗口已按那次启动的 dsh URL 建好、CORS 允许源已钉死，本次漂移必然换掉页面 origin。首次成功启动即漂移不追加：非引导路径下窗口随后才按漂移后 origin 创建，允许源与页面 origin 一致；无 PATH dsh 的首启引导路径另有形态（`opts.Url` 为 null、窗口先以占位页创建），其页面 origin 与允许源的关系不由本判据断言（该形态另记待办核实）。宿主 `RestartAsync` 只是 `StartAsync` 的语义转发，两条路径无法直接区分，故判据取「是否已经成功服务过一次」。
 3. **根因交上游**：Ryn 的 `BuildCorsHeaders` 与 `IsAuthorized` 共用同一 origin 判据（配置 origin ∪ 任意 loopback），使「宿主已授权的请求」不再被浏览器拦下。已提上游 issue + PR（见 Related）。
-4. **自愈留 proposed**：漂移后自动重启壳属行为变更，另立 [proposed 笔记](../../proposed/bug-fix/2026-09-12-drift-command-channel-selfheal.md) 待拍板。
+4. **自愈另立笔记**：漂移后自动重启壳属行为变更，另立笔记评估；上游 #91 合并接入后已按 [rejected 收口](../../rejected/bug-fix/2026-09-12-drift-command-channel-selfheal.md)。
 
 ## Alternatives considered
 

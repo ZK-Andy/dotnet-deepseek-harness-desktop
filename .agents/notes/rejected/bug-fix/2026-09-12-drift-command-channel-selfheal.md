@@ -1,6 +1,6 @@
 # Agent Note: drift-command-channel-selfheal
 
-Status: proposed
+Status: rejected
 
 ## Problem
 
@@ -16,6 +16,10 @@ Status: proposed
 - **B · 漂移后重建 WebView/窗口**：若 Ryn 将来把 IPC 允许源做成可更新（或暴露「带新 origin 的窗口重建」接口），可只重建窗口、不动进程。当前不可行：`LocalWebServer` 是 `RynWindow` 内部构造、允许源无更新入口（上游 PR 正把 CORS 判据放宽，见 Related）。
 - **C · 维持仅告知**（现状）：零新风险，但每次漂移都要用户手动重启，且只在用户看得懂 host.log 时才发现。
 
+## Decision（rejected 收口，2026-09-14）
+
+上游 PR #91 已合并（受信 origin 集合 + `IRynWindow.AuthorizeIpcOrigin`，随 v0.36.0 发版），本仓已 bump 0.38.0 并在监督器漂移导航前授权新 origin（ADR [ryn-0.38-bump-authorize-ipc-origin](../../implemented/process/2026-09-14-ryn-0-38-bump-authorize-ipc-origin.md)，沙箱实机复验漂移后命令面恢复）——A/B 的前提「允许源不可更新」不复存在，收益面归零。C（仅告知）随授权接入一并退役。防重蹈覆辙要点：壳侧「自愈类」提案（自重启/重建窗口）凡依赖上游能力缺口的，先确认缺口是否仍存在再立项——本篇的 A/B 即因上游同期能力落地而整体作废，立项时的竞态评估（重启循环有界性等）若复用，须重新对照当时的上游接口面。
+
 ## Alternatives considered
 
 - **让页面自己重连（前端轮询新 origin）**：落败——页面不知道壳的新端口，也没有跨 origin 读端口文件的通道；这是壳的职责。
@@ -26,7 +30,7 @@ Status: proposed
 
 - 候选 A 的代价与必配约束：① 端口持续被占时可能重启循环——需次数上限或退避（环境变量携带尝试计数，超限退回「仅告知」并记 host.log）；② 重启丢窗口态与页面未提交状态，`hide-to-tray` 用户可能正看着页面；③ 装机形态可自拉（`/usr/lib/deepseek-harness-desktop/`），dev 运行时同样可自拉，但与单实例锁 / 隔离 home 的交互需分别验证。
 - 准入准出：A 需①循环有界（上限 + 退避 + 落日志）、②重启前把「即将重启」推给页面（至少在设置页可见）、③冷启动路径与 dev 路径各一次实机复验。B 需上游先给出接口；C 是现状基线。
-- 若上游 [issue #90](https://github.com/Yupmoh/Ryn/issues/90) / [PR #91](https://github.com/Yupmoh/Ryn/pull/91) 合并并被本仓 bump，A/B 的收益面基本消失（漂移后命令面自然可用）——届时本篇按 `rejected — <理由>` 收口或连档删除。
+- ~~若上游 [issue #90](https://github.com/Yupmoh/Ryn/issues/90) / [PR #91](https://github.com/Yupmoh/Ryn/pull/91) 合并并被本仓 bump，A/B 的收益面基本消失~~（已兑现：按 rejected 收口，见上方 Decision）。
 - 未决：不在本批实现；拍板后按 feature-flow 走实现与评审。
 
 ## Related

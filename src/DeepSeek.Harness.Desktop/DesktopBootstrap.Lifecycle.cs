@@ -155,7 +155,8 @@ public sealed partial class DesktopBootstrap
             // mint 命中 → 随后 GET / 无 cookie 401）。先落裸 origin http 页脱离 ryn:// 链路
             // （该跳无 token 必得 401，瞬时无害），再从 http 页发起同站导航——Strict cookie 正常随行。
             // 第二跳必须等第一跳真正提交（NavigateAsync 连发会被 WebKitGTK 合并成一次导航）。
-            Uri landing = new Uri(url.GetLeftPart(UriPartial.Authority) + "/");
+            var landing = new Uri(url.GetLeftPart(UriPartial.Authority) + "/");
+            AuthorizeIpcOriginFor(landing);
             await NavigateAndAwaitCommitAsync(landing, bootCt);
             await _windowAccessor.Current.NavigateAsync(url);
         }
@@ -171,35 +172,6 @@ public sealed partial class DesktopBootstrap
         finally
         {
             _bootstrapSettled!.TrySetResult();
-        }
-    }
-
-    /// <summary>导航并等待其真正提交（<see cref="Services.RynNavigationCallbacks"/> 的
-    /// 「导航已到达」信号，先订阅后导航避免错过）。提交信号用于隔开两跳导航——
-    /// <c>NavigateAsync</c> 连发会被 WebKitGTK 合并，前一跳尚未发出即被后一跳覆盖。
-    /// 等待超时按「已提交」降级继续（信号只是隔跳手段，缺位时不比单跳直导更差）；
-    /// 取消（应用退出）照常传播。</summary>
-    private async Task NavigateAndAwaitCommitAsync(Uri target, CancellationToken ct)
-    {
-        Services.RynNavigationCallbacks callbacks =
-            _app.Services.GetRequiredService<Services.RynNavigationCallbacks>();
-        TaskCompletionSource arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        callbacks.SetOnNavigated(() => arrived.TrySetResult());
-        try
-        {
-            await _windowAccessor.Current.NavigateAsync(target);
-            try
-            {
-                await arrived.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
-            }
-            catch (TimeoutException)
-            {
-                Services.HostLog.Write("[nav] 等待导航提交信号超时（5s），按已提交继续");
-            }
-        }
-        finally
-        {
-            callbacks.SetOnNavigated(static () => { });
         }
     }
 
@@ -227,6 +199,7 @@ public sealed partial class DesktopBootstrap
             navigate: url =>
             {
                 _webUrl = url;
+                AuthorizeIpcOriginFor(url);
                 return _windowAccessor.Current.NavigateAsync(url);
             },
             log: Services.HostLog.Write);
