@@ -47,7 +47,7 @@ Status: proposed
 
 1. **值的寿命规则**：管线里流动的值寿命 = 单段（产出→相邻消费）；长命共享状态一律进服务——禁止借阶段返回值回填全局态。
 2. **插入规则**：三个扩展方向均为加法——新阶段 = 阶段方法 + 新值类型；新后台服务 = fan-out 清单加一行；新子域 = 新服务 + DI 注册。
-3. **门禁只强不弱**：重构使既有机器门禁变强——D005 主工程豁免面收缩（`new HttpClient` 等装配语句随下沉迁出）、A5 嵌套判据随值类型落地更新；architecture-standards 的组合根/命名空间描述随批次 3 同步。
+3. **门禁只强不弱**：重构使既有机器门禁变强——D005 主工程豁免面收缩（`new HttpClient` 等装配语句随下沉迁出）；architecture-standards 的组合根/命名空间描述随批次 3 同步（A5 门禁已于 B4 退役，无判据需随值类型更新）。
 
 ## Alternatives considered
 
@@ -64,7 +64,7 @@ Status: proposed
 - 握手：监督器/横幅任务对引导落定的等待经类型化完成句柄参数传递；`_bootstrapSettled` 字段消失。
 - 退出：托盘退出与 `Run` finally 双路径共用单实例退出管道；幂等由 once-guard 构造保证；记序 fake 覆盖关键时序。
 - 全程零行为变更：每批 `dotnet test` 全绿（基线 614 起）、0 警告、format 绿；三重审核逐批收口。
-- 门禁面：D005 主工程豁免面收缩；A5 判据与 architecture-standards 描述同步更新。
+- 门禁面：D005 主工程豁免面收缩；architecture-standards 描述同步更新。
 
 ## Risks
 

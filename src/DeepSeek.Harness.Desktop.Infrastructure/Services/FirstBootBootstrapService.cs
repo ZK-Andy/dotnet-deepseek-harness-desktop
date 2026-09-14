@@ -77,7 +77,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     }
 
     /// <inheritdoc />
-    public void Start(Func<Uri, CancellationToken, Task> onRuntimeReady)
+    public void Start(Func<DshWebUrl, CancellationToken, Task> onRuntimeReady)
     {
         // 首启引导（ADR online-first-unbundled-runtime）：窗口先亮（wwwroot 引导页），后台任务完成
         // 检测/下载/安装/验证状态机，成功后起 dsh 并把就位 URL 交回调接回组合根导航；失败推错误态等待
@@ -115,7 +115,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
 
     /// <summary>后台引导任务：重试循环 → 确保全局 dsh → 插件安装 → 起 dsh → 交回调导航进主界面；
     /// 任一失败收口为日志（窗口仍可重试/关闭）。</summary>
-    private async Task RunAsync(Func<Uri, CancellationToken, Task> onRuntimeReady, CancellationToken bootCt)
+    private async Task RunAsync(Func<DshWebUrl, CancellationToken, Task> onRuntimeReady, CancellationToken bootCt)
     {
         try
         {
@@ -148,7 +148,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
 
             _log.Invoke($"[host] runtime = {host.RuntimeDescription}");
             _log.Invoke($"[host] dsh web = {url}；从引导页导航进入主界面");
-            await onRuntimeReady(url, bootCt);
+            await onRuntimeReady(DshWebUrl.From(url), bootCt);
         }
         catch (OperationCanceledException)
         {

@@ -25,8 +25,8 @@ public interface IFirstBootBootstrap
 
     /// <summary>启动后台引导任务（仅 <see cref="IsNeeded"/> 时启动且只启动一次）；
     /// dsh 就位后回调 <paramref name="onRuntimeReady"/>（壳侧导航收尾）。</summary>
-    /// <param name="onRuntimeReady">dsh 就位 URL 回调（组合根两跳导航/IPC 授权）。</param>
-    void Start(Func<Uri, CancellationToken, Task> onRuntimeReady);
+    /// <param name="onRuntimeReady">dsh 就位端点回调（组合根两跳导航/IPC 授权）。</param>
+    void Start(Func<DshWebUrl, CancellationToken, Task> onRuntimeReady);
 
     /// <summary>取消引导任务（应用退出）；未启动时 no-op。</summary>
     void Cancel();

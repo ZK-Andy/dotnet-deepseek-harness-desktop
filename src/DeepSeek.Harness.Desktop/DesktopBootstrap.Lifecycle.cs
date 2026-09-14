@@ -11,8 +11,9 @@ namespace DeepSeek.Harness.Desktop;
 /// </summary>
 public sealed partial class DesktopBootstrap
 {
-    private UpdateToken InitCloseGateAndUpdateStack(RuntimeToken runtime)
+    private UpdateSetup InitCloseGateAndUpdateStack(Preflight preflight, RuntimeSetup runtime)
     {
+        // runtime = 顺序契约参数：关窗闸门/自更新栈/托盘控制器在运行时启动之后装配（值流钉序）。
         // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：托盘「退出」与自更新安装路径
         // 先批准再 Close。用户普通关窗是否转隐藏由 closeBehavior 偏好裁决（默认 true 保持
         // 历史行为）；托盘未就绪时拦截不生效（关窗直退）。
@@ -22,15 +23,15 @@ public sealed partial class DesktopBootstrap
 
         // 自更新协调器在此构造并装载（早于 BuildApp）：状态机装载/就绪横幅/后台检查从组合根下沉，
         // HttpClient 构造随协调器迁出组合根（ADR composition-root-value-flow-pipeline 批次 1）。
-        _updates = new Services.Update.UpdateCoordinator(
-            _isDev,
+        var updates = new Services.Update.UpdateCoordinator(
+            preflight.IsDev,
             () => _windowAccessor,
             closeGate,
             _uiLocale,
             () => _supervisorCtsRef?.Token ?? CancellationToken.None,
             ct => _exit.ScheduleExitFallback(ct),
             HostLog.Write);
-        _updates.Load();
+        updates.Load();
 
         // 托盘控制器在此构造（早于 BuildApp/ShowTray），窗口与 Ryn 服务以惰性委托注入——
         // 控制器持有 hide-to-tray 拦截、唤回采样、菜单重建与关窗闸门/偏好（供路由构造注入）。
@@ -40,36 +41,35 @@ public sealed partial class DesktopBootstrap
             closeGate,
             closeBehavior,
             _uiLocale,
-            _updates.Machine,
+            updates.Machine,
             HostLog.Write);
 
-        // token：InitCloseGateAndUpdateStack 完成（关窗闸门/closeBehavior/自更新协调器/托盘控制器已就绪）。
-        return default;
+        return new UpdateSetup(updates);
     }
 
-    private void RunBootstrapIfNeeded(AppToken app)
+    private void RunBootstrapIfNeeded(Preflight preflight, AppSetup app)
     {
         // 首启引导（ADR online-first-unbundled-runtime）：窗口先亮（wwwroot 引导页），引导服务后台完成
         // 检测/下载/安装/验证后起 dsh，并把就位 URL 交回调接回壳侧导航；失败推错误态等待用户重试
         // （desktop.bootstrap.retry 经闸门放行）。引导未落定前监督器/插件安装均被门控——依赖序即插入位。
-        _bootstrap.Start(EnterMainUiAsync);
+        preflight.Bootstrap.Start((url, ct) => EnterMainUiAsync(app, url, ct));
     }
 
-    private SupervisorToken SetupSupervisor(AppToken app, HostToken host)
+    private SupervisorSetup SetupSupervisor(Preflight preflight, AppSetup app, HostSetup host)
     {
-        // 原 `using var supervisorCts`：生命周期由 Run 的 finally 释放（本方法赋值）。
-        _supervisorCts = new CancellationTokenSource();
-        _supervisorCtsRef = _supervisorCts; // 自更新后台任务 token 持有器接线（见顶部声明）
-        _supervisor = new RuntimeSupervisor(
-            _host,
+        // 原 `using var supervisorCts`：生命周期由 Run 的 finally 释放（本方法接线 _supervisorCtsRef）。
+        var cts = new CancellationTokenSource();
+        _supervisorCtsRef = cts; // 自更新后台任务 token 持有器接线（见顶部声明）
+        var supervisor = new RuntimeSupervisor(
+            host.Host,
             restartTimeout: TimeSpan.FromSeconds(60),
             showRecovery: () =>
             {
                 // 恢复页三件套（ADR diag-masking-and-recovery-page）：失败原因 + stderr 尾部展示 +
                 // 导出诊断/退出动作。desktop.* 走 Ryn 层 IPC 不依赖 dsh 存活；数据经 textContent
                 // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
-                var tail = _host.StderrTail.TakeLast(12).ToList();
-                _ = _windowAccessor.Current.EvaluateJavaScriptAsync(
+                var tail = host.Host.StderrTail.TakeLast(12).ToList();
+                _ = app.WindowAccessor.Current.EvaluateJavaScriptAsync(
                     Services.RecoveryPageBuilder.BuildScript(UiCopy.ReasonRuntimeCrashed(english: false), tail));
                 return ValueTask.CompletedTask;
             },
@@ -79,44 +79,43 @@ public sealed partial class DesktopBootstrap
             navigate: url =>
             {
                 _webUrl = url;
-                AuthorizeIpcOriginFor(url);
-                return _windowAccessor.Current.NavigateAsync(url);
+                AuthorizeIpcOriginFor(app.WindowAccessor, url);
+                return app.WindowAccessor.Current.NavigateAsync(url);
             },
             log: HostLog.Write);
         // 引导期门控：宿主尚无 dsh 进程时 WaitForExitAsync 立即完成，监督器会空转进恢复循环
         // 并用恢复屏覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
-        _supervisorTask = Task.Run(async () =>
+        var supervisorTask = Task.Run(async () =>
         {
             // 引导落定握手（理由见上方「引导期门控」注释；网 = BootstrapSettleGateTests）。
-            if (!await _bootstrap.WaitSettledAsync(timeout: null, _supervisorCts.Token))
+            if (!await preflight.Bootstrap.WaitSettledAsync(timeout: null, cts.Token))
             {
                 return;
             }
 
-            await _supervisor.RunAsync(_supervisorCts.Token);
+            await supervisor.RunAsync(cts.Token);
         });
 
         // 有序退出编排 + 自更新兜底收割器接线（WireExitHandlers）
-        WireExitHandlers(_app.Services.GetRequiredService<IRynWindow>());
+        WireExitHandlers(app.App.Services.GetRequiredService<IRynWindow>(), host, cts);
 
-        // token：SetupSupervisor 完成（supervisorCts/监督器/退出编排已接线），供后续阶段按类型承诺串联。
-        return default;
+        return new SupervisorSetup(cts, supervisorTask);
     }
 
     /// <summary>单实例退出管道接线（ADR composition-root-value-flow-pipeline）：有序退出步骤即构造数据，
     /// 托盘有序退出与 Run 尾部共用同一实例，幂等由 once-guard 保证；运行时回收先于关窗。</summary>
-    private void WireExitHandlers(IRynWindow quitWindow)
+    private void WireExitHandlers(IRynWindow quitWindow, HostSetup host, CancellationTokenSource supervisorCts)
     {
         _exit = new Core.ExitPipeline(
-            () => _supervisorCts.Cancel(),
-            _host.Stop,
-            () => RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), _marker.Token),
+            supervisorCts.Cancel,
+            host.Host.Stop,
+            () => RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), host.Marker.Token),
             () => _instanceListener?.Dispose(),
             quitWindow.Close,
             log: HostLog.Write);
     }
 
-    private void SetupHealthMonitor(SupervisorToken supervisor)
+    private void SetupHealthMonitor(AppSetup app, SupervisorSetup supervisor)
     {
         // 页面健康观测 + 有界恢复（ADR page-health-monitor / reference-alignment 批次五）：
         // 宿主只读探针轮询，不注入不依赖 companion——「dsh 在跑但页面空白」类事故（历史三起全靠
@@ -127,21 +126,21 @@ public sealed partial class DesktopBootstrap
         // 恒为当前 dsh web 靶点；webUrl 只有当引导未落定（dsh 未起）才为空，而该窗口页面是
         // wwwroot 引导页（有内容 → Alive），不会进入 Dead 恢复分支——reload 委托的空态只是防御性兜底。
         _healthMonitor = new Services.PageHealthMonitor(
-            _windowAccessor,
+            app.WindowAccessor,
             HostLog.Write,
             reload: ct => _webUrl is null
                 ? ValueTask.CompletedTask
-                : _windowAccessor.Current.NavigateAsync(_webUrl, ct));
-        _ = _healthMonitor.RunAsync(TimeSpan.FromSeconds(10), _supervisorCts.Token);
+                : app.WindowAccessor.Current.NavigateAsync(_webUrl, ct));
+        _ = _healthMonitor.RunAsync(TimeSpan.FromSeconds(10), supervisor.Cts.Token);
     }
 
-    private void StartUpdateCheck(SupervisorToken supervisor)
+    private void StartUpdateCheck(UpdateSetup update)
     {
         // 自更新启动对账 + 后台检查一次（失败静默转 error 态，不影响首屏）
-        _updates.Start();
+        update.Updates.Start();
     }
 
-    private void SharedHomeBannerTask(SupervisorToken supervisor)
+    private void SharedHomeBannerTask(Preflight preflight, AppSetup app, HostSetup host, SupervisorSetup supervisor)
     {
         // 共享 home 切换的启动期告知（ADR shared-home-desktop-profile）：版本底线检查 + 旧 home 一次性提示。
         // 随包插件现于 spawn dsh 前安装（不再「启动后装 → 覆写页面并重启运行时」），横幅无需等安装收尾，
@@ -149,20 +148,20 @@ public sealed partial class DesktopBootstrap
         _ = Task.Run(async () =>
         {
             // 引导落定前横幅不抢跑；120s 超时按已定继续（降级语义在 BootstrapSettleGate 内），取消即放弃。
-            if (!await _bootstrap.WaitSettledAsync(TimeSpan.FromSeconds(120), _supervisorCts.Token))
+            if (!await preflight.Bootstrap.WaitSettledAsync(TimeSpan.FromSeconds(120), supervisor.Cts.Token))
             {
                 return;
             }
 
             string home = HarnessRuntimeHost.ResolveDshHome();
-            string? detected = await RuntimeVersionGate.ProbeAsync(_supervisorCts.Token);
+            string? detected = await RuntimeVersionGate.ProbeAsync(supervisor.Cts.Token);
             if (detected is not null)
             {
                 HostLog.Write($"[host] dsh 版本 {detected}（底线 {RuntimeVersionGate.MinimumVersion}）");
                 if (RuntimeVersionGate.IsBelowFloor(detected))
                 {
                     HostLog.Write($"[host] 警告：dsh {detected} 低于支持底线 {RuntimeVersionGate.MinimumVersion}，已提示用户");
-                    await Services.PagePump.ShowBannerWhenReadyAsync(_windowAccessor, Services.DesktopBanner.BuildVersionFloorBanner(detected, _uiLocale), _supervisorCts.Token);
+                    await Services.PagePump.ShowBannerWhenReadyAsync(app.WindowAccessor, Services.DesktopBanner.BuildVersionFloorBanner(detected, _uiLocale), supervisor.Cts.Token);
                 }
             }
             else
@@ -178,9 +177,9 @@ public sealed partial class DesktopBootstrap
             }
 
             // 上轮非受控退出：提示但不暗示应用故障（用户杀进程也属此类），引导导出诊断
-            if (_marker.PreviousRunUnclean)
+            if (host.Marker.PreviousRunUnclean)
             {
-                await Services.PagePump.ShowBannerWhenReadyAsync(_windowAccessor, DesktopBanner.BuildUncleanExitBanner(_uiLocale), _supervisorCts.Token);
+                await Services.PagePump.ShowBannerWhenReadyAsync(app.WindowAccessor, DesktopBanner.BuildUncleanExitBanner(_uiLocale), supervisor.Cts.Token);
             }
         });
     }

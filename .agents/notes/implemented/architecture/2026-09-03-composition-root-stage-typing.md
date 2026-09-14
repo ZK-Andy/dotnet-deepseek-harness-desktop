@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 
+Superseded（部分）：空载荷 token 链由 [2026-09-15-value-flow-batch2-value-pipeline](2026-09-15-value-flow-batch2-value-pipeline.md) 升格为类型化阶段产出（6 个私有嵌套 record 携带真实值）；本 ADR 的偏序机制（产生序入类型、消费段不锁）与"字段归属未迁移"结论仍有效。
+
 ## Problem
 
 `DesktopBootstrap`（组合根，4 个 partial 共约 1250 行，ADR `split-program-main-god-function`）的入口 `Run()` 现以**顺序链 + 共享字段**编排约 13 个启动阶段：

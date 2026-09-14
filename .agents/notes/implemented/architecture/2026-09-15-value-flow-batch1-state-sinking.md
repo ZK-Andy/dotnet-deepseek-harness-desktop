@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-09-15/R1=ok R2=ok R3=ok
 
+Superseded（部分）：组合根实例字段数由批次 2 续降至 10（[2026-09-15-value-flow-batch2-value-pipeline](2026-09-15-value-flow-batch2-value-pipeline.md)）；本 ADR 的 C 类状态下沉结论仍有效。
+
 ## Problem
 
 [composition-root-value-flow-pipeline](../../proposed/architecture/2026-09-15-composition-root-value-flow-pipeline.md)（proposed，四批次主 ADR）批次 1：批次 0 定稿的拆分线（实施计划 §5）要求把 C 类跨线程共享态从组合根字段迁入真类型服务——托盘行为、更新栈、引导任务、退出编排——并把闭包喂容器的注册面改为构造注入。此前这些字段与后台 Task 闭包、事件委托、DI 回调互锁在组合根内，不变量只靠注释与赋值时点维持。本笔记承载批次 1 的执行定案；主 ADR 保持 proposed（批次 3 才迁）。

@@ -14,8 +14,12 @@ namespace DeepSeek.Harness.Desktop;
 /// </summary>
 public sealed partial class DesktopBootstrap
 {
-    private AppToken BuildApp(RuntimeToken runtime, UpdateToken update)
+    private AppSetup BuildApp(Preflight preflight, RuntimeSetup runtime, UpdateSetup update)
     {
+        // 运行时就位 URL 的消费点（值流）：StartRuntime 产出、此处落位为壳侧导航靶点初值；
+        // 引导完成/崩溃恢复导航会再刷新该字段（见 Navigation 与 Lifecycle 的 navigate）。
+        _webUrl = runtime.WebUrl?.Value;
+
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 IsReady）
         string iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
         bool trayAvailable = File.Exists(iconPath); // verify-code-conventions: ignore 组合根装配：icon 存在性探测是配置面，非业务/领域直调
@@ -24,10 +28,10 @@ public sealed partial class DesktopBootstrap
         _app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
             {
-                if (_webUrl is not null)
+                if (runtime.WebUrl is { } webUrl)
                 {
                     // dsh web UI（loopback；完整运行时随应用内置后仍是此路径）
-                    opts.Url = _webUrl;
+                    opts.Url = webUrl.Value;
                 }
                 else
                 {
@@ -39,7 +43,7 @@ public sealed partial class DesktopBootstrap
                 opts.Width = 1200;
                 opts.Height = 800;
                 opts.ApplicationId = DevEnvironment.ApplicationIdFor(
-                    "io.github.ZK-Andy.dotnet-deepseek-harness-desktop", _isDev);
+                    "io.github.ZK-Andy.dotnet-deepseek-harness-desktop", preflight.IsDev);
                 if (File.Exists(iconPath)) // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 {
                     opts.IconPath = iconPath;
@@ -49,20 +53,19 @@ public sealed partial class DesktopBootstrap
                     HostLog.Write($"[host] icon 缺失：{iconPath}");
                 }
 
-                HostLog.Write($"[host] Ryn opts: Url={(_webUrl is not null ? _webUrl.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
+                HostLog.Write($"[host] Ryn opts: Url={(runtime.WebUrl is { } logged ? logged.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 // WebView 调试器默认关闭（正式打包无调试窗口）；开发期设 DSH_DEVTOOLS=1 开启。
                 opts.DevTools = Environment.GetEnvironmentVariable("DSH_DEVTOOLS") == "1";
             })
-            .ConfigureServices(RegisterServices)
+            .ConfigureServices(services => RegisterServices(services, preflight, runtime, update))
             .Build();
 
         _windowAccessor = _app.Services.GetRequiredService<CurrentWindowAccessor>();
 
-        // token：BuildApp 完成（Ryn 应用/windowAccessor/icon/tray 探测已落字段），供后续阶段按类型承诺串联。
-        return default;
+        return new AppSetup(_app, _windowAccessor);
     }
 
-    private void RegisterServices(IServiceCollection services)
+    private void RegisterServices(IServiceCollection services, Preflight preflight, RuntimeSetup runtime, UpdateSetup update)
     {
         services.AddRynCommands();
         // 宿主导航回调（Ryn 0.32.0 Ryn.Callbacks）：在导航边界统一拦截外部链接（ADR ryn-navigation-callbacks）。
@@ -73,7 +76,7 @@ public sealed partial class DesktopBootstrap
         services.AddSingleton(sp => new Services.RynNavigationCallbacks(
             opener: null,
             log: HostLog.Write,
-            currentOrigin: _webUrl?.GetLeftPart(UriPartial.Authority),
+            currentOrigin: runtime.WebUrl?.Authority,
             // 外部链接打开失败 → 推事件给页面，companion 渲染 toast（R2 N2）。EmitEvent 走
             // deferred IRynWebView（窗口就绪后转发），在导航回调触发时页面必然已加载。
             notifyLinkFail: url => sp.GetRequiredService<IRynWebView>().EmitEvent(
@@ -97,11 +100,11 @@ public sealed partial class DesktopBootstrap
         // wwwroot 引导页的重试按钮 → 闸门放行引导循环。gate 实例在 Run 顶部创建，
         // 引导任务与路由共用同一实例
         services.AddSingleton<ICommandRouter>(new Services.BootstrapCommandRouter(
-            _bootstrap.Gate, HostLog.Write));
+            preflight.Bootstrap.Gate, HostLog.Write));
         // 插件引导决策命令（desktop.preinstall.choose，ADR reference-alignment 批次二）：
         // wwwroot 引导页「插件引导」步的确认装/跳过 → 闸门放行引导任务
         services.AddSingleton<ICommandRouter>(new Services.PreinstallCommandRouter(
-            _bootstrap.PreinstallGate, HostLog.Write));
+            preflight.Bootstrap.PreinstallGate, HostLog.Write));
         // 开机自启开关（desktop.autostart.getState/set）
         services.AddSingleton<ICommandRouter>(new Services.AutostartCommandRouter(log: HostLog.Write));
         // 关闭最小化到托盘偏好（desktop.closeToTray.getState/set）；available 惰性求值——
@@ -109,15 +112,15 @@ public sealed partial class DesktopBootstrap
         services.AddSingleton<ICommandRouter>(new Services.Tray.CloseToTrayCommandRouter(
             _tray.CloseBehavior, () => _tray.IsReady, log: HostLog.Write));
         // 自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）
-        if (_updates.Machine is { } updateMachine)
+        if (update.Updates.Machine is { } updateMachine)
         {
             services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine, log: HostLog.Write, backgroundToken: () => _supervisorCtsRef?.Token ?? CancellationToken.None));
         }
-        RegisterTrayServices(services);
+        RegisterTrayServices(services, update);
     }
 
     /// <summary>托盘服务注册（ADR shell-tray-hide-to-tray）：图标+菜单 + 事件路由（窗口动作经委托接 deferred 代理）。</summary>
-    private void RegisterTrayServices(IServiceCollection services)
+    private void RegisterTrayServices(IServiceCollection services, UpdateSetup update)
     {
         // 托盘（批次三）：图标+菜单；点击语义经 companion 中继
         // 回 desktop.tray.event 在宿主解析——EmitEvent 是 Ryn 插件内部属性，不在源生成通道
@@ -140,17 +143,17 @@ public sealed partial class DesktopBootstrap
                 _exit.OrderlyQuit();
             },
             _tray.CloseGate,
-            _updates.Machine,
+            update.Updates.Machine,
             HostLog.Write,
             notify: (title, message) =>
                 sp.GetRequiredService<TrayService>().ShowNotification(title, message)));
     }
 
     /// <summary>托盘就绪化（装配壳）：解析 Ryn 托盘服务并交给控制器（无托盘环境传 null）。</summary>
-    private void ShowTray(AppToken app)
+    private void ShowTray(AppSetup app)
     {
         _tray.Show(_tray.IsAvailable
-            ? () => _app.Services.GetRequiredService<TrayService>()
+            ? () => app.App.Services.GetRequiredService<TrayService>()
             : null);
     }
 }

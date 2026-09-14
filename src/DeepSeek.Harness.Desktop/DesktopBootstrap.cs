@@ -1,4 +1,3 @@
-using DeepSeek.Harness.Desktop.Services;
 using Ryn.Core;
 
 namespace DeepSeek.Harness.Desktop;
@@ -11,14 +10,14 @@ namespace DeepSeek.Harness.Desktop;
 public sealed partial class DesktopBootstrap
 {
     // —— 共享状态（组合根只保留顺序资源与服务引用；域状态已下沉真类型服务）——
-    private IFirstBootBootstrap _bootstrap = null!;
-    private bool _isDev;
-    private bool _devAutoIsolated;
-    private Core.ExitPipeline _exit = null!;
-    // _supervisorCtsRef = _supervisorCts 的第二个引用（非恒等别名，勿删）：命令路由在 BuildApp 的
-    // RegisterServices 注册时点早于 SetupSupervisor 给 _supervisorCts 赋值，故先持一个可空引用、
-    // 由 SetupSupervisor 接线（Lifecycle 行 198），路由经 backgroundToken 闭包惰性读它——
-    // 服务注册期拿不到 supervisorCts 的延迟捕获模式。
+    // 批次 2 值流后保留字段的用途只有两类，其余状态一律经阶段产出参数流动：
+    //   1) 早于赋值的惰性捕获点——_host/_app/_windowAccessor 在服务/控制器构造期就被 () => 委托读取，
+    //      赋值时点晚于构造点，故必须留在字段（参数不可能先于自身构造流入）；
+    //   2) 赋值后仍被异步回调改写/读取或跨阶段延迟接线——_webUrl（导航靶点）/_supervisorCtsRef（退出令牌）/
+    //      _exit（托盘与自更新兜底路由）/_healthMonitor（诊断快照）/_tray（二次启动回调）/锁定资源。
+    // _supervisorCtsRef：命令路由在 BuildApp 的 RegisterServices 注册时点早于 SetupSupervisor 赋值，
+    // 故先持一个可空引用、由 SetupSupervisor 接线，路由经 backgroundToken 闭包惰性读它——服务注册期
+    // 需要的是延迟捕获；Run 尾部也用它释放（唯一 CTS 持有字段，勿再引入别名）。
     private CancellationTokenSource? _supervisorCtsRef;
     private UiLocale _uiLocale = null!;
     private PrimaryListener? _instanceListener;
@@ -28,35 +27,25 @@ public sealed partial class DesktopBootstrap
     private CurrentWindowAccessor _windowAccessor = null!;
     private Uri? _webUrl;
     private HarnessRuntimeHost _host = null!;
-    private RunMarkerResult _marker = null!;
-    private CancellationTokenSource _supervisorCts = null!;
-    private RuntimeSupervisor _supervisor = null!;
-    private Task _supervisorTask = null!;
-    private Services.Update.UpdateCoordinator _updates = null!;
+    private Core.ExitPipeline _exit = null!;
 
-    // —— 启动编排阶段 token（ADR composition-root-stage-typing）——
-    // 组合根的启动阶段存在严格依赖序，旧形态靠"注释 + 字段赋值时点"维持、编译器不检查。
-    // 阶段方法签名收上一阶段 token、返回本阶段 token，把**产生者的执行序**钉进类型——
-    // 想跨过产生者直接用其产出（如不经 StartRuntime 拿 webUrl）在编译期即缺值不可用。
-    // 保护是**偏序非全序**：token 锁产生者必须先跑，但不锁消费段——整段漏调消费方法
-    //（如删 ShowTray）、或两个同 token 消费段乱序，编译仍通过（与重构前同风险，非本
-    // 机制承诺面）。唯一例外：`UpdateToken` 被 BuildApp 消费，省略 InitCloseGateAndUpdateStack
-    // 会让 BuildApp 缺参编译失败——这是 6 个 token 中唯一"缺失即编译失败"的硬约束，勿简化掉。
-    // token 为空载荷 marker（空 record struct）：只承载"本阶段已执行"的类型承诺，实际状态
-    // 仍留在字段（后台 Task 闭包/DI 回调/事件委托大量跨阶段捕获字段——下沉为参数即字段归属
-    // 迁移，违反 ADR "不迁移字段归属"纪律）。私有嵌套：只作组合根签名间传递，不构成根命名
-    // 空间独立类型（A5 门禁放行依据）。
-    private readonly record struct PreflightToken;      // ResolveRuntimeAndDev 完成：运行时/env/单实例前提已解析
-    private readonly record struct HostToken;           // SetupHostAndMarker 完成：host/marker 已建
-    private readonly record struct RuntimeToken;        // StartRuntime 完成：dsh web 已起（webUrl 落字段）
-    private readonly record struct UpdateToken;         // InitCloseGateAndUpdateStack 完成：关窗闸门/自更新栈已建
-    private readonly record struct AppToken;            // BuildApp 完成：Ryn 应用与 windowAccessor 就绪
-    private readonly record struct SupervisorToken;     // SetupSupervisor 完成：监督器/退出编排已接线
+    // —— 启动编排阶段产出（ADR composition-root-value-flow-pipeline 批次 2）——
+    // 阶段方法返回真实产出（上一形态的空载荷 token 已删除），消费段收参数：产出的值本身就是
+    // 执行序证明——绕过产生阶段即缺值编译失败（如没有 StartRuntime 的 RuntimeSetup 就拿不到
+    // webUrl）。值类型归属按拍板 2：跨 R3 边界的 DshWebUrl 进 Core；只在本编排器内流通的阶段
+    // 产出留私有嵌套（不构成根命名空间独立类型）。值的寿命 = 单段——长命共享态仍留字段/服务，
+    // 不借阶段返回值回填全局态。
+    private readonly record struct Preflight(IFirstBootBootstrap Bootstrap, bool IsDev, bool DevAutoIsolated);
+    private readonly record struct HostSetup(HarnessRuntimeHost Host, RunMarkerResult Marker);
+    private readonly record struct RuntimeSetup(DshWebUrl? WebUrl);
+    private readonly record struct UpdateSetup(Services.Update.UpdateCoordinator Updates);
+    private readonly record struct AppSetup(RynApplication App, CurrentWindowAccessor WindowAccessor);
+    private readonly record struct SupervisorSetup(CancellationTokenSource Cts, Task Task);
 
     /// <summary>组合根入口：按原 <c>Program.Main</c> 语句序执行全部编排并返回进程退出码。</summary>
     public int Run()
     {
-        PreflightToken preflight = ResolveRuntimeAndDev();
+        Preflight preflight = ResolveRuntimeAndDev();
         if (!AcquireSingleInstance(preflight))
         {
             return 0;
@@ -65,52 +54,52 @@ public sealed partial class DesktopBootstrap
         EnsureDesktopProfile();
         try
         {
-            HostToken host = SetupHostAndMarker(preflight);
-            InstallCompanionBeforeSpawn(host);
-            RuntimeToken runtime = StartRuntime(host);
-            UpdateToken update = InitCloseGateAndUpdateStack(runtime);
-            AppToken app = BuildApp(runtime, update);
-            RunBootstrapIfNeeded(app);
+            HostSetup host = SetupHostAndMarker(preflight);
+            InstallCompanionBeforeSpawn(preflight, host);
+            RuntimeSetup runtime = StartRuntime(preflight, host);
+            UpdateSetup update = InitCloseGateAndUpdateStack(preflight, runtime);
+            AppSetup app = BuildApp(preflight, runtime, update);
+            RunBootstrapIfNeeded(preflight, app);
             ShowTray(app);
-            SupervisorToken supervisor = SetupSupervisor(app, host);
-            SetupHealthMonitor(supervisor);
-            StartUpdateCheck(supervisor);
-            SharedHomeBannerTask(supervisor);
-            return RunAppLoop(supervisor, host);
+            SupervisorSetup supervisor = SetupSupervisor(preflight, app, host);
+            SetupHealthMonitor(app, supervisor);
+            StartUpdateCheck(update);
+            SharedHomeBannerTask(preflight, app, host, supervisor);
+            return RunAppLoop(preflight, app, supervisor);
         }
         finally
         {
             // 原 `using var host` / `using var supervisorCts` 作用域到 Main 末尾；这里在 Run 末尾等价释放。
             _host?.Dispose();
-            _supervisorCts?.Dispose();
+            _supervisorCtsRef?.Dispose();
         }
     }
 
-    private PreflightToken ResolveRuntimeAndDev()
+    private Preflight ResolveRuntimeAndDev()
     {
         // 首启引导服务（R3 端口实现，ADR composition-root-value-flow-pipeline 批次 1）：全局 node/dsh
         // 引导、插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主惰性提供。
-        _bootstrap = new FirstBootBootstrapService(
+        IFirstBootBootstrap bootstrap = new FirstBootBootstrapService(
             () => _host,
             new Services.FirstBootUi(() => _windowAccessor),
             HostLog.Write);
-        _bootstrap.Resolve();
+        bootstrap.Resolve();
 
         string? devRuntimeDir = Environment.GetEnvironmentVariable(DevEnvironment.RuntimeDirEnv);
         string? devFlag = Environment.GetEnvironmentVariable(DevEnvironment.DevFlagEnv);
-        _isDev = DevEnvironment.IsDevRuntime(devRuntimeDir, devFlag);
-        _devAutoIsolated = false;
-        if (_isDev && Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) is null)
+        bool isDev = DevEnvironment.IsDevRuntime(devRuntimeDir, devFlag);
+        bool devAutoIsolated = false;
+        if (isDev && Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) is null)
         {
             string? devHome = DevEnvironment.DeriveDefaultDevHome(devRuntimeDir, AppContext.BaseDirectory);
             if (devHome is not null)
             {
                 Environment.SetEnvironmentVariable(DevEnvironment.HomeOverrideEnv, devHome);
-                _devAutoIsolated = true;
+                devAutoIsolated = true;
                 HostLog.Write($"[host] 开发运行时：DSH_HOME 隔离到 {devHome}；ApplicationId 带 .dev 后缀，可与正式版并存");
             }
         }
-        else if (!_isDev &&
+        else if (!isDev &&
                  DevEnvironment.DeriveDefaultDevHome(null, AppContext.BaseDirectory) is not null)
         {
             // dev 判定改显式标记后的唯一残留风险（R2 评审）：贡献者在仓库内跑却忘带
@@ -118,13 +107,12 @@ public sealed partial class DesktopBootstrap
             HostLog.Write("[host] 疑似仓库内开发运行但未设 DSH_DESKTOP_DEV=1：按打包产品处理（共享真实 home，无 dev 隔离）");
         }
 
-        // token：ResolveRuntimeAndDev 完成（配置已落字段），供后续阶段按类型承诺串联。
-        return default;
+        return new Preflight(bootstrap, isDev, devAutoIsolated);
     }
 
     /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：false = 已有主实例，调用方直接返回 0。
-    /// 依赖 <paramref name="preflight"/>（ResolveRuntimeAndDev 产出的 _isDev 已解析）。</summary>
-    private bool AcquireSingleInstance(PreflightToken preflight)
+    /// 依赖 <paramref name="preflight"/> 产出的 dev 判定（单实例 socket 按 dev/正式分域）。</summary>
+    private bool AcquireSingleInstance(Preflight preflight)
     {
         // 宿主 UI 语言单点（ADR host-ui-locale）：companion 上报 dsh locale，托盘/横幅据此出双语
         _uiLocale = new UiLocale();
@@ -135,7 +123,7 @@ public sealed partial class DesktopBootstrap
                 xdgRuntimeDir is { Length: > 0 } ? xdgRuntimeDir : Path.GetTempPath(),
                 "deepseek-harness-desktop" +
                 (xdgRuntimeDir is { Length: > 0 } ? string.Empty : LauncherActivation.FallbackUidSuffix()),
-                _isDev);
+                preflight.IsDev);
         if (instanceSocketPath is not null)
         {
             if (!LauncherActivation.TryBindPrimary(
@@ -198,31 +186,34 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    private HostToken SetupHostAndMarker(PreflightToken preflight)
+    /// <summary>宿主与崩溃标记创建（阶段产出）。</summary>
+    /// <param name="preflight">顺序契约参数：<see cref="HarnessRuntimeHost.ResolveDshHome"/> 读的
+    /// DSH_HOME 由 ResolveRuntimeAndDev 的 dev 隔离设置，宿主创建必须先于其消费。</param>
+    private HostSetup SetupHostAndMarker(Preflight preflight)
     {
-        // 原 `using var host`：生命周期由 Run 的 finally 释放（本方法赋值）。
+        // 原 `using var host`：生命周期由 Run 的 finally 释放（本方法赋值 _host）。
         // 全局 dsh 模型：宿主恒以 PATH dsh（bundled=null）形态运行（ADR simple-shell-single-global-dsh）。
         _host = new HarnessRuntimeHost(HostLog.Write);
 
         // 崩溃取证 marker（ADR shell-observability-diagnostics）：遗留即判定上轮非受控退出；
-        // 正常退出路径在 Run 尾部按 token 清除
-        _marker = RunMarker.Acquire(HarnessRuntimeHost.ResolveDshHome());
-        if (_marker.PreviousRunUnclean)
+        // 正常退出路径在退出管道清除
+        RunMarkerResult marker = RunMarker.Acquire(HarnessRuntimeHost.ResolveDshHome());
+        if (marker.PreviousRunUnclean)
         {
             HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
         }
 
-        // token：SetupHostAndMarker 完成（host/marker 已落字段），供后续阶段按类型承诺串联。
-        return default;
+        return new HostSetup(_host, marker);
     }
 
-    private void InstallCompanionBeforeSpawn(HostToken host)
+    private void InstallCompanionBeforeSpawn(Preflight preflight, HostSetup host)
     {
+        // host 是顺序契约参数：随包插件安装必须发生在宿主已建、dsh spawn 之前（原 HostToken 的偏序承诺）。
         // 对齐参照（dsh-tauri-desk launch.rs）：随包插件（companion）在 spawn dsh 前安装，绝不
         // 「启动后 3s 装 → 重启」。全局 dsh 模型（ADR simple-shell-single-global-dsh）：dsh 在 PATH 上，
         // nodeExe/dshEntry 传 null，EnsureBundledPluginsBeforeSpawnAsync 内回退到 PATH 上的 dsh 命令。
         // dev 显式覆盖共享 home 时跳过（防串扰）。
-        if (!_bootstrap.IsNeeded && !(_isDev && !_devAutoIsolated))
+        if (!preflight.Bootstrap.IsNeeded && !(preflight.IsDev && !preflight.DevAutoIsolated))
         {
             bool installed = false;
             try
@@ -250,38 +241,37 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    private RuntimeToken StartRuntime(HostToken host)
+    private RuntimeSetup StartRuntime(Preflight preflight, HostSetup host)
     {
         // CLI shim 注册（ADR simple-shell-single-global-dsh）：dsh 已全局在 PATH，仅注册 pnpm shim。
         // best-effort——注册内部吞预期异常（见 CliShimRegistrar），此处再兜底意外异常。
-        _bootstrap.RegisterCliShim();
+        preflight.Bootstrap.RegisterCliShim();
 
-        _webUrl = _bootstrap.IsNeeded
+        DshWebUrl? webUrl = preflight.Bootstrap.IsNeeded
             ? null
-            : _host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
-        if (!_bootstrap.IsNeeded)
+            : DshWebUrl.FromNullable(host.Host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult());
+        if (!preflight.Bootstrap.IsNeeded)
         {
-            HostLog.Write($"[host] runtime = {_host.RuntimeDescription}");
-            if (_webUrl is not null)
+            HostLog.Write($"[host] runtime = {host.Host.RuntimeDescription}");
+            if (webUrl is not null)
             {
-                HostLog.Write($"[host] dsh web = {_webUrl}");
+                HostLog.Write($"[host] dsh web = {webUrl}");
             }
             else
             {
-                HostLog.Write($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', _host.StderrTail.TakeLast(8))}");
+                HostLog.Write($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', host.Host.StderrTail.TakeLast(8))}");
             }
         }
 
-        // token：StartRuntime 完成（webUrl 已落字段），供后续阶段按类型承诺串联。
-        return default;
+        return new RuntimeSetup(webUrl);
     }
 
-    private int RunAppLoop(SupervisorToken supervisor, HostToken host)
+    private int RunAppLoop(Preflight preflight, AppSetup app, SupervisorSetup supervisor)
     {
         HostLog.Write("[host] Ryn Run 开始（阻塞直到窗口关闭）");
         try
         {
-            _app.Run();
+            app.App.Run();
         }
         catch (Exception ex)
         {
@@ -289,11 +279,11 @@ public sealed partial class DesktopBootstrap
         }
 
         HostLog.Write("[host] Ryn Run 结束");
-        _supervisorCts.Cancel();
-        _bootstrap.Cancel();
+        supervisor.Cts.Cancel();
+        preflight.Bootstrap.Cancel();
         try
         {
-            _supervisorTask.Wait(TimeSpan.FromSeconds(2));
+            supervisor.Task.Wait(TimeSpan.FromSeconds(2));
         }
         catch (AggregateException)
         {
