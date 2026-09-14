@@ -207,16 +207,10 @@ public sealed partial class DesktopBootstrap
         // 并用恢复屏覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
         _supervisorTask = Task.Run(async () =>
         {
-            if (_bootstrapSettled is not null)
+            // 引导落定握手（理由见上方「引导期门控」注释；网 = BootstrapSettleGateTests）。
+            if (!await BootstrapSettleGate.WaitSettledAsync(_bootstrapSettled, timeout: null, _supervisorCts.Token))
             {
-                try
-                {
-                    await _bootstrapSettled.Task.WaitAsync(_supervisorCts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
+                return;
             }
 
             await _supervisor.RunAsync(_supervisorCts.Token);
@@ -322,20 +316,10 @@ public sealed partial class DesktopBootstrap
         // 只需等首启引导落定——版本探针走 PATH 上全局 dsh（bundled=null），提前跑会探到空。
         _ = Task.Run(async () =>
         {
-            try
-            {
-                if (_bootstrapSettled is not null)
-                {
-                    await _bootstrapSettled.Task.WaitAsync(TimeSpan.FromSeconds(120), _supervisorCts.Token);
-                }
-            }
-            catch (OperationCanceledException)
+            // 引导落定前横幅不抢跑；120s 超时按已定继续（降级语义在 BootstrapSettleGate 内），取消即放弃。
+            if (!await BootstrapSettleGate.WaitSettledAsync(_bootstrapSettled, TimeSpan.FromSeconds(120), _supervisorCts.Token))
             {
                 return;
-            }
-            catch (TimeoutException)
-            {
-                // 引导链路迟迟未定也照常告知：横幅是增强信息，不能因异常路径永久缺席
             }
 
             string home = HarnessRuntimeHost.ResolveDshHome();
