@@ -16,9 +16,10 @@ public sealed partial class DesktopBootstrap
 {
     private AppToken BuildApp(RuntimeToken runtime, UpdateToken update)
     {
-        // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 trayReady）
-        _iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
-        _trayAvailable = File.Exists(_iconPath); // verify-code-conventions: ignore 组合根装配：icon 存在性探测是配置面，非业务/领域直调
+        // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 IsReady）
+        string iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
+        bool trayAvailable = File.Exists(iconPath); // verify-code-conventions: ignore 组合根装配：icon 存在性探测是配置面，非业务/领域直调
+        _tray.ConfigureIcon(iconPath, trayAvailable);
 
         _app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
@@ -39,16 +40,16 @@ public sealed partial class DesktopBootstrap
                 opts.Height = 800;
                 opts.ApplicationId = DevEnvironment.ApplicationIdFor(
                     "io.github.ZK-Andy.dotnet-deepseek-harness-desktop", _isDev);
-                if (File.Exists(_iconPath)) // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
+                if (File.Exists(iconPath)) // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 {
-                    opts.IconPath = _iconPath;
+                    opts.IconPath = iconPath;
                 }
                 else
                 {
-                    HostLog.Write($"[host] icon 缺失：{_iconPath}");
+                    HostLog.Write($"[host] icon 缺失：{iconPath}");
                 }
 
-                HostLog.Write($"[host] Ryn opts: Url={(_webUrl is not null ? _webUrl.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(_iconPath) ? _iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
+                HostLog.Write($"[host] Ryn opts: Url={(_webUrl is not null ? _webUrl.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 // WebView 调试器默认关闭（正式打包无调试窗口）；开发期设 DSH_DEVTOOLS=1 开启。
                 opts.DevTools = Environment.GetEnvironmentVariable("DSH_DEVTOOLS") == "1";
             })
@@ -90,27 +91,27 @@ public sealed partial class DesktopBootstrap
         // 未批准的 Close 会吞成隐藏；顺序契约与托盘退出同款（ADR diag-masking-and-recovery-page）
         services.AddSingleton<ICommandRouter>(sp => new Services.RecoveryCommandRouter(
             closeWindow: () => sp.GetRequiredService<IRynWindow>().Close(),
-            _closeGate,
+            _tray.CloseGate,
             HostLog.Write));
         // 引导重试命令（desktop.bootstrap.retry，ADR online-first-unbundled-runtime）：
         // wwwroot 引导页的重试按钮 → 闸门放行引导循环。gate 实例在 Run 顶部创建，
         // 引导任务与路由共用同一实例
         services.AddSingleton<ICommandRouter>(new Services.BootstrapCommandRouter(
-            _bootstrapGate, HostLog.Write));
+            _bootstrap.Gate, HostLog.Write));
         // 插件引导决策命令（desktop.preinstall.choose，ADR reference-alignment 批次二）：
         // wwwroot 引导页「插件引导」步的确认装/跳过 → 闸门放行引导任务
         services.AddSingleton<ICommandRouter>(new Services.PreinstallCommandRouter(
-            _preinstallGate, HostLog.Write));
+            _bootstrap.PreinstallGate, HostLog.Write));
         // 开机自启开关（desktop.autostart.getState/set）
         services.AddSingleton<ICommandRouter>(new Services.AutostartCommandRouter(log: HostLog.Write));
         // 关闭最小化到托盘偏好（desktop.closeToTray.getState/set）；available 惰性求值——
         // 服务注册早于托盘初始化，trayReady 由外层闭包稍后赋值
         services.AddSingleton<ICommandRouter>(new Services.Tray.CloseToTrayCommandRouter(
-            _closeBehavior, () => _trayReady, log: HostLog.Write));
+            _tray.CloseBehavior, () => _tray.IsReady, log: HostLog.Write));
         // 自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）
-        if (_updateMachine is not null)
+        if (_updates.Machine is { } updateMachine)
         {
-            services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(_updateMachine, log: HostLog.Write, backgroundToken: () => _supervisorCtsRef?.Token ?? CancellationToken.None));
+            services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine, log: HostLog.Write, backgroundToken: () => _supervisorCtsRef?.Token ?? CancellationToken.None));
         }
         RegisterTrayServices(services);
     }
@@ -120,87 +121,36 @@ public sealed partial class DesktopBootstrap
     {
         // 托盘（批次三）：图标+菜单；点击语义经 companion 中继
         // 回 desktop.tray.event 在宿主解析——EmitEvent 是 Ryn 插件内部属性，不在源生成通道
-        if (_trayAvailable)
+        if (_tray.IsAvailable)
         {
             services.AddRynTray(o =>
             {
-                o.IconPath = _iconPath;
+                o.IconPath = _tray.IconPath;
                 o.Tooltip = "DeepSeek Harness Desktop";
             });
         }
         // 托盘事件路由：窗口动作经委托接 deferred 代理（注册期无需窗口就绪；
         // 委托注入让退出顺序契约可用记序 fake 测试）
-        services.AddSingleton<ICommandRouter>(sp =>
-        {
-            IRynWindow trayWindow = sp.GetRequiredService<IRynWindow>();
-            return new Services.Tray.DesktopTrayCommandRouter(
-                showWindow: () => RecallAsync(trayWindow),
-                closeWindow: () =>
-                {
-                    // 编排在 supervisorCts 声明后接线，而托盘退出必经托盘菜单的用户交互、
-                    // 必然晚于接线，故此处不可能为 null
-                    _orderlyQuit!();
-                },
-                _closeGate,
-                _updateMachine,
-                HostLog.Write,
-                notify: (title, message) =>
-                    sp.GetRequiredService<TrayService>().ShowNotification(title, message));
-        });
+        services.AddSingleton<ICommandRouter>(sp => new Services.Tray.DesktopTrayCommandRouter(
+            showWindow: () => _tray.RecallAsync(),
+            closeWindow: () =>
+            {
+                // 管道在 supervisorCts 声明后接线，而托盘退出必经托盘菜单的用户交互、
+                // 必然晚于接线，故此处不可能为 null
+                _exit.OrderlyQuit();
+            },
+            _tray.CloseGate,
+            _updates.Machine,
+            HostLog.Write,
+            notify: (title, message) =>
+                sp.GetRequiredService<TrayService>().ShowNotification(title, message)));
     }
 
+    /// <summary>托盘就绪化（装配壳）：解析 Ryn 托盘服务并交给控制器（无托盘环境传 null）。</summary>
     private void ShowTray(AppToken app)
     {
-        // 托盘就绪化（批次三）：装菜单并显示。失败只降级记日志——无托盘环境是合法运行环境；
-        // 但下方 hide-to-tray 拦截必须与托盘同 gate：没有召回通道还拦截关窗等于把窗口藏死。
-        // 顺序契约：必须先 Show 再 SetMenu——Linux 后端在 Show 前尚未注册 StatusNotifierItem，
-        // SetMenu 经 `_item?.` 静默丢弃（v0.3.0 实机图标可见但菜单全无的根因）；macOS 的
-        // RebuildMenu 在 status item 未创建时同样丢弃。Windows 两序皆可（菜单右键时才读）。
-        if (_trayAvailable)
-        {
-            try
-            {
-                TrayService tray = _app.Services.GetRequiredService<TrayService>();
-                tray.Show();
-                tray.SetMenu(Services.Tray.TrayMenuActions.BuildItems(includeUpdateItem: _updateMachine is not null, _uiLocale));
-                _trayReady = true;
-                HostLog.Write("[host] 系统托盘已注册");
-                // dsh 语言切换 → companion 上报 → locale 变化即重建菜单（ADR host-ui-locale）
-                _uiLocale.Changed += () =>
-                {
-                    try
-                    {
-                        tray.SetMenu(Services.Tray.TrayMenuActions.BuildItems(includeUpdateItem: _updateMachine is not null, _uiLocale));
-                    }
-                    catch (Exception ex1)
-                    {
-                        // 菜单重建失败可容忍：保留旧菜单（文案为上一语言），托盘功能不受损
-                        HostLog.Write($"[host] 托盘菜单重建失败（保留旧菜单）：{ex1.Message}");
-                    }
-                };
-            }
-            catch (Exception ex)
-            {
-                HostLog.Write($"[host] 系统托盘初始化失败，关闭窗口将直接退出：{ex.Message}");
-            }
-        }
-
-        if (_trayReady)
-        {
-            // IRynWindow 是 deferred 代理：此处窗口尚未创建，Closing 订阅会被缓冲到窗口就绪后挂载。
-            // 回调内绝不抛异常——上游对抛异常的 Closing 处理是「放行关窗」，比隐藏更危险。
-            IRynWindow trayWindow = _app.Services.GetRequiredService<IRynWindow>();
-            trayWindow.Closing += (_, e) =>
-            {
-                if (!_closeGate.ShouldCancelClose || !_closeBehavior.HideOnClose)
-                {
-                    // 显式放行通道（托盘退出 / 自更新安装），或用户已选「关闭即退出」
-                    return;
-                }
-
-                e.Cancel = true;
-                _ = HideForTrayAsync(trayWindow);
-            };
-        }
+        _tray.Show(_tray.IsAvailable
+            ? () => _app.Services.GetRequiredService<TrayService>()
+            : null);
     }
 }

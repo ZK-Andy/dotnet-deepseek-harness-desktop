@@ -1,7 +1,7 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
-/// 引导落定握手原语（ADR composition-root-value-flow-pipeline 批次 0 记序安全网）：
+/// 引导落定握手原语（ADR composition-root-value-flow-pipeline 批次 0 记序安全网，批次 1 随引导服务下沉）：
 /// 监督器进入监视与共享 home 横幅共用「等引导终态句柄置位（可带超时降级）」的单一等待点——
 /// 引导未落定前监督器不得空转进恢复循环（恢复屏会覆写引导页）、横幅不得抢跑版本探测。
 /// </summary>

@@ -13,8 +13,8 @@ Review: FULL/2026-09-15/R1=ok R2=ok R3=ok
 ## Decision
 
 1. **依赖图定稿**（实施计划 §5 回填）：实测 32 字段 / 15 段阶段链（修正立项估计 25/13，含 \`_supervisorCtsRef\` 非恒等别名）；字段→拆分线五分（托盘控制器/更新协调器/Infrastructure 引导服务/退出管道/留组合根）+ A 类配置归批次 3 IOptions；端口形状：引导 = Core 接口完成句柄（\`Task<bool> WaitSettledAsync(ct)\` 形状）、退出 = 有序步骤构造数据 + once-guard 管道单例。
-2. **引导握手单点**：\`Services/BootstrapSettleGate.WaitSettledAsync(settled, timeout, ct)\` 零行为抽取——监督器门控与共享 home 横幅两处等待收敛到同一测试等待点（OCE→false / Timeout→放行降级 / settled null→立即放行），\`timeout ?? Timeout.InfiniteTimeSpan\` 单点化两形态。
-3. **记序测试三网**：\`BootstrapSettleGateTests\`（5 用例：null/已置位/置位前拦截/取消/超时降级）；\`CompositionRootSequenceTests\`（Run 主链 15 段源序 + TCS 创建先于门控接线，带实参调用串天然唯一、无参串以分号锚定）；退出全序复用既有 \`ExitOrchestrationTests\`（cancel→stop→release→dispose→close→watchdog 已覆盖，不新建）。
+2. **引导握手单点**：\`BootstrapSettleGate.WaitSettledAsync(settled, timeout, ct)（批次 1 起居 Core/Services）\` 零行为抽取——监督器门控与共享 home 横幅两处等待收敛到同一测试等待点（OCE→false / Timeout→放行降级 / settled null→立即放行），\`timeout ?? Timeout.InfiniteTimeSpan\` 单点化两形态。
+3. **记序测试三网**：\`BootstrapSettleGateTests\`（5 用例：null/已置位/置位前拦截/取消/超时降级）；\`CompositionRootSequenceTests\`（Run 主链 15 段源序 + TCS 创建先于门控接线，带实参调用串天然唯一、无参串以分号锚定）；退出全序复用既有 \`ExitPipelineTests\`（批次 1 更名）（cancel→stop→release→dispose→close→watchdog 已覆盖，不新建）。
 4. **评审档案**：FULL 三审（R1/R2/R3）0 Blocker；5 Suggestion 收口（末尾换行×2、注释去重、门分支折叠、源序锚定）+ 1 延后（测试 RepoRoot 与 ArchitectureTests 去重——需改已冻结评审面，批次 3 收口时处理）+ 1 拒绝（SetWhileWaiting 50ms 断言：R2/R3 双核为确定性契约断言，非空转）。
 
 ## Consequences

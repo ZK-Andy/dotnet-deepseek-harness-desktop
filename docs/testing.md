@@ -13,7 +13,7 @@
   * **随包插件**：`MarketInstallHelperTests`（检测/迁移/workspace 修正/伴生 spec/JsonNode 写盘格式钉子）、`PluginVersionCheckTests`（版本解包/升级判定/脏版本 fail loud）、`BundledPluginCatalogTests`（清单装配判定/端到端布局）、`DesktopProfileBootstrapTests`（reconcile 不可解析引用）。
   * **自更新**：`UpdateVersionTests`、`UpdateStateMachineTests`（对账/恢复/并发去重）、`ReleaseAssetTests`（资产挑选/SUMS 解析/下载锁）、`FileReadyPersistenceTests`（ready.json 往返契约）、`InstallerDownloaderTests`（SHA256SUMS 强校验/原子改名）、`UpdateInstallerTests`（deb/rpm 命令 + Linux root 脚本内容级回归：PATH 硬化/哈希复验/symlink 守卫/降权拉起）、`DesktopUpdateCommandRouterTests`（后台 token 契约）、`UpdateOptionsTests`/`UpdateStateJsonTests`/`AppJsonTests`。
   * **导航与外链**：`ExternalLinkPolicyTests`、`ExternalLinkCommandRouterTests`、`RynNavigationCallbacksTests`（拦截/放行/origin 刷新/失败 toast）。
-  * **退出与环境**：`ExitOrchestrationTests`（退出编排记序契约）、`DevEnvironmentTests`（dev 隔离）、`ConvenienceTests`（更新就绪横幅/自启条目）。
+  * **退出与环境**：`ExitPipelineTests`（退出管道记序与幂等契约）、`DevEnvironmentTests`（dev 隔离）、`ConvenienceTests`（更新就绪横幅/自启条目）。
 * 运行：沙箱需 `DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget`（`/home` 只读）。
 
 ```sh

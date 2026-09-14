@@ -117,7 +117,7 @@ public sealed class CliShimRegistrar
     /// 执行一次 shim 注册（仅 pnpm；dsh 已全局在 PATH，无需生成 dsh shim）。<paramref name="runtimeNodeBinDir"/>
     /// 非空时（系统全局 node 由桌面装好）一并把它暴露进终端 PATH，让终端与桌面共用同一份 node/dsh。
     /// best-effort——吞掉预期内的异常并返回 false（调用方不因注册失败阻断启动）；绝不抛给上层。
-    /// 调用方（<see cref="DesktopBootstrap.Startup"/> 的 RegisterCliShim）在启动时调用。
+    /// 调用方（<c>FirstBootBootstrapService.RegisterCliShim</c>）在启动时调用。
     /// </summary>
     public bool TryRegister(string? runtimeNodeBinDir = null)
     {

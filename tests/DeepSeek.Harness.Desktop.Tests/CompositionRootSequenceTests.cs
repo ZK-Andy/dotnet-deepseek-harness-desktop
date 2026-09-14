@@ -42,17 +42,17 @@ public class CompositionRootSequenceTests
         }
     }
 
-    /// <summary>监督器门控依赖 _bootstrapSettled 先创建：RunBootstrapIfNeeded（TCS 诞生地）必须先于
-    /// SetupSupervisor（门控闭包读它）——否则门控静默失效（settled 为 null 直接进监视）。</summary>
+    /// <summary>监督器门控依赖引导落定句柄先创建：批次 1 把 TCS 私有化进引导服务后，句柄诞生点与
+    /// 门控解耦，该序仍须钉住——引导任务先跑就读不到自己的落定句柄（门控静默失效，直接进监视）。</summary>
     [Fact]
-    public void RunBootstrapIfNeeded_PrecedesSupervisorGating()
+    public void SettleHandle_CreatedBeforeBootstrapTaskStarts()
     {
         string source = File.ReadAllText(Path.Combine(RepoRoot(),
-            "src/DeepSeek.Harness.Desktop/DesktopBootstrap.Lifecycle.cs"));
-        int created = source.IndexOf("_bootstrapSettled = new TaskCompletionSource", StringComparison.Ordinal);
-        int gated = source.IndexOf("BootstrapSettleGate.WaitSettledAsync(_bootstrapSettled", StringComparison.Ordinal);
-        Assert.True(created >= 0 && gated >= 0, "门控两端缺失：TCS 创建或握手等待点");
-        Assert.True(created < gated, "引导握手失效：SetupSupervisor 的门控早于 _bootstrapSettled 创建");
+            "src/DeepSeek.Harness.Desktop.Infrastructure/Services/FirstBootBootstrapService.cs"));
+        int created = source.IndexOf("_settled = new TaskCompletionSource", StringComparison.Ordinal);
+        int started = source.IndexOf("Task.Run(() => RunAsync", StringComparison.Ordinal);
+        Assert.True(created >= 0 && started >= 0, "门控两端缺失：落定句柄创建或引导任务启动点");
+        Assert.True(created < started, "引导握手失效：引导任务启动早于落定句柄创建");
     }
 
     private static string RepoRoot()

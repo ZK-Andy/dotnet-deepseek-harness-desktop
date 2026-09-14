@@ -29,9 +29,9 @@ Status: proposed
 
 目标树（逐文件映射与 tests 镜像同步见实施计划 `.plan/Services伞目录重组-实施计划-2026-09-15.md`，本地工作文档）：
 
-- **Desktop**：`Tray/`（6，已存在）、`Update/`（2，已存在）、`Bootstrap/`（4：两路由+两帧）、`Recovery/`（恢复页三件套+诊断路由，ADR diag-masking-and-recovery-page 同域）、`PageBridge/`（PagePump/PageHealthMonitor/DesktopBanner/RynNavigationCallbacks/AppJson/ExternalLinkCommandRouter——B3 已定形"组合根+UI 桥"，外链路由与导航回调同域）；根留 Program.cs、DesktopBootstrap 分部、RuntimeSupervisor、两个孤件路由。
-- **Core**：`Update/`（6，现状即达）、`Plugins/`（3）、`PageHealth/`（2）、`Localization/`（UiCopy/UiLocale）；根留 ExitOrchestration、RuntimeLineage、ExternalLinkPolicy、PreinstallGate、ProfilePackageCheck。
-- **Infrastructure**：`Update/`（7，现状即达）、`Runtime/`（~16）、`CliShim/`（3）、`Plugins/`（7）、`System/`（~9）。
+- **Desktop**：`Tray/`（7，含 `TrayController`）、`Update/`（3，含 `UpdateCoordinator`）、`Bootstrap/`（5：两路由+两帧+`FirstBootUi`）、`Recovery/`（恢复页三件套+诊断路由，ADR diag-masking-and-recovery-page 同域）、`PageBridge/`（PagePump/PageHealthMonitor/DesktopBanner/RynNavigationCallbacks/AppJson/ExternalLinkCommandRouter——B3 已定形"组合根+UI 桥"，外链路由与导航回调同域）；根留 Program.cs、DesktopBootstrap 分部、RuntimeSupervisor、两个孤件路由。
+- **Core**：`Update/`（6，现状即达）、`Plugins/`（3）、`PageHealth/`（2）、`Localization/`（UiCopy/UiLocale）、`Bootstrap/`（4：`BootstrapStep`/`RuntimeBootstrapGate`/`BootstrapSettleGate`/`IFirstBootBootstrap`）；根留 ExitPipeline、RuntimeLineage、ExternalLinkPolicy、PreinstallGate、ProfilePackageCheck。
+- **Infrastructure**：`Update/`（8，含 `UpdateHttpClient`）、`Bootstrap/`（`FirstBootBootstrapService`）、`Runtime/`（~16）、`CliShim/`（3）、`Plugins/`（7）、`System/`（~9）。
 
 配套：tests 三工程按域镜像同名目录；`architecture-standards.md` 命名空间条款（"主工程 Presentation 类型居 `…Desktop.Services*`"）改为"`…Desktop.*` 随目录"；三个 JsonContext（`AppJsonContext`/`UpdateJsonContext`/`InfrastructureJsonContext`）帧类型随域搬位置，**帧形状/协议不变**，仅 namespace 源生成注册联动核对。
 
