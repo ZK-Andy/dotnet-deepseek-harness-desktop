@@ -4,7 +4,7 @@ Status: implemented
 
 Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 
-Superseded（部分）：空载荷 token 链由 [2026-09-15-value-flow-batch2-value-pipeline](2026-09-15-value-flow-batch2-value-pipeline.md) 升格为类型化阶段产出（6 个私有嵌套 record 携带真实值）；本 ADR 的偏序机制（产生序入类型、消费段不锁）与"字段归属未迁移"结论仍有效。
+Superseded（部分）：空载荷 token 链由 [2026-09-15-value-flow-batch2-value-pipeline](2026-09-15-value-flow-batch2-value-pipeline.md) 升格为类型化阶段产出（6 个私有嵌套 record 携带真实值）；其显式推迟的字段归属迁移由 [2026-09-15-composition-root-value-flow-pipeline](2026-09-15-composition-root-value-flow-pipeline.md) 各批次完成（组合根实例字段 32→10）。本 ADR 的偏序机制（产生序入类型、消费段不锁）与阶段划分仍有效。
 
 ## Problem
 
@@ -111,7 +111,7 @@ public int Run()
 - **时序回归风险（本重构的固有面）**：全壳最核心启动时序，阶段划分错误会致启动期怪病。缓解已落地：产生者执行序入类型（编译期锁）、消费段时序仍靠原调用点纪律 + 注释（偏序边界，勿误读为全序）。
 - **token 链是偏序非全序**：消费段整段漏调/乱序仍编译通过——这是设计边界，非缺陷（详见 Decision）。
 - **阶段记录类型未膨胀**：仅 6 个 token（空载荷 marker），未逐阶段建 Data-carrying record。
-- **字段归属未迁移**：后台闭包/事件委托捕获的字段保持字段态，子域治理另立项。
+- **字段归属**：后台闭包/事件委托捕获的字段态已由 [composition-root-value-flow-pipeline](2026-09-15-composition-root-value-flow-pipeline.md) 迁移进真类型服务（组合根实例字段 32→10）。
 
 ## Related
 

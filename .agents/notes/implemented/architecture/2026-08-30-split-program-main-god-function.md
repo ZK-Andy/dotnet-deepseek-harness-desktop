@@ -15,7 +15,7 @@ Status: implemented
 **把 `Main` 的编排逻辑抽取到 `DesktopBootstrap` 组合根类，`Main` 瘦身为薄壳；共享状态降为类字段，子域逻辑降为小方法。不变量 = 纯抽取、零行为变更**（不改控制流顺序、不改任何逻辑/分支/异常边界；`dotnet test` 保持 464/464 全绿）。
 
 - **`Program.Main` 瘦身为薄壳**：`Program.cs` 全文件 61 行，`Main` 方法体 12 行（CLI diagnostics 委托 + `new DesktopBootstrap().Run()`）。
-- **`DesktopBootstrap`（partial 类，2 文件）**：34 个共享状态字段（`_camelCase`，赋值时点沿原 Main 语句序保留）+ `Run()` 严格按原序调用 15 个编排子块方法（`ResolveRuntimeAndDev` → `AcquireSingleInstance` → `EnsureDesktopProfile` → `SetupHostAndMarker` → `InstallCompanionBeforeSpawn` → `StartRuntime` → `InitCloseGateAndUpdateStack` → `BuildApp` → `RunBootstrapIfNeeded` → `ShowTray` → `SetupSupervisor` → `SetupHealthMonitor` → `StartUpdateCheck` → `SharedHomeBannerTask` → `RunAppLoop`；其中 `RegisterServices` 由 `BuildApp` 的 `ConfigureServices` 传入）。分两文件：`DesktopBootstrap.cs`（字段 + 主编排）+ `DesktopBootstrap.Startup.cs`（partial，原局部函数 → 私有方法，如进程执行器/引导与插件推送等）。
+- **`DesktopBootstrap`（partial 类）**：共享状态为实例字段（值流管线收口后剩 10 个；`_camelCase`，赋值时点沿原 Main 语句序保留）+ `Run()` 严格按原序调用 15 个编排子块方法（`ResolveRuntimeAndDev` → `AcquireSingleInstance` → `EnsureDesktopProfile` → `SetupHostAndMarker` → `InstallCompanionBeforeSpawn` → `StartRuntime` → `InitCloseGateAndUpdateStack` → `BuildApp` → `RunBootstrapIfNeeded` → `ShowTray` → `SetupSupervisor` → `SetupHealthMonitor` → `StartUpdateCheck` → `SharedHomeBannerTask` → `RunAppLoop`；其中 `RegisterServices` 由 `BuildApp` 的 `ConfigureServices` 传入）。分文件：`DesktopBootstrap.cs`（字段 + 主链与阶段编排）+ 唯一 dot 分部 `DesktopBootstrap.App.cs`（应用装配与后台接线）。
 - **子域小方法**：每个顶层子块抽成私有方法；方法体长度不一（部分 70–90 行），结构性拆分本身是目的，行数不作规范（见 `csharp-coding-standard`）。
 - **验证**：每抽取一批就 `dotnet build + dotnet test` 保持绿；行为级不变（纯搬移）。
 

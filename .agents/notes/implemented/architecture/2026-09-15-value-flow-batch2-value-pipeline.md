@@ -4,9 +4,11 @@ Status: implemented
 
 Review: FULL/2026-09-15/R1=ok R2=ok R3=ok
 
+Superseded（部分）：`Preflight` 产出的两个裸 bool（`IsDev`/`DevAutoIsolated`）由 [2026-09-15-value-flow-batch3-finalization](2026-09-15-value-flow-batch3-finalization.md) 收为一个类型化 `LaunchOptions`；本 ADR 其余阶段产出结论仍有效。
+
 ## Problem
 
-[composition-root-value-flow-pipeline](../../proposed/architecture/2026-09-15-composition-root-value-flow-pipeline.md)（proposed，四批次主 ADR）批次 2：批次 1 把 C 类状态下沉真类型服务后，组合根 `Run()` 主链仍以 6 个**空载荷** `record struct` token（Preflight/Host/Runtime/Update/App/Supervisor）串联——token 只承载"上一阶段已执行"的类型承诺，实际产出（webUrl、host、marker、app、windowAccessor、监督器与退出令牌）仍落字段。排序不变量只活在 token 类型与注释里：消费段整段漏调、乱序仍可编译（唯一硬约束是 UpdateToken 被 BuildApp 消费）。本笔记承载批次 2 的执行定案；主 ADR 保持 proposed（批次 3 才迁）。本批部分取代 [composition-root-stage-typing](2026-09-03-composition-root-stage-typing.md) 的空载荷 token 形态——偏序机制保留，token 载荷由空升格为真实产出。
+[composition-root-value-flow-pipeline](2026-09-15-composition-root-value-flow-pipeline.md)（implemented，四批次主 ADR）批次 2：批次 1 把 C 类状态下沉真类型服务后，组合根 `Run()` 主链仍以 6 个**空载荷** `record struct` token（Preflight/Host/Runtime/Update/App/Supervisor）串联——token 只承载"上一阶段已执行"的类型承诺，实际产出（webUrl、host、marker、app、windowAccessor、监督器与退出令牌）仍落字段。排序不变量只活在 token 类型与注释里：消费段整段漏调、乱序仍可编译（唯一硬约束是 UpdateToken 被 BuildApp 消费）。本笔记承载批次 2 的执行定案。本批部分取代 [composition-root-stage-typing](2026-09-03-composition-root-stage-typing.md) 的空载荷 token 形态——偏序机制保留，token 载荷由空升格为真实产出。
 
 ## Decision
 

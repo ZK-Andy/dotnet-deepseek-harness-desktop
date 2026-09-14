@@ -11,7 +11,7 @@ namespace DeepSeek.Harness.Desktop.Services.Update;
 /// </summary>
 public sealed class UpdateCoordinator
 {
-    private readonly bool _isDev;
+    private readonly LaunchOptions _launch;
     private readonly Func<CurrentWindowAccessor?> _windowAccessor;
     private readonly CloseGate _closeGate;
     private readonly UiLocale _uiLocale;
@@ -22,7 +22,7 @@ public sealed class UpdateCoordinator
     private bool _readyNotified;
 
     /// <summary>创建协调器（状态机由 <see cref="Load"/> 按 dev 门禁装载）。</summary>
-    /// <param name="isDev">dev 运行时（Batch 3 落后 IOptions；当前由组合根传入）。</param>
+    /// <param name="launch">启动期 A 类配置（dev 判定；ADR composition-root-value-flow-pipeline 批次 3）。</param>
     /// <param name="windowAccessor">当前窗口访问器提供者；BuildApp 前为 null（状态推送静默丢弃）。</param>
     /// <param name="closeGate">关窗闸门：安装路径先批准再 Close，放行 hide-to-tray 拦截。</param>
     /// <param name="uiLocale">UI 语言单点（就绪横幅文案）。</param>
@@ -30,7 +30,7 @@ public sealed class UpdateCoordinator
     /// <param name="scheduleExitFallback">安装授权通过后的兜底强退调度（单实例退出管道）。</param>
     /// <param name="log">日志回调（可选）。</param>
     public UpdateCoordinator(
-        bool isDev,
+        LaunchOptions launch,
         Func<CurrentWindowAccessor?> windowAccessor,
         CloseGate closeGate,
         UiLocale uiLocale,
@@ -38,7 +38,7 @@ public sealed class UpdateCoordinator
         Action<CancellationToken> scheduleExitFallback,
         Action<string>? log = null)
     {
-        _isDev = isDev;
+        _launch = launch;
         _windowAccessor = windowAccessor;
         _closeGate = closeGate;
         _uiLocale = uiLocale;
@@ -61,7 +61,7 @@ public sealed class UpdateCoordinator
         // 一旦比对出新 release，点击会把官方包装进系统后按 Environment.ProcessPath 拉起**旧 dev 二进制**，
         // 版本不变、ready 记录不清，形成循环（审核加固，见 ADR self-update-review-hardening）。
         bool enabled = UpdateOptions.IsEnabledFor(
-            _isDev,
+            _launch.IsDev,
             Environment.GetEnvironmentVariable(UpdateOptions.ForceDevEnv));
         _readyNotified = false;
         _machine = null;

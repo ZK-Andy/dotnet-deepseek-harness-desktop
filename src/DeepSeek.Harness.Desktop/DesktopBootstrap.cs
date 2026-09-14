@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Ryn.Core;
 
 namespace DeepSeek.Harness.Desktop;
@@ -5,7 +6,8 @@ namespace DeepSeek.Harness.Desktop;
 /// <summary>
 /// 桌面壳组合根（ADR split-program-main-god-function）：承载原 <c>Program.Main</c> 的全部编排。
 /// 纯抽取、零行为变更——语句顺序/分支/异常边界与原 Main 逐一对应；共享状态为字段（_camelCase）、
-/// 编排方法按关注面拆为 partial（App/Lifecycle），本文件承载核心入口与装配前奏。
+/// 编排方法按关注面拆为 partial。分部终态（ADR composition-root-value-flow-pipeline 批次 3）：
+/// 本文件承载启动主链与阶段编排，应用装配与后台接线在唯一的 dot 分部 <c>DesktopBootstrap.App.cs</c>。
 /// </summary>
 public sealed partial class DesktopBootstrap
 {
@@ -35,7 +37,7 @@ public sealed partial class DesktopBootstrap
     // webUrl）。值类型归属按拍板 2：跨 R3 边界的 DshWebUrl 进 Core；只在本编排器内流通的阶段
     // 产出留私有嵌套（不构成根命名空间独立类型）。值的寿命 = 单段——长命共享态仍留字段/服务，
     // 不借阶段返回值回填全局态。
-    private readonly record struct Preflight(IFirstBootBootstrap Bootstrap, bool IsDev, bool DevAutoIsolated);
+    private readonly record struct Preflight(IFirstBootBootstrap Bootstrap, LaunchOptions Launch);
     private readonly record struct HostSetup(HarnessRuntimeHost Host, RunMarkerResult Marker);
     private readonly record struct RuntimeSetup(DshWebUrl? WebUrl);
     private readonly record struct UpdateSetup(Services.Update.UpdateCoordinator Updates);
@@ -85,29 +87,9 @@ public sealed partial class DesktopBootstrap
             HostLog.Write);
         bootstrap.Resolve();
 
-        string? devRuntimeDir = Environment.GetEnvironmentVariable(DevEnvironment.RuntimeDirEnv);
-        string? devFlag = Environment.GetEnvironmentVariable(DevEnvironment.DevFlagEnv);
-        bool isDev = DevEnvironment.IsDevRuntime(devRuntimeDir, devFlag);
-        bool devAutoIsolated = false;
-        if (isDev && Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) is null)
-        {
-            string? devHome = DevEnvironment.DeriveDefaultDevHome(devRuntimeDir, AppContext.BaseDirectory);
-            if (devHome is not null)
-            {
-                Environment.SetEnvironmentVariable(DevEnvironment.HomeOverrideEnv, devHome);
-                devAutoIsolated = true;
-                HostLog.Write($"[host] 开发运行时：DSH_HOME 隔离到 {devHome}；ApplicationId 带 .dev 后缀，可与正式版并存");
-            }
-        }
-        else if (!isDev &&
-                 DevEnvironment.DeriveDefaultDevHome(null, AppContext.BaseDirectory) is not null)
-        {
-            // dev 判定改显式标记后的唯一残留风险（R2 评审）：贡献者在仓库内跑却忘带
-            // DSH_DESKTOP_DEV=1 —— 判定按设计走打包产品语义，但值得一条 host.log 诊断指路
-            HostLog.Write("[host] 疑似仓库内开发运行但未设 DSH_DESKTOP_DEV=1：按打包产品处理（共享真实 home，无 dev 隔离）");
-        }
-
-        return new Preflight(bootstrap, isDev, devAutoIsolated);
+        // A 类启动配置（批次 3 IOptions 化）：dev 判定与自动隔离下沉 Infrastructure（LaunchOptions.Resolve），
+        // 组合根不再散读 dev 标记环境变量。
+        return new Preflight(bootstrap, LaunchOptions.Resolve(HostLog.Write));
     }
 
     /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：false = 已有主实例，调用方直接返回 0。
@@ -123,7 +105,7 @@ public sealed partial class DesktopBootstrap
                 xdgRuntimeDir is { Length: > 0 } ? xdgRuntimeDir : Path.GetTempPath(),
                 "deepseek-harness-desktop" +
                 (xdgRuntimeDir is { Length: > 0 } ? string.Empty : LauncherActivation.FallbackUidSuffix()),
-                preflight.IsDev);
+                preflight.Launch.IsDev);
         if (instanceSocketPath is not null)
         {
             if (!LauncherActivation.TryBindPrimary(
@@ -213,7 +195,7 @@ public sealed partial class DesktopBootstrap
         // 「启动后 3s 装 → 重启」。全局 dsh 模型（ADR simple-shell-single-global-dsh）：dsh 在 PATH 上，
         // nodeExe/dshEntry 传 null，EnsureBundledPluginsBeforeSpawnAsync 内回退到 PATH 上的 dsh 命令。
         // dev 显式覆盖共享 home 时跳过（防串扰）。
-        if (!preflight.Bootstrap.IsNeeded && !(preflight.IsDev && !preflight.DevAutoIsolated))
+        if (!preflight.Bootstrap.IsNeeded && !(preflight.Launch.IsDev && !preflight.Launch.DevAutoIsolated))
         {
             bool installed = false;
             try
@@ -266,6 +248,57 @@ public sealed partial class DesktopBootstrap
         return new RuntimeSetup(webUrl);
     }
 
+    private UpdateSetup InitCloseGateAndUpdateStack(Preflight preflight, RuntimeSetup runtime)
+    {
+        // runtime = 顺序契约参数：关窗闸门/自更新栈/托盘控制器在运行时启动之后装配（值流钉序）。
+        // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：托盘「退出」与自更新安装路径
+        // 先批准再 Close。用户普通关窗是否转隐藏由 closeBehavior 偏好裁决（默认 true 保持
+        // 历史行为）；托盘未就绪时拦截不生效（关窗直退）。
+        var closeGate = new Services.Tray.CloseGate();
+        var closeBehavior = new CloseBehaviorPreference(
+            Path.Combine(HarnessRuntimeHost.ResolveDshHome(), CloseBehaviorPreference.FileName));
+
+        // 自更新协调器在此构造并装载（早于 BuildApp）：状态机装载/就绪横幅/后台检查从组合根下沉，
+        // HttpClient 构造随协调器迁出组合根（ADR composition-root-value-flow-pipeline 批次 1）。
+        // A 类启动配置经构造注入（批次 3）：协调器收类型化 LaunchOptions，不再收裸 bool（当前只消费 IsDev）。
+        var updates = new Services.Update.UpdateCoordinator(
+            preflight.Launch,
+            () => _windowAccessor,
+            closeGate,
+            _uiLocale,
+            () => _supervisorCtsRef?.Token ?? CancellationToken.None,
+            ct => _exit.ScheduleExitFallback(ct),
+            HostLog.Write);
+        updates.Load();
+
+        // 托盘控制器在此构造（早于 BuildApp/ShowTray），窗口与 Ryn 服务以惰性委托注入——
+        // 控制器持有 hide-to-tray 拦截、唤回采样、菜单重建与关窗闸门/偏好（供路由构造注入）。
+        _tray = new Services.Tray.TrayController(
+            () => _app.Services.GetRequiredService<IRynWindow>(),
+            () => _windowAccessor,
+            closeGate,
+            closeBehavior,
+            _uiLocale,
+            updates.Machine,
+            HostLog.Write);
+
+        return new UpdateSetup(updates);
+    }
+
+    private void RunBootstrapIfNeeded(Preflight preflight, AppSetup app)
+    {
+        // 首启引导（ADR online-first-unbundled-runtime）：窗口先亮（wwwroot 引导页），引导服务后台完成
+        // 检测/下载/安装/验证后起 dsh，并把就位 URL 交回调接回壳侧导航；失败推错误态等待用户重试
+        // （desktop.bootstrap.retry 经闸门放行）。引导未落定前监督器/插件安装均被门控——依赖序即插入位。
+        preflight.Bootstrap.Start((url, ct) => EnterMainUiAsync(app, url, ct));
+    }
+
+    private void StartUpdateCheck(UpdateSetup update)
+    {
+        // 自更新启动对账 + 后台检查一次（失败静默转 error 态，不影响首屏）
+        update.Updates.Start();
+    }
+
     private int RunAppLoop(Preflight preflight, AppSetup app, SupervisorSetup supervisor)
     {
         HostLog.Write("[host] Ryn Run 开始（阻塞直到窗口关闭）");
@@ -297,4 +330,11 @@ public sealed partial class DesktopBootstrap
         _instanceListener?.Dispose();
         return 0;
     }
+
+    /// <summary>路径等值判定（Windows 不区分大小写）——旧 home 提示的指回守卫用。</summary>
+    private static bool PathsEqual(string a, string b) =>
+        string.Equals(
+            Path.GetFullPath(a),
+            Path.GetFullPath(b),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 }

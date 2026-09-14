@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Services;
 
 /// <summary>
 /// 页面注入辅助（ADR 组合根只装配）：把 JS 注入类操作（横幅/引导进度/插件引导状态/日志回流/自更新状态）
-/// 从组合根（<c>DesktopBootstrap.Startup</c>）抽出为静态单点。均以 <see cref="CurrentWindowAccessor"/>
+/// 从组合根抽出为静态单点。均以 <see cref="CurrentWindowAccessor"/>
 /// 为参数（未就绪的重试/丢弃语义在方法内），不依赖组合根实例状态。
 /// </summary>
 internal static class PagePump

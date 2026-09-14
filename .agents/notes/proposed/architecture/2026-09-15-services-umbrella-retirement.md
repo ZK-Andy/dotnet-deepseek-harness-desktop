@@ -20,7 +20,7 @@ Status: proposed
 
 | 决策点 | 定案 |
 |---|---|
-| 时机 | **组合根值流管线（composition-root-value-flow-pipeline）四批次之后**，独立机械批次——值流批次的新服务直接落重组后目录，避免先迁进伞再搬出伞 |
+| 时机 | **组合根值流管线（composition-root-value-flow-pipeline）四批次之后**，独立机械批次——值流批次的新服务按现行结构落点，本批随全量 `git mv` 一并搬迁；两战役间不插无关变更 |
 | 批次性质 | 纯机械：`git mv` + namespace 行 + using 收敛 + JsonContext 帧类型随域联动；批内禁改逻辑，diff 全是移动/namespace |
 | 命令路由归属 | **按特性随域走**（2026-09-15 讨论拍板）：路由器与其服务的特性同目录 |
 | 壳根孤件路由（Autostart/CompanionLocale） | 留项目根（单文件不成域，单文件目录是噪音） |
@@ -38,7 +38,7 @@ Status: proposed
 ## Alternatives considered
 
 - **保留 Services 伞、伞内渐进析出（方案 B）**：diff 最小，但伞本身是无信息量中间层（官方点名形态），且 Update 域命名空间已去 Services 段——保留伞即永久维持目录/命名空间错位。落败：一步对齐官方形态，命名空间迁移是编译期可验证的机械活。
-- **壳分部挪 `Bootstrap/` 目录**：非官方解（dotnet/runtime 大类型惯例即 dot 后缀 partial 平铺于类型命名空间目录），且已在 composition-root-value-flow-pipeline 批次 3 定终态。落败，不并入本批。
+- **壳分部挪 `Bootstrap/` 目录**：非官方解（dotnet/runtime 大类型惯例即 dot 后缀 partial 平铺于类型命名空间目录），且已由 composition-root-value-flow-pipeline 批次 3 定终态。落败，不并入本批。
 - **集中 `CommandRouting/` 目录**：与"按特性随域走"拍板冲突——按技术角色集中路由器正是官方点名的退化组织；且跨域浏览路由清单的收益被域目录一层的可发现性抵消。落败（孤件路由因单文件不成域例外留根，不为其开伞）。
 - **`Runtime/` 现在细拆 `ProcessHygiene/`**：进程回收/环境治理与 dsh 宿主是同一外部世界的强耦合面（reaper 依赖 host 的 spawn 契约），现阶段 ~16 件可控；预拆引入边界决策成本而无收益。落败，留 R4 触发的析出点。
 - **伞更名（`Components/` 等）**：换名字不换本质，仍是技术角色伞。落败。
@@ -59,7 +59,7 @@ Status: proposed
 
 ## Related
 
-- [composition-root-value-flow-pipeline](./2026-09-15-composition-root-value-flow-pipeline.md)（proposed）：排序前置；其批次 1 的新服务落点与本批目标树对齐。
+- [composition-root-value-flow-pipeline](../../implemented/architecture/2026-09-15-composition-root-value-flow-pipeline.md)（implemented）：排序前置；其批次 1/3 的新服务落点已纳入本批目标树。
 - [official-clean-architecture-adoption](../../implemented/architecture/2026-09-14-official-clean-architecture-adoption.md)（implemented）：三项目分层出处；本 ADR 处理其范围外的层内组织。
 - [docs/architecture-standards.md](../../../../docs/architecture-standards.md)：命名空间条款待本批同步的单一事实源。
 - 实施计划：`.plan/Services伞目录重组-实施计划-2026-09-15.md`（本地工作文档，逐文件映射、批次步骤与验证命令）。

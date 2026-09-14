@@ -33,14 +33,14 @@ description: Use when reviewing a pull request or a batch of changes in this rep
 - **Configuration and public choices:** ask what current-consumer evidence or prior art supports each default, public operation set, format, or imported external concept.
 - **Boundary integrity (R3):** external interactions (Ryn/native, the dsh process, companion IPC, file/network, update feed, registry/rc) go through interfaces; nothing leaks into the business layer.
 - **Borrowed and derived state:** determine whether each retained value is borrowed or owned under the service contract, then trace notifications and every cache, prompt, UI echo, replay, and query view to the documented success point and authoritative source (applies to config/event frames and GUI echoes here).
-- **Real entry path:** tests exercise the shipped compose root / entry (`DesktopBootstrap` / `DesktopBootstrap.Startup`) where relevant. A hand-mounted or mock-only test can bypass real startup wiring — do not let a test claim coverage of a path it never actually enters.
+- **Real entry path:** tests exercise the shipped compose root / entry (`DesktopBootstrap` / `Program`) where relevant. A hand-mounted or mock-only test can bypass real startup wiring — do not let a test claim coverage of a path it never actually enters.
 
 ## Required review (本项目留评审项)
 
 The machine gates do not cover the items below; the review must check them explicitly (root `AGENTS.md`「评审检查项（AI 兜底）」):
 
 - **D001** — `async` methods end in `Async`; **D002** — no `async void` outside event handlers; **D003** — empty `catch` names what it swallows.
-- **R1** — compose root (`DesktopBootstrap` / `DesktopBootstrap.Startup`) stays wiring-only, no business/domain logic.
+- **R1** — compose root (`DesktopBootstrap` / `Program`) stays wiring-only, no business/domain logic.
 - **R3** — external boundaries go through interfaces, not direct into the business layer.
 - **IPC strong types** — cross-boundary/event-frame IDs are not bare `string`; frames come from `AppJsonContext` source-gen.
 

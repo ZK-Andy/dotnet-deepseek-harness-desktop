@@ -12,7 +12,7 @@ public class CompositionRootSequenceTests
     [Fact]
     public void RunChain_StageCalls_AreInContractOrder()
     {
-        string source = File.ReadAllText(Path.Combine(RepoRoot(),
+        string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
             "src/DeepSeek.Harness.Desktop/DesktopBootstrap.cs"));
 
         string[] chain =
@@ -49,14 +49,14 @@ public class CompositionRootSequenceTests
     [Fact]
     public void StageOutputs_CarryConsumedValues()
     {
-        string dir = Path.Combine(RepoRoot(), "src/DeepSeek.Harness.Desktop");
+        string dir = Path.Combine(TestRepoRoot.Find(), "src/DeepSeek.Harness.Desktop");
         string source = File.ReadAllText(Path.Combine(dir, "DesktopBootstrap.cs"));
 
         Assert.False(
             Regex.IsMatch(source, @"record struct \w+Token\s*;"),
             "空载荷 token 形态应已退役（值流管线批次 2）");
 
-        // 消费点可落在任一分部（App/Lifecycle/Navigation），故按整个组合根分部集扫描；消费须锚定到
+        // 消费点可落在主文件或唯一 dot 分部（App），故按整个组合根分部集扫描；消费须锚定到
         // 阶段产出变量/形参名（Run 主链与各消费段共用同名 preflight/host/runtime/update/app/supervisor），
         // 否则无关同名成员（arrived.Task、文档注释里的 DesktopBootstrap.App.cs）会误判为已消费。
         string composed = string.Concat(Directory.GetFiles(dir, "DesktopBootstrap*.cs")
@@ -115,22 +115,11 @@ public class CompositionRootSequenceTests
     [Fact]
     public void SettleHandle_CreatedBeforeBootstrapTaskStarts()
     {
-        string source = File.ReadAllText(Path.Combine(RepoRoot(),
+        string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
             "src/DeepSeek.Harness.Desktop.Infrastructure/Services/FirstBootBootstrapService.cs"));
         int created = source.IndexOf("_settled = new TaskCompletionSource", StringComparison.Ordinal);
         int started = source.IndexOf("Task.Run(() => RunAsync", StringComparison.Ordinal);
         Assert.True(created >= 0 && started >= 0, "门控两端缺失：落定句柄创建或引导任务启动点");
         Assert.True(created < started, "引导握手失效：引导任务启动早于落定句柄创建");
-    }
-
-    private static string RepoRoot()
-    {
-        DirectoryInfo? dir = new(typeof(CompositionRootSequenceTests).Assembly.Location);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "dotnet-deepseek-harness-desktop.slnx")))
-        {
-            dir = dir.Parent;
-        }
-        Assert.NotNull(dir);
-        return dir!.FullName;
     }
 }

@@ -21,7 +21,7 @@
 
 ## 壳与窗口
 
-* `src/DeepSeek.Harness.Desktop/DesktopBootstrap.cs`（组合根，原 `Program.cs` 已瘦身为薄壳）：`HarnessRuntimeHost.StartAsync(60s)` → `dsh web:` → `RynApplication.CreateBuilder().ConfigureOptions(opts.Url = webUrl)`。`ryn.json:identifier=io.github.ZK-Andy.dotnet-deepseek-harness-desktop` 与 `StartupWMClass` 同值，`Wayland/X11` 任务栏正确关联；`icon.png` 进 `AppContext.BaseDirectory` 并上 `hicolor/pixmaps`。
+* 组合根（ADR `implemented/architecture/2026-09-15-composition-root-value-flow-pipeline`）= `Program.cs`（薄壳）+ `DesktopBootstrap.cs`（启动主链与阶段编排）+ 唯一 dot 分部 `DesktopBootstrap.App.cs`（应用装配、后台接线与 WebView 导航原语）；`Run()` 的阶段方法返回类型化产出（`Preflight`/`HostSetup`/`RuntimeSetup`/`UpdateSetup`/`AppSetup`/`SupervisorSetup`）、消费段收参数。`HarnessRuntimeHost.StartAsync(60s)` → `dsh web:` → `RynApplication.CreateBuilder().ConfigureOptions(opts.Url = webUrl)`。`ryn.json:identifier=io.github.ZK-Andy.dotnet-deepseek-harness-desktop` 与 `StartupWMClass` 同值，`Wayland/X11` 任务栏正确关联；`icon.png` 进 `AppContext.BaseDirectory` 并上 `hicolor/pixmaps`。
 * `CurrentWindowAccessor`（Ryn.Core）供 `RuntimeSupervisor`、`PageHealthMonitor` 与后台随包插件任务做 `EvaluateJavaScriptAsync`/`NavigateAsync`。
 
 ## 运行时定位与启动
@@ -76,4 +76,4 @@
 * `appsettings.json`：`DevTools:false`（`DSH_DEVTOOLS=1` 开启）；`Update` 节（自更新仓库/超时/目录）。
 * `ryn.json`：`identifier/capabilities`。
 * 扩展点：`DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DSH_HOME` / `DSH_DESKTOP_UPDATE_FORCE`（dev 下显式开启自更新）覆盖。
-* **开发运行时隔离**：`DSH_DESKTOP_RUNTIME_DIR` 或 `DSH_DESKTOP_DEV=1` 显式标记即进入 dev 模式（判定不探测闭包存在性）——ApplicationId 自动加 `.dev` 后缀（与已装正式版可同时开窗，避开 GTK 同 id 单实例互斥），DSH_HOME 未显式覆盖时自动指向 `<仓库>/.cache/dev-home`；显式指回真实 home 时随包插件安装自动跳过防串扰。
+* **开发运行时隔离**：`DSH_DESKTOP_RUNTIME_DIR` 或 `DSH_DESKTOP_DEV=1` 显式标记即进入 dev 模式（判定不探测闭包存在性）——ApplicationId 自动加 `.dev` 后缀（与已装正式版可同时开窗，避开 GTK 同 id 单实例互斥），DSH_HOME 未显式覆盖时自动指向 `<仓库>/.cache/dev-home`；显式指回真实 home 时随包插件安装自动跳过防串扰。判定与隔离结论由 `Infrastructure/Services/LaunchOptions.Resolve` 单点解析为类型化配置，组合根与更新协调器经构造注入消费。

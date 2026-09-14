@@ -11,24 +11,12 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// </summary>
 public class ArchitectureTests
 {
-    private static string RepoRoot()
-    {
-        // 测试基目录 = tests/&lt;Project&gt;/bin/...，仓库根在其上三级以上；用 slnx 锚定
-        DirectoryInfo? dir = new(typeof(ArchitectureTests).Assembly.Location);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "dotnet-deepseek-harness-desktop.slnx")))
-        {
-            dir = dir.Parent;
-        }
-        Assert.NotNull(dir);
-        return dir!.FullName;
-    }
-
     private static string[] ProjectReferences(string csprojRelative)
     {
-        string path = Path.Combine(RepoRoot(), csprojRelative);
+        string path = Path.Combine(TestRepoRoot.Find(), csprojRelative);
         Assert.True(File.Exists(path), $"missing csproj: {csprojRelative}");
         return XDocument.Load(path).Descendants("ProjectReference")
-            .Select(e => Path.GetRelativePath(RepoRoot(),
+            .Select(e => Path.GetRelativePath(TestRepoRoot.Find(),
                 Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!,
                     ((string?)e.Attribute("Include") ?? string.Empty).Replace('\\', '/')))))
             .OrderBy(p => p, StringComparer.Ordinal).ToArray();

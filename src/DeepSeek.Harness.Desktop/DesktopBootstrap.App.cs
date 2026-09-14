@@ -8,16 +8,16 @@ using Ryn.Plugins.Tray;
 namespace DeepSeek.Harness.Desktop;
 
 /// <summary>
-/// <see cref="DesktopBootstrap"/> 的应用装配面（partial，ADR 尺寸健康闸）：Ryn 应用构建、
-/// 命令路由/托盘服务注册、托盘就绪化。组合根只装配——注册逻辑集中于此，生命线方法在
-/// <c>DesktopBootstrap.cs</c> 与 <c>DesktopBootstrap.Lifecycle.cs</c>。
+/// <see cref="DesktopBootstrap"/> 的应用装配与后台接线面（唯一 dot 分部，ADR composition-root-value-flow-pipeline
+/// 批次 3 分部终态）：Ryn 应用构建、命令路由/托盘服务注册、监督器与退出接线、健康监视/横幅后台任务、
+/// WebView 导航原语。启动主链与阶段编排在 <c>DesktopBootstrap.cs</c>。
 /// </summary>
 public sealed partial class DesktopBootstrap
 {
     private AppSetup BuildApp(Preflight preflight, RuntimeSetup runtime, UpdateSetup update)
     {
         // 运行时就位 URL 的消费点（值流）：StartRuntime 产出、此处落位为壳侧导航靶点初值；
-        // 引导完成/崩溃恢复导航会再刷新该字段（见 Navigation 与 Lifecycle 的 navigate）。
+        // 引导完成/崩溃恢复导航会再刷新该字段（见下方导航原语与监督器 navigate）。
         _webUrl = runtime.WebUrl?.Value;
 
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 IsReady）
@@ -42,8 +42,8 @@ public sealed partial class DesktopBootstrap
                 opts.Title = "DeepSeek Harness Desktop";
                 opts.Width = 1200;
                 opts.Height = 800;
-                opts.ApplicationId = DevEnvironment.ApplicationIdFor(
-                    "io.github.ZK-Andy.dotnet-deepseek-harness-desktop", preflight.IsDev);
+                // A 类启动配置经类型化值消费（批次 3）：dev 后缀规则封装进 LaunchOptions。
+                opts.ApplicationId = preflight.Launch.ApplicationIdFor("io.github.ZK-Andy.dotnet-deepseek-harness-desktop");
                 if (File.Exists(iconPath)) // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 {
                     opts.IconPath = iconPath;
@@ -155,5 +155,192 @@ public sealed partial class DesktopBootstrap
         _tray.Show(_tray.IsAvailable
             ? () => app.App.Services.GetRequiredService<TrayService>()
             : null);
+    }
+
+    private SupervisorSetup SetupSupervisor(Preflight preflight, AppSetup app, HostSetup host)
+    {
+        // 原 `using var supervisorCts`：生命周期由 Run 的 finally 释放（本方法接线 _supervisorCtsRef）。
+        var cts = new CancellationTokenSource();
+        _supervisorCtsRef = cts; // 自更新后台任务 token 持有器接线（见顶部声明）
+        var supervisor = new RuntimeSupervisor(
+            host.Host,
+            restartTimeout: TimeSpan.FromSeconds(60),
+            showRecovery: () =>
+            {
+                // 恢复页三件套（ADR diag-masking-and-recovery-page）：失败原因 + stderr 尾部展示 +
+                // 导出诊断/退出动作。desktop.* 走 Ryn 层 IPC 不依赖 dsh 存活；数据经 textContent
+                // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
+                var tail = host.Host.StderrTail.TakeLast(12).ToList();
+                _ = app.WindowAccessor.Current.EvaluateJavaScriptAsync(
+                    Services.RecoveryPageBuilder.BuildScript(UiCopy.ReasonRuntimeCrashed(english: false), tail));
+                return ValueTask.CompletedTask;
+            },
+            // 崩溃恢复导航同步刷新 webUrl——健康监视器（有界恢复）靠它作为 reload 靶点；若
+            // 崩溃重启用新端口（ADDR child-process-reaping-port-drift 的端口漂移）而 webUrl
+            // 仍指向旧 URL，监视器的 reload 会打到已死的旧端口、甚至覆写刚恢复的导航。
+            navigate: url =>
+            {
+                _webUrl = url;
+                AuthorizeIpcOriginFor(app.WindowAccessor, url);
+                return app.WindowAccessor.Current.NavigateAsync(url);
+            },
+            log: HostLog.Write);
+        // 引导期门控：宿主尚无 dsh 进程时 WaitForExitAsync 立即完成，监督器会空转进恢复循环
+        // 并用恢复屏覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
+        var supervisorTask = Task.Run(async () =>
+        {
+            // 引导落定握手（理由见上方「引导期门控」注释；网 = BootstrapSettleGateTests）。
+            if (!await preflight.Bootstrap.WaitSettledAsync(timeout: null, cts.Token))
+            {
+                return;
+            }
+
+            await supervisor.RunAsync(cts.Token);
+        });
+
+        // 有序退出编排 + 自更新兜底收割器接线（WireExitHandlers）
+        WireExitHandlers(app.App.Services.GetRequiredService<IRynWindow>(), host, cts);
+
+        return new SupervisorSetup(cts, supervisorTask);
+    }
+
+    /// <summary>单实例退出管道接线（ADR composition-root-value-flow-pipeline）：有序退出步骤即构造数据，
+    /// 托盘有序退出与 Run 尾部共用同一实例，幂等由 once-guard 保证；运行时回收先于关窗。</summary>
+    private void WireExitHandlers(IRynWindow quitWindow, HostSetup host, CancellationTokenSource supervisorCts)
+    {
+        _exit = new Core.ExitPipeline(
+            supervisorCts.Cancel,
+            host.Host.Stop,
+            () => RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), host.Marker.Token),
+            () => _instanceListener?.Dispose(),
+            quitWindow.Close,
+            log: HostLog.Write);
+    }
+
+    private void SetupHealthMonitor(AppSetup app, SupervisorSetup supervisor)
+    {
+        // 页面健康观测 + 有界恢复（ADR page-health-monitor / reference-alignment 批次五）：
+        // 宿主只读探针轮询，不注入不依赖 companion——「dsh 在跑但页面空白」类事故（历史三起全靠
+        // 人肉发现）从此有自动留痕；连续 Dead 达阈值后在预算内触发一次有界 reload，耗尽转观测-only，
+        // 成功恢复复位预算（防误报引发无限重载循环，对齐参照 plugin_boot.rs 的有界刷新门控）。
+        // 首拍延迟 10s 避开启动空窗，探针异常按 Unknown 续跑。reload 委托捕获 webUrl（字段，
+        // 初始/引导完成/崩溃恢复导航三处都会刷新，见上文与 RuntimeSupervisor 的 navigate），
+        // 恒为当前 dsh web 靶点；webUrl 只有当引导未落定（dsh 未起）才为空，而该窗口页面是
+        // wwwroot 引导页（有内容 → Alive），不会进入 Dead 恢复分支——reload 委托的空态只是防御性兜底。
+        _healthMonitor = new Services.PageHealthMonitor(
+            app.WindowAccessor,
+            HostLog.Write,
+            reload: ct => _webUrl is null
+                ? ValueTask.CompletedTask
+                : app.WindowAccessor.Current.NavigateAsync(_webUrl, ct));
+        _ = _healthMonitor.RunAsync(TimeSpan.FromSeconds(10), supervisor.Cts.Token);
+    }
+
+    private void SharedHomeBannerTask(Preflight preflight, AppSetup app, HostSetup host, SupervisorSetup supervisor)
+    {
+        // 共享 home 切换的启动期告知（ADR shared-home-desktop-profile）：版本底线检查 + 旧 home 一次性提示。
+        // 随包插件现于 spawn dsh 前安装（不再「启动后装 → 覆写页面并重启运行时」），横幅无需等安装收尾，
+        // 只需等首启引导落定——版本探针走 PATH 上全局 dsh（bundled=null），提前跑会探到空。
+        _ = Task.Run(async () =>
+        {
+            // 引导落定前横幅不抢跑；120s 超时按已定继续（降级语义在 BootstrapSettleGate 内），取消即放弃。
+            if (!await preflight.Bootstrap.WaitSettledAsync(TimeSpan.FromSeconds(120), supervisor.Cts.Token))
+            {
+                return;
+            }
+
+            string home = HarnessRuntimeHost.ResolveDshHome();
+            string? detected = await RuntimeVersionGate.ProbeAsync(supervisor.Cts.Token);
+            if (detected is not null)
+            {
+                HostLog.Write($"[host] dsh 版本 {detected}（底线 {RuntimeVersionGate.MinimumVersion}）");
+                if (RuntimeVersionGate.IsBelowFloor(detected))
+                {
+                    HostLog.Write($"[host] 警告：dsh {detected} 低于支持底线 {RuntimeVersionGate.MinimumVersion}，已提示用户");
+                    await Services.PagePump.ShowBannerWhenReadyAsync(app.WindowAccessor, Services.DesktopBanner.BuildVersionFloorBanner(detected, _uiLocale), supervisor.Cts.Token);
+                }
+            }
+            else
+            {
+                HostLog.Write("[host] dsh 版本探测失败，跳过底线检查");
+            }
+
+            // 旧 home 留痕仅进日志（界面横幅已按用户拍板去除，ADR companion-settings-consolidation）；
+            // 指回旧目录时不记「改用新目录」——自相矛盾且无信息量
+            if (LegacyHomeNotice.IsPresent() && !PathsEqual(home, LegacyHomeNotice.LegacyPrivateHome))
+            {
+                HostLog.Write($"[host] 检测到旧版桌面数据目录 {LegacyHomeNotice.LegacyPrivateHome}；新版使用 {home}（未迁移）");
+            }
+
+            // 上轮非受控退出：提示但不暗示应用故障（用户杀进程也属此类），引导导出诊断
+            if (host.Marker.PreviousRunUnclean)
+            {
+                await Services.PagePump.ShowBannerWhenReadyAsync(app.WindowAccessor, DesktopBanner.BuildUncleanExitBanner(_uiLocale), supervisor.Cts.Token);
+            }
+        });
+    }
+
+    /// <summary>引导完成后的壳侧导航收尾（ADR bootstrap-cross-scheme-cookie-401）：记录 webUrl 后
+    /// WebKitGTK 两跳导航进主界面，由引导服务在 dsh 就位时回调。</summary>
+    /// <param name="app">Ryn 应用装配产出（窗口访问器与回调服务来源）。</param>
+    /// <param name="url">dsh 就位端点。</param>
+    /// <param name="ct">引导任务取消令牌。</param>
+    private async Task EnterMainUiAsync(AppSetup app, DshWebUrl url, CancellationToken ct)
+    {
+        _webUrl = url.Value;
+        // WebKitGTK 两跳导航：从自定义 scheme 占位页（ryn://app）发起的跨 scheme 导航链上，
+        // dsh 的 SameSite=Strict 会话 cookie 不随 303 回环重定向发送（沙箱实锤 2026-09-14：
+        // mint 命中 → 随后 GET / 无 cookie 401）。先落裸 origin http 页脱离 ryn:// 链路
+        // （该跳无 token 必得 401，瞬时无害），再从 http 页发起同站导航——Strict cookie 正常随行。
+        // 第二跳必须等第一跳真正提交（NavigateAsync 连发会被 WebKitGTK 合并成一次导航）。
+        Uri landing = url.AuthorityRoot;
+        AuthorizeIpcOriginFor(app.WindowAccessor, landing);
+        await NavigateAndAwaitCommitAsync(app, landing, ct);
+        await app.WindowAccessor.Current.NavigateAsync(url.Value);
+    }
+
+    /// <summary>导航前授权 <paramref name="url"/> 的 origin 可 IPC（Ryn 0.38 受信 origin 集合，ADR
+    /// ryn-pr91-trusted-origin）：端口漂移/引导后首次进入 dsh 时页面 origin 不在初始受信集里，
+    /// 未授权则页面命令通道被拒（token 有效也拒）。幂等，重复授权无害；授权在导航前生效，
+    /// 「bridge 随下一次导航安装」。窗口未就绪时异常照抛（fail loud，调用面均已在窗口就绪后）。</summary>
+    /// <param name="accessor">当前窗口访问器。</param>
+    /// <param name="url">待授权 URL。</param>
+    private void AuthorizeIpcOriginFor(CurrentWindowAccessor accessor, Uri url)
+    {
+        string origin = url.GetLeftPart(UriPartial.Authority);
+        accessor.Current.AuthorizeIpcOrigin(origin);
+        HostLog.Write($"[nav] 已授权 IPC origin：{origin}");
+    }
+
+    /// <summary>导航并等待其真正提交（<see cref="Services.RynNavigationCallbacks"/> 的
+    /// 「导航已到达」信号，先订阅后导航避免错过）。提交信号用于隔开两跳导航——
+    /// <c>NavigateAsync</c> 连发会被 WebKitGTK 合并，前一跳尚未发出即被后一跳覆盖。
+    /// 等待超时按「已提交」降级继续（信号只是隔跳手段，缺位时不比单跳直导更差）；
+    /// 取消（应用退出）照常传播。</summary>
+    /// <param name="app">Ryn 应用装配产出（导航回调服务来源）。</param>
+    /// <param name="target">导航靶点。</param>
+    /// <param name="ct">引导任务取消令牌。</param>
+    private async Task NavigateAndAwaitCommitAsync(AppSetup app, Uri target, CancellationToken ct)
+    {
+        Services.RynNavigationCallbacks callbacks =
+            app.App.Services.GetRequiredService<Services.RynNavigationCallbacks>();
+        TaskCompletionSource arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        callbacks.SetOnNavigated(() => arrived.TrySetResult());
+        try
+        {
+            await app.WindowAccessor.Current.NavigateAsync(target);
+            try
+            {
+                await arrived.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            }
+            catch (TimeoutException)
+            {
+                HostLog.Write("[nav] 等待导航提交信号超时（5s），按已提交继续");
+            }
+        }
+        finally
+        {
+            callbacks.SetOnNavigated(static () => { });
+        }
     }
 }
