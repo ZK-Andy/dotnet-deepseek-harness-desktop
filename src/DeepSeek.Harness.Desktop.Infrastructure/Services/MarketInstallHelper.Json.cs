@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>随包插件后台安装的纯逻辑（可单测）：检测、workspace 修正、spec 解析、bundles 补写。
 /// 本 partial 承载 JSON/profile 文件维护辅助；安装驱动见 <c>MarketInstallHelper.cs</c>。</summary>

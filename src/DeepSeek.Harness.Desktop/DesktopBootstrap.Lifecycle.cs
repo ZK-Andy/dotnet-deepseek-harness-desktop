@@ -17,17 +17,17 @@ public sealed partial class DesktopBootstrap
         // 先批准再 Close。用户普通关窗是否转隐藏由 closeBehavior 偏好裁决（默认 true 保持
         // 历史行为）；托盘未就绪时拦截不生效（关窗直退）。
         _closeGate = new Services.Tray.CloseGate();
-        _closeBehavior = new Services.Tray.CloseBehaviorPreference(
-            Path.Combine(HarnessRuntimeHost.ResolveDshHome(), Services.Tray.CloseBehaviorPreference.FileName));
+        _closeBehavior = new CloseBehaviorPreference(
+            Path.Combine(HarnessRuntimeHost.ResolveDshHome(), CloseBehaviorPreference.FileName));
 
         // 自更新栈（仅 ready 对外可见；机制见 ADR desktop-shell-self-update）：
         // 状态机纯逻辑可单测，检查/下载/安装全部委托注入；状态经 CustomEvent 推给插件 UI。
         // dev 运行时不装载（除非 DSH_DESKTOP_UPDATE_FORCE=1 显式开启验证）：dev 构建版本同 csproj，
         // 一旦比对出新 release，点击会把官方包装进系统后按 Environment.ProcessPath 拉起**旧 dev 二进制**，
         // 版本不变、ready 记录不清，形成循环（审核加固，见 ADR self-update-review-hardening）。
-        _updateEnabled = Services.Update.UpdateOptions.IsEnabledFor(
+        _updateEnabled = UpdateOptions.IsEnabledFor(
             _isDev,
-            Environment.GetEnvironmentVariable(Services.Update.UpdateOptions.ForceDevEnv));
+            Environment.GetEnvironmentVariable(UpdateOptions.ForceDevEnv));
         _readyNotified = false;
         LoadUpdateMachine();
 
@@ -43,35 +43,35 @@ public sealed partial class DesktopBootstrap
         _updateMachine = null;
         if (!_updateEnabled)
         {
-            Services.HostLog.Write("[host] 自更新：dev 运行时不装载（DSH_DESKTOP_UPDATE_FORCE=1 可显式开启）");
+            HostLog.Write("[host] 自更新：dev 运行时不装载（DSH_DESKTOP_UPDATE_FORCE=1 可显式开启）");
             return;
         }
 
-        var updateOptions = Services.Update.UpdateOptions.Load(AppContext.BaseDirectory);
+        var updateOptions = UpdateOptions.Load(AppContext.BaseDirectory);
         var updateHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan }; // verify-code-conventions: ignore 组合根装配：自更新子域的 HttpClient 由组合根构造注入（属装配）
         string updatesDir = Path.Combine(HarnessRuntimeHost.ResolveDshHome(), updateOptions.UpdatesDirName);
-        string? updatePkgKind = Services.Update.UpdatePlatform.DetectCurrentPackageKind();
+        string? updatePkgKind = UpdatePlatform.DetectCurrentPackageKind();
 
         // 启动对账清扫（ADR self-update-prune-consumed-packages）：删过期包 + install.sh/.download.lock
         // 死残留；ready 待装包恒版本 > 当前（对账 ≤ 当前即清记录），天然免于误删。
-        string currentVersion = Services.Update.AppVersion.Current();
-        Services.Update.StalePackagePruner.Run(updatesDir, currentVersion, log: Services.HostLog.Write);
+        string currentVersion = AppVersion.Current();
+        StalePackagePruner.Run(updatesDir, currentVersion, log: HostLog.Write);
 
-        _updateMachine = new Services.Update.UpdateStateMachine(
+        _updateMachine = new UpdateStateMachine(
             currentVersion: currentVersion,
-            check: ct => new Services.Update.ReleaseMetaClient(updateHttp, updateOptions, Services.HostLog.Write).FetchLatestAsync(UpdateRid(), updatePkgKind, ct),
-            download: (meta, ct) => new Services.Update.InstallerDownloader(updateHttp, Services.HostLog.Write).DownloadAsync(
+            check: ct => new ReleaseMetaClient(updateHttp, updateOptions, HostLog.Write).FetchLatestAsync(UpdateRid(), updatePkgKind, ct),
+            download: (meta, ct) => new InstallerDownloader(updateHttp, HostLog.Write).DownloadAsync(
                 meta, updatesDir, TimeSpan.FromMinutes(updateOptions.DownloadTimeoutMinutes), ct),
             install: async (assetPath, version, ct) =>
             {
                 // 安装时点自 release SHA256SUMS 复取期望哈希（HTTPS 直达仓库，用户空间改写不了）：
                 // root 侧装前复验对照它——落盘哈希可被同权限改写，唯 release 侧值是锚点；离线时此处抛出拒装（状态机回 ready）。
-                string expectedSha = await new Services.Update.InstallerDownloader(updateHttp, Services.HostLog.Write)
+                string expectedSha = await new InstallerDownloader(updateHttp, HostLog.Write)
                     .FetchSha256Async(updateOptions.Repository, version, Path.GetFileName(assetPath), ct);
                 // 授权通过（LaunchAsync 观察窗口内未取消）后：主动关闭窗口让进程退出，
                 // 安装脚本的等待环随即放行 rpm/dpkg 并拉起新版。缺这步脚本会死等本进程。
-                await Services.Update.UpdateInstaller.LaunchAsync(assetPath, updatesDir, expectedSha, ct, log: Services.HostLog.Write);
-                Services.HostLog.Write("[update] 授权通过，关闭应用以继续安装…");
+                await UpdateInstaller.LaunchAsync(assetPath, updatesDir, expectedSha, ct, log: HostLog.Write);
+                HostLog.Write("[update] 授权通过，关闭应用以继续安装…");
                 // 安装路径与托盘退出共用闸门：先批准，Close 才不会被 hide-to-tray 拦截转成隐藏
                 _closeGate.ApproveExit();
                 try
@@ -80,24 +80,24 @@ public sealed partial class DesktopBootstrap
                 }
                 catch (Exception ex)
                 {
-                    Services.HostLog.Write($"[update] 窗口关闭失败：{ex.Message}");
+                    HostLog.Write($"[update] 窗口关闭失败：{ex.Message}");
                 }
 
                 // 兜底：8 秒内仍未退出（Close 事件丢失等）则强制退出，保证安装流程放行
                 StartExitFallback(ct);
             },
-            persistence: new Services.Update.FileReadyPersistence(updatesDir),
+            persistence: new FileReadyPersistence(updatesDir),
             onTransition: state =>
             {
                 // 自更新链路留痕：每次状态变化进 host.log（stdout 不可见教训的统一收口）
-                Services.HostLog.Write(
+                HostLog.Write(
                     "[update] " + state.Status
                     + (state.Version is null ? "" : $" {state.Version}")
                     + (state.Message is null ? "" : $"：{state.Message}"));
                 Services.PagePump.PushUpdateState(_windowAccessor, state);
             },
-            log: Services.HostLog.Write);
-        Services.HostLog.Write($"[host] 自更新：当前版本 {currentVersion}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}，feed 超时 {updateOptions.FeedTimeoutSeconds}s 下载超时 {updateOptions.DownloadTimeoutMinutes}m");
+            log: HostLog.Write);
+        HostLog.Write($"[host] 自更新：当前版本 {currentVersion}，RID {UpdateRid()}，包类型 {updatePkgKind ?? "(n/a)"}，目录 {updatesDir}，feed 超时 {updateOptions.FeedTimeoutSeconds}s 下载超时 {updateOptions.DownloadTimeoutMinutes}m");
     }
 
     private void RunBootstrapIfNeeded(AppToken app)
@@ -124,12 +124,12 @@ public sealed partial class DesktopBootstrap
             string? version = await RunBootstrapWithRetryAsync(_bootstrapGate, bootCt);
             if (version is null)
             {
-                Services.HostLog.Write("[bootstrap] 引导未完成（用户放弃或应用退出）");
+                HostLog.Write("[bootstrap] 引导未完成（用户放弃或应用退出）");
                 return;
             }
 
             // 全局 dsh 就位：宿主以 PATH dsh 形态运行（ADR simple-shell-single-global-dsh）。
-            Services.HostLog.Write($"[bootstrap] 全局 dsh 就位：v{version}");
+            HostLog.Write($"[bootstrap] 全局 dsh 就位：v{version}");
 
             // CLI shim 注册（dsh 已全局在 PATH；仅注册内容恒定的 pnpm shim）。
             RegisterCliShim();
@@ -137,18 +137,18 @@ public sealed partial class DesktopBootstrap
             bool pluginsInstalled = await InstallBootstrapPluginsAsync(bootCt);
             if (pluginsInstalled)
             {
-                Services.HostLog.Write("[host] 本轮有插件经事务管线换入 active（staged 体检已过，无需再探）");
+                HostLog.Write("[host] 本轮有插件经事务管线换入 active（staged 体检已过，无需再探）");
             }
 
             Uri? url = await _host.StartAsync(timeout: TimeSpan.FromSeconds(60), bootCt);
             if (url is null)
             {
-                Services.HostLog.Write($"[bootstrap] 引导完成但 dsh 未在时限内给出 URL。stderr 尾巴：\n{string.Join('\n', _host.StderrTail.TakeLast(8))}");
+                HostLog.Write($"[bootstrap] 引导完成但 dsh 未在时限内给出 URL。stderr 尾巴：\n{string.Join('\n', _host.StderrTail.TakeLast(8))}");
                 return;
             }
 
-            Services.HostLog.Write($"[host] runtime = {_host.RuntimeDescription}");
-            Services.HostLog.Write($"[host] dsh web = {url}；从引导页导航进入主界面");
+            HostLog.Write($"[host] runtime = {_host.RuntimeDescription}");
+            HostLog.Write($"[host] dsh web = {url}；从引导页导航进入主界面");
             _webUrl = url;
             // WebKitGTK 两跳导航：从自定义 scheme 占位页（ryn://app）发起的跨 scheme 导航链上，
             // dsh 的 SameSite=Strict 会话 cookie 不随 303 回环重定向发送（沙箱实锤 2026-09-14：
@@ -162,12 +162,12 @@ public sealed partial class DesktopBootstrap
         }
         catch (OperationCanceledException)
         {
-            Services.HostLog.Write("[bootstrap] 引导任务随应用退出取消");
+            HostLog.Write("[bootstrap] 引导任务随应用退出取消");
         }
         catch (Exception ex)
         {
             // 后台引导任务的兜底收口：任何意外异常都不拖垮壳（窗口仍在，可重试或关闭）
-            Services.HostLog.Write($"[bootstrap] 引导任务意外失败：{ex.Message}");
+            HostLog.Write($"[bootstrap] 引导任务意外失败：{ex.Message}");
         }
         finally
         {
@@ -190,7 +190,7 @@ public sealed partial class DesktopBootstrap
                 // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
                 var tail = _host.StderrTail.TakeLast(12).ToList();
                 _ = _windowAccessor.Current.EvaluateJavaScriptAsync(
-                    Services.RecoveryPageBuilder.BuildScript(Services.UiCopy.ReasonRuntimeCrashed(english: false), tail));
+                    Services.RecoveryPageBuilder.BuildScript(UiCopy.ReasonRuntimeCrashed(english: false), tail));
                 return ValueTask.CompletedTask;
             },
             // 崩溃恢复导航同步刷新 webUrl——健康监视器（有界恢复）靠它作为 reload 靶点；若
@@ -202,7 +202,7 @@ public sealed partial class DesktopBootstrap
                 AuthorizeIpcOriginFor(url);
                 return _windowAccessor.Current.NavigateAsync(url);
             },
-            log: Services.HostLog.Write);
+            log: HostLog.Write);
         // 引导期门控：宿主尚无 dsh 进程时 WaitForExitAsync 立即完成，监督器会空转进恢复循环
         // 并用恢复屏覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
         _supervisorTask = Task.Run(async () =>
@@ -237,8 +237,8 @@ public sealed partial class DesktopBootstrap
         // 静默滞留变成确定性终结。正常路径 Run 返回后 Run 尾部重复 Cancel/Stop/Release 均幂等，双路径收敛。
         _orderlyQuit = () =>
         {
-            Services.HostLog.Write("[tray] 有序退出：回收运行时后关闭窗口");
-            Services.ExitOrchestration.OrderlyQuit(
+            HostLog.Write("[tray] 有序退出：回收运行时后关闭窗口");
+            ExitOrchestration.OrderlyQuit(
                 () => _supervisorCts.Cancel(),
                 _host.Stop,
                 () => RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), _marker.Token),
@@ -252,8 +252,8 @@ public sealed partial class DesktopBootstrap
         // 与 orderlyQuit 同款「先回收再退」；StartExitFallback 触发时 supervisorCts/host/marker 均已就绪。
         _updateExitReaper = () =>
         {
-            Services.HostLog.Write("[update] 兜底回收：cancel 监督器 + 整树击杀 dsh + 释放 marker");
-            Services.ExitOrchestration.ReapRuntime(
+            HostLog.Write("[update] 兜底回收：cancel 监督器 + 整树击杀 dsh + 释放 marker");
+            ExitOrchestration.ReapRuntime(
                 () => _supervisorCts.Cancel(),
                 _host.Stop,
                 () => RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), _marker.Token));
@@ -272,7 +272,7 @@ public sealed partial class DesktopBootstrap
         // wwwroot 引导页（有内容 → Alive），不会进入 Dead 恢复分支——reload 委托的空态只是防御性兜底。
         _healthMonitor = new Services.PageHealthMonitor(
             _windowAccessor,
-            Services.HostLog.Write,
+            HostLog.Write,
             reload: ct => _webUrl is null
                 ? ValueTask.CompletedTask
                 : _windowAccessor.Current.NavigateAsync(_webUrl, ct));
@@ -287,7 +287,7 @@ public sealed partial class DesktopBootstrap
             // 就绪横幅（批次三）：ready 到达一次性提示（订阅在窗口句柄就绪后建立，去重防重试期反复弹）
             _updateMachine.Subscribe(state =>
             {
-                if (state.Status == Services.Update.UpdateStatus.Ready &&
+                if (state.Status == UpdateStatus.Ready &&
                     state.Version is not null && !_readyNotified)
                 {
                     _readyNotified = true;
@@ -309,7 +309,7 @@ public sealed partial class DesktopBootstrap
                 }
                 catch (Exception ex)
                 {
-                    Services.HostLog.Write($"[update] start 失败：{ex.Message}");
+                    HostLog.Write($"[update] start 失败：{ex.Message}");
                 }
             });
         }
@@ -339,26 +339,26 @@ public sealed partial class DesktopBootstrap
             }
 
             string home = HarnessRuntimeHost.ResolveDshHome();
-            string? detected = await Services.RuntimeVersionGate.ProbeAsync(_supervisorCts.Token);
+            string? detected = await RuntimeVersionGate.ProbeAsync(_supervisorCts.Token);
             if (detected is not null)
             {
-                Services.HostLog.Write($"[host] dsh 版本 {detected}（底线 {Services.RuntimeVersionGate.MinimumVersion}）");
-                if (Services.RuntimeVersionGate.IsBelowFloor(detected))
+                HostLog.Write($"[host] dsh 版本 {detected}（底线 {RuntimeVersionGate.MinimumVersion}）");
+                if (RuntimeVersionGate.IsBelowFloor(detected))
                 {
-                    Services.HostLog.Write($"[host] 警告：dsh {detected} 低于支持底线 {Services.RuntimeVersionGate.MinimumVersion}，已提示用户");
+                    HostLog.Write($"[host] 警告：dsh {detected} 低于支持底线 {RuntimeVersionGate.MinimumVersion}，已提示用户");
                     await Services.PagePump.ShowBannerWhenReadyAsync(_windowAccessor, Services.DesktopBanner.BuildVersionFloorBanner(detected, _uiLocale), _supervisorCts.Token);
                 }
             }
             else
             {
-                Services.HostLog.Write("[host] dsh 版本探测失败，跳过底线检查");
+                HostLog.Write("[host] dsh 版本探测失败，跳过底线检查");
             }
 
             // 旧 home 留痕仅进日志（界面横幅已按用户拍板去除，ADR companion-settings-consolidation）；
             // 指回旧目录时不记「改用新目录」——自相矛盾且无信息量
             if (LegacyHomeNotice.IsPresent() && !PathsEqual(home, LegacyHomeNotice.LegacyPrivateHome))
             {
-                Services.HostLog.Write($"[host] 检测到旧版桌面数据目录 {LegacyHomeNotice.LegacyPrivateHome}；新版使用 {home}（未迁移）");
+                HostLog.Write($"[host] 检测到旧版桌面数据目录 {LegacyHomeNotice.LegacyPrivateHome}；新版使用 {home}（未迁移）");
             }
 
             // 上轮非受控退出：提示但不暗示应用故障（用户杀进程也属此类），引导导出诊断

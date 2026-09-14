@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using DeepSeek.Harness.Desktop.Services;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests;

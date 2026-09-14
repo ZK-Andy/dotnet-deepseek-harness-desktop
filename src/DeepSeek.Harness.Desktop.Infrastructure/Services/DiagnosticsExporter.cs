@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 诊断包导出（ADR shell-observability-diagnostics）：把日志与关键运行状态打成单个 zip，

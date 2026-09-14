@@ -1,0 +1,166 @@
+
+namespace DeepSeek.Harness.Desktop.Infrastructure.Tests;
+
+/// <summary>PluginVersionCheck 的边界与错误路径：tgz/目录/已装副本三种版本来源 + 升级判定。</summary>
+public class PluginVersionCheckTests
+{
+    /// <summary>内存构造 gzip+tar 包：自命名临时路径，条目构造委托给共享 <see cref="TestTarGz"/>。</summary>
+    private static string WriteTgz(params (string EntryName, string Content)[] entries)
+    {
+        string p = Path.Combine(Path.GetTempPath(), "pvc-" + Guid.NewGuid().ToString("N") + ".tgz");
+        TestTarGz.Write(p, entries);
+        return p;
+    }
+
+    /// <summary>验证从 tgz 的 package/package.json 读出版本号 0.0.2。</summary>
+    [Fact]
+    public void ReadBundledVersion_FromTgz_ReturnsVersion()
+    {
+        string p = WriteTgz(("package/package.json", """{"name":"dsh-desktop-companion","version":"0.0.2"}"""));
+        try { Assert.Equal("0.0.2", PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
+    }
+
+    /// <summary>验证忽略非 package.json 条目与 ./ 目录前缀，仍能读出版本号。</summary>
+    [Fact]
+    public void ReadBundledVersion_FromTgz_IgnoresOtherEntriesAndDotSlashPrefix()
+    {
+        string p = WriteTgz(
+            ("package/lib/index.js", "export {};"),
+            ("./package/package.json", """{"version":"1.2.3"}"""));
+        try { Assert.Equal("1.2.3", PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
+    }
+
+    /// <summary>验证 tgz 内没有 package.json 条目时抛 InvalidDataException。</summary>
+    [Fact]
+    public void ReadBundledVersion_TgzWithoutPackageJson_Throws()
+    {
+        string p = WriteTgz(("package/lib/index.js", "export {};"));
+        try { Assert.Throws<InvalidDataException>(() => PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
+    }
+
+    /// <summary>验证 gzip 数据损坏时抛异常而非静默返回。</summary>
+    [Fact]
+    public void ReadBundledVersion_CorruptTgz_Throws()
+    {
+        string p = Path.Combine(Path.GetTempPath(), "pvc-bad-" + Guid.NewGuid().ToString("N") + ".tgz");
+        File.WriteAllBytes(p, new byte[] { 0x00, 0x01, 0x02, 0x03 });
+        try { Assert.ThrowsAny<Exception>(() => PluginVersionCheck.ReadBundledVersion(p)); } finally { File.Delete(p); }
+    }
+
+    /// <summary>验证 tgz 文件不存在时抛 FileNotFoundException。</summary>
+    [Fact]
+    public void ReadBundledVersion_MissingFile_Throws()
+    {
+        Assert.Throws<FileNotFoundException>(
+            () => PluginVersionCheck.ReadBundledVersion(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".tgz")));
+    }
+
+    /// <summary>验证 version 字段为数字、缺失或清单非 JSON 等坏字段形态一律抛异常。</summary>
+    [Theory]
+    [InlineData("""{"version":123}""")]
+    [InlineData("""{"name":"x"}""")]
+    [InlineData("""{"version":""}""")]
+    [InlineData("not json")]
+    public void ReadBundledVersion_BadVersionField_Throws(string json)
+    {
+        string p = WriteTgz(("package/package.json", json));
+        try
+        {
+            Assert.ThrowsAny<Exception>(() => PluginVersionCheck.ReadBundledVersion(p));
+        }
+        finally
+        {
+            File.Delete(p);
+        }
+    }
+
+    /// <summary>验证目录形态（非 tgz）直接从目录下 package.json 读出版本。</summary>
+    [Fact]
+    public void ReadBundledVersion_DirectoryForm_ReadsPackageJson()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "pvc-dir-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "package.json"), """{"version":"0.3.0"}""");
+            Assert.Equal("0.3.0", PluginVersionCheck.ReadBundledVersion(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static string NewProfileWithInstalledPlugin(string? versionJson)
+    {
+        string profileDir = Path.Combine(Path.GetTempPath(), "pvc-prof-" + Guid.NewGuid().ToString("N"));
+        string pkgDir = Path.Combine(profileDir, "node_modules", "dsh-desktop-companion");
+        Directory.CreateDirectory(pkgDir);
+        if (versionJson is not null)
+        {
+            File.WriteAllText(Path.Combine(pkgDir, "package.json"), versionJson);
+        }
+
+        return profileDir;
+    }
+
+    /// <summary>验证从 profile 的 node_modules 已装副本 package.json 读出版本号。</summary>
+    [Fact]
+    public void ReadInstalledVersion_InstalledCopy_ReturnsVersion()
+    {
+        string dir = NewProfileWithInstalledPlugin("""{"version":"0.0.1"}""");
+        try
+        {
+            Assert.Equal("0.0.1", PluginVersionCheck.ReadInstalledVersion(dir, "dsh-desktop-companion"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证已装副本无 version 字段或清单损坏时返回 null 视为版本未知。</summary>
+    [Theory]
+    [InlineData((string?)null)]
+    [InlineData("""{"name":"dsh-desktop-companion"}""")]
+    [InlineData("corrupt json")]
+    public void ReadInstalledVersion_UnknownOrBroken_ReturnsNull(string? json)
+    {
+        string dir = NewProfileWithInstalledPlugin(json);
+        try
+        {
+            Assert.Null(PluginVersionCheck.ReadInstalledVersion(dir, "dsh-desktop-companion"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证 profile 目录不存在时不抛异常、返回 null。</summary>
+    [Fact]
+    public void ReadInstalledVersion_MissingProfile_ReturnsNull()
+    {
+        Assert.Null(PluginVersionCheck.ReadInstalledVersion(
+            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")), "dsh-desktop-companion"));
+    }
+
+    /// <summary>验证安装版本低于捆绑版本才需要升级，相等或更高不需要，安装版本为 null 时按需要升级。</summary>
+    [Theory]
+    [InlineData(null, "0.0.1", true)]
+    [InlineData("0.0.1", "0.0.2", true)]
+    [InlineData("0.0.9", "0.1.0", true)]
+    [InlineData("0.0.1", "0.0.1", false)]
+    [InlineData("0.1.0", "0.0.9", false)]
+    public void NeedsUpgrade_VersionCompare(string? installed, string bundled, bool expected)
+    {
+        Assert.Equal(expected, PluginVersionCheck.NeedsUpgrade(installed, bundled));
+    }
+
+    /// <summary>验证版本段含非数字（0.a.3）时抛 ArgumentException，失败不静默。</summary>
+    [Fact]
+    public void NeedsUpgrade_UnparseableSegment_FailsLoud()
+    {
+        Assert.Throws<ArgumentException>(() => PluginVersionCheck.NeedsUpgrade("0.a.3", "0.1.0"));
+    }
+}

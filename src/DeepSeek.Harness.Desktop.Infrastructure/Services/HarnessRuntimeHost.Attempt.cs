@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary><see cref="HarnessRuntimeHost"/> 的单次启动尝试面（partial）：StartCoreAsync/WaitForUrlAsync——
 /// spawn 一次 dsh、等 URL、三路失败信号竞争与失败原因分类（ADR port-wait-compression）。</summary>

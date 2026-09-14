@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>引导进度步骤。</summary>
 public enum BootstrapStep

@@ -38,50 +38,18 @@ IGNORE_MARK = "verify-code-conventions: ignore"
 # Console use is allowed only in the log sink and the entry diagnostics.
 D004_WHITELIST = {"HostLog.cs", "Program.cs"}
 
-# Boundary (infrastructure) components that legitimately talk to the external
-# world. Files not here are treated as application/domain or compose-root and
-# must NOT directly use the scanned infrastructure primitives.
-D005_WHITELIST = {
-    "HarnessRuntimeHost.cs",
-    "HarnessRuntimeHost.Attempt.cs",
-    "HarnessRuntimeHost.Paths.cs",
-    "RuntimeBootstrap.cs",
-    "RuntimeBootstrap.Engine.cs",
-    "RuntimeBootstrap.Pure.cs",
-    "RuntimeLocator.cs",
-    "RuntimeVersionGate.cs",
-    "MarketInstallHelper.cs",
-    "MarketInstallHelper.Json.cs",
-    "SystemBrowser.cs",
-    "LauncherActivation.cs",
-    "HostLog.cs",
-    "RunMarker.cs",
-    "Autostart.cs",
-    "OrphanDshReaper.cs",
-    # dsh 下游 scope 收割（systemctl spawn + /proc 判活；ADR dsh-sandbox-child-orphan-leak）
-    "DshSubprocessScopeReaper.cs",
-    # runtime lineage probes (/proc reads, tree kill, loopback probe; ADR runtime-handoff-adoption)
-    "RuntimeLineageProbes.cs",
-    "DiagnosticsExporter.cs",
-    "PluginVersionCheck.cs",
+# Console use is allowed only in the log sink and the entry diagnostics.
+D004_WHITELIST = {"HostLog.cs", "Program.cs"}
+
+# B4 白名单退役（ADR official-clean-architecture-adoption）：物理分层后 D005 的豁免
+# 按工程推导——Infrastructure 整工程豁免（边界层本体，适配器定义上直触外部世界）；
+# 主工程（Presentation/组合根）与 Core 零白名单。Core 仅保留 B1 既定的两个只读
+# profile/package 边界文件（ADR official-clean-architecture-adoption B1 批内台账）。
+D005_PROJECT_EXEMPT = "DeepSeek.Harness.Desktop.Infrastructure"
+D005_CORE_WHITELIST = {
     # profile package.json presence/version reads (B1 Core 边界; ADR official-clean-architecture-adoption)
     "ProfilePackageCheck.cs",
-    "DesktopProfileBootstrap.cs",
-    "DevEnvironment.cs",
-    "RuntimeBootstrapOptions.cs",
-    "ExternalLinkCommandRouter.cs",
-    # CLI shim plumbing
-    "CliShimBuilder.cs",
-    "CliShimPlanner.cs",
-    "CliShimPath.cs",
-    "CliShimRegistrar.cs",
-    # process-spawn boundary (extracted from compose root, ADR 组合根只装配)
-    "PluginProcessRunner.cs",
-    # plugin profile transaction boundary (staging copy / journal / rename swap; ADR transactional-plugin-pipeline)
-    "PluginProfileTransaction.cs",
-    # settings/legacy persistence boundary (read-only file I/O)
-    "LegacyHomeNotice.cs",
-    "CloseBehaviorPreference.cs",
+    "PluginVersionCheck.cs",
 }
 
 D004_RE = re.compile(r"Console\.(?:Write|WriteLine|Error\.Write)")
@@ -91,10 +59,6 @@ D004_RE = re.compile(r"Console\.(?:Write|WriteLine|Error\.Write)")
 D005_RE = re.compile(
     r"\b(?:Process\.Start|new Process\b|new ProcessStartInfo|new HttpClient\b|"
     r"File\.|Directory\.|FileStream)\b")
-
-# A /path/to/Services/Update/Anything.cs is an Update sub-domain boundary.
-UPDATE_SUBDIR = "/Update/"
-
 
 def _strip_comments_line(line: str, in_block: list[bool]) -> str:
     """Return the code-only text of a line, tracking block-comment state."""
@@ -122,13 +86,17 @@ def _strip_comments_line(line: str, in_block: list[bool]) -> str:
     return "".join(out)
 
 
-def _file_is_allowed_d005(rel: Path) -> bool:
-    if str(rel).startswith("Services/Update/"):
+def _file_is_allowed_d005(project: str, rel: Path) -> bool:
+    """B4 退役形态：豁免按工程推导——Infrastructure 整工程豁免（边界层本体）；
+    Core 仅两个只读边界文件；主工程（Presentation/组合根）零豁免。"""
+    if project == D005_PROJECT_EXEMPT or project.endswith("." + D005_PROJECT_EXEMPT):
         return True
-    return rel.name in D005_WHITELIST
+    if project == "DeepSeek.Harness.Desktop.Core" or project.endswith(".DeepSeek.Harness.Desktop.Core"):
+        return rel.name in D005_CORE_WHITELIST
+    return False
 
 
-def _violations(abspath: Path, rel: Path) -> list[str]:
+def _violations(abspath: Path, rel: Path, project: str) -> list[str]:
     text = abspath.read_text(encoding="utf-8")
     in_block = [False]
     out: list[str] = []
@@ -145,18 +113,19 @@ def _violations(abspath: Path, rel: Path) -> list[str]:
 
     if d004_hits and rel.name not in D004_WHITELIST:
         out.append(f"  {rel}: D004 Console used {d004_hits}x (log must go via HostLog)")
-    if d005_hits and not _file_is_allowed_d005(rel):
+    if d005_hits and not _file_is_allowed_d005(project, rel):
         out.append(f"  {rel}: D005 infra used {d005_hits}x (Process/HttpClient/File/Directory/FileStream in non-boundary)")
     return out
 
 
 def _scan(src: Path) -> list[str]:
     rows: list[str] = []
+    project = src.name
     for path in sorted(src.rglob("*.cs")):
         rel = path.relative_to(src)
         if any(part in ("obj", "bin") for part in rel.parts):
             continue
-        rows.extend(_violations(path, rel))
+        rows.extend(_violations(path, rel, project))
     return rows
 
 
@@ -181,21 +150,25 @@ def _self_test() -> int:
         else:
             print("  ok: doc-comment Console not flagged; HostLog whitelisted")
 
-        # D005: pure-logic file using File. -> flagged; infra file ok.
-        (root / "UpdateStateMachine.cs").write_text(
+        # D005（B4 退役形态）：主工程纯逻辑 File. -> flagged；Infrastructure 整工程豁免。
+        app = root / "DeepSeek.Harness.Desktop"
+        infra_proj = root / "DeepSeek.Harness.Desktop.Infrastructure"
+        app.mkdir()
+        infra_proj.mkdir()
+        (app / "UpdateStateMachine.cs").write_text(
             "public class UpdateStateMachine { bool Has(string p) => File.Exists(p); }\n",
             encoding="utf-8")
-        (root / "HarnessRuntimeHost.cs").write_text(
+        (infra_proj / "HarnessRuntimeHost.cs").write_text(
             "public class H { void M() { var p = new ProcessStartInfo(); } }\n",
             encoding="utf-8")
-        inf = _scan(root)
+        inf = _scan(app) + _scan(infra_proj)
         if any("UpdateStateMachine.cs" in r and "D005" in r for r in inf):
-            print("  ok: D005 flagged pure-logic File. use")
+            print("  ok: D005 flagged presentation File. use")
         else:
             print(f"  ✗ D005 not flagged: {inf}")
             failed = 1
         if not any("HarnessRuntimeHost.cs" in r for r in inf):
-            print("  ok: D005 whitelisted infra file not flagged")
+            print("  ok: Infrastructure project exempt as boundary layer")
         else:
             print(f"  ✗ infra file flagged: {inf}")
             failed = 1

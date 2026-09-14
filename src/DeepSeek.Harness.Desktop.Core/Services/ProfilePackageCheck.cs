@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>profile package.json 的插件就位检测（纯判定 + 文件读取，Core 侧单点）：
 /// 供随包/预设插件清单与安装驱动共用；检测失败按「未安装」处理（fail-safe，不阻断启动链）。</summary>

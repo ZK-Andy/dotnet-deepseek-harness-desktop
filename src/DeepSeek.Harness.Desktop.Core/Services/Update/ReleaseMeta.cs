@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Core.Update;
 
 /// <summary>一次检查的解析产物：目标版本、匹配当前平台的资产与校验文件地址。</summary>
 /// <param name="Version">release tag 版本（如 <c>v0.1.21</c>）。</param>

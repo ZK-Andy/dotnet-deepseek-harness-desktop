@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// CLI shim 文本生成（纯函数，可单测）。dsh 已全局安装在用户 PATH（ADR simple-shell-single-global-dsh），

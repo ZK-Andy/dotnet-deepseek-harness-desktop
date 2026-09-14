@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// active-run 崩溃取证 marker（ADR shell-observability-diagnostics，模式对齐 anywhere-labs
@@ -77,7 +77,7 @@ public static class RunMarker
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
             // 清理失败不影响退出路径：下轮启动会按「非受控退出」处理并自愈
-            Services.HostLog.Write($"[host] run-marker 清理失败：{ex.Message}");
+            HostLog.Write($"[host] run-marker 清理失败：{ex.Message}");
             return false;
         }
     }

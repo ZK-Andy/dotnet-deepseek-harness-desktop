@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>市场 registry 插件 spec 的形状 allowlist（ADR spawn-env-and-plugin-spec-hardening）：
 /// 以上游 Electron 桌面 <c>packageNameFromSpec</c>（<c>apps/desktop/src/project-manager.ts:162</c>）

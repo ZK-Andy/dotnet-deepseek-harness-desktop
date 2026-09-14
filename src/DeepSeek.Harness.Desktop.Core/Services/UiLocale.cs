@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
 /// 宿主 UI 语言单点（ADR host-ui-locale）：托盘菜单与横幅文案的 locale 依据。

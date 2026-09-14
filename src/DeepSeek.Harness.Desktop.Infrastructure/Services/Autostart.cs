@@ -1,6 +1,6 @@
 using Microsoft.Win32;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 开机自启（ADR shell-convenience-autostart-ready-notify）：Linux 走 XDG autostart

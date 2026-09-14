@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// <see cref="HarnessRuntimeHost"/> 的静态路径/环境解析面（partial，ADR 尺寸健康闸）。

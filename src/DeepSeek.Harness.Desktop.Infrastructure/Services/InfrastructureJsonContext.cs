@@ -1,7 +1,6 @@
 using System.Text.Json.Serialization;
-using DeepSeek.Harness.Desktop.Services.Tray;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// Infrastructure 侧持久化文档的 JSON 源生成上下文（AOT 兼容裕度）：B2 起 run-marker 落盘适配器

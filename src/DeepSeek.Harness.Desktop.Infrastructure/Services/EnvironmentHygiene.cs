@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>子进程环境净化单点（ADR spawn-env-and-plugin-spec-hardening）：我方 spawn 的
 /// node/npm/dsh 子进程只带自有注入，不继承宿主 shell 的 <c>NODE_OPTIONS</c>/<c>NODE_PATH</c> 与

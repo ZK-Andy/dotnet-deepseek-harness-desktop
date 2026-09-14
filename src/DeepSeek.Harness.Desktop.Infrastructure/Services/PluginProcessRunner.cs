@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 子进程执行器（ADR 组合根只装配）：spawn、双流读、逐行转发、取消/异常整树击杀集中在此，

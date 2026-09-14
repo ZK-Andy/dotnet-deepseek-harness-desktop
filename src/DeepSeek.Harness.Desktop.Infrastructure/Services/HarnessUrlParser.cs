@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>从 dsh CLI stdout 解析 <c>dsh web: &lt;url&gt;</c> 行。</summary>
 public static class HarnessUrlParser

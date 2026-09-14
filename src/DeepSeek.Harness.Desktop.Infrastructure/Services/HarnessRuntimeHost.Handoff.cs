@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// <see cref="HarnessRuntimeHost"/> 的端口交接面（partial）：首选端口启动失败时的处置——收养市场原地接力

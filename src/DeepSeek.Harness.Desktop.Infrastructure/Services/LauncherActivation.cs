@@ -1,7 +1,7 @@
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 单实例仲裁（ADR single-instance-launcher-activation）：首实例对 Unix domain socket

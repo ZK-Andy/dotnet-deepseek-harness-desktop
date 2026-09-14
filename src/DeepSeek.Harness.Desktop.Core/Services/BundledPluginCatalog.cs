@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
 /// 随包插件装配判定（ADR bundled-plugin-version-aware-catalog + online-first-unbundled-runtime 批次三；

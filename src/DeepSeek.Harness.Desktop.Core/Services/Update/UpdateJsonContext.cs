@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Core.Update;
 
 /// <summary>
 /// Core 侧帧的 JSON 源生成上下文（AOT 兼容裕度）：B1 起 <see cref="UpdateStateFrame"/> 随

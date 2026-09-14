@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 插件安装体检探针（ADR plugin-install-health-probe）：独立 spawn 一次 dsh web（<c>--port 0</c>）

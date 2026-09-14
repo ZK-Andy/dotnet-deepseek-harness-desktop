@@ -11,11 +11,11 @@ internal static class TrayCheckFeedback
     public const string Title = "DeepSeek Harness Desktop";
 
     /// <summary>检查结束态 → 通知正文；返回 null 表示此态不打扰。</summary>
-    public static string? Message(Update.UpdateState state) => state.Status switch
+    public static string? Message(UpdateState state) => state.Status switch
     {
-        Update.UpdateStatus.UpToDate => "已是最新版本",
-        Update.UpdateStatus.Ready => $"新版本 {state.Version} 已就绪，可在 设置 → 桌面设置 安装",
-        Update.UpdateStatus.Error => "检查更新失败：" + (state.Message ?? "未知原因"),
+        UpdateStatus.UpToDate => "已是最新版本",
+        UpdateStatus.Ready => $"新版本 {state.Version} 已就绪，可在 设置 → 桌面设置 安装",
+        UpdateStatus.Error => "检查更新失败：" + (state.Message ?? "未知原因"),
         _ => null,
     };
 }

@@ -1,5 +1,3 @@
-using DeepSeek.Harness.Desktop.Services.Update;
-
 namespace DeepSeek.Harness.Desktop.Tests;
 
 /// <summary>DesktopUpdateCommandRouter 的后台 token 契约（回归 R2#5）：check/install 的长任务

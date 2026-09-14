@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
 
 /// <summary>
 /// GitHub release 元数据客户端：<c>releases.atom</code> 取最新稳定 tag + <c>expanded_assets/&lt;tag&gt;</c> 页抓资产链接，

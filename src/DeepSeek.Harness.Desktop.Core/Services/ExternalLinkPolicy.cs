@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>外部链接判定与打开策略（纯逻辑，可单测）。</summary>
 /// <remarks>桌面 WebView 内把站外 <c>http(s)</c> 链接交给系统默认浏览器打开（见 implemented ADR

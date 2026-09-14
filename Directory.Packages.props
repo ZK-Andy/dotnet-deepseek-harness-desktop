@@ -1,0 +1,23 @@
+<Project>
+
+  <!-- 中央包管理（CPM，官方判据 8，ADR official-clean-architecture-adoption B4）：
+       包版本单一事实源；各 csproj 的 PackageReference 只声明引用不带 Version。 -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Ryn" Version="0.38.0" />
+    <PackageVersion Include="Ryn.Plugins.Tray" Version="0.38.0" />
+    <PackageVersion Include="Ryn.Callbacks" Version="0.38.0" />
+    <PackageVersion Include="Ryn.Ipc.Generator" Version="0.38.0" />
+    <PackageVersion Include="StyleCop.Analyzers" Version="1.1.118" />
+    <PackageVersion Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+  </ItemGroup>
+
+</Project>

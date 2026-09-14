@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 随包插件供给清单（组合侧登记）：online-first 后随包仅桌面伴生插件（companion），

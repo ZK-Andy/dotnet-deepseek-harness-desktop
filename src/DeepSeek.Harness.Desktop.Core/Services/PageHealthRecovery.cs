@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
 /// 有界恢复预算（纯逻辑可单测，对齐参照项目的 <c>BoundedReloadGate</c>）：页面健康监测在

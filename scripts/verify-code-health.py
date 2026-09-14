@@ -408,7 +408,11 @@ def main() -> int:
         return _self_test()
 
     parser = argparse.ArgumentParser(description="Verify src code-size health")
-    parser.add_argument("--src", default="src/DeepSeek.Harness.Desktop")
+    parser.add_argument("--src", nargs="+",
+                        default=["src/DeepSeek.Harness.Desktop",
+                                 "src/DeepSeek.Harness.Desktop.Core",
+                                 "src/DeepSeek.Harness.Desktop.Infrastructure"],
+                        help="scan roots（B4 起三工程全扫）")
     parser.add_argument("--file-limit", type=int, default=DEFAULT_FILE_LIMIT)
     parser.add_argument("--method-limit", type=int, default=DEFAULT_METHOD_LIMIT)
     parser.add_argument("--compose-method-limit", type=int,
@@ -417,8 +421,10 @@ def main() -> int:
                         help="exit 1 on any violation (default: report only)")
     args = parser.parse_args()
 
-    rows = _scan(Path(args.src), args.file_limit, args.method_limit,
-                 args.compose_method_limit)
+    rows = []
+    for s in args.src:
+        rows.extend(_scan(Path(s), args.file_limit, args.method_limit,
+                          args.compose_method_limit))
     if rows:
         print(f"code-health: {len(rows)} size violation(s)")
         for r in rows:

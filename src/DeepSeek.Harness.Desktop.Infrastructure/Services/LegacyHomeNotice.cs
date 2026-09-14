@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 旧 home 探测（ADR shared-home-desktop-profile）：v0.2.x 私有 home 仍在时于 host.log

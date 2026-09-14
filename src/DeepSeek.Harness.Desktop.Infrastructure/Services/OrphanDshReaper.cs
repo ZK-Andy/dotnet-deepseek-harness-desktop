@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 宿主启动时的孤儿 dsh 清扫（ADR self-update-exit-reaps-dsh-child，缺口 B）——<c>.dsh-pid</c> 记录路径，
@@ -42,7 +42,7 @@ public static class OrphanDshReaper
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or OverflowException)
         {
             // 记录损坏不可读：按无可清扫处理（fail-safe——清扫是增强，绝不挡启动）
-            Services.HostLog.Write($"[host] 读 dsh PID 记录失败（跳过清扫）：{ex.Message}");
+            HostLog.Write($"[host] 读 dsh PID 记录失败（跳过清扫）：{ex.Message}");
             return null;
         }
     }

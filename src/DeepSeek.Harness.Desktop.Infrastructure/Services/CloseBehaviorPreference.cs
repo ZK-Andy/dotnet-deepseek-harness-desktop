@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace DeepSeek.Harness.Desktop.Services.Tray;
+namespace DeepSeek.Harness.Desktop.Infrastructure.Tray;
 
 /// <summary>
 /// 「关闭时最小化到托盘」偏好：持久化于 <c>&lt;DSH_HOME&gt;/desktop-preferences.json</c>。

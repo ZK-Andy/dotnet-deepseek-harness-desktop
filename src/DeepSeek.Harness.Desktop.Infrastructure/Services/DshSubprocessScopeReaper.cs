@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 残留 dsh 下游 scope 收割：scope 名内嵌的 dsh 主进程 pid 已死（<c>/proc</c> 不存在）才

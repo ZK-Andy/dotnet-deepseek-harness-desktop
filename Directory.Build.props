@@ -1,0 +1,23 @@
+<Project>
+
+  <!-- 解组织级共享工程配置（官方判据 8，ADR official-clean-architecture-adoption B4）：
+       全部工程（src 三层 + tests 三工程 + PayloadSmoke）的同构 PropertyGroup 收敛于此；
+       差异项（OutputType/AllowUnsafeBlocks/GenerateDocumentationFile/Ryn 包/分析器集合）
+       仍归各 csproj。版本管理走 Directory.Packages.props（CPM）。 -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 编码规范强制（见 docs/coding-standards.md）：AnalysisLevel 启用 .NET 分析器默认规则，
+         EnforceCodeStyleInBuild 让 IDE 风格规则（var/命名/this./关键字等，见根 .editorconfig）
+         在 build 中按 warning 执行。 -->
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <!-- AD0001（分析器异常）抑制：StyleCop.Analyzers 1.1.118 在 C# 13/14 新语法（record 声明等）
+         上抛异常；受影响的 SA 规则已按 .editorconfig 禁用或降级，崩溃噪音无分析价值。 -->
+    <NoWarn>$(NoWarn);AD0001</NoWarn>
+  </PropertyGroup>
+
+</Project>

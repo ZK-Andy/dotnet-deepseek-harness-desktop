@@ -49,7 +49,7 @@ public sealed class DesktopDiagnosticsCommandRouter : ICommandRouter
         try
         {
             string home = _home ?? HarnessRuntimeHost.ResolveDshHome();
-            string version = _appVersion ?? Update.AppVersion.Current();
+            string version = _appVersion ?? AppVersion.Current();
             DiagnosticsExportResult result = _outputDirectory is null
                 ? DiagnosticsExporter.ExportWithFallback(home, version, _log, _healthSnapshot)
                 : DiagnosticsExporter.Export(home, _outputDirectory, version, _healthSnapshot);

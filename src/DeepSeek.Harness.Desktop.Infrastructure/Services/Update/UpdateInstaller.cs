@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
 
 /// <summary>
 /// 平台安装执行器：派生「等待本进程退出 → 静默安装 → 拉起新版」的分离进程。

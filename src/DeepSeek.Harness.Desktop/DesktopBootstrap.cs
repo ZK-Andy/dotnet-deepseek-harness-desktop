@@ -12,9 +12,9 @@ public sealed partial class DesktopBootstrap
 {
     // —— 共享状态（原 Main 局部变量 → 字段；赋值时点与原 Main 语句位置一致，语义等价）——
     private bool _bootstrapNeeded;
-    private Services.RuntimeBootstrapOptions? _bootstrapOptions;
+    private RuntimeBootstrapOptions? _bootstrapOptions;
     private Services.RuntimeBootstrapGate _bootstrapGate = null!;
-    private Services.PreinstallChoiceGate _preinstallGate = null!;
+    private PreinstallChoiceGate _preinstallGate = null!;
     private TaskCompletionSource? _bootstrapSettled;
     private CancellationTokenSource? _bootstrapCts;
     private bool _isDev;
@@ -26,9 +26,9 @@ public sealed partial class DesktopBootstrap
     // 由 SetupSupervisor 接线（Lifecycle 行 198），路由经 backgroundToken 闭包惰性读它——
     // 服务注册期拿不到 supervisorCts 的延迟捕获模式。
     private CancellationTokenSource? _supervisorCtsRef;
-    private Services.UiLocale _uiLocale = null!;
+    private UiLocale _uiLocale = null!;
     private PrimaryListener? _instanceListener;
-    private Services.Update.UpdateStateMachine? _updateMachine;
+    private UpdateStateMachine? _updateMachine;
     private bool _readyNotified;
     private string _iconPath = null!;
     private bool _trayAvailable;
@@ -45,7 +45,7 @@ public sealed partial class DesktopBootstrap
     private RuntimeSupervisor _supervisor = null!;
     private Task _supervisorTask = null!;
     private Services.Tray.CloseGate _closeGate = null!;
-    private Services.Tray.CloseBehaviorPreference _closeBehavior = null!;
+    private CloseBehaviorPreference _closeBehavior = null!;
     private bool _updateEnabled;
 
     // —— 启动编排阶段 token（ADR composition-root-stage-typing）——
@@ -106,7 +106,7 @@ public sealed partial class DesktopBootstrap
         // 全局 dsh（都在 PATH 上），桌面与终端共用同一套；没有系统 node 时由桌面装 node 到系统全局前缀
         //（需 sudo 则提示手动命令），而非桌面包私有运行时/私有 PATH。
         // 引导参数解析一次，供本方法（EnsureRuntimeNodeOnPath）与 RegisterCliShim/RunBootstrapWithRetry 复用。
-        _bootstrapOptions = Services.RuntimeBootstrapOptions.Load(AppContext.BaseDirectory);
+        _bootstrapOptions = RuntimeBootstrapOptions.Load(AppContext.BaseDirectory);
         // 若系统全局 node 已由桌面装好（此前安装/用户手动），把它暴露到进程 PATH，让宿主 spawn 与探测能解析。
         EnsureRuntimeNodeOnPath();
 
@@ -115,13 +115,13 @@ public sealed partial class DesktopBootstrap
         // 捆绑闭包存在性探测（打包新装同样没有闭包，探测会误判全部新装用户）。
         _bootstrapNeeded = false;
         {
-            string? pathVersion = Services.RuntimeVersionGate.ProbeAsync(CancellationToken.None)
+            string? pathVersion = RuntimeVersionGate.ProbeAsync(CancellationToken.None)
                 .GetAwaiter().GetResult();
             // 没有 → 装；落后 alpha 兼容底线（低于底部）→ 经引导更新到 @alpha；否则直接用。
             // 引导内 npm install -g @alpha 幂等（安装或更新）；检测"落后"以兼容底线（MinimumVersion）为
             // 廉价代理——精确对齐 @alpha 需启动时查询 npm dist-tag（见实现受阻点/决策点）。
-            _bootstrapNeeded = pathVersion is null || Services.RuntimeVersionGate.IsBelowFloor(pathVersion);
-            Services.HostLog.Write(_bootstrapNeeded
+            _bootstrapNeeded = pathVersion is null || RuntimeVersionGate.IsBelowFloor(pathVersion);
+            HostLog.Write(_bootstrapNeeded
                 ? $"[bootstrap] 全局 dsh 未检出或落后（{pathVersion ?? "(无)"}），进入首启引导"
                 : $"[bootstrap] 全局 dsh 可用（{pathVersion}），跳过首启引导");
         }
@@ -133,7 +133,7 @@ public sealed partial class DesktopBootstrap
         // 插件引导决策闸门（ADR reference-alignment 批次二）：引导页 desktop.preinstall.choose
         // 命令置位「确认装/跳过」，引导任务 await Choice 消费。与 bootstrapGate 同款声明提前——
         // 命令路由注册、引导任务共用同一实例。
-        _preinstallGate = new Services.PreinstallChoiceGate();
+        _preinstallGate = new PreinstallChoiceGate();
         string? devRuntimeDir = Environment.GetEnvironmentVariable(DevEnvironment.RuntimeDirEnv);
         string? devFlag = Environment.GetEnvironmentVariable(DevEnvironment.DevFlagEnv);
         _isDev = DevEnvironment.IsDevRuntime(devRuntimeDir, devFlag);
@@ -145,7 +145,7 @@ public sealed partial class DesktopBootstrap
             {
                 Environment.SetEnvironmentVariable(DevEnvironment.HomeOverrideEnv, devHome);
                 _devAutoIsolated = true;
-                Services.HostLog.Write($"[host] 开发运行时：DSH_HOME 隔离到 {devHome}；ApplicationId 带 .dev 后缀，可与正式版并存");
+                HostLog.Write($"[host] 开发运行时：DSH_HOME 隔离到 {devHome}；ApplicationId 带 .dev 后缀，可与正式版并存");
             }
         }
         else if (!_isDev &&
@@ -153,7 +153,7 @@ public sealed partial class DesktopBootstrap
         {
             // dev 判定改显式标记后的唯一残留风险（R2 评审）：贡献者在仓库内跑却忘带
             // DSH_DESKTOP_DEV=1 —— 判定按设计走打包产品语义，但值得一条 host.log 诊断指路
-            Services.HostLog.Write("[host] 疑似仓库内开发运行但未设 DSH_DESKTOP_DEV=1：按打包产品处理（共享真实 home，无 dev 隔离）");
+            HostLog.Write("[host] 疑似仓库内开发运行但未设 DSH_DESKTOP_DEV=1：按打包产品处理（共享真实 home，无 dev 隔离）");
         }
 
         // token：ResolveRuntimeAndDev 完成（配置已落字段），供后续阶段按类型承诺串联。
@@ -164,10 +164,10 @@ public sealed partial class DesktopBootstrap
     /// 时由桌面把 node 装到系统全局前缀，桌面与终端共用同一份）。node 已装到全局前缀时生效，否则 no-op。</summary>
     private void EnsureRuntimeNodeOnPath()
     {
-        if (Services.RuntimeBootstrap.TryResolveActiveNodeBinDir(_bootstrapOptions!) is { } nodeBin)
+        if (RuntimeBootstrap.TryResolveActiveNodeBinDir(_bootstrapOptions!) is { } nodeBin)
         {
-            Services.RuntimeBootstrap.PrependPathToProcessEnv(nodeBin);
-            Services.HostLog.Write($"[host] 系统全局 node 已暴露到 PATH：{nodeBin}");
+            RuntimeBootstrap.PrependPathToProcessEnv(nodeBin);
+            HostLog.Write($"[host] 系统全局 node 已暴露到 PATH：{nodeBin}");
         }
     }
 
@@ -181,7 +181,7 @@ public sealed partial class DesktopBootstrap
         // 防残留样本让下一次托盘点击把用户手动还原的窗口误最大化。
         _maximizedAtHide = -1;
         // 宿主 UI 语言单点（ADR host-ui-locale）：companion 上报 dsh locale，托盘/横幅据此出双语
-        _uiLocale = new Services.UiLocale();
+        _uiLocale = new UiLocale();
         string? xdgRuntimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
         string? instanceSocketPath = OperatingSystem.IsWindows()
             ? null // Windows 无验证环境不启用互斥，行为维持现状（ADR 平台边界）
@@ -207,11 +207,11 @@ public sealed partial class DesktopBootstrap
                         try
                         {
                             await accessor.Current.ShowAsync();
-                            Services.HostLog.Write("[host] launcher 激活：显示主窗完成");
+                            HostLog.Write("[host] launcher 激活：显示主窗完成");
                         }
                         catch (Exception ex)
                         {
-                            Services.HostLog.Write($"[host] launcher 激活显示主窗失败：{ex.Message}");
+                            HostLog.Write($"[host] launcher 激活显示主窗失败：{ex.Message}");
                         }
                         finally
                         {
@@ -220,11 +220,11 @@ public sealed partial class DesktopBootstrap
                             Volatile.Write(ref _maximizedAtHide, -1);
                         }
                     },
-                    Services.HostLog.Write,
+                    HostLog.Write,
                     out _instanceListener))
             {
                 bool notified = LauncherActivation.NotifyPrimary(instanceSocketPath, TimeSpan.FromSeconds(2));
-                Services.HostLog.Write(
+                HostLog.Write(
                     $"[host] 已有主实例在运行（launcher 二次启动）：通知显示主窗{(notified ? "成功" : "未达（主实例可能正忙）")}，本次启动退出");
                 return false;
             }
@@ -240,30 +240,30 @@ public sealed partial class DesktopBootstrap
         // 不自动初始化，缺清单直接拒启；必须在 spawn 前确保 profile 就绪（幂等，已存在则零写入）。
         try
         {
-            DesktopProfileBootstrap.MigrateLegacyProfileName(HarnessRuntimeHost.ResolveDshHome(), Services.HostLog.Write);
+            DesktopProfileBootstrap.MigrateLegacyProfileName(HarnessRuntimeHost.ResolveDshHome(), HostLog.Write);
 
             // 事务管线 recover（ADR transactional-plugin-pipeline）：上轮插件事务被中断时按 journal
             // 重放/回滚，并清扫 stray staging/rollback 目录。必须在 EnsureProfile/探针/spawn 之前——
             // journal 损坏在此 fail loud（异常进入下方 catch 记日志，dsh 起不来的后果由降级链路兜底）。
-            PluginProfileTransaction.Recover(HarnessRuntimeHost.ResolveDshHome(), Services.HostLog.Write);
+            PluginProfileTransaction.Recover(HarnessRuntimeHost.ResolveDshHome(), HostLog.Write);
 
             if (DesktopProfileBootstrap.EnsureProfile(HarnessRuntimeHost.ResolveDshHome()))
             {
-                Services.HostLog.Write($"[host] 已初始化 profiles/{HarnessRuntimeHost.DesktopProfileName}（bundles 对齐 web 模板）");
+                HostLog.Write($"[host] 已初始化 profiles/{HarnessRuntimeHost.DesktopProfileName}（bundles 对齐 web 模板）");
             }
 
             // 启动前 reconcile 不可解析的 bundle 引用（ADR online-first-unbundled-runtime 批次三，
             // 对齐 dsh-tauri-desk #177：退役随包种子后，存量 profile 可能残留指向已消失 tgz 的
             // file:/link: 引用，dsh 启动时视作不可解析 → 卡死循环）。必须在 spawn 前清理。
-            int reconciled = DesktopProfileBootstrap.ReconcileProfile(HarnessRuntimeHost.ResolveDshHome(), Services.HostLog.Write);
+            int reconciled = DesktopProfileBootstrap.ReconcileProfile(HarnessRuntimeHost.ResolveDshHome(), HostLog.Write);
             if (reconciled > 0)
             {
-                Services.HostLog.Write($"[host] 桌面 profile reconcile：移除 {reconciled} 个不可解析插件引用");
+                HostLog.Write($"[host] 桌面 profile reconcile：移除 {reconciled} 个不可解析插件引用");
             }
         }
         catch (Exception ex)
         {
-            Services.HostLog.Write($"[host] profiles/{HarnessRuntimeHost.DesktopProfileName} 初始化失败（dsh 可能拒启，详见后续降级链路）：{ex.Message}");
+            HostLog.Write($"[host] profiles/{HarnessRuntimeHost.DesktopProfileName} 初始化失败（dsh 可能拒启，详见后续降级链路）：{ex.Message}");
         }
     }
 
@@ -271,7 +271,7 @@ public sealed partial class DesktopBootstrap
     {
         // 原 `using var host`：生命周期由 Run 的 finally 释放（本方法赋值）。
         // 全局 dsh 模型：宿主恒以 PATH dsh（bundled=null）形态运行（ADR simple-shell-single-global-dsh）。
-        _host = new HarnessRuntimeHost(Services.HostLog.Write);
+        _host = new HarnessRuntimeHost(HostLog.Write);
 
         // 崩溃取证 marker（ADR shell-observability-diagnostics）：遗留即判定上轮非受控退出；
         // 正常退出路径在 Run 尾部按 token 清除
@@ -279,7 +279,7 @@ public sealed partial class DesktopBootstrap
         _previousRunUnclean = _marker.PreviousRunUnclean;
         if (_previousRunUnclean)
         {
-            Services.HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
+            HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
         }
 
         // token：SetupHostAndMarker 完成（host/marker 已落字段），供后续阶段按类型承诺串联。
@@ -297,25 +297,25 @@ public sealed partial class DesktopBootstrap
             bool installed = false;
             try
             {
-                installed = Services.MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                installed = MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
                     nodeExe: null,
                     dshEntry: null,
                     HarnessRuntimeHost.ResolveDshHome(),
                     Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
-                    Services.HostLog.Write,
-                    Services.PluginProcessRunner.RunAsync,
-                    Services.PluginProcessRunner.RunProbeAsync,
+                    HostLog.Write,
+                    PluginProcessRunner.RunAsync,
+                    PluginProcessRunner.RunProbeAsync,
                     CancellationToken.None).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
-                Services.HostLog.Write($"[host] 随包插件 spawn 前安装失败（跳过，不阻断启动）：{ex.Message}");
+                HostLog.Write($"[host] 随包插件 spawn 前安装失败（跳过，不阻断启动）：{ex.Message}");
             }
 
             if (installed)
             {
                 // 事务管线（ADR transactional-plugin-pipeline）：staged 体检在换入前已过，active 即新完整态
-                Services.HostLog.Write("[host] 随包插件经事务管线换入 active（staged 体检已过）");
+                HostLog.Write("[host] 随包插件经事务管线换入 active（staged 体检已过）");
             }
         }
     }
@@ -331,14 +331,14 @@ public sealed partial class DesktopBootstrap
             : _host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult();
         if (!_bootstrapNeeded)
         {
-            Services.HostLog.Write($"[host] runtime = {_host.RuntimeDescription}");
+            HostLog.Write($"[host] runtime = {_host.RuntimeDescription}");
             if (_webUrl is not null)
             {
-                Services.HostLog.Write($"[host] dsh web = {_webUrl}");
+                HostLog.Write($"[host] dsh web = {_webUrl}");
             }
             else
             {
-                Services.HostLog.Write($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', _host.StderrTail.TakeLast(8))}");
+                HostLog.Write($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', _host.StderrTail.TakeLast(8))}");
             }
         }
 
@@ -348,17 +348,17 @@ public sealed partial class DesktopBootstrap
 
     private int RunAppLoop(SupervisorToken supervisor, HostToken host)
     {
-        Services.HostLog.Write("[host] Ryn Run 开始（阻塞直到窗口关闭）");
+        HostLog.Write("[host] Ryn Run 开始（阻塞直到窗口关闭）");
         try
         {
             _app.Run();
         }
         catch (Exception ex)
         {
-            Services.HostLog.Write($"[host] Ryn Run 异常：{ex}");
+            HostLog.Write($"[host] Ryn Run 异常：{ex}");
         }
 
-        Services.HostLog.Write("[host] Ryn Run 结束");
+        HostLog.Write("[host] Ryn Run 结束");
         _supervisorCts.Cancel();
         _bootstrapCts?.Cancel();
         try

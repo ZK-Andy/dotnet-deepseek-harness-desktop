@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>托管 dsh 运行时子进程：spawn dsh（`--profile <see cref="HarnessRuntimeHost.DesktopProfileName"/> --port 0`），解析 `dsh web:` URL，管理生命周期。
 /// 静态路径/环境解析面见 <c>HarnessRuntimeHost.Paths.cs</c>；端口冲突的交接处置（收养市场接力的续任者 /

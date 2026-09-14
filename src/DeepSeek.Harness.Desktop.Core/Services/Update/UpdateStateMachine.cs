@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Core.Update;
 
 /// <summary>
 /// 自更新状态机（opencode <c>updater-controller</c> 的 C# 移植）：

@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
 
 /// <summary>
 /// 自更新安装包清扫（ADR self-update-prune-consumed-packages）：启动对账时删除「版本已过期」的

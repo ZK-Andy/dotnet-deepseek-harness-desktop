@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using DeepSeek.Harness.Desktop.Services;
 using Ryn.Core;
 
 namespace DeepSeek.Harness.Desktop;
@@ -19,7 +18,7 @@ public sealed partial class DesktopBootstrap
         _ = Task.Run(async () =>
         {
             await Task.Delay(TimeSpan.FromSeconds(8));
-            Services.HostLog.Write("[tray] 退出看门狗触发：主循环未返回，强制结束");
+            HostLog.Write("[tray] 退出看门狗触发：主循环未返回，强制结束");
             _host.Stop();
             Environment.Exit(0);
         });
@@ -43,7 +42,7 @@ public sealed partial class DesktopBootstrap
                 return;
             }
 
-            Services.HostLog.Write("[update] 退出兜底触发：回收 dsh 后强退");
+            HostLog.Write("[update] 退出兜底触发：回收 dsh 后强退");
             if (_updateExitReaper is not null)
             {
                 _updateExitReaper();
@@ -65,23 +64,23 @@ public sealed partial class DesktopBootstrap
             // 原生查询 IRynWindow.IsMaximized（Ryn 0.30.3 起暴露，本仓自 0.30.4 消费）
             Volatile.Write(ref _maximizedAtHide, window.IsMaximized ? 1 : 0);
             // 隐藏即采样的留痕+主线程活性证据：唤回行为异常的排查需要知道「隐藏时看到什么」
-            Services.HostLog.Write($"[tray] 窗口隐藏到托盘（隐藏前最大化采样={Volatile.Read(ref _maximizedAtHide)}）");
+            HostLog.Write($"[tray] 窗口隐藏到托盘（隐藏前最大化采样={Volatile.Read(ref _maximizedAtHide)}）");
         }
         catch (Exception ex)
         {
             // deferred 代理在窗口未就绪时可能抛出：按未知处理，唤回路径对未知不动作
             Volatile.Write(ref _maximizedAtHide, -1);
-            Services.HostLog.Write($"[tray] 最大化采样失败：{ex.Message}");
+            HostLog.Write($"[tray] 最大化采样失败：{ex.Message}");
         }
 
         try
         {
             await window.HideAsync();
-            Services.HostLog.Write("[tray] 窗口已隐藏");
+            HostLog.Write("[tray] 窗口已隐藏");
         }
         catch (Exception ex)
         {
-            Services.HostLog.Write($"[tray] 隐藏窗口失败：{ex.Message}");
+            HostLog.Write($"[tray] 隐藏窗口失败：{ex.Message}");
         }
     }
 
@@ -103,12 +102,12 @@ public sealed partial class DesktopBootstrap
                 if (OperatingSystem.IsLinux() && Services.Tray.TrayRecallMaximize.ShouldEnsure(sample))
                 {
                     trayWindow.SetMaximized(true);
-                    Services.HostLog.Write("[tray] 唤回：隐藏态已预置最大化");
+                    HostLog.Write("[tray] 唤回：隐藏态已预置最大化");
                 }
             }
             catch (Exception ex)
             {
-                Services.HostLog.Write($"[tray] 隐藏态预置最大化失败：{ex.Message}");
+                HostLog.Write($"[tray] 隐藏态预置最大化失败：{ex.Message}");
             }
 
             await trayWindow.ShowAsync().AsTask();
@@ -120,7 +119,7 @@ public sealed partial class DesktopBootstrap
                 await Task.Delay(300);
                 trayWindow.SetMaximized(true);
                 // 兜底拍留痕：预置拍已打日志，此拍若不落痕，「两拍只走了一拍」无从判别
-                Services.HostLog.Write("[tray] 唤回：显示后兜底确认已发");
+                HostLog.Write("[tray] 唤回：显示后兜底确认已发");
             }
         }
         finally
@@ -146,13 +145,13 @@ public sealed partial class DesktopBootstrap
     {
         try
         {
-            string? nodeBinDir = Services.RuntimeBootstrap.TryResolveActiveNodeBinDir(_bootstrapOptions!);
-            new Services.CliShimRegistrar(Services.HostLog.Write).TryRegister(nodeBinDir);
+            string? nodeBinDir = RuntimeBootstrap.TryResolveActiveNodeBinDir(_bootstrapOptions!);
+            new CliShimRegistrar(HostLog.Write).TryRegister(nodeBinDir);
         }
         catch (Exception ex)
         {
             // 注册是增强信息：任何未预期异常都不该打断启动链路
-            Services.HostLog.Write($"[cli-shim] 注册跳过（意外异常）：{ex.Message}");
+            HostLog.Write($"[cli-shim] 注册跳过（意外异常）：{ex.Message}");
         }
     }
 
@@ -188,8 +187,8 @@ public sealed partial class DesktopBootstrap
         Services.RuntimeBootstrapGate gate, CancellationToken ct)
     {
         RuntimeBootstrapOptions options = _bootstrapOptions!;
-        RuntimeBootstrapHooks hooks = Services.RuntimeBootstrap.CreateDefaultHooks(Services.HostLog.Write);
-        Services.HostLog.Write($"[bootstrap] 引导开始：dshSpec={options.DshSpec}（用系统全局 node 的 npm 装到全局）");
+        RuntimeBootstrapHooks hooks = RuntimeBootstrap.CreateDefaultHooks(HostLog.Write);
+        HostLog.Write($"[bootstrap] 引导开始：dshSpec={options.DshSpec}（用系统全局 node 的 npm 装到全局）");
 
         while (true)
         {
@@ -197,7 +196,7 @@ public sealed partial class DesktopBootstrap
             BootstrapOutcome outcome;
             try
             {
-                outcome = await Services.RuntimeBootstrap.RunAsync(
+                outcome = await RuntimeBootstrap.RunAsync(
                     options,
                     progress => _ = Services.PagePump.PushBootstrapStateAsync(_windowAccessor, progress.Step.ToString(), progress.Message, progress.Failed),
                     hooks,
@@ -214,7 +213,7 @@ public sealed partial class DesktopBootstrap
             }
 
             string reason = outcome.Error ?? "未知错误";
-            Services.HostLog.Write($"[bootstrap] 引导失败：{reason}（等待用户重试或退出）");
+            HostLog.Write($"[bootstrap] 引导失败：{reason}（等待用户重试或退出）");
             // 推实际失败步骤：进度页据此红色高亮失败环节（推 "Ready" 会让高亮不可达）
             await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, outcome.Step.ToString(), reason, failed: true);
 
@@ -243,19 +242,19 @@ public sealed partial class DesktopBootstrap
         bool bundledInstalled = false;
         try
         {
-            bundledInstalled = await Services.MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+            bundledInstalled = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
                 nodeExe: null,
                 dshEntry: null,
                 HarnessRuntimeHost.ResolveDshHome(),
                 Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
-                Services.HostLog.Write,
-                Services.PluginProcessRunner.RunAsync,
-                Services.PluginProcessRunner.RunProbeAsync,
+                HostLog.Write,
+                PluginProcessRunner.RunAsync,
+                PluginProcessRunner.RunProbeAsync,
                 bootCt);
         }
         catch (Exception ex)
         {
-            Services.HostLog.Write($"[host] 引导：随包插件安装失败（跳过）：{ex.Message}");
+            HostLog.Write($"[host] 引导：随包插件安装失败（跳过）：{ex.Message}");
         }
 
         // 首启插件引导（ADR reference-alignment 批次二）：dshmarket（preset）经引导页
@@ -267,7 +266,7 @@ public sealed partial class DesktopBootstrap
         }
         catch (Exception ex)
         {
-            Services.HostLog.Write($"[host] 插件引导异常跳过：{ex.Message}");
+            HostLog.Write($"[host] 插件引导异常跳过：{ex.Message}");
         }
 
         // 事务管线（ADR transactional-plugin-pipeline）：市场驱动自带 staged 探针 + journal 换入，
@@ -278,13 +277,13 @@ public sealed partial class DesktopBootstrap
 
     /// <summary>流式执行器：把 <c>dsh plugin add</c> 的每行输出推给插件引导页日志区。
     /// 双执行器已折叠（原 TODO(executor-fold-killtree)）：统一走
-    /// <see cref="Services.PluginProcessRunner.RunStreamingAsync"/>——单一实现、含取消/异常整树击杀
+    /// <see cref="PluginProcessRunner.RunStreamingAsync"/>——单一实现、含取消/异常整树击杀
     /// （对齐 <c>RuntimeBootstrap.RunCaptureAsync</c> 防御不变量），引导路径传 bootCt 取消时
     /// 不再让 dsh plugin add 带 profile 写权成孤儿。</summary>
     private async Task<(int Exit, string Out, string Err)> RunDshPluginAddStreamingAsync(
         System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
     {
-        return await Services.PluginProcessRunner.RunStreamingAsync(psi, ct, line => Services.PagePump.PushPreinstallLog(_windowAccessor, line));
+        return await PluginProcessRunner.RunStreamingAsync(psi, ct, line => Services.PagePump.PushPreinstallLog(_windowAccessor, line));
     }
 
     /// <summary>
@@ -298,21 +297,21 @@ public sealed partial class DesktopBootstrap
         CancellationToken ct)
     {
         string home = HarnessRuntimeHost.ResolveDshHome();
-        string profileDir = Path.Combine(home, "profiles", Services.HarnessRuntimeHost.DesktopProfileName);
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
         string profilePkg = Path.Combine(profileDir, "package.json");
-        List<string> pending = Services.PresetPluginCatalog.PendingForFirstBoot(profilePkg, Services.HostLog.Write);
+        List<string> pending = PresetPluginCatalog.PendingForFirstBoot(profilePkg, HostLog.Write);
         if (pending.Count == 0)
         {
-            Services.HostLog.Write("[host] 插件引导：无可选插件待装，跳过");
+            HostLog.Write("[host] 插件引导：无可选插件待装，跳过");
             return false;
         }
 
         _preinstallGate.Reset();
         // 步骤高亮：引导页把「插件准备」步点亮（renderBootstrap 按 step 序置 active）。
         // 步骤名经枚举派生（单一事实源），避免与 JS STEP_ORDER 漂移。
-        await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, Services.BootstrapStep.PreinstallPlugins.ToString(), "可选插件准备", failed: false);
+        await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, BootstrapStep.PreinstallPlugins.ToString(), "可选插件准备", failed: false);
         await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("decision", Plugins: pending.ToArray()));
-        Services.HostLog.Write($"[host] 插件引导：呈现可选插件 {string.Join(", ", pending)}，等待用户决策（5 分钟超时默认跳过）");
+        HostLog.Write($"[host] 插件引导：呈现可选插件 {string.Join(", ", pending)}，等待用户决策（5 分钟超时默认跳过）");
 
         PreinstallChoice choice;
         try
@@ -321,45 +320,45 @@ public sealed partial class DesktopBootstrap
         }
         catch (TimeoutException)
         {
-            Services.HostLog.Write("[host] 插件引导等待用户决策超时（5 分钟），默认跳过（可从应用内市场补装）");
+            HostLog.Write("[host] 插件引导等待用户决策超时（5 分钟），默认跳过（可从应用内市场补装）");
             choice = PreinstallChoice.Skip;
         }
 
         if (choice == PreinstallChoice.Skip)
         {
-            Services.HostLog.Write("[host] 插件引导：用户跳过，本次不安装可选插件");
+            HostLog.Write("[host] 插件引导：用户跳过，本次不安装可选插件");
             await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("done", Action: "skip", Message: "已跳过插件安装"));
-            await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, Services.BootstrapStep.Ready.ToString(), "插件准备完成", failed: false);
+            await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, BootstrapStep.Ready.ToString(), "插件准备完成", failed: false);
             return false;
         }
 
-        Services.HostLog.Write("[host] 插件引导：用户确认，开始安装可选插件");
+        HostLog.Write("[host] 插件引导：用户确认，开始安装可选插件");
         bool pluginAddSucceeded = false;
         try
         {
-            await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("installing", Plugin: Services.PresetPluginCatalog.Market));
-            pluginAddSucceeded = await Services.MarketInstallHelper.EnsureMarketFromRegistryAsync(
+            await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("installing", Plugin: PresetPluginCatalog.Market));
+            pluginAddSucceeded = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
                 nodeExe: null,
                 dshEntry: null,
                 home,
-                Services.HostLog.Write,
+                HostLog.Write,
                 runPluginAddStreaming,
-                Services.PluginProcessRunner.RunProbeAsync,
+                PluginProcessRunner.RunProbeAsync,
                 ct);
-            bool installed = Services.MarketInstallHelper.IsBundleInstalled(profilePkg, Services.PresetPluginCatalog.Market);
+            bool installed = MarketInstallHelper.IsBundleInstalled(profilePkg, PresetPluginCatalog.Market);
             await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame(
                 "done", Action: "install", Ok: installed, Message: installed ? "安装完成" : "安装未成功（见日志）"));
-            Services.HostLog.Write($"[host] 插件引导：可选插件安装{(installed ? "成功" : "未成功")}（{Services.PresetPluginCatalog.Market}）");
+            HostLog.Write($"[host] 插件引导：可选插件安装{(installed ? "成功" : "未成功")}（{PresetPluginCatalog.Market}）");
         }
         catch (Exception ex)
         {
-            Services.HostLog.Write($"[host] 插件安装异常：{ex.Message}");
+            HostLog.Write($"[host] 插件安装异常：{ex.Message}");
             await Services.PagePump.RetryPushPreinstallAsync(_windowAccessor, new Services.PreinstallFrame("done", Action: "install", Ok: false, Message: ex.Message));
         }
         finally
         {
             // 步骤收尾：无论装/跳/失败，引导页把「插件准备」置 done 后再导航进主界面
-            await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, Services.BootstrapStep.Ready.ToString(), "插件准备完成", failed: false);
+            await Services.PagePump.PushBootstrapStateAsync(_windowAccessor, BootstrapStep.Ready.ToString(), "插件准备完成", failed: false);
         }
 
         return pluginAddSucceeded;

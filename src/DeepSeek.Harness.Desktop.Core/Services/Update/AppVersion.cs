@@ -1,6 +1,6 @@
 using System.Reflection;
 
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Core.Update;
 
 /// <summary>当前应用版本（单一来源：csproj 的 <c>&lt;Version&gt;</c>，发布时由 tag 覆盖）。</summary>
 public static class AppVersion

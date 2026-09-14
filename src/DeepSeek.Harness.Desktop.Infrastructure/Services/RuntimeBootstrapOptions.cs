@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 首启引导的可调参数（appsettings.json 的 <c>RuntimeBootstrap</c> 节，禁止硬编码进逻辑）。

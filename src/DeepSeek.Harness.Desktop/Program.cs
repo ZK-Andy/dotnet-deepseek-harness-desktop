@@ -1,5 +1,3 @@
-using DeepSeek.Harness.Desktop.Services;
-
 namespace DeepSeek.Harness.Desktop;
 
 /// <summary>DeepSeek Harness Desktop 入口：Ryn 桌面壳 + 托管 dsh 运行时 + 崩溃监督。</summary>
@@ -31,9 +29,9 @@ public static class Program
         {
             DiagnosticsExportResult result = DiagnosticsExporter.ExportWithFallback(
                 HarnessRuntimeHost.ResolveDshHome(),
-                Services.Update.AppVersion.Current());
+                AppVersion.Current());
             // CLI 形态下 stdout 可见；经 HostLog 双写让桌面形态的同一动作也落 host.log
-            Services.HostLog.Write($"[host] 诊断包已导出：{result.ZipPath}");
+            HostLog.Write($"[host] 诊断包已导出：{result.ZipPath}");
             return 0;
         }
         catch (Exception ex)

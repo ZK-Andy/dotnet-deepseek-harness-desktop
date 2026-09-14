@@ -1,4 +1,3 @@
-using DeepSeek.Harness.Desktop.Services;
 using Ryn.Core;
 
 namespace DeepSeek.Harness.Desktop.Tests;

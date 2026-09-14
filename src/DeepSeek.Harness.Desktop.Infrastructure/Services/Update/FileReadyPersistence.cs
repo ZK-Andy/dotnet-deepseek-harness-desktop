@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
 
 /// <summary>ready 记录的 JSON 文件持久化（<c>&lt;updates 目录&gt;/ready.json</c>，跨启动恢复「可安装」）。</summary>
 public sealed class FileReadyPersistence(string dir) : UpdateStateMachine.IPersistence

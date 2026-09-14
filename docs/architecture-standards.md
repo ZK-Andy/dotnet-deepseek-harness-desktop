@@ -39,8 +39,8 @@
 
 ## 强制与迁移
 
-- 机器强制优先级：项目引用（编译期）> `ArchitectureTests` 断言（A2/A4/A5）> D005 白名单（过渡期，物理分层完成后退役）。
-- 迁移期单项目为**不合规过渡态**：新代码一律按目标层落位；拆分批次与台账见 ADR [2026-09-14-official-clean-architecture-adoption](../.agents/notes/implemented/architecture/2026-09-14-official-clean-architecture-adoption.md)。
+- 机器强制优先级：项目引用（编译期）> `ArchitectureTests` 项目引用断言（引用图形状 csproj + 程序集两级互证）> D005 契约扫描（B4 起豁免按工程推导：Infrastructure 整工程豁免、Core 仅两个只读边界文件、主工程零豁免——文件名白名单已退役）。
+- 三项目解组织已完成（B1–B4 台账见 ADR [2026-09-14-official-clean-architecture-adoption](../.agents/notes/implemented/architecture/2026-09-14-official-clean-architecture-adoption.md)）；命名空间随程序集（FDG）：Core/Infrastructure 类型居 `…Core[*]`/`…Infrastructure[*]`，主工程 Presentation 类型居 `…Desktop.Services*`；测试工程按层镜像（Core 单测 / Infrastructure 边界集成测 / Ryn 宿主壳归 Presentation）。
 
 ## 相关
 

@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>插件引导页的用户决策（ADR reference-alignment 批次二）。</summary>
 public enum PreinstallChoice

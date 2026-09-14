@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 系统默认浏览器打开（纯静态，可共享）：桌面壳把 WebView 内的站外 http(s) URL

@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
 
 /// <summary>Linux 包管理器检测：决定下载 deb 还是 rpm（纯判定可单测）。</summary>
 public static class UpdatePlatform

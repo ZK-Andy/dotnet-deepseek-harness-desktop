@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
 /// 可选（preset）插件清单（ADR reference-alignment 批次二）：registry 安装、首启引导页可勾选。

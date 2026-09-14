@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Superseded（部分）：通道二（ArchitectureTests/NetArchTest 命名空间门 A2/A4/A5）由 [2026-09-14-clean-architecture-b4-finalization](../architecture/2026-09-14-clean-architecture-b4-finalization.md) 升级为项目引用断言；通道三 D005 白名单同批退役为按工程推导豁免。其余通道有效。
+
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
 ## Problem

@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Core.Update;
 
 /// <summary>自更新状态机状态（对齐 opencode updater-controller：ready 之外全部静默）。</summary>
 public enum UpdateStatus

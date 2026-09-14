@@ -134,7 +134,7 @@ internal static class PagePump
     /// <summary>把自更新状态变化推给页面：插件监听 <c>dsh-desktop-update</c> CustomEvent 渲染更新按钮。
     /// 窗口未就绪即丢弃（不重试）——自更新状态机每次变化都会经 onTransition 再推，无需逐次送达。
     /// 保留 <see langword="static"/>，不降级为带重试的推送（自更新靠状态机后续变化补送）。</summary>
-    internal static void PushUpdateState(CurrentWindowAccessor? accessor, Update.UpdateState state)
+    internal static void PushUpdateState(CurrentWindowAccessor? accessor, UpdateState state)
     {
         try
         {

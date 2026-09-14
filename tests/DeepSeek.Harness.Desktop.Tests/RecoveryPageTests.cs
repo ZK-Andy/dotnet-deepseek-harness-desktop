@@ -1,6 +1,3 @@
-using DeepSeek.Harness.Desktop.Services;
-using DeepSeek.Harness.Desktop.Services.Tray;
-
 namespace DeepSeek.Harness.Desktop.Tests;
 
 /// <summary>恢复页构建契约（ADR diag-masking-and-recovery-page）：数据只经 JSON+textContent

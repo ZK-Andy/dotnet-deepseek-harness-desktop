@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// <see cref="RuntimeBootstrap"/> 的引擎辅助面（partial，ADR 尺寸健康闸）：子进程捕获、全局 node 探测、

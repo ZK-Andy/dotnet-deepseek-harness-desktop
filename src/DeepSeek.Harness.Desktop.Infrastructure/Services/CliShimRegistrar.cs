@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>一个待落盘的 shim 文件。</summary>
 public sealed record CliShimFile(string TargetPath, string Content, bool Executable);

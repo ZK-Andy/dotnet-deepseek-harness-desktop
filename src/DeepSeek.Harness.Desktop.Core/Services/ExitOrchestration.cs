@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
 /// 有序退出编排（ADR child-process-reaping-port-drift + self-update-exit-reaps-dsh-child）：

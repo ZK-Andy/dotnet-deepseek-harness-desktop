@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- 与主工程一致的编码规范强制（见 docs/coding-standards.md）：build 按 .editorconfig
+         执行 IDE 风格规则 + 启用的 StyleCop 规则，保持测试工程同样 0 警告。
+         GenerateDocumentationFile：公共测试成员（xunit 测试类/方法均 public）同样受
+         XML 文档契约（CS1591）约束 + IDE0005 双侧强制。 -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="StyleCop.Analyzers" PrivateAssets="all" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <!-- 命名空间升级（B4）后的全局 using：边界集成测消费 Core 端口 + Infrastructure 实现命名空间。 -->
+    <Using Include="DeepSeek.Harness.Desktop.Core" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Tray" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Update" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 镜像拆分（官方判据 7）：Infrastructure 边界集成/fake 测试按层镜像（Core 随传递引用可用）。 -->
+    <ProjectReference Include="..\..\src\DeepSeek.Harness.Desktop.Core\DeepSeek.Harness.Desktop.Core.csproj" />
+    <ProjectReference Include="..\..\src\DeepSeek.Harness.Desktop.Infrastructure\DeepSeek.Harness.Desktop.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

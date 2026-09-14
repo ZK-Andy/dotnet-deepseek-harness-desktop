@@ -51,5 +51,5 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 
 ## Related
 
-- [2026-09-14-official-clean-architecture-adoption](2026-09-14-official-clean-architecture-adoption.md)：父 ADR（B1–B4 路线）；[docs/architecture-standards.md](../../../../docs/architecture-standards.md)：规范正文。
+- [2026-09-14-official-clean-architecture-adoption](2026-09-14-official-clean-architecture-adoption.md)：父 ADR（B1–B4 路线）；[2026-09-14-clean-architecture-b4-finalization](2026-09-14-clean-architecture-b4-finalization.md)：B4 收口（命名空间升级兑现、D005 白名单退役）；[docs/architecture-standards.md](../../../../docs/architecture-standards.md)：规范正文。
 - [2026-08-30-architecture-mechanization](../process/2026-08-30-architecture-mechanization.md)：A2/A4/A5、D004/D005 门禁通道（本批 D005 白名单两处同步）。

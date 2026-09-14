@@ -6,6 +6,8 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DeepSeek.Harness.Desktop.Tests/DeepSeek.Harness.Desktop.Tests.csproj" />
+    <Project Path="tests/DeepSeek.Harness.Desktop.Core.Tests/DeepSeek.Harness.Desktop.Core.Tests.csproj" />
+    <Project Path="tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/DeepSeek.Harness.Desktop.Infrastructure.Tests.csproj" />
     <Project Path="tests/DeepSeek.Harness.Desktop.PayloadSmoke/DeepSeek.Harness.Desktop.PayloadSmoke.csproj" />
   </Folder>
 </Solution>

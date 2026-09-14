@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// CLI shim 注册的路径层纯逻辑（可单测，与平台 IO 解耦）：PATH 值幂等合并、shell rc 幂等块、

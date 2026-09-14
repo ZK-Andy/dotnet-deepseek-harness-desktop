@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using DeepSeek.Harness.Desktop.Services.Update;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Services.Tray;
@@ -24,7 +23,7 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
     private readonly Func<Task> _showWindow;
     private readonly Action _closeWindow;
     private readonly CloseGate _closeGate;
-    private readonly Update.UpdateStateMachine? _updateMachine;
+    private readonly UpdateStateMachine? _updateMachine;
     private readonly Action<string>? _log;
     private readonly Action<string, string>? _notify;
 
@@ -40,7 +39,7 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
         Func<Task> showWindow,
         Action closeWindow,
         CloseGate closeGate,
-        Update.UpdateStateMachine? updateMachine,
+        UpdateStateMachine? updateMachine,
         Action<string>? log = null,
         Action<string, string>? notify = null)
     {

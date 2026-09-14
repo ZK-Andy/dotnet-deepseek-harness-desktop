@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// host 诊断日志统一出口：stdout 与 <c>&lt;DSH_HOME&gt;/logs/host.log</c> 双写。

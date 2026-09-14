@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Core.Update;
 
 /// <summary>
 /// 版本号逐段比较（纯函数，可单测）。接受可选 <c>v</c> 前缀与预发布后缀（如 <c>v0.1.21-rc.1</c>）：

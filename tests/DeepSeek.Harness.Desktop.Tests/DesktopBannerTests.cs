@@ -1,5 +1,3 @@
-using DeepSeek.Harness.Desktop.Services;
-
 namespace DeepSeek.Harness.Desktop.Tests;
 
 /// <summary>DesktopBanner 工厂契约：幂等 id 守卫、已知横幅运行时堆叠、配色与文案注入。</summary>

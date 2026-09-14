@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 启动版本底线检查（只读探测，ADR shared-home-desktop-profile）：桌面依赖全局 dsh（alpha 通道），
@@ -41,11 +41,11 @@ public static class RuntimeVersionGate
     }
 
     /// <summary>
-    /// 是否低于底线。数字段逐段比较（<see cref="Update.UpdateVersion.Compare"/>），预发布后缀不参与——
+    /// 是否低于底线。数字段逐段比较（<see cref="UpdateVersion.Compare"/>），预发布后缀不参与——
     /// 同数字核内 rc.1 与 rc.2 视为同级；粗粒度足够：防线目标是拦截跨 minor 的老运行时。
     /// </summary>
     public static bool IsBelowFloor(string version) =>
-        Update.UpdateVersion.Compare(version, MinimumVersion) < 0;
+        UpdateVersion.Compare(version, MinimumVersion) < 0;
 
     /// <summary>构造版本探针的 <c>dsh --version</c> 进程启动信息：先剥离宿主继承噪声
     /// （ADR spawn-env-and-plugin-spec-hardening），避免宿主 <c>NODE_OPTIONS</c> 在探针期执行任意代码。</summary>

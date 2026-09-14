@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>随包插件后台安装的纯逻辑（可单测）：安装驱动（registry 市场 + 随包插件 spawn 前安装）。
 /// JSON/profile 文件维护辅助见 <c>MarketInstallHelper.Json.cs</c>（partial）。</summary>

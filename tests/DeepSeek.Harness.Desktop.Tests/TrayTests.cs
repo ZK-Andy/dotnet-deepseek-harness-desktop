@@ -1,7 +1,4 @@
 using System.Text;
-using DeepSeek.Harness.Desktop.Services;
-using DeepSeek.Harness.Desktop.Services.Tray;
-using DeepSeek.Harness.Desktop.Services.Update;
 using Ryn.Plugins.Tray;
 
 namespace DeepSeek.Harness.Desktop.Tests;
@@ -287,7 +284,7 @@ public class TrayCheckFeedbackTests
     [Fact]
     public void UpToDate_PromptsAlreadyLatest()
     {
-        string? message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.UpToDate, Current: "9.9.9"));
+        string? message = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.UpToDate, Current: "9.9.9"));
 
         Assert.Equal("已是最新版本", message);
     }
@@ -296,7 +293,7 @@ public class TrayCheckFeedbackTests
     [Fact]
     public void Ready_IncludesTargetVersion_AndInstallHint()
     {
-        string? message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.Ready, Version: "1.2.3"));
+        string? message = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.Ready, Version: "1.2.3"));
 
         Assert.Contains("1.2.3", message);
         Assert.Contains("桌面设置", message);
@@ -306,7 +303,7 @@ public class TrayCheckFeedbackTests
     [Fact]
     public void Error_IncludesReason()
     {
-        string? message = TrayCheckFeedback.Message(new Services.Update.UpdateState(Services.Update.UpdateStatus.Error, Message: "网络不可达"));
+        string? message = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.Error, Message: "网络不可达"));
 
         Assert.Contains("检查更新失败", message);
         Assert.Contains("网络不可达", message);
@@ -314,13 +311,13 @@ public class TrayCheckFeedbackTests
 
     /// <summary>验证 Idle/Checking/Downloading/Installing 中间态不产生通知文案（返回 null），不打断用户。</summary>
     [Theory]
-    [InlineData(Services.Update.UpdateStatus.Idle)]
-    [InlineData(Services.Update.UpdateStatus.Checking)]
-    [InlineData(Services.Update.UpdateStatus.Downloading)]
-    [InlineData(Services.Update.UpdateStatus.Installing)]
-    public void IntermediateStates_DoNotNotify(Services.Update.UpdateStatus status)
+    [InlineData(UpdateStatus.Idle)]
+    [InlineData(UpdateStatus.Checking)]
+    [InlineData(UpdateStatus.Downloading)]
+    [InlineData(UpdateStatus.Installing)]
+    public void IntermediateStates_DoNotNotify(UpdateStatus status)
     {
-        Assert.Null(TrayCheckFeedback.Message(new Services.Update.UpdateState(status)));
+        Assert.Null(TrayCheckFeedback.Message(new UpdateState(status)));
     }
 }
 

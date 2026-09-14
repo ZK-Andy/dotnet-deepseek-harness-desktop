@@ -45,10 +45,10 @@ public sealed partial class DesktopBootstrap
                 }
                 else
                 {
-                    Services.HostLog.Write($"[host] icon 缺失：{_iconPath}");
+                    HostLog.Write($"[host] icon 缺失：{_iconPath}");
                 }
 
-                Services.HostLog.Write($"[host] Ryn opts: Url={(_webUrl is not null ? _webUrl.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(_iconPath) ? _iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
+                HostLog.Write($"[host] Ryn opts: Url={(_webUrl is not null ? _webUrl.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(_iconPath) ? _iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 // WebView 调试器默认关闭（正式打包无调试窗口）；开发期设 DSH_DEVTOOLS=1 开启。
                 opts.DevTools = Environment.GetEnvironmentVariable("DSH_DEVTOOLS") == "1";
             })
@@ -71,7 +71,7 @@ public sealed partial class DesktopBootstrap
         // 当前页面 origin）在 ConfigureServices 时已知，经工厂注入。
         services.AddSingleton(sp => new Services.RynNavigationCallbacks(
             opener: null,
-            log: Services.HostLog.Write,
+            log: HostLog.Write,
             currentOrigin: _webUrl?.GetLeftPart(UriPartial.Authority),
             // 外部链接打开失败 → 推事件给页面，companion 渲染 toast（R2 N2）。EmitEvent 走
             // deferred IRynWebView（窗口就绪后转发），在导航回调触发时页面必然已加载。
@@ -80,37 +80,37 @@ public sealed partial class DesktopBootstrap
                 new Services.ExternalLinkOpenerFailedFrame(url),
                 Services.AppJsonContext.Default.ExternalLinkOpenerFailedFrame)));
         // 外部链接 → 系统默认浏览器（宿主命令路由，见 implemented ADR open-external-links-in-system-browser）
-        services.AddSingleton<ICommandRouter>(new Services.ExternalLinkCommandRouter(log: Services.HostLog.Write));
+        services.AddSingleton<ICommandRouter>(new Services.ExternalLinkCommandRouter(log: HostLog.Write));
         // dsh 语言变更桥接（desktop.companion.setLocale，ADR host-ui-locale）
-        services.AddSingleton<ICommandRouter>(new Services.CompanionLocaleCommandRouter(_uiLocale, log: Services.HostLog.Write));
+        services.AddSingleton<ICommandRouter>(new Services.CompanionLocaleCommandRouter(_uiLocale, log: HostLog.Write));
         // 诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）
         services.AddSingleton<ICommandRouter>(new Services.DesktopDiagnosticsCommandRouter(
-            log: Services.HostLog.Write, healthSnapshot: () => _healthMonitor?.Snapshot));
+            log: HostLog.Write, healthSnapshot: () => _healthMonitor?.Snapshot));
         // 恢复页退出（desktop.recovery.exit）：先批准关窗闸门再 Close——hide-to-tray 拦截下
         // 未批准的 Close 会吞成隐藏；顺序契约与托盘退出同款（ADR diag-masking-and-recovery-page）
         services.AddSingleton<ICommandRouter>(sp => new Services.RecoveryCommandRouter(
             closeWindow: () => sp.GetRequiredService<IRynWindow>().Close(),
             _closeGate,
-            Services.HostLog.Write));
+            HostLog.Write));
         // 引导重试命令（desktop.bootstrap.retry，ADR online-first-unbundled-runtime）：
         // wwwroot 引导页的重试按钮 → 闸门放行引导循环。gate 实例在 Run 顶部创建，
         // 引导任务与路由共用同一实例
         services.AddSingleton<ICommandRouter>(new Services.BootstrapCommandRouter(
-            _bootstrapGate, Services.HostLog.Write));
+            _bootstrapGate, HostLog.Write));
         // 插件引导决策命令（desktop.preinstall.choose，ADR reference-alignment 批次二）：
         // wwwroot 引导页「插件引导」步的确认装/跳过 → 闸门放行引导任务
         services.AddSingleton<ICommandRouter>(new Services.PreinstallCommandRouter(
-            _preinstallGate, Services.HostLog.Write));
+            _preinstallGate, HostLog.Write));
         // 开机自启开关（desktop.autostart.getState/set）
-        services.AddSingleton<ICommandRouter>(new Services.AutostartCommandRouter(log: Services.HostLog.Write));
+        services.AddSingleton<ICommandRouter>(new Services.AutostartCommandRouter(log: HostLog.Write));
         // 关闭最小化到托盘偏好（desktop.closeToTray.getState/set）；available 惰性求值——
         // 服务注册早于托盘初始化，trayReady 由外层闭包稍后赋值
         services.AddSingleton<ICommandRouter>(new Services.Tray.CloseToTrayCommandRouter(
-            _closeBehavior, () => _trayReady, log: Services.HostLog.Write));
+            _closeBehavior, () => _trayReady, log: HostLog.Write));
         // 自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）
         if (_updateMachine is not null)
         {
-            services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(_updateMachine, log: Services.HostLog.Write, backgroundToken: () => _supervisorCtsRef?.Token ?? CancellationToken.None));
+            services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(_updateMachine, log: HostLog.Write, backgroundToken: () => _supervisorCtsRef?.Token ?? CancellationToken.None));
         }
         RegisterTrayServices(services);
     }
@@ -143,7 +143,7 @@ public sealed partial class DesktopBootstrap
                 },
                 _closeGate,
                 _updateMachine,
-                Services.HostLog.Write,
+                HostLog.Write,
                 notify: (title, message) =>
                     sp.GetRequiredService<TrayService>().ShowNotification(title, message));
         });
@@ -164,7 +164,7 @@ public sealed partial class DesktopBootstrap
                 tray.Show();
                 tray.SetMenu(Services.Tray.TrayMenuActions.BuildItems(includeUpdateItem: _updateMachine is not null, _uiLocale));
                 _trayReady = true;
-                Services.HostLog.Write("[host] 系统托盘已注册");
+                HostLog.Write("[host] 系统托盘已注册");
                 // dsh 语言切换 → companion 上报 → locale 变化即重建菜单（ADR host-ui-locale）
                 _uiLocale.Changed += () =>
                 {
@@ -175,13 +175,13 @@ public sealed partial class DesktopBootstrap
                     catch (Exception ex1)
                     {
                         // 菜单重建失败可容忍：保留旧菜单（文案为上一语言），托盘功能不受损
-                        Services.HostLog.Write($"[host] 托盘菜单重建失败（保留旧菜单）：{ex1.Message}");
+                        HostLog.Write($"[host] 托盘菜单重建失败（保留旧菜单）：{ex1.Message}");
                     }
                 };
             }
             catch (Exception ex)
             {
-                Services.HostLog.Write($"[host] 系统托盘初始化失败，关闭窗口将直接退出：{ex.Message}");
+                HostLog.Write($"[host] 系统托盘初始化失败，关闭窗口将直接退出：{ex.Message}");
             }
         }
 

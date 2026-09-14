@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 开发运行时隔离的纯判定（可单测）。触发条件满足其一：<c>DSH_DESKTOP_RUNTIME_DIR</c> 已设置，

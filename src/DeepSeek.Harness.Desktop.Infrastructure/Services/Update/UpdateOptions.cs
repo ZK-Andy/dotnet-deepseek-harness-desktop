@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
 
 /// <summary>自更新的可调参数（appsettings.json 的 <c>Update</c> 节，禁止硬编码进逻辑）。</summary>
 public sealed record UpdateOptions

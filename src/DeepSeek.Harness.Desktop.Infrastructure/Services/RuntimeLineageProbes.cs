@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// <see cref="RuntimeLineage"/> 策略核（Core）的生产探针面：<c>/proc</c> 读取、进程树击杀、回环端口探活。
@@ -47,7 +47,7 @@ public static class RuntimeLineageProbes
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // /proc 不可遍历（受限容器）：本次扫描按无残留处理——观测位（漂移告警）兜底
-            Services.HostLog.Write($"[host] 血统扫描无法遍历 /proc（跳过）：{ex.Message}");
+            HostLog.Write($"[host] 血统扫描无法遍历 /proc（跳过）：{ex.Message}");
         }
 
         return candidates;

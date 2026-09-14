@@ -17,7 +17,7 @@ public sealed partial class DesktopBootstrap
     {
         string origin = url.GetLeftPart(UriPartial.Authority);
         _windowAccessor.Current.AuthorizeIpcOrigin(origin);
-        Services.HostLog.Write($"[nav] 已授权 IPC origin：{origin}");
+        HostLog.Write($"[nav] 已授权 IPC origin：{origin}");
     }
 
     /// <summary>导航并等待其真正提交（<see cref="Services.RynNavigationCallbacks"/> 的
@@ -40,7 +40,7 @@ public sealed partial class DesktopBootstrap
             }
             catch (TimeoutException)
             {
-                Services.HostLog.Write("[nav] 等待导航提交信号超时（5s），按已提交继续");
+                HostLog.Write("[nav] 等待导航提交信号超时（5s），按已提交继续");
             }
         }
         finally

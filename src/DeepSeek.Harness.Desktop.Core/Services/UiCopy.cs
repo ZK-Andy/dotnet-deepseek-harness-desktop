@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
 /// 宿主 UI 文案单一词典（批次 A「表示先行」）：托盘菜单、横幅、恢复页、引导过渡页等

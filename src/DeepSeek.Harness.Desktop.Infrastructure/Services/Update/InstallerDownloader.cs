@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace DeepSeek.Harness.Desktop.Services.Update;
+namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
 
 /// <summary>安装包下载器：<c>.part</c> 临时名 + 完成后原子改名 + SHA256SUMS 强校验。</summary>
 public sealed class InstallerDownloader

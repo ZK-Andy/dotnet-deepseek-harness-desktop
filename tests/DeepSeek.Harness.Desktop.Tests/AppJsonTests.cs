@@ -1,5 +1,4 @@
 using System.Text.Json;
-using DeepSeek.Harness.Desktop.Services;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 

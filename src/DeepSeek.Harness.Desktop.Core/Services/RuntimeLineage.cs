@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
 /// 桌面运行时血统（identity）单一事实源：判定哪些进程属于本壳 spawn 的 dsh 运行时，并给出首选端口

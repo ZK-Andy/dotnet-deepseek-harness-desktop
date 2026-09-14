@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 日志内容脱敏（纯函数）：挂在 <see cref="HostLog.Write"/> 唯一出口，stdout 与

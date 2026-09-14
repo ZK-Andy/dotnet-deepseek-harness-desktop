@@ -2,7 +2,7 @@ using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text.Json;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>随包插件版本感知的纯逻辑（可单测）：读随包 spec 与 profile 已装副本的版本号，判定是否需要升级。</summary>
 /// <remarks>随包侧（tgz/闭包目录）结构异常 fail loud 抛出——那是我们自己的产物，坏了必须可见；

@@ -42,7 +42,7 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 
 ## Consequences
 
-- 依赖方向三环闭合：Core（零引用）← Infrastructure（仅 Core）← 主工程（Presentation + 组合根）；边界适配器再引主工程符号即编译失败。新外部交互先问「端口进 Core 了吗」，D005 白名单继续只减不增。
+- 依赖方向三环闭合：Core（零引用）← Infrastructure（仅 Core）← 主工程（Presentation + 组合根）；边界适配器再引主工程符号即编译失败。新外部交互先问「端口进 Core 了吗」（D005 白名单后由 [B4](2026-09-14-clean-architecture-b4-finalization.md) 退役为按工程推导豁免）。
 - **614/614、0 警告、format 门禁绿；零行为变更判据**：40 文件 `git mv`；行为面仅三处等价改写（横幅构建器换家、两处 JSON 上下文换家——序列化选项/键名逐项比对一致）；UiCopy 词条为文案收编非改写。
 - 过渡态已知项：A2/A4/A5 与 verify-code-health 仍单扫主工程（Infrastructure 类型退出扫描面，约束由编译器 + R2 种子测试接棒；A5/A2 升级 B4 收敛）；ArchitectureTests 对主程序集的扫描不再覆盖已迁类型（同上）。
 - CI 工作流零变更（build/test 走 slnx；打包 publish 主工程自动携带 Infrastructure DLL）。

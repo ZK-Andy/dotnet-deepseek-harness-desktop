@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>事务管线 journal 的当前步（<see cref="PluginProfileTransaction"/> 换入推进度）。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]

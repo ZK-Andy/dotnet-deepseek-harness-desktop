@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Services;
+namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
 /// 首启引导状态机（ADR simple-shell-single-global-dsh）：桌面是简单壳，依赖全机唯一的系统全局 node +
