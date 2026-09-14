@@ -1,8 +1,4 @@
 using System.Runtime.InteropServices;
-using DeepSeek.Harness.Desktop.Core;
-using DeepSeek.Harness.Desktop.Core.Update;
-using DeepSeek.Harness.Desktop.Infrastructure;
-using DeepSeek.Harness.Desktop.Infrastructure.Update;
 using DeepSeek.Harness.Desktop.Services.Tray;
 using Ryn.Core;
 

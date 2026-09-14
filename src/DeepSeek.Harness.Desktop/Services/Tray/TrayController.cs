@@ -1,5 +1,3 @@
-using DeepSeek.Harness.Desktop.Core;
-using DeepSeek.Harness.Desktop.Infrastructure;
 using Ryn.Core;
 using Ryn.Plugins.Tray;
 

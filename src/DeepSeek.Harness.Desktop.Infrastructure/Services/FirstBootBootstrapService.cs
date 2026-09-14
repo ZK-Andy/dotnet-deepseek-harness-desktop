@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using DeepSeek.Harness.Desktop.Core;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure;
 
