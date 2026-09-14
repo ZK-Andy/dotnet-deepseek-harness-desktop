@@ -25,8 +25,8 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-612%2F612-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-55.79%25-yellowgreen" alt="coverage"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-614%2F614-brightgreen" alt="tests"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-55.30%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
@@ -98,7 +98,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 # without a PATH dsh the first-launch bootstrap runs, which needs network)
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# tests (612/612)
+# tests (614/614)
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # webview devtools (default off)
@@ -110,9 +110,13 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ## Layout
 
 ```
-├── src/DeepSeek.Harness.Desktop/   # Ryn shell: Program + Services/ (runtime supervision, self-update, system tray, single-instance activation, diagnostics)
-├── tests/DeepSeek.Harness.Desktop.Tests/  # xunit 612/612
-├── scripts/                        # gates + package-*.sh + release-preflight.sh + release-notes.sh
+├── src/DeepSeek.Harness.Desktop/              # Ryn shell (Presentation): composition root + UI bridge
+├── src/DeepSeek.Harness.Desktop.Core/         # domain logic, zero outer references
+├── src/DeepSeek.Harness.Desktop.Infrastructure/  # adapters (Ryn/native, dsh process, file/network, updates)
+├── tests/DeepSeek.Harness.Desktop.Tests/          # xunit: shell / composition root
+├── tests/DeepSeek.Harness.Desktop.Core.Tests/     # xunit: Core
+├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit: Infrastructure (614/614 across the three)
+├── scripts/                                    # gates + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```
 

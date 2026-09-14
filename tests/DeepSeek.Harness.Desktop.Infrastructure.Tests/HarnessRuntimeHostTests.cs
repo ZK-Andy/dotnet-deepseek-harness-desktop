@@ -5,7 +5,7 @@ using System.Net.Sockets;
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests;
 
 /// <summary>HarnessRuntimeHost 集成冒烟：真实 spawn dsh → 解析 URL。门控：设 DSH_TEST_E2E=1 且环境里有 dsh 才断言，否则自跳过。</summary>
-/// <remarks>环境变量型测试与 <see cref="DeepSeek.Harness.Desktop.Tests.SharedHomeContractTests"/> 同集合串行——
+/// <remarks>环境变量型测试与 <see cref="SharedHomeContractTests"/> 同集合串行——
 /// 两者都改写进程级 DSH_HOME 覆盖变量，并行会互相污染（实测 flaky 教训）。</remarks>
 [Collection("dsh-home-env")]
 public class HarnessRuntimeHostTests

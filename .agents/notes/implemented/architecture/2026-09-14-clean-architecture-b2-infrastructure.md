@@ -46,7 +46,7 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 - **614/614、0 警告、format 门禁绿；零行为变更判据**：40 文件 `git mv`；行为面仅三处等价改写（横幅构建器换家、两处 JSON 上下文换家——序列化选项/键名逐项比对一致）；UiCopy 词条为文案收编非改写。
 - 过渡态已知项：A2/A4/A5 与 verify-code-health 仍单扫主工程（Infrastructure 类型退出扫描面，约束由编译器 + R2 种子测试接棒；A5/A2 升级 B4 收敛）；ArchitectureTests 对主程序集的扫描不再覆盖已迁类型（同上）。
 - CI 工作流零变更（build/test 走 slnx；打包 publish 主工程自动携带 Infrastructure DLL）。
-- 测试徽章基线 613→614 待下次 CI 跟值（标准跟值批）。
+- 测试徽章基线随标准跟值批收口（613→614、`4040/7306 = 55.30%`；[覆盖合并口径](../testing/2026-09-14-coverage-baseline-multi-project-merge.md)）。
 
 ## Related
 

@@ -46,7 +46,7 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 
 - 依赖方向开始被编译器强制：Core 引用任何外层（含 Ryn）即编译失败；R2 种子测试兜反射面。新代码一律先问「进 Core 还是边界」，D005 白名单进入只减不增轨道。
 - **613/613、0 警告、format 门禁绿；零行为变更判据**：文件移动 = `git mv`/拆类，行为面仅两处等价改写（`File.Exists` → 端口 `AssetExistsAsync`（FileReadyPersistence 实现仍 `File.Exists`）、`HostLog.Write` → 注入委托（组合根仍传 `HostLog.Write`））。
-- 过渡态已知项：verify-code-health F1–F4 仍单扫主工程（Core 文件尺寸由评审兜底，B4 收敛）；覆盖率/测试徽章基线 612→613 待下次 CI 跟值（标准跟值批）。
+- 过渡态已知项：verify-code-health F1–F4 仍单扫主工程（Core 文件尺寸由评审兜底，B4 收敛）；覆盖率/测试徽章基线随标准跟值批收口（最终 614/614、`4040/7306 = 55.30%`；[覆盖合并口径](../testing/2026-09-14-coverage-baseline-multi-project-merge.md)）。
 - CI 工作流零变更（build/test 走 slnx；打包 publish 主工程自动携带 Core DLL）。
 
 ## Related

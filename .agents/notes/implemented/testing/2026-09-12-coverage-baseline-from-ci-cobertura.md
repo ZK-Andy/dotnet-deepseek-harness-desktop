@@ -19,7 +19,7 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 
 ## Decision
 
-**覆盖率基线的唯一来源 = CI `build-test` 作业 cobertura 的 `line-rate`**；`README` 双语徽章与 `docs/testing.md` 基线行随该值更新（复现命令、打印步骤与留存期见 `docs/testing.md`），本机实测值不作基线来源。
+**覆盖率基线的唯一来源 = CI `build-test` 作业 cobertura 的 `line-rate`**（多测试工程各产一份 cobertura 时按 [multi-project-merge](2026-09-14-coverage-baseline-multi-project-merge.md) 取并集）；`README` 双语徽章与 `docs/testing.md` 基线行随该值更新（复现命令、打印步骤与留存期见 `docs/testing.md`），本机实测值不作基线来源。
 
 `ci.yml` 的路径过滤使 `build-test` 只在 code 面命中时运行：纯文档批次拿不到新值，徽章与基线行沿用最近一次 code 面作业的值。
 
@@ -40,9 +40,9 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 
 ## Related
 
-- 跟值台账：2026-09-12 `3714/6725`→2026-09-13 `3782/6909`→2026-09-13 `3942/7075`→**2026-09-14 `3994/7158`（CI `34778153958`，612/612、55.79%，v0.4.11 发布收尾）**。
+- 跟值台账：2026-09-12 `3714/6725`→2026-09-13 `3782/6909`→2026-09-13 `3942/7075`→2026-09-14 `3994/7158`（CI `34778153958`，612/612、55.79%，v0.4.11 发布收尾）→**2026-09-14 `4040/7306`（CI `34793499164`，B4 三工程代码面、614/614、55.30%；并集口径见 [multi-project-merge](2026-09-14-coverage-baseline-multi-project-merge.md)）**。
 
-
+- [覆盖率基线合并多测试工程 cobertura](2026-09-14-coverage-baseline-multi-project-merge.md)：多份 cobertura 的并集口径与合并脚本。
 - [端口漂移与 IPC origin 错配](../bug-fix/2026-09-12-port-drift-ipc-origin-mismatch.md)：同批用户文档「端口保持稳定」例外句的行为事实源。
 - [运行时交接收养](../bug-fix/2026-09-12-runtime-handoff-adoption.md)：其 Testing 段的覆盖率事实行随本篇口径改写（只改事实，决定未动）。
 - [测试三包升级与覆盖率收集](../process/2026-09-03-test-sdk-coverage-runner-bump.md) 与 [覆盖率向纯逻辑提取要](../simplification/2026-09-03-coverage-via-pure-logic-extraction.md)：两篇的本机口径行已加指针指来本篇；口径被本篇超车，各自的决定独立未动。

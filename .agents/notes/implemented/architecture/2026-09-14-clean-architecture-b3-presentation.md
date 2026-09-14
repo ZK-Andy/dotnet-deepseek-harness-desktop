@@ -36,7 +36,7 @@ Review: LIGHT/2026-09-14/R2=ok
 
 - 三层归属定形：主工程 30 文件全部为组合根 + UI 桥（Presentation/组合根），Core 18 文件纯逻辑，Infrastructure 43 文件边界适配器；「新代码先问进哪层」有了完整判据表（留守判据 + 本 ADR 迁移映射）。
 - **614/614、0 警告、format 与门禁全绿；零行为变更判据**：4 文件 `git mv`；行为面仅一处等价改写（PreferencesFile 序列化上下文换家，选项/键名逐项比对一致）。
-- 过渡态已知项：A2/A4/A5 命名空间门、verify-code-health 单扫主工程、D005 白名单残留条目（ExternalLinkCommandRouter/LegacyHomeNotice/CloseBehaviorPreference 等）均按既定路线 B4 收敛；测试徽章基线跟值待标准跟值批。
+- 过渡态已知项：A2/A4/A5 命名空间门、verify-code-health 单扫主工程、D005 白名单残留条目（ExternalLinkCommandRouter/LegacyHomeNotice/CloseBehaviorPreference 等）均按既定路线 B4 收敛；测试徽章基线随标准跟值批收口（614/614、`4040/7306 = 55.30%`；[覆盖合并口径](../testing/2026-09-14-coverage-baseline-multi-project-merge.md)）。
 - CI 工作流零变更；打包 publish 主工程自动携带 Core/Infrastructure DLL。
 
 ## Related

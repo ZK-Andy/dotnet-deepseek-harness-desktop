@@ -111,10 +111,9 @@ jobs:
         run: |
           echo "== coverage files =="
           find TestResults -name "*.xml" -type f | head -20
-          if ls TestResults/**/coverage.cobertura.xml 1>/dev/null 2>&1; then
-            echo "== cobertura 摘要 =="
-            grep -E "line-rate|branch-rate" TestResults/**/coverage.cobertura.xml | head -20
-          fi
+          # 每个测试工程一个 cobertura；基线是并集（见 scripts/coverage-summary.py 与
+          # ADR testing/2026-09-14-coverage-baseline-multi-project-merge）。
+          python3 scripts/coverage-summary.py --results TestResults
       - name: upload coverage
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v4

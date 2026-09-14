@@ -11,9 +11,11 @@
 ## 目录与配置
 
 ```
-src/DeepSeek.Harness.Desktop/  Program.cs, Services/*, Commands/*, ryn.json, wwwroot/
-tests/DeepSeek.Harness.Desktop.Tests/  xunit（35 个测试文件，清单见 testing.md）
-scripts/  build-companion-tgz.sh, package-*.sh, release-preflight.sh, verify-*.py
+src/DeepSeek.Harness.Desktop/  Program.cs, DesktopBootstrap*, Commands/*, ryn.json, wwwroot/
+src/DeepSeek.Harness.Desktop.Core/  纯逻辑（零外层引用）
+src/DeepSeek.Harness.Desktop.Infrastructure/  适配器（Services/*）
+tests/DeepSeek.Harness.Desktop{.Core,.Infrastructure,}.Tests/  xunit（清单见 testing.md）
+scripts/  build-companion-tgz.sh, package-*.sh, release-preflight.sh, verify-*.py, coverage-summary.py
 ```
 
 * `appsettings.json`：`DevTools:false`；`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
