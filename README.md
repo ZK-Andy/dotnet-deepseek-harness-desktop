@@ -26,7 +26,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-634%2F634-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-55.30%25-yellowgreen" alt="coverage"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-57.12%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
@@ -98,7 +98,7 @@
 # 运行（开发环境必须带 DSH_DESKTOP_DEV=1——dev 隔离 home 与单实例后缀；无 PATH dsh 时走首启引导，需网络）
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# 测试（614/614）
+# 测试
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # WebView 调试器（默认关）
@@ -115,7 +115,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ├── src/DeepSeek.Harness.Desktop.Infrastructure/  # 适配器（Ryn/native、dsh 进程、文件/网络、更新）
 ├── tests/DeepSeek.Harness.Desktop.Tests/          # xunit：壳/组合根
 ├── tests/DeepSeek.Harness.Desktop.Core.Tests/     # xunit：Core
-├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit：Infrastructure（三工程共 614/614）
+├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit：Infrastructure（三工程计数见 docs/testing.md 基线行）
 ├── scripts/                                    # 门禁 + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```

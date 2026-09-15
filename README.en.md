@@ -26,7 +26,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-634%2F634-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-55.30%25-yellowgreen" alt="coverage"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-57.12%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
@@ -98,7 +98,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 # without a PATH dsh the first-launch bootstrap runs, which needs network)
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
-# tests (614/614)
+# tests
 dotnet test dotnet-deepseek-harness-desktop.slnx
 
 # webview devtools (default off)
@@ -115,7 +115,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ├── src/DeepSeek.Harness.Desktop.Infrastructure/  # adapters (Ryn/native, dsh process, file/network, updates)
 ├── tests/DeepSeek.Harness.Desktop.Tests/          # xunit: shell / composition root
 ├── tests/DeepSeek.Harness.Desktop.Core.Tests/     # xunit: Core
-├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit: Infrastructure (614/614 across the three)
+├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit: Infrastructure (three-project counts in the docs/testing.md baseline line)
 ├── scripts/                                    # gates + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```
