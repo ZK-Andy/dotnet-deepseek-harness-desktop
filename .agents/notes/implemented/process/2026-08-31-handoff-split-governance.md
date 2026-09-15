@@ -18,7 +18,7 @@ HANDOFF.md（交接主文档，gitignore 本地工作文档）在 2026-08-27 结
 
 1. **`HANDOFF.md` 收缩为入口/稳定区**：背景、位置、当前状态、开始步骤保持原地（~200 词）；「交接更新记录」降为**摘要滚动窗**——21 条全压缩为 ≤260 字/条（日期｜类型｜commit/ADR 指针｜一句话结论），全文下沉 journal；「待办」节降为一行指针。
 2. **新增 `HANDOFF-todos.md`（行动区独立）**：全部待办迁入——`[ ]` 8 条压缩为 ≤340 字（保留触发条件与指针）、`[x]` 31 条压缩为 ≤220 字一行指针（标题/日期/commit/ADR）；gitignore 新增 `/HANDOFF-todos.md`。
-3. **`verify-handoff-structure.py` 升级为跨文件门禁**：窗口条目 ≤24 且每条 ≤260 字；todos 文件必须存在且被「待办」节引用（相对链接）；`[ ]` ≤16 条且 ≤340 字、`[x]` ≤220 字、总条数 ≤70；`--self-test` 扩至 11 用例。
+3. **`verify-handoff-structure.py` 升级为跨文件门禁**：窗口条目 ≤24 且每条 ≤260 字；todos 文件必须存在且被「待办」节引用（相对链接）；`[ ]` ≤16 条且 ≤340 字、`[x]` ≤220 字且只留近期窗口（≤24 条，越窗归冷归档卷——见 `todos-cold-archive`）；`--self-test` 16 用例。
 4. **工作流卡与规则引用同步**：session-open 步骤 1 / session-close 步骤 3 / AGENTS 质量门行 按「HANDOFF.md（入口）+ HANDOFF-todos.md（待办）」两文件口径更新。
 5. **归档**：21 条现行条目全文追加至 `.plan/journal/2026-08-session-journal.md`（「2026-08-30/08-31 批次」节），叙事不丢、决策本就在 durable 四家。
 6. **顺手修复 verify-md-links.py 的文档契约漂移**：AGENTS 质量门注释声明「.plan/ 排除」而脚本未排除；归档条目自仓库根搬进 `.plan/journal/` 后相对 ADR 链接解析错位（md-links 报缺目标）——脚本补 `.plan` 排除段，并把本批归档的 2 条 ADR 链接改为根绝对形式（`/.agents/notes/…`）供人读可点。
@@ -41,6 +41,7 @@ HANDOFF.md（交接主文档，gitignore 本地工作文档）在 2026-08-27 结
 ## Related
 
 - `docs-management-tiering`（implemented/process/2026-08-25）：第 1 层「HANDOFF 分层 + journal 归档」的既有决策，本笔记是其机制补全（预算 + 强制 + 行动区独立）。
+- `todos-cold-archive`（implemented/process/2026-09-16）：补齐本笔记遗留的行动区缺口——`[x]` 指针的近期窗口（≤24）与冷归档卷；`[ ]` 窗口（16）与字符预算仍以本笔记为家。
 - `verify-handoff-structure.py` / `verify-md-links.py`：本决策的机器落点。
 - `.agents/workflows/session-open.md` / `session-close.md`、`AGENTS.md` 质量门：两文件口径的引用同步落点。
 - `HANDOFF.md` / `HANDOFF-todos.md`（gitignore 本地）：被治理对象。
