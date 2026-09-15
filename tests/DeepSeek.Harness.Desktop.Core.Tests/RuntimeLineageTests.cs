@@ -286,4 +286,54 @@ public class RuntimeLineageTests
 
         Assert.Equal(RuntimeLineage.PortConflictAction.HarvestThenRetry, plan.Action);
     }
+
+    /// <summary>纯判定：接力等待窗口的三条退出线与继续等待分支。</summary>
+    [Fact]
+    public void ShouldKeepWaitingRelay_FollowsEvidenceGraceAndBudget()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset old = now.AddMinutes(-5);
+
+        // 接力证据在场 → 等待（helper 或尚在加载期的续任者都在场判据内）
+        Assert.True(RuntimeLineage.ShouldKeepWaitingRelay(
+            relayEvidencePresent: RuntimeLineage.IsRelayEvidence(Helper(1, startTime: now), old),
+            helperSeenEver: false, pastGrace: false, pastDeadline: false));
+        Assert.True(RuntimeLineage.ShouldKeepWaitingRelay(
+            relayEvidencePresent: RuntimeLineage.IsRelayEvidence(RuntimeServer(1, startTime: now), old),
+            helperSeenEver: false, pastGrace: false, pastDeadline: false));
+
+        // helper 已死且无新生续任者 → 立即回落，不等预算
+        Assert.False(RuntimeLineage.ShouldKeepWaitingRelay(
+            relayEvidencePresent: false,
+            helperSeenEver: true, pastGrace: false, pastDeadline: false));
+
+        // helper 从未出现：宽限窗内继续（为「迟到半拍」的 helper 留观察余量），耗尽即回落
+        Assert.False(RuntimeLineage.ShouldKeepWaitingRelay(
+            relayEvidencePresent: false,
+            helperSeenEver: false, pastGrace: true, pastDeadline: true));
+
+        // helper 从未出现但宽限窗未耗尽 → 继续等
+        Assert.True(RuntimeLineage.ShouldKeepWaitingRelay(
+            relayEvidencePresent: false,
+            helperSeenEver: false, pastGrace: false, pastDeadline: false));
+
+        // 预算是无条件上限：证据在场也必须回落
+        Assert.False(RuntimeLineage.ShouldKeepWaitingRelay(
+            relayEvidencePresent: true,
+            helperSeenEver: true, pastGrace: false, pastDeadline: true));
+    }
+
+    /// <summary>纯判定：接力证据只认可证诞生于被监督运行时之后的主体（陈旧残留不延长等待）。</summary>
+    [Fact]
+    public void IsRelayEvidence_RequiresBirthAfterSupervisedStart()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        Assert.True(RuntimeLineage.IsRelayEvidence(Helper(1, startTime: now), now.AddMinutes(-1)));
+        Assert.True(RuntimeLineage.IsRelayEvidence(RuntimeServer(1, startTime: now), now.AddMinutes(-1)));
+        // 诞生早于参照 → 陈旧残留，不是接力证据
+        Assert.False(RuntimeLineage.IsRelayEvidence(Helper(1, startTime: now.AddMinutes(-2)), now));
+        // 起始时刻读不到 → 不可证新生，按非证据处理（壳立刻回落 spawn，恢复不挂起）
+        Assert.False(RuntimeLineage.IsRelayEvidence(Helper(1, startTime: null), now));
+    }
 }

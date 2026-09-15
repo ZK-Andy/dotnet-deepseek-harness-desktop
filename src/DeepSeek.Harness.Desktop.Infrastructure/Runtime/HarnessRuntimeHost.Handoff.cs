@@ -30,6 +30,117 @@ public sealed partial class HarnessRuntimeHost
     /// <summary>在管运行时 pid：本进程子进程优先，其次收养的续任者；皆无则 null。</summary>
     private int? TrackedPid => _process is { HasExited: false } process ? process.Id : _adoptedPid;
 
+    /// <summary>relay 等待的探测节拍与 helper 宽限窗（测试经内部注入口覆写延迟以压缩时长）。</summary>
+    private static readonly TimeSpan s_relayWaitInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan s_relayHelperGrace = TimeSpan.FromSeconds(2);
+
+    /// <summary>relay 等待的端口探活注入口（生产 null = 真探针；仅供测试闭环）。</summary>
+    internal Func<int, Task<bool>>? RelayServingProbeOverride { get; set; }
+
+    /// <summary>relay 等待的血统残留枚举注入口（生产 null = 真扫 /proc；仅供测试闭环）。</summary>
+    internal Func<IReadOnlyList<RuntimeLineage.Subject>>? RelayResidueOverride { get; set; }
+
+    /// <summary>relay 等待的延迟注入口（生产 null = 真延迟；测试用 0 延迟压缩时长）。</summary>
+    internal Func<CancellationToken, Task>? RelayDelayOverride { get; set; }
+
+    /// <summary>
+    /// 市场接力共存等待（ADR market-restart-adopt-first）：进程内重启入口先观察「市场自重启 helper
+    /// 正拉起续任者」的证据，在场则不再 spawn 竞争者——等续任者接管首选端口后直接走既有交接处置
+    /// 收养，恢复链一次落地（单进程、单导航）。helper 不在场或中途消失即快速回落常规探测与 spawn，
+    /// 崩溃恢复路径的额外等待不超过一个宽限窗；总预算与恢复时限同源，超时也回落原路径（其 bind
+    /// 预探测兜底），绝不因 helper 卡住而推迟恢复。
+    /// </summary>
+    /// <param name="port">首选端口（监督器在管运行时的端口）。</param>
+    /// <param name="supervisedStart">刚退出那个运行时的起始时刻（交接判据参照，此处非 null）。</param>
+    /// <param name="timeout">总等待预算（与 RestartAsync 的恢复时限同源）。</param>
+    /// <param name="ct">取消令牌；取消恒返回 null（调用方终态短路）。</param>
+    /// <returns>命中接力返回收养 URL；无接力证据或窗口耗尽返回 null（调用方按原路径继续）。</returns>
+    /// <remarks>internal 供测试直接驱动真实 /proc 探针的接力闭环。</remarks>
+    internal async Task<Uri?> TryRideMarketRelayAsync(
+        int port,
+        DateTimeOffset supervisedStart,
+        TimeSpan timeout,
+        CancellationToken ct)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        DateTimeOffset graceEnd = DateTimeOffset.UtcNow + s_relayHelperGrace;
+        bool helperSeen = false;
+        while (true)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                return null;
+            }
+
+            IReadOnlyList<RuntimeLineage.Subject> residue =
+                RelayResidueOverride?.Invoke() ?? FindLineageResidue();
+            // 单遍产出两个判定（R1 评审采用）：helper 在场（sticky 保持以覆盖其短暂在场）与接力证据在场。
+            // 证据判定追加父链存活核（R2 评审 Blocker 修复）：临终 dsh 生前自拉起且继承 token 的子进程
+            // （PTC worker / pnpm 子壳，`--profile` argv 形状可判 RuntimeServer）同样可证新生，但其父已死
+            // ——不是本次接力的正主，不得当无 helper 的「固定证据」把恢复拖到预算上限。
+            bool helperNow = false;
+            bool evidenceNow = false;
+            foreach (RuntimeLineage.Subject s in residue)
+            {
+                if (!RuntimeLineage.IsRelayEvidence(s, supervisedStart))
+                {
+                    continue; // 陈旧血统残留（更早诞生/不可证新生）不算证据，在场也不延长等待
+                }
+
+                evidenceNow |= IsParentAlive(s);
+                helperNow |= s.Kind == RuntimeLineage.LineageKind.MarketRestartHelper;
+            }
+
+            helperSeen |= helperNow;
+            bool serving = await (RelayServingProbeOverride?.Invoke(port)
+                ?? RuntimeLineageProbes.IsLoopbackServingAsync(port)).ConfigureAwait(false);
+            if (serving)
+            {
+                _log?.Invoke($"[host] 市场接力续任者已接管首选端口 {port}：跳过竞争 spawn，转入收养处置");
+                return await RecoverFromFailureAsync(port, StartFailure.PortConflict, supervisedStart, timeout, ct)
+                    .ConfigureAwait(false);
+            }
+
+            bool pastGrace = !helperSeen && DateTimeOffset.UtcNow >= graceEnd;
+            bool pastDeadline = DateTimeOffset.UtcNow >= deadline;
+            if (!RuntimeLineage.ShouldKeepWaitingRelay(
+                    evidenceNow, helperSeen,
+                    pastGrace: pastGrace,
+                    pastDeadline: pastDeadline))
+            {
+                // 回落留痕（R2 评审采用）：两条回落原因线都可供 host.log 判读，与接管命中行对偶
+                _log?.Invoke($"[host] 市场接力共存窗口回落（{(helperSeen
+                    ? "接力中止：helper 已死且无新生续任者"
+                    : "无接力证据，宽限窗耗尽")}）→ 走既有探测与 spawn");
+                return null;
+            }
+
+            try
+            {
+                if (RelayDelayOverride is not null)
+                {
+                    await RelayDelayOverride(ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    await Task.Delay(s_relayWaitInterval, ct).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // OCE = 调用链取消（终态）：静默回落 null，不视为失败
+                return null;
+            }
+        }
+    }
+
+    /// <summary>候选的父链是否存活（接力证据的在场判据之一——真 helper/其续任者的父必活，孤儿不算证据）。</summary>
+    private static bool IsParentAlive(RuntimeLineage.Subject subject)
+    {
+        int? parentPid = RuntimeLineageProbes.ReadParentPid(subject.Candidate.Pid);
+        return parentPid is int pid && RuntimeLineageProbes.TryIsAlive(pid);
+    }
+
     /// <summary>首选端口启动失败后的恢复：按血统判据决定收养续任者 / 收割残留重试 / 回退漂移。</summary>
     /// <param name="preferred">首选端口。</param>
     /// <param name="failure">失败原因（日志措辞用）。</param>

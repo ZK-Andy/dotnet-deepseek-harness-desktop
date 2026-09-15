@@ -105,6 +105,12 @@ public sealed partial class HarnessRuntimeHost : IDisposable
             // 已取消：跳过探测与处置链直接短路，避免多付一次注定取消的 bind 探测与日志副作用
             url = null;
         }
+        else if (!coldStart && preferred is int relayPort && supervisedStart is not null
+            && (url = await TryRideMarketRelayAsync(relayPort, supervisedStart.Value, timeout, ct).ConfigureAwait(false)) is not null)
+        {
+            // 进程内重启：市场接力共存窗口命中（续任者已接管首选端口）——url 即收养结果，
+            // 绝不再 spawn 竞争者（ADR market-restart-adopt-first）。
+        }
         else if (preferred is int busyPort && RuntimeLineageProbes.ProbeLoopbackBind(busyPort) == RuntimeLineageProbes.LoopbackBindProbe.Occupied)
         {
             // spawn 前自有 bind 探测（ADR port-wait-compression）：dsh 要先加载整棵插件树才 bind

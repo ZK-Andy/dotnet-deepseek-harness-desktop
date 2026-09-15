@@ -408,4 +408,247 @@ public class HarnessRuntimeHostTests
             }
         }
     }
+
+    /// <summary>
+    /// 市场接力收养闭环（Linux /proc 真探针回归，ADR market-restart-adopt-first）：被监督运行时「退出」后
+    /// helper 进程在场、新生服务端已接管首选端口 → 接力等待窗口直接收养并返回收养 URL，全程不 spawn
+    /// 竞争 dsh。假进程 = sh 携带血统 env（token + DSH_HOME），cmdline 分别按 helper 特征与服务端形状
+    /// 构造；无 dsh 参与，无端口之争。非 Linux（无 /proc env 枚举）自跳过。
+    /// </summary>
+    [Fact]
+    public async Task TryRideMarketRelayAsync_AdoptsLinuxLineageSuccessor_WhenRelayTakesOver()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 血统枚举靠 /proc environ；其他平台 Enumerate 恒空，接力路径不可达
+        }
+
+        var logs = new List<string>();
+        string home = Path.Combine(Path.GetTempPath(), "dsh-relay-" + Guid.NewGuid().ToString("N"));
+        string profile = HarnessRuntimeHost.DesktopProfileName;
+        Environment.SetEnvironmentVariable(HarnessRuntimeHost.HomeOverrideEnv, home);
+        var processes = new List<System.Diagnostics.Process>();
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            // helper：cmdline 携带上游重启日志名前缀；服务端形状只认 "--profile <name>"——
+            // 且绝不含 helper 特征（marker / node -e / restart 字样），否则被先判为 helper。
+            // 脚本保持多命令循环而非「末命令 exec 优化」（dash 会把 -c 的最后一条命令 exec 替换
+            // 进程映像，sh 本人退出、cmdline 丢形状）：sh 必须活着意味着 cmdline 证据一直在场。
+            string alive = "while :; do sleep 1; done";
+            string helperScript = "dsh-market-restart-probe=1 " + alive;
+            string successorScript = $"dsh --profile {profile} --not-real >/dev/null 2>&1; " + alive;
+            foreach (string script in new[] { helperScript, successorScript })
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("/bin/sh", $"-c \"{script}\"")
+                {
+                    UseShellExecute = false,
+                };
+                psi.Environment[RuntimeLineage.TokenEnv] = "relay-test-token";
+                psi.Environment[HarnessRuntimeHost.EcosystemHomeEnv] = home;
+                processes.Add(System.Diagnostics.Process.Start(psi)
+                    ?? throw new InvalidOperationException("无法启动接力假进程"));
+            }
+
+            // 参照取自两个假进程诞生之前：可证「新生」
+            DateTimeOffset supervisedStart = DateTimeOffset.UtcNow.AddSeconds(-1);
+            using var host = new HarnessRuntimeHost(logs.Add);
+            Uri? relayed = await host.TryRideMarketRelayAsync(
+                port, supervisedStart, TimeSpan.FromSeconds(10), CancellationToken.None);
+
+            Assert.NotNull(relayed);
+            Assert.Equal(port, relayed!.Port);
+            Assert.Contains(logs, l => l.Contains($"市场接力续任者已接管首选端口 {port}"));
+            Assert.Contains(logs, l => l.Contains("收养市场接力的续任者"));
+        }
+        finally
+        {
+            listener.Stop();
+            foreach (System.Diagnostics.Process p in processes)
+            {
+                try
+                {
+                    p.Kill(entireProcessTree: true);
+                    p.Dispose();
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+                {
+                    // 假进程恰好已退出/无权限/平台不支持树杀：清理目标已达成
+                }
+            }
+
+            Environment.SetEnvironmentVariable(HarnessRuntimeHost.HomeOverrideEnv, null);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>接力等待的诚实回落（注入口压缩时长，零进程）：无任何血统主体在场时窗口耗尽返回 null，绝不 spawn（spawn 由调用方既有路径负责）。</summary>
+    [Fact]
+    public async Task TryRideMarketRelayAsync_NoRelayEvidence_ExitsWindowWithNull()
+    {
+        var logs = new List<string>();
+        using var host = new HarnessRuntimeHost(logs.Add)
+        {
+            RelayServingProbeOverride = _ => Task.FromResult(false),
+            RelayResidueOverride = () => [],
+            RelayDelayOverride = _ => Task.CompletedTask,
+        };
+
+        Uri? relayed = await host.TryRideMarketRelayAsync(
+            48777, DateTimeOffset.UtcNow.AddMinutes(-1), TimeSpan.FromMilliseconds(300), CancellationToken.None);
+
+        Assert.Null(relayed);
+        Assert.DoesNotContain(logs, l => l.Contains("收养"));
+    }
+
+    /// <summary>
+    /// R2 评审 Blocker 回归：临终 dsh 生前自拉起、继承 token 且父链已死的「孤儿定位主体」（PTC
+    /// worker/pnpm 子壳，形状可判 RuntimeServer）不得充当接力证据——在场也只是按宽限窗回落，
+    /// 绝不把崩溃恢复拖到等待预算上限（退出线③：额外等待 ≤ 一个宽限窗）。
+    /// </summary>
+    [Fact]
+    public async Task TryRideMarketRelayAsync_OrphanTokenedChild_IsNotEvidence_BailsOnGrace()
+    {
+        var logs = new List<string>();
+        using var host = new HarnessRuntimeHost(logs.Add)
+        {
+            // 孤儿子进程：出生晚于被监督运行时、形状可判服务端，但父 pid 已死——不是接力证据
+            RelayResidueOverride = () =>
+            {
+                var orphan = new RuntimeLineage.Candidate(
+                    999999, "orphan-token", "/home/u/.dsh",
+                    $"node /usr/bin/dsh --profile {HarnessRuntimeHost.DesktopProfileName} --port 0",
+                    DateTimeOffset.UtcNow);
+                return (IReadOnlyList<RuntimeLineage.Subject>)new[] {
+                    new RuntimeLineage.Subject(orphan, RuntimeLineage.LineageKind.RuntimeServer) };
+            },
+            RelayServingProbeOverride = _ => Task.FromResult(false),
+            RelayDelayOverride = _ => Task.CompletedTask,
+        };
+
+        var budget = TimeSpan.FromSeconds(15);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Uri? relayed = await host.TryRideMarketRelayAsync(
+            48777, DateTimeOffset.UtcNow.AddMinutes(-1), budget, CancellationToken.None);
+        sw.Stop();
+
+        Assert.Null(relayed);
+        // 若孤儿被误判证据，循环会撑满 15s 预算；证据拒收则宽限窗（2s）内即回落
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(4), $"回落耗时 {sw.Elapsed}，孤儿被当成了接力证据");
+        Assert.Contains(logs, l => l.Contains("无接力证据，宽限窗耗尽"));
+        Assert.DoesNotContain(logs, l => l.Contains("收养"));
+    }
+
+    /// <summary>
+    /// 接线面回归（R2 评审 Suggestion 采用，gated）：真实 RestartAsync 入口走接力分支——同一 host 实例
+    /// 内（进程内重启：_port 已就位、supervisedStart 非空）在管 dsh 退出后，假 helper/续任者接管首选端口
+    /// → 接力分支直接收养续任者（同端口裸 origin），绝不 spawn 竞争 dsh（.dsh-pid 记录被收养 pid+token
+    /// 覆盖即为证）。
+    /// </summary>
+    [Fact]
+    public async Task RestartAsync_PlantedRelayTakesOver_AdoptsSuccessorWithoutCompetingSpawn_WhenEnabled()
+    {
+        if (Environment.GetEnvironmentVariable("DSH_TEST_E2E") != "1")
+        {
+            return; // gated：需要真实 dsh 与真实 spawn 序
+        }
+
+        string home = Path.Combine(Path.GetTempPath(), "dsh-relay-e2e-" + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable(HarnessRuntimeHost.HomeOverrideEnv, home);
+        Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", "placeholder");
+        var processes = new List<System.Diagnostics.Process>();
+        try
+        {
+            Assert.True(DesktopProfileBootstrap.EnsureProfile(home));
+
+            // 同一 host 实例的进程内重启：第一次 StartAsync 建立端口与 supervisedStart，
+            // Stop 后栽假接力，RestartAsync 走接力分支（这是监督器实际走的路径）。
+            var logs = new List<string>();
+            using var host = new HarnessRuntimeHost(logs.Add);
+            Uri? first;
+            try
+            {
+                first = await host.StartAsync(TimeSpan.FromSeconds(30));
+            }
+            catch (Win32Exception)
+            {
+                return; // PATH 没有 dsh——跳过
+            }
+
+            Assert.NotNull(first);
+            host.Stop(); // 模拟市场 helper 对在管 dsh 的 SIGTERM；监督器随后调 RestartAsync
+
+            // 栽假接力：helper（带血统 env 的 marker cmdline）+ 续任者（服务端形状）接管首选端口
+            int port = first!.Port;
+            var relayListener = new TcpListener(IPAddress.Loopback, port);
+            relayListener.Start();
+            try
+            {
+                string alive = "while :; do sleep 1; done";
+                string helperScript = "dsh-market-restart-probe=1 " + alive;
+                string successorScript = $"dsh --profile {HarnessRuntimeHost.DesktopProfileName} --not-real >/dev/null 2>&1; " + alive;
+                foreach (string script in new[] { helperScript, successorScript })
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo("/bin/sh", $"-c \"{script}\"")
+                    {
+                        UseShellExecute = false,
+                    };
+                    psi.Environment[RuntimeLineage.TokenEnv] = "relay-e2e-token";
+                    psi.Environment[HarnessRuntimeHost.EcosystemHomeEnv] = home;
+                    processes.Add(System.Diagnostics.Process.Start(psi)
+                        ?? throw new InvalidOperationException("无法启动接力假进程"));
+                }
+
+                if (!OperatingSystem.IsLinux())
+                {
+                    return; // 血统枚举依赖 /proc；其他平台本测试无意义
+                }
+
+                Uri? restarted = await host.RestartAsync(TimeSpan.FromSeconds(60));
+                host.Stop();
+
+                Assert.NotNull(restarted);
+                Assert.Equal(port, restarted!.Port);
+                Assert.Contains(logs, l => l.Contains("市场接力续任者已接管首选端口"));
+                Assert.Contains(logs, l => l.Contains("收养市场接力的续任者"));
+                // 绝不 spawn 竞争：在管记录必须指向收养 token，而非新壳 spawn 的实例
+
+                (int pid, string token)? record = OrphanDshReaper.ReadSpawnRecord(
+                    HarnessRuntimeHost.ResolvePidFilePath());
+                Assert.True(record is not null);
+                Assert.Equal("relay-e2e-token", record!.Value.token);
+            }
+            finally
+            {
+                relayListener.Stop();
+            }
+        }
+        finally
+        {
+            foreach (System.Diagnostics.Process p in processes)
+            {
+                try
+                {
+                    p.Kill(entireProcessTree: true);
+                    p.Dispose();
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+                {
+                    // 假进程恰好已退出/无权限/平台不支持树杀：清理目标已达成
+                }
+            }
+
+            Environment.SetEnvironmentVariable(HarnessRuntimeHost.HomeOverrideEnv, null);
+            Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", null);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+    }
 }

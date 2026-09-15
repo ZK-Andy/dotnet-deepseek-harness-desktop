@@ -315,6 +315,41 @@ public static class RuntimeLineage
         && candidate.StartTime is not null
         && candidate.StartTime.Value > supervisedStart.Value;
 
+    /// <summary>
+    /// 市场接力共存窗口的单轮判定：被监督运行时退出后，若市场自重启 helper 正接力拉起续任者，
+    /// 壳应继续等待（等续任者 bind 首选端口后直接收养），而不是立刻 spawn 竞争者。
+    /// </summary>
+    /// <param name="relayEvidencePresent">此刻存在接力证据（helper 或尚在插件树加载期的续任者，见
+    /// <see cref="IsRelayEvidence"/>）。</param>
+    /// <param name="helperSeenEver">本窗口内曾观察到 helper（一旦出现，sticky 保持以覆盖其短暂在场）。</param>
+    /// <param name="pastGrace">从未观察到 helper 的宽限窗已耗尽。</param>
+    /// <param name="pastDeadline">总等待预算已耗尽。</param>
+    /// <returns>继续等待返回 true；false 时调用方回落常规探测与 spawn。</returns>
+    /// <remarks>三条退出线：①接力证据消失（helper 已死且无新生续任者）→ 立即回落——helper 作为
+    /// 续任者的父进程，它已死且子代不在场即接力中止；②预算无条件上限——超时回落 spawn 与既有行为
+    /// 等价（spawn 侧还有 bind 预探测兜底），绝不因 helper 卡住而推迟恢复；③helper 从未出现时
+    /// 宽限窗耗尽即回落，崩溃恢复的额外等待不超过一个宽限窗。</remarks>
+    public static bool ShouldKeepWaitingRelay(
+        bool relayEvidencePresent,
+        bool helperSeenEver,
+        bool pastGrace,
+        bool pastDeadline) =>
+        !pastDeadline && (relayEvidencePresent || (!helperSeenEver && !pastGrace));
+
+    /// <summary>
+    /// 判定残留项是否携带「接力进行中」的证据：helper 或新生服务端（皆可证诞生于被监督运行时
+    /// 起始之后）。这是接力等待窗口的在场判据——更早的血统残留（陈旧实例）不是本次接力的证据，
+    /// 在场也不延长等待。
+    /// </summary>
+    /// <param name="subject">血统残留项。</param>
+    /// <param name="supervisedStart">刚退出那个运行时的起始时刻。</param>
+    /// <returns>接力证据返回 true。</returns>
+    /// <remarks>起始时刻读不到的候选按「不可证新生」处理（与收养判据一致）→ 非证据；调用方还须
+    /// 另行核父链存活——临终 dsh 生前自拉起且继承 token 的子进程同样可证新生，但它的父进程已死，
+    /// 不是本次接力的正主，在场既不延长等待也不触发宽限内等待。</remarks>
+    public static bool IsRelayEvidence(Subject subject, DateTimeOffset? supervisedStart) =>
+        IsBornAfter(subject.Candidate, supervisedStart);
+
     /// <summary>home 比对：两侧去尾分隔符后按平台大小写语义比较；任一为空即不匹配。</summary>
     /// <param name="candidateHome">候选进程 env 里的 home。</param>
     /// <param name="expectedHome">本次生效 home。</param>
