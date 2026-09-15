@@ -15,6 +15,20 @@ public static class RuntimeLineageProbes
     /// <summary>端口探活的单次超时（TCP 连接本机回环：连不上即无人监听）。</summary>
     private static readonly TimeSpan s_portProbeTimeout = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>web 面就绪探针的单次超时（HTTP 要等后端应答，比 TCP 探活留更宽余量）。</summary>
+    private static readonly TimeSpan s_webProbeTimeout = TimeSpan.FromMilliseconds(1500);
+
+    /// <summary>web 面就绪探针的复用客户端：不跟随重定向（3xx 本身就是「已应答」判据）、环回不走代理；
+    /// 超时交每次探测自己的取消令牌（<c>Timeout.InfiniteTimeSpan</c> 防两处超时打架）。</summary>
+    private static readonly HttpClient s_webProbeClient = new(new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        UseProxy = false,
+    })
+    {
+        Timeout = Timeout.InfiniteTimeSpan,
+    };
+
     /// <summary>枚举当前所有携带血统 token 的进程快照（Linux <c>/proc</c>；其他平台或读不到环境一律返回空）。</summary>
     /// <returns>候选快照列表；空表示无血统进程（也包含「平台不支持读取」这一保守退化）。</returns>
     /// <remarks>逐 pid 读 <c>/proc/&lt;pid&gt;/environ</c> 是唯一能发现血统进程的手段：先做 token 子串粗筛，
@@ -136,20 +150,81 @@ public static class RuntimeLineageProbes
     }
 
     /// <summary>探测本机回环某端口此刻是否有监听者（TCP 连接成功即视为有人服务）。</summary>
+    /// <remarks>只证「有人监听」：dsh 先 bind 端口、web 面（认证 + 前端静态）由更晚挂载的行提供，
+    /// 「可导航」的就绪判定见 <see cref="ProbeLoopbackWebAsync"/>（ADR relay-web-readiness）。</remarks>
     /// <param name="port">端口。</param>
     /// <param name="timeout">单次探测超时；传 null 用 <see cref="s_portProbeTimeout"/>。</param>
+    /// <param name="ct">取消令牌：调用方取消即立即返回（不额外等待完探测超时）。</param>
     /// <returns>有人监听返回 true。</returns>
-    public static async Task<bool> IsLoopbackServingAsync(int port, TimeSpan? timeout = null)
+    public static async Task<bool> IsLoopbackServingAsync(int port, TimeSpan? timeout = null, CancellationToken ct = default)
     {
         using var client = new TcpClient();
         try
         {
-            await client.ConnectAsync(IPAddress.Loopback, port).WaitAsync(timeout ?? s_portProbeTimeout).ConfigureAwait(false);
+            await client.ConnectAsync(IPAddress.Loopback, port)
+                .WaitAsync(timeout ?? s_portProbeTimeout, ct)
+                .ConfigureAwait(false);
             return true;
         }
         catch (Exception ex) when (ex is SocketException or TimeoutException or OperationCanceledException)
         {
             return false;
+        }
+    }
+
+    /// <summary>回环 web 面就绪三态（ADR relay-web-readiness）。</summary>
+    public enum LoopbackWebProbe
+    {
+        /// <summary>端口无人监听（TCP 连接失败）：续任者尚未 bind。</summary>
+        NotServing,
+
+        /// <summary>端口已监听但 HTTP 应答无声（空体/超时）：web 面（认证 + 前端静态，由更晚挂载的行
+        /// 提供）尚未就绪。此时导航只会把 WebView 送进空白页。</summary>
+        ServingNotReady,
+
+        /// <summary>web 面已应答（响应带响应体，或 3xx 重定向）：可导航。</summary>
+        Ready,
+    }
+
+    /// <summary>探测本机回环端口此刻的 web 面就绪态：TCP 可连只证明 dsh 已 bind，「可导航」另需 web 面已应答
+    /// （ADR relay-web-readiness——dsh 先 bind、web-runtime 行后挂载，两者之间有一段只监听不应答的窗口）。</summary>
+    /// <param name="port">端口。</param>
+    /// <param name="ct">取消令牌（调用方取消即按未就绪返回，上层循环立刻回落）。</param>
+    /// <param name="timeout">可用预算上界：实际单次等待取它与 <see cref="s_webProbeTimeout"/> 的较小者，
+    /// 供调用方按剩余预算收紧（每轮迭代总耗时因此有界）；传 null 即用默认值。</param>
+    /// <returns>就绪三态；探测失败一律折算为「未就绪」语义，绝不因探测异常判死。</returns>
+    public static async Task<LoopbackWebProbe> ProbeLoopbackWebAsync(int port, CancellationToken ct, TimeSpan? timeout = null)
+    {
+        // 整次探测（TCP 预检 + HTTP）共用一个预算：单轮迭代因此有界，不会把等待拖过调用方总预算
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        TimeSpan wait = timeout is { } budget && budget < s_webProbeTimeout ? budget : s_webProbeTimeout;
+        cts.CancelAfter(wait < TimeSpan.Zero ? TimeSpan.Zero : wait);
+
+        if (!await IsLoopbackServingAsync(port, ct: cts.Token).ConfigureAwait(false))
+        {
+            return LoopbackWebProbe.NotServing;
+        }
+
+        try
+        {
+            using HttpResponseMessage response = await s_webProbeClient
+                .GetAsync(new Uri($"http://127.0.0.1:{port}/"), HttpCompletionOption.ResponseHeadersRead, cts.Token)
+                .ConfigureAwait(false);
+            if ((int)response.StatusCode is >= 300 and < 400)
+            {
+                // 无 cookie 的裸请求可能被引导到带 token 的 URL：重定向即证明路由与认证已挂载
+                return LoopbackWebProbe.Ready;
+            }
+
+            await using Stream body = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+            return await body.ReadAsync(new byte[1], cts.Token).ConfigureAwait(false) > 0
+                ? LoopbackWebProbe.Ready
+                : LoopbackWebProbe.ServingNotReady;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException)
+        {
+            // 连接被拒/应答超时/应答中断：web 面尚未可服务（空体 404 就是「路由未挂载」的形态）
+            return LoopbackWebProbe.ServingNotReady;
         }
     }
 

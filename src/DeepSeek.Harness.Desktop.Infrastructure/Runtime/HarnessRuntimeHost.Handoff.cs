@@ -34,9 +34,6 @@ public sealed partial class HarnessRuntimeHost
     private static readonly TimeSpan s_relayWaitInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan s_relayHelperGrace = TimeSpan.FromSeconds(2);
 
-    /// <summary>relay 等待的端口探活注入口（生产 null = 真探针；仅供测试闭环）。</summary>
-    internal Func<int, Task<bool>>? RelayServingProbeOverride { get; set; }
-
     /// <summary>relay 等待的血统残留枚举注入口（生产 null = 真扫 /proc；仅供测试闭环）。</summary>
     internal Func<IReadOnlyList<RuntimeLineage.Subject>>? RelayResidueOverride { get; set; }
 
@@ -45,8 +42,8 @@ public sealed partial class HarnessRuntimeHost
 
     /// <summary>
     /// 市场接力共存等待（ADR market-restart-adopt-first）：进程内重启入口先观察「市场自重启 helper
-    /// 正拉起续任者」的证据，在场则不再 spawn 竞争者——等续任者接管首选端口后直接走既有交接处置
-    /// 收养，恢复链一次落地（单进程、单导航）。helper 不在场或中途消失即快速回落常规探测与 spawn，
+    /// 正拉起续任者」的证据，在场则不再 spawn 竞争者——等续任者的 **web 面**就绪（不只是端口可连，
+    /// ADR relay-web-readiness）后直接走既有交接处置收养，把 WebView 一次导航到已可服务的页面。helper 不在场或中途消失即快速回落常规探测与 spawn，
     /// 崩溃恢复路径的额外等待不超过一个宽限窗；总预算与恢复时限同源，超时也回落原路径（其 bind
     /// 预探测兜底），绝不因 helper 卡住而推迟恢复。
     /// </summary>
@@ -65,6 +62,7 @@ public sealed partial class HarnessRuntimeHost
         DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
         DateTimeOffset graceEnd = DateTimeOffset.UtcNow + s_relayHelperGrace;
         bool helperSeen = false;
+        bool webPendingLogged = false;
         while (true)
         {
             if (ct.IsCancellationRequested)
@@ -74,10 +72,9 @@ public sealed partial class HarnessRuntimeHost
 
             IReadOnlyList<RuntimeLineage.Subject> residue =
                 RelayResidueOverride?.Invoke() ?? FindLineageResidue();
-            // 单遍产出两个判定（R1 评审采用）：helper 在场（sticky 保持以覆盖其短暂在场）与接力证据在场。
-            // 证据判定追加父链存活核（R2 评审 Blocker 修复）：临终 dsh 生前自拉起且继承 token 的子进程
-            // （PTC worker / pnpm 子壳，`--profile` argv 形状可判 RuntimeServer）同样可证新生，但其父已死
-            // ——不是本次接力的正主，不得当无 helper 的「固定证据」把恢复拖到预算上限。
+            // 证据判定含父链存活核：临终 dsh 生前自拉起、继承 token 的子进程（PTC worker / pnpm 子壳，
+            // --profile argv 形状可判 RuntimeServer）同样可证新生，但其父已死——不是本次接力的正主，
+            // 不得当无 helper 的「固定证据」把恢复拖到预算上限。
             bool helperNow = false;
             bool evidenceNow = false;
             foreach (RuntimeLineage.Subject s in residue)
@@ -92,28 +89,31 @@ public sealed partial class HarnessRuntimeHost
             }
 
             helperSeen |= helperNow;
-            bool serving = await (RelayServingProbeOverride?.Invoke(port)
-                ?? RuntimeLineageProbes.IsLoopbackServingAsync(port)).ConfigureAwait(false);
-            if (serving)
+            // 探针按剩余预算收紧（整次探测 ≤ min(剩余预算, 1.5s)）：不会把窗口拖过总预算
+            RuntimeLineageProbes.LoopbackWebProbe readiness = await RuntimeLineageProbes
+                .ProbeLoopbackWebAsync(port, ct, deadline - DateTimeOffset.UtcNow)
+                .ConfigureAwait(false);
+            if (readiness == RuntimeLineageProbes.LoopbackWebProbe.Ready)
             {
                 _log?.Invoke($"[host] 市场接力续任者已接管首选端口 {port}：跳过竞争 spawn，转入收养处置");
                 return await RecoverFromFailureAsync(port, StartFailure.PortConflict, supervisedStart, timeout, ct)
                     .ConfigureAwait(false);
             }
 
-            bool pastGrace = !helperSeen && DateTimeOffset.UtcNow >= graceEnd;
-            bool pastDeadline = DateTimeOffset.UtcNow >= deadline;
             if (!RuntimeLineage.ShouldKeepWaitingRelay(
                     evidenceNow, helperSeen,
-                    pastGrace: pastGrace,
-                    pastDeadline: pastDeadline))
+                    pastGrace: !helperSeen && DateTimeOffset.UtcNow >= graceEnd,
+                    pastDeadline: DateTimeOffset.UtcNow >= deadline))
             {
-                // 回落留痕（R2 评审采用）：两条回落原因线都可供 host.log 判读，与接管命中行对偶
+                // 回落留痕：两条回落原因线都可供 host.log 判读，与接管命中行对偶
                 _log?.Invoke($"[host] 市场接力共存窗口回落（{(helperSeen
                     ? "接力中止：helper 已死且无新生续任者"
                     : "无接力证据，宽限窗耗尽")}）→ 走既有探测与 spawn");
                 return null;
             }
+
+            // 决定继续等待后留痕：端口可连但 web 面未应答（dsh 先 bind、web-runtime 行后挂载）
+            webPendingLogged = LogWebPending(readiness, port, ct, webPendingLogged);
 
             try
             {
@@ -132,6 +132,23 @@ public sealed partial class HarnessRuntimeHost
                 return null;
             }
         }
+    }
+
+    /// <summary>「端口已监听但 web 面未就绪」一次性留痕（1s 节拍下只记一条；已取消不留痕——那时并未继续等）。</summary>
+    /// <param name="readiness">本次就绪判定。</param>
+    /// <param name="port">首选端口。</param>
+    /// <param name="ct">取消令牌。</param>
+    /// <param name="alreadyLogged">本次等待是否已留痕。</param>
+    /// <returns>新的留痕状态。</returns>
+    private bool LogWebPending(RuntimeLineageProbes.LoopbackWebProbe readiness, int port, CancellationToken ct, bool alreadyLogged)
+    {
+        if (readiness != RuntimeLineageProbes.LoopbackWebProbe.ServingNotReady || alreadyLogged || ct.IsCancellationRequested)
+        {
+            return alreadyLogged;
+        }
+
+        _log?.Invoke($"[host] 市场接力续任者端口 {port} 已监听但 web 面未就绪：继续等待，不导航进空白页");
+        return true;
     }
 
     /// <summary>候选的父链是否存活（接力证据的在场判据之一——真 helper/其续任者的父必活，孤儿不算证据）。</summary>

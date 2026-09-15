@@ -12,13 +12,8 @@ public class RuntimeLineageProbeTests
     [Fact]
     public void ProbeLoopbackBind_FreePort_ReturnsFree()
     {
-        // 由 OS 分配一个当前空闲的端口：bind 一次拿端口号后释放，再交给被测探测。
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-
-        Assert.Equal(RuntimeLineageProbes.LoopbackBindProbe.Free, RuntimeLineageProbes.ProbeLoopbackBind(port));
+        // 由 OS 分配一个当前空闲的端口（共享夹具同法），再交给被测探测。
+        Assert.Equal(RuntimeLineageProbes.LoopbackBindProbe.Free, RuntimeLineageProbes.ProbeLoopbackBind(LoopbackHttpResponder.ReserveFreePort()));
     }
 
     /// <summary>bind 探测：被监听者占住的端口判 Occupied——正是要拦掉的「注定失败尝试」形态。</summary>
@@ -53,5 +48,108 @@ public class RuntimeLineageProbeTests
         int port = ((IPEndPoint)socket.LocalEndPoint!).Port;
 
         Assert.Equal(RuntimeLineageProbes.LoopbackBindProbe.Free, RuntimeLineageProbes.ProbeLoopbackBind(port));
+    }
+
+    /// <summary>web 就绪探针：无人监听判 NotServing——续任者尚未 bind，谈不上就绪（ADR relay-web-readiness）。</summary>
+    [Fact]
+    public async Task ProbeLoopbackWebAsync_NoListener_ReturnsNotServing()
+    {
+        int port = LoopbackHttpResponder.ReserveFreePort();
+
+        Assert.Equal(
+            RuntimeLineageProbes.LoopbackWebProbe.NotServing,
+            await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, CancellationToken.None));
+    }
+
+    /// <summary>web 就绪探针：端口可连但 HTTP 无声判 ServingNotReady——正是「dsh 已 bind、web-runtime 行
+    /// 尚未挂载」的窗口，也是导航进空白页的那段。</summary>
+    [Fact]
+    public async Task ProbeLoopbackWebAsync_PortListenedWithoutHttpAnswer_ReturnsServingNotReady()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, LoopbackHttpResponder.ReserveFreePort());
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        try
+        {
+            // 只监不听不应答：TCP 探活连得上，HTTP 请求挂到探测超时
+            Assert.Equal(
+                RuntimeLineageProbes.LoopbackWebProbe.ServingNotReady,
+                await RuntimeLineageProbes.ProbeLoopbackWebAsync(
+                    port, CancellationToken.None, TimeSpan.FromMilliseconds(300)));
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    /// <summary>web 就绪探针：带响应体的 HTTP 应答判 Ready——dsh 无 cookie 时的 401 文案体即就绪形态。</summary>
+    [Fact]
+    public async Task ProbeLoopbackWebAsync_HttpBodyAnswer_ReturnsReady()
+    {
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var cts = new CancellationTokenSource();
+        (TcpListener listener, Task serving) = LoopbackHttpResponder.Start(
+            port,
+            LoopbackHttpResponder.Response("HTTP/1.1 401 Unauthorized", "dsh web authentication required; probe"),
+            cts.Token);
+        try
+        {
+            Assert.Equal(
+                RuntimeLineageProbes.LoopbackWebProbe.Ready,
+                await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, CancellationToken.None));
+        }
+        finally
+        {
+            cts.Cancel();
+            listener.Stop();
+            await serving;
+        }
+    }
+
+    /// <summary>web 就绪探针：空体应答判 ServingNotReady——路由未挂载的空体 404 不得被当成就绪。</summary>
+    [Fact]
+    public async Task ProbeLoopbackWebAsync_EmptyBodyAnswer_ReturnsServingNotReady()
+    {
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var cts = new CancellationTokenSource();
+        (TcpListener listener, Task serving) = LoopbackHttpResponder.Start(
+            port, LoopbackHttpResponder.Response("HTTP/1.1 404 Not Found"), cts.Token);
+        try
+        {
+            Assert.Equal(
+                RuntimeLineageProbes.LoopbackWebProbe.ServingNotReady,
+                await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, CancellationToken.None));
+        }
+        finally
+        {
+            cts.Cancel();
+            listener.Stop();
+            await serving;
+        }
+    }
+
+    /// <summary>web 就绪探针：3xx 重定向判 Ready——无 cookie 的裸请求被引导到带 token 的 URL 即证明路由已挂载。</summary>
+    [Fact]
+    public async Task ProbeLoopbackWebAsync_RedirectAnswer_ReturnsReady()
+    {
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var cts = new CancellationTokenSource();
+        (TcpListener listener, Task serving) = LoopbackHttpResponder.Start(
+            port,
+            LoopbackHttpResponder.Response("HTTP/1.1 302 Found", headers: "Location: /?token=probe\r\n"),
+            cts.Token);
+        try
+        {
+            Assert.Equal(
+                RuntimeLineageProbes.LoopbackWebProbe.Ready,
+                await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, CancellationToken.None));
+        }
+        finally
+        {
+            cts.Cancel();
+            listener.Stop();
+            await serving;
+        }
     }
 }
