@@ -1,10 +1,10 @@
 # Testing
 
-> 测试基线以 README 双语徽章为准（当前 634/634，覆盖率 57.12%）；`dotnet test` 全绿 0 警告是每次提交的硬门。
+> 测试基线以 README 双语徽章为准（当前 641/641，覆盖率 57.46%）；`dotnet test` 全绿 0 警告是每次提交的硬门。
 
 ## 单测
 
-* 框架：`xunit 2.9.3`，`dotnet test dotnet-deepseek-harness-desktop.slnx`；测试工程 `tests/DeepSeek.Harness.Desktop{.Core,.Infrastructure,}.Tests/`（三工程镜像三层，98/383/153）。
+* 框架：`xunit 2.9.3`，`dotnet test dotnet-deepseek-harness-desktop.slnx`；测试工程 `tests/DeepSeek.Harness.Desktop{.Core,.Infrastructure,}.Tests/`（三工程镜像三层）。
 * **覆盖率基线取 CI**：徽章与上行基线行的 `line-rate` 取自最近一次真正跑了 `build-test` 的作业（`ci.yml` 按路径过滤，只在 code 面命中时跑该作业——纯文档批次沿用上一次的值）；`coverage summary` 步把每个测试工程各产出的 cobertura 按 `(assembly, 源路径, 行号)` 取并集后打印 `coverage-summary: covered=<c> valid=<v> line-rate=<rate>`（合并规则与脚本自测见 [`scripts/coverage-summary.py`](../scripts/coverage-summary.py) 与 [ADR](../.agents/notes/implemented/testing/2026-09-14-coverage-baseline-multi-project-merge.md)）、`coverage-cobertura` artifact 存 7 天；复现为 `gh run download <id> -n coverage-cobertura` 后 `python3 scripts/coverage-summary.py --results <dir>`，或 `gh run view <id> --log | grep coverage-summary`。本机复现用 `-c Debug --collect:"XPlat Code Coverage"`（同口径；CI 另带 `--no-build --results-directory TestResults`）：本机与基线可差数行——2026-09-12 本机实测高 4 行，差在 `Infrastructure/Runtime/HostLog.cs` 的落盘失败 `catch` 是否被覆盖（本机 `HOME` 不可写；该因果定性属【推断 · 未证】，见 ADR），不是覆盖增益；`-c Release` 的序列点集合与 Debug 不同口径，不与基线可比。见 [ADR](../.agents/notes/implemented/testing/2026-09-12-coverage-baseline-from-ci-cobertura.md)。
 * 覆盖面（按域分组，逐类细节见各文件头 `<summary>`）：
   * **壳与运行时**：`HarnessUrlParserTests`（`dsh web:` 行解析）、`HarnessRuntimeHostTests`（端口分配/记忆/占位回退/生命周期门/取消契约）、`RuntimeVersionGateTests`（版本底线判定 + 底线横幅）、`DesktopProfileBootstrapTests`/`SharedHomeContractTests`（desktop profile 自举与共享 home 契约）、`RunMarkerTests`（非受控退出标记与横幅）、`DesktopBannerTests`（横幅工厂幂等/堆叠/转义）。
