@@ -13,12 +13,20 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 命名空间升级（B4）后的全局 using：下游层全局可见 Core 端口与本层实现命名空间。 -->
+    <!-- 全局 using：上游 Core 各域端口与本层各域实现（目录即命名空间）免逐文件 using。 -->
     <Using Include="DeepSeek.Harness.Desktop.Core" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Plugins" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.PageHealth" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Localization" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Bootstrap" />
     <Using Include="DeepSeek.Harness.Desktop.Infrastructure" />
-    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Tray" />
     <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Bootstrap" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Runtime" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.CliShim" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Plugins" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Platform" />
   </ItemGroup>
 
   <ItemGroup>

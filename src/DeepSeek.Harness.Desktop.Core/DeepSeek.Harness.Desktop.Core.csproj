@@ -11,9 +11,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 命名空间升级（B4）后的层内全局 using：Core 两命名空间层内互用免逐文件 using。 -->
+    <!-- 层内全局 using：Core 各域命名空间（目录即命名空间）层内互用免逐文件 using。 -->
     <Using Include="DeepSeek.Harness.Desktop.Core" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Plugins" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.PageHealth" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Localization" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Bootstrap" />
   </ItemGroup>
 
   <ItemGroup>

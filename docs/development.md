@@ -13,7 +13,7 @@
 ```
 src/DeepSeek.Harness.Desktop/  Program.cs, DesktopBootstrap*, Commands/*, ryn.json, wwwroot/
 src/DeepSeek.Harness.Desktop.Core/  纯逻辑（零外层引用）
-src/DeepSeek.Harness.Desktop.Infrastructure/  适配器（Services/*）
+src/DeepSeek.Harness.Desktop.Infrastructure/  适配器（Update/Runtime/CliShim/Plugins/Platform/*）
 tests/DeepSeek.Harness.Desktop{.Core,.Infrastructure,}.Tests/  xunit（清单见 testing.md）
 scripts/  build-companion-tgz.sh, package-*.sh, release-preflight.sh, verify-*.py, coverage-summary.py
 ```

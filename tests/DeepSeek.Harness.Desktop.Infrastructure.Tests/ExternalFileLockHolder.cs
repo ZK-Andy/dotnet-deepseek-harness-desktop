@@ -4,7 +4,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Tests;
 
 /// <summary>
 /// 跨进程文件锁持有者：起一个**独立进程**以 OS 级锁独占目标文件，验证 <c>FileShare.None</c> 的跨进程
-/// 语义（同进程持有不构成他实例证据——<see cref="StalePackagePrunerTests"/> 既有模拟的盲区）。
+/// 语义（同进程持有不构成他实例证据——<see cref="Update.StalePackagePrunerTests"/> 既有模拟的盲区）。
 /// 机制按 OS 对齐 .NET 运行时的实现：Unix 用 flock（python3 <c>fcntl.flock</c>），Windows 用 LockFile
 /// （PowerShell <c>File.Open</c> FileShare.None）——已实测两机制都与 .NET <c>FileShare.None</c> 互斥
 /// （ADR 补测批；python 的 fcntl.lockf/POSIX 锁与 .NET 互不相干，不可用）。

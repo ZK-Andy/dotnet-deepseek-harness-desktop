@@ -1,0 +1,252 @@
+namespace DeepSeek.Harness.Desktop.Infrastructure.Plugins;
+
+/// <summary>随包插件后台安装的纯逻辑（可单测）：安装驱动（registry 市场 + 随包插件 spawn 前安装）。
+/// JSON/profile 文件维护辅助见 <c>MarketInstallHelper.Json.cs</c>（partial）。</summary>
+/// <remarks>随包插件当前仅 <c>dsh-desktop-companion</c>（桌面伴生，安装器资源供给、无 registry 回退）；
+/// dshmarket 改由首启引导经 registry 安装（见 RuntimeBootstrap，online-first 批次三）。</remarks>
+public static partial class MarketInstallHelper
+{
+    /// <summary>dshmarket 的 registry 直装 spec（@latest：市场内核跟随上游 dist-tag，无钉版）。
+    /// 显式 @latest 对既存本地 seed 同样强制改写为 registry 形态（pnpm 对裸名 add 幂等、spec 永不翻转，
+    /// ADR bundled-plugin-registry-normalization 实机实证）。</summary>
+    public const string MarketSpec = "dshmarket@latest";
+
+    /// <summary>
+    /// 首启引导经 registry 安装市场（ADR online-first-unbundled-runtime 批次三；事务化见
+    /// ADR transactional-plugin-pipeline）：经 <see cref="MarketSpec"/> 安装 dshmarket 到桌面 profile
+    /// （新装 + 存量 seed 自愈归化）。变更加在 <see cref="PluginProfileTransaction"/> 的 staging 副本上
+    /// （allowBuilds 放行 → <c>dsh plugin add dshmarket@latest</c>（minimumReleaseAge 政策拒绝时放宽重试一次）
+    /// → bundles 补写），staged 探针验证 <c>dsh web:</c> 可出后才 journal 换入 active——探针不过 =
+    /// staging 作废、active 保持旧完整态，结构性消除半变更态（原 ReconcileProfile 事后补丁退役）。
+    /// best-effort：失败只留日志不抛（市场缺失不阻塞首启）。
+    /// <paramref name="runPluginAdd"/> 是注入的子进程执行器（生产用真实 spawn，测试用 fake 断言参数/环境）。
+    /// </summary>
+    /// <param name="nodeExe">运行时的 node 可执行。</param>
+    /// <param name="dshEntry">运行时 dsh bin.js 入口。</param>
+    /// <param name="dshHome">共享 DSH_HOME。</param>
+    /// <param name="log">诊断日志出口。</param>
+    /// <param name="runPluginAdd">执行一次 <c>dsh plugin add</c> 的注入委托（接收已配好 env 的 ProcessStartInfo）。</param>
+    /// <param name="runProbe">staged 体检探针委托（生产用 <see cref="PluginProcessRunner.RunProbeAsync"/>；
+    /// 返回 null = 探针未出 URL → 放弃激活）。</param>
+    /// <param name="ct">取消令牌。</param>
+    /// <returns>本次是否确有插件装成功并换入 active（失败 best-effort 只留日志）。</returns>
+    public static async Task<bool> EnsureMarketFromRegistryAsync(
+        string nodeExe,
+        string dshEntry,
+        string dshHome,
+        Action<string> log,
+        Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> runPluginAdd,
+        Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<Uri?>> runProbe,
+        CancellationToken ct)
+    {
+        var tx = PluginProfileTransaction.Begin(dshHome, log);
+        // 两个安装驱动的 try 均包裹整个变更段（偏离「try 只包一个语句」）：catch 是 Discard-重抛清理守卫，
+        // 保证任何异常路径 staging 收口、active 不留半变更——例外理由记录于此，免后续评审反复辩论。
+        try
+        {
+            // dshmarket 依赖树含原生构建；pnpm 11 默认拒绝，须先放行 allowBuilds（staging 副本上做）
+            EnsureWorkspaceAllowBuilds(Path.Combine(tx.StagingProfileDir, "pnpm-workspace.yaml"));
+
+            log($"[host] 引导：registry 安装市场（{MarketSpec}，staging）");
+            (int exitCode, string? outText, string? errText) =
+                await RunPluginAddAsync(nodeExe, dshEntry, tx.StagingHome, MarketSpec, PluginSpecOrigin.Registry, log, runPluginAdd, ct).ConfigureAwait(false);
+            if (exitCode != 0)
+            {
+                log($"[host] 市场安装失败 exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}（staging 作废，可稍后经设置/手动安装）");
+                tx.Discard();
+                return false;
+            }
+
+            string stagingPkg = Path.Combine(tx.StagingProfileDir, "package.json");
+            if (await EnsureBundlesContainsAsync(stagingPkg, "dshmarket").ConfigureAwait(false))
+            {
+                log("[host] 已补写 bundles dshmarket（staging）");
+            }
+
+            // staged 体检：换入前先证明 staging 能活；不过 = 放弃激活（active 全程旧完整态）
+            if (await runProbe(PluginInstallProbe.BuildProbePsi(tx.StagingHome), ct).ConfigureAwait(false) is null)
+            {
+                log("[host] staged 体检探针未出 URL：放弃激活，active 保持旧完整态");
+                tx.Discard();
+                return false;
+            }
+
+            tx.Activate();
+            return true;
+        }
+        catch
+        {
+            // 异常路径（含取消）：staging 收口，active 全程未被触碰；异常本身上抛由调用方收口
+            tx.Discard();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 在 spawn dsh 前安装待装随包插件（batch-1 对齐参照：所有插件内核前就位，绝不「安装后重启」）。
+    /// 当前唯一随包插件 = companion（file: 安装器资源 spec）；dshmarket 已由
+    /// <see cref="EnsureMarketFromRegistryAsync"/> 在引导内安装。事务化（ADR transactional-plugin-pipeline）：
+    /// 变更加在 <see cref="PluginProfileTransaction"/> 的 staging 副本上，任一插件装成功即 staged 探针
+    /// 验证 <c>dsh web:</c> 可出后 journal 换入——探针不过 = staging 作废、active 保持旧完整态。
+    /// best-effort：失败只留日志不抛（缺 companion 不阻塞 dsh 起动，下次启动重试整装）。
+    /// 与 <see cref="EnsureMarketFromRegistryAsync"/> 同为注入委托的测试友好形态。
+    /// </summary>
+    /// <param name="nodeExe">运行时的 node 可执行；<see langword="null"/> 时用 PATH 上的 <c>dsh</c> 命令
+    /// （PATH-dsh 运行时形态，等价宿主 <c>HarnessRuntimeHost</c> spawn 时的 <c>dsh</c> 命令解析）。</param>
+    /// <param name="dshEntry">运行时 dsh bin.js 入口；<paramref name="nodeExe"/> 为 null（PATH dsh）时无入口参数。</param>
+    /// <param name="dshHome">共享 DSH_HOME。</param>
+    /// <param name="installerPluginsDir">安装器自带插件资源目录（resources/plugins）；开发/引导形态可 null。</param>
+    /// <param name="log">诊断日志出口。</param>
+    /// <param name="runPluginAdd">执行一次 <c>dsh plugin add</c> 的注入委托。</param>
+    /// <param name="runProbe">staged 体检探针委托（生产用 <see cref="PluginProcessRunner.RunProbeAsync"/>；
+    /// 返回 null = 探针未出 URL → 放弃激活）。</param>
+    /// <param name="ct">取消令牌。</param>
+    /// <returns>本次是否确有插件装成功并换入 active（无待装/全失败/探针不过返回 false）。</returns>
+    public static async Task<bool> EnsureBundledPluginsBeforeSpawnAsync(
+        string? nodeExe,
+        string? dshEntry,
+        string dshHome,
+        string? installerPluginsDir,
+        Action<string> log,
+        Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> runPluginAdd,
+        Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<Uri?>> runProbe,
+        CancellationToken ct)
+    {
+        string profileDir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        List<(string Package, string Spec)> pending = BundledPluginCatalog.AssemblePending(
+            BundledPluginSupply.All, installerPluginsDir, profilePkg, profileDir, log);
+        if (pending.Count == 0)
+        {
+            log("[host] 随包插件无需安装（companion 已就位），跳过");
+            return false;
+        }
+
+        var tx = PluginProfileTransaction.Begin(dshHome, log);
+        try
+        {
+            string stagingPkg = Path.Combine(tx.StagingProfileDir, "package.json");
+            await CleanupBogusAppDependencyAsync(stagingPkg).ConfigureAwait(false);
+            EnsureWorkspaceAllowBuilds(Path.Combine(tx.StagingProfileDir, "pnpm-workspace.yaml"));
+
+            bool anyInstalled = false;
+            foreach ((string? pkg, string? spec) in pending)
+            {
+                log($"[host] 随包插件安装（{pkg}）spec={spec}");
+                (int exitCode, string? outText, string? errText) =
+                    await RunPluginAddAsync(nodeExe, dshEntry, tx.StagingHome, spec, PluginSpecOrigin.Bundled, log, runPluginAdd, ct).ConfigureAwait(false);
+                if (exitCode != 0)
+                {
+                    log($"[host] 随包插件安装失败（{pkg}）exit={exitCode}（常见：ERR_PNPM_IGNORED_BUILDS——workspace 已在 staging 修复，下次启动重试整装；详情见 stderr）");
+                    continue;
+                }
+
+                anyInstalled = true;
+                if (await EnsureBundlesContainsAsync(stagingPkg, pkg).ConfigureAwait(false))
+                {
+                    log($"[host] 已补写 bundles {pkg}（staging）");
+                }
+            }
+
+            if (!anyInstalled)
+            {
+                // 全部失败：staging 作废、active 保持旧完整态（下次启动重试整装）
+                tx.Discard();
+                return false;
+            }
+
+            // 桌面核心不变量：staging 的 bundles 无论怎么补写，web-app 层绝不能丢（丢了换入后就没有 Web UI）
+            foreach (string builtin in DesktopProfileBootstrap.InitialBundles)
+            {
+                if (await EnsureBundlesContainsAsync(stagingPkg, builtin).ConfigureAwait(false))
+                {
+                    log($"[host] 已补回桌面必需 bundle {builtin}（staging）");
+                }
+            }
+
+            // staged 体检：换入前先证明 staging 能活；不过 = 放弃激活
+            if (await runProbe(PluginInstallProbe.BuildProbePsi(tx.StagingHome), ct).ConfigureAwait(false) is null)
+            {
+                log("[host] staged 体检探针未出 URL：放弃激活，active 保持旧完整态");
+                tx.Discard();
+                return false;
+            }
+
+            tx.Activate();
+            return true;
+        }
+        catch
+        {
+            // 异常路径（含取消）：staging 收口，active 全程未被触碰；异常本身上抛由调用方收口
+            tx.Discard();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 构建并运行一次 <c>dsh plugin add</c>（写入桌面 profile）：minReleaseAge 政策拒绝时放宽重试一次。
+    /// BuildPsi 与 RunOnce 在此集中（两个安装驱动共用，消除重复）；<paramref name="nodeExe"/> 为 null =
+    /// PATH-dsh 运行时（用 PATH 上 dsh 命令，无独立入口参数）。
+    /// <paramref name="origin"/> 为 registry 时先过 <see cref="IsValidRegistrySpec"/>——不合法即拒装留日志，
+    /// 绝不把形状可疑的 spec 透传下游（ADR spawn-env-and-plugin-spec-hardening）。
+    /// </summary>
+    internal static async Task<(int Exit, string Out, string Err)> RunPluginAddAsync(
+        string? nodeExe,
+        string? dshEntry,
+        string dshHome,
+        string spec,
+        PluginSpecOrigin origin,
+        Action<string> log,
+        Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> runPluginAdd,
+        CancellationToken ct)
+    {
+        if (origin == PluginSpecOrigin.Registry && !IsValidRegistrySpec(spec, out string reason))
+        {
+            log($"[host] 拒绝不合法的市场插件 spec（{reason}）：{spec}");
+            return (1, string.Empty, reason);
+        }
+
+        System.Diagnostics.ProcessStartInfo BuildPsi(bool relaxPolicy)
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = nodeExe is null ? "dsh" : nodeExe,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            EnvironmentHygiene.StripInherited(psi);
+            if (dshEntry is not null)
+            {
+                psi.ArgumentList.Add(dshEntry);
+            }
+            psi.ArgumentList.Add("plugin");
+            psi.ArgumentList.Add("--profile");
+            psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
+            psi.ArgumentList.Add("add");
+            psi.ArgumentList.Add(spec);
+            psi.Environment["DSH_HOME"] = dshHome;
+            if (relaxPolicy)
+            {
+                psi.Environment["pnpm_config_minimum_release_age"] = "0";
+            }
+
+            HarnessRuntimeHost.UseUtf8TextStreams(psi);
+            return psi;
+        }
+
+        async Task<(int Exit, string Out, string Err)> RunOnceAsync(bool relaxPolicy)
+            => await runPluginAdd(BuildPsi(relaxPolicy), ct).ConfigureAwait(false);
+
+        (int exitCode, string? outText, string? errText) = await RunOnceAsync(relaxPolicy: false).ConfigureAwait(false);
+        log($"[host] dsh plugin add exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
+        if (exitCode != 0 && (outText + errText).Contains("MINIMUM_RELEASE_AGE", StringComparison.OrdinalIgnoreCase))
+        {
+            log("[host] lockfile 被 minimumReleaseAge 政策拒绝；放宽该政策重试一次（仅本次安装生效）");
+            (exitCode, outText, errText) = await RunOnceAsync(relaxPolicy: true).ConfigureAwait(false);
+            log($"[host] dsh plugin add(重试) exit={exitCode} stdout={outText.Trim()} stderr={errText.Trim()}");
+        }
+
+        return (exitCode, outText, errText);
+    }
+}

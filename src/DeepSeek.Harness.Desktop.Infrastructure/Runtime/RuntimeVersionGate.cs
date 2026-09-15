@@ -1,0 +1,98 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Text.RegularExpressions;
+
+namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
+
+/// <summary>
+/// 启动版本底线检查（只读探测，ADR shared-home-desktop-profile）：桌面依赖全局 dsh（alpha 通道），
+/// 与用户自管 CLI 写同一 home，版本偏斜的唯一防线——探测即将执行的 dsh 版本，低于底线仅明确提示，
+/// 不阻断、不做迁移管控。探测失败（超时/进程失败/不可解析）视为未知：只记日志，不用横幅打扰。
+/// </summary>
+public static class RuntimeVersionGate
+{
+    /// <summary>
+    /// 桌面支持的最低 dsh 版本（跟随 @alpha 预发布通道，本底线是对上游缺陷/破坏性变更的唯一兜底：
+    /// 出问题立即抬升）。协议级兼容底线，固定在代码不入 appsettings。
+    /// 低于即横幅提示（全局 dsh 更新失败或用户自装极旧版的兜底）。
+    /// </summary>
+    public const string MinimumVersion = "0.1.2-alpha.2";
+
+    /// <summary>版本探测时限：<c>dsh --version</c> 是毫秒级调用，超时按未知处理而非阻塞启动。</summary>
+    public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(8);
+
+    private static readonly Regex s_versionToken = new(
+        @"v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>从 <c>--version</c> 输出提取首个版本 token（如 <c>0.1.1-rc.2</c>，容忍 <c>v</c> 前缀）；无匹配返回 null。</summary>
+    public static string? TryParseVersionOutput(string output)
+    {
+        foreach (string line in output.Split('\n'))
+        {
+            Match match = s_versionToken.Match(line.Trim());
+            if (match.Success)
+            {
+                return match.Value.TrimStart('v', 'V');
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 是否低于底线。数字段逐段比较（<see cref="UpdateVersion.Compare"/>），预发布后缀不参与——
+    /// 同数字核内 rc.1 与 rc.2 视为同级；粗粒度足够：防线目标是拦截跨 minor 的老运行时。
+    /// </summary>
+    public static bool IsBelowFloor(string version) =>
+        UpdateVersion.Compare(version, MinimumVersion) < 0;
+
+    /// <summary>构造版本探针的 <c>dsh --version</c> 进程启动信息：先剥离宿主继承噪声
+    /// （ADR spawn-env-and-plugin-spec-hardening），避免宿主 <c>NODE_OPTIONS</c> 在探针期执行任意代码。</summary>
+    /// <returns>已配好参数与环境净化的启动信息。</returns>
+    internal static ProcessStartInfo BuildProbePsi()
+    {
+        var psi = new ProcessStartInfo
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        EnvironmentHygiene.StripInherited(psi);
+        HarnessRuntimeHost.UseUtf8TextStreams(psi);
+        psi.FileName = "dsh";
+        psi.ArgumentList.Add("--version");
+        return psi;
+    }
+
+    /// <summary>
+    /// 只读探测 PATH 上全局 dsh 的版本（<c>dsh --version</c>；全局 dsh 模型下无捆绑形态）。
+    /// </summary>
+    /// <returns>探测到的版本串；超时、进程失败或输出不可解析返回 null（未知 ≠ 不合格，不提示横幅）。</returns>
+    public static async Task<string?> ProbeAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(ProbeTimeout);
+            ProcessStartInfo psi = BuildProbePsi();
+
+            using Process p = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 dsh --version 进程");
+            string stdout = await p.StandardOutput.ReadToEndAsync(cts.Token).WaitAsync(cts.Token).ConfigureAwait(false);
+            await p.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+            return TryParseVersionOutput(stdout);
+        }
+        catch (OperationCanceledException)
+        {
+            // 探测超时或应用退出导致取消：按未知处理，不阻断启动链路
+            return null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+        {
+            // dsh 缺失/不可执行：真正的启动失败由 StartAsync → 降级 wwwroot 链路呈现，这里只放弃探测
+            HostLog.Write($"[host] dsh 版本探测失败：{ex.Message}");
+            return null;
+        }
+    }
+}

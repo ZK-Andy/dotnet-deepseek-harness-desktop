@@ -25,12 +25,20 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
-    <!-- 命名空间升级（B4）后的全局 using：边界集成测消费 Core 端口 + Infrastructure 实现命名空间。 -->
+    <!-- 全局 using：边界集成测消费 Core 端口 + Infrastructure 实现各域命名空间（目录即命名空间）。 -->
     <Using Include="DeepSeek.Harness.Desktop.Core" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Plugins" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.PageHealth" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Localization" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Bootstrap" />
     <Using Include="DeepSeek.Harness.Desktop.Infrastructure" />
-    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Tray" />
     <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Bootstrap" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Runtime" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.CliShim" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Plugins" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Platform" />
   </ItemGroup>
 
   <ItemGroup>

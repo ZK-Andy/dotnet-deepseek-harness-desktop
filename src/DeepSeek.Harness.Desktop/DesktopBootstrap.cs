@@ -23,8 +23,8 @@ public sealed partial class DesktopBootstrap
     private CancellationTokenSource? _supervisorCtsRef;
     private UiLocale _uiLocale = null!;
     private PrimaryListener? _instanceListener;
-    private Services.Tray.TrayController _tray = null!;
-    private Services.PageHealthMonitor? _healthMonitor;
+    private Tray.TrayController _tray = null!;
+    private PageHealthMonitor? _healthMonitor;
     private RynApplication _app = null!;
     private CurrentWindowAccessor _windowAccessor = null!;
     private Uri? _webUrl;
@@ -40,7 +40,7 @@ public sealed partial class DesktopBootstrap
     private readonly record struct Preflight(IFirstBootBootstrap Bootstrap, LaunchOptions Launch);
     private readonly record struct HostSetup(HarnessRuntimeHost Host, RunMarkerResult Marker);
     private readonly record struct RuntimeSetup(DshWebUrl? WebUrl);
-    private readonly record struct UpdateSetup(Services.Update.UpdateCoordinator Updates);
+    private readonly record struct UpdateSetup(Update.UpdateCoordinator Updates);
     private readonly record struct AppSetup(RynApplication App, CurrentWindowAccessor WindowAccessor);
     private readonly record struct SupervisorSetup(CancellationTokenSource Cts, Task Task);
 
@@ -83,7 +83,7 @@ public sealed partial class DesktopBootstrap
         // 引导、插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主惰性提供。
         IFirstBootBootstrap bootstrap = new FirstBootBootstrapService(
             () => _host,
-            new Services.FirstBootUi(() => _windowAccessor),
+            new FirstBootUi(() => _windowAccessor),
             HostLog.Write);
         bootstrap.Resolve();
 
@@ -254,14 +254,14 @@ public sealed partial class DesktopBootstrap
         // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：托盘「退出」与自更新安装路径
         // 先批准再 Close。用户普通关窗是否转隐藏由 closeBehavior 偏好裁决（默认 true 保持
         // 历史行为）；托盘未就绪时拦截不生效（关窗直退）。
-        var closeGate = new Services.Tray.CloseGate();
+        var closeGate = new Tray.CloseGate();
         var closeBehavior = new CloseBehaviorPreference(
             Path.Combine(HarnessRuntimeHost.ResolveDshHome(), CloseBehaviorPreference.FileName));
 
         // 自更新协调器在此构造并装载（早于 BuildApp）：状态机装载/就绪横幅/后台检查从组合根下沉，
         // HttpClient 构造随协调器迁出组合根（ADR composition-root-value-flow-pipeline 批次 1）。
         // A 类启动配置经构造注入（批次 3）：协调器收类型化 LaunchOptions，不再收裸 bool（当前只消费 IsDev）。
-        var updates = new Services.Update.UpdateCoordinator(
+        var updates = new Update.UpdateCoordinator(
             preflight.Launch,
             () => _windowAccessor,
             closeGate,
@@ -273,7 +273,7 @@ public sealed partial class DesktopBootstrap
 
         // 托盘控制器在此构造（早于 BuildApp/ShowTray），窗口与 Ryn 服务以惰性委托注入——
         // 控制器持有 hide-to-tray 拦截、唤回采样、菜单重建与关窗闸门/偏好（供路由构造注入）。
-        _tray = new Services.Tray.TrayController(
+        _tray = new Tray.TrayController(
             () => _app.Services.GetRequiredService<IRynWindow>(),
             () => _windowAccessor,
             closeGate,

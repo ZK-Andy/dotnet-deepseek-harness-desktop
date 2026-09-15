@@ -33,13 +33,27 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 命名空间升级（B4）后的全局 using：Presentation 消费 Core 端口与 Infrastructure 适配器免逐文件 using；
-         本层命名空间（Services*）保持原状，既有显式 using 继续有效。 -->
+    <!-- 全局 using：Presentation 消费 Core 端口与 Infrastructure 适配器免逐文件 using；
+         本工程按域命名空间（目录即命名空间），层内跨域引用同样免逐文件 using。 -->
+    <Using Include="DeepSeek.Harness.Desktop" />
+    <Using Include="DeepSeek.Harness.Desktop.Tray" />
+    <Using Include="DeepSeek.Harness.Desktop.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Bootstrap" />
+    <Using Include="DeepSeek.Harness.Desktop.Recovery" />
+    <Using Include="DeepSeek.Harness.Desktop.PageBridge" />
     <Using Include="DeepSeek.Harness.Desktop.Core" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Plugins" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.PageHealth" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Localization" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Bootstrap" />
     <Using Include="DeepSeek.Harness.Desktop.Infrastructure" />
-    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Tray" />
     <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Bootstrap" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Runtime" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.CliShim" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Plugins" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Platform" />
   </ItemGroup>
 
   <ItemGroup>

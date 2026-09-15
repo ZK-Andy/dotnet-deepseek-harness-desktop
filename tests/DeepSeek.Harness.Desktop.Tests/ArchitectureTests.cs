@@ -72,7 +72,7 @@ public class ArchitectureTests
     [Fact]
     public void InfrastructureAssembly_HasZeroPresentationReferences()
     {
-        Assembly infra = typeof(DeepSeek.Harness.Desktop.Infrastructure.HarnessRuntimeHost).Assembly;
+        Assembly infra = typeof(DeepSeek.Harness.Desktop.Infrastructure.Runtime.HarnessRuntimeHost).Assembly;
         string[] bad = AssemblyReferences(infra)
             .Where(n => n.StartsWith("Ryn", StringComparison.Ordinal) ||
                 (n.StartsWith("DeepSeek.Harness.Desktop", StringComparison.Ordinal) &&

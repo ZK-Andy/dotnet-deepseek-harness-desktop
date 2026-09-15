@@ -1,4 +1,3 @@
-using DeepSeek.Harness.Desktop.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Callbacks;
 using Ryn.Core;
@@ -73,7 +72,7 @@ public sealed partial class DesktopBootstrap
         services.AddRynNavigationCallbacks();
         // 覆盖源生成的 handler 无参注册：导航回调依赖（openExternal 打开器 / 日志 /
         // 当前页面 origin）在 ConfigureServices 时已知，经工厂注入。
-        services.AddSingleton(sp => new Services.RynNavigationCallbacks(
+        services.AddSingleton(sp => new RynNavigationCallbacks(
             opener: null,
             log: HostLog.Write,
             currentOrigin: runtime.WebUrl?.Authority,
@@ -81,40 +80,40 @@ public sealed partial class DesktopBootstrap
             // deferred IRynWebView（窗口就绪后转发），在导航回调触发时页面必然已加载。
             notifyLinkFail: url => sp.GetRequiredService<IRynWebView>().EmitEvent(
                 "desktop.externalLinkOpenerFailed",
-                new Services.ExternalLinkOpenerFailedFrame(url),
-                Services.AppJsonContext.Default.ExternalLinkOpenerFailedFrame)));
+                new ExternalLinkOpenerFailedFrame(url),
+                AppJsonContext.Default.ExternalLinkOpenerFailedFrame)));
         // 外部链接 → 系统默认浏览器（宿主命令路由，见 implemented ADR open-external-links-in-system-browser）
-        services.AddSingleton<ICommandRouter>(new Services.ExternalLinkCommandRouter(log: HostLog.Write));
+        services.AddSingleton<ICommandRouter>(new ExternalLinkCommandRouter(log: HostLog.Write));
         // dsh 语言变更桥接（desktop.companion.setLocale，ADR host-ui-locale）
-        services.AddSingleton<ICommandRouter>(new Services.CompanionLocaleCommandRouter(_uiLocale, log: HostLog.Write));
+        services.AddSingleton<ICommandRouter>(new CompanionLocaleCommandRouter(_uiLocale, log: HostLog.Write));
         // 诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）
-        services.AddSingleton<ICommandRouter>(new Services.DesktopDiagnosticsCommandRouter(
+        services.AddSingleton<ICommandRouter>(new DesktopDiagnosticsCommandRouter(
             log: HostLog.Write, healthSnapshot: () => _healthMonitor?.Snapshot));
         // 恢复页退出（desktop.recovery.exit）：先批准关窗闸门再 Close——hide-to-tray 拦截下
         // 未批准的 Close 会吞成隐藏；顺序契约与托盘退出同款（ADR diag-masking-and-recovery-page）
-        services.AddSingleton<ICommandRouter>(sp => new Services.RecoveryCommandRouter(
+        services.AddSingleton<ICommandRouter>(sp => new RecoveryCommandRouter(
             closeWindow: () => sp.GetRequiredService<IRynWindow>().Close(),
             _tray.CloseGate,
             HostLog.Write));
         // 引导重试命令（desktop.bootstrap.retry，ADR online-first-unbundled-runtime）：
         // wwwroot 引导页的重试按钮 → 闸门放行引导循环。gate 实例在 Run 顶部创建，
         // 引导任务与路由共用同一实例
-        services.AddSingleton<ICommandRouter>(new Services.BootstrapCommandRouter(
+        services.AddSingleton<ICommandRouter>(new BootstrapCommandRouter(
             preflight.Bootstrap.Gate, HostLog.Write));
         // 插件引导决策命令（desktop.preinstall.choose，ADR reference-alignment 批次二）：
         // wwwroot 引导页「插件引导」步的确认装/跳过 → 闸门放行引导任务
-        services.AddSingleton<ICommandRouter>(new Services.PreinstallCommandRouter(
+        services.AddSingleton<ICommandRouter>(new PreinstallCommandRouter(
             preflight.Bootstrap.PreinstallGate, HostLog.Write));
         // 开机自启开关（desktop.autostart.getState/set）
-        services.AddSingleton<ICommandRouter>(new Services.AutostartCommandRouter(log: HostLog.Write));
+        services.AddSingleton<ICommandRouter>(new AutostartCommandRouter(log: HostLog.Write));
         // 关闭最小化到托盘偏好（desktop.closeToTray.getState/set）；available 惰性求值——
         // 服务注册早于托盘初始化，trayReady 由外层闭包稍后赋值
-        services.AddSingleton<ICommandRouter>(new Services.Tray.CloseToTrayCommandRouter(
+        services.AddSingleton<ICommandRouter>(new Tray.CloseToTrayCommandRouter(
             _tray.CloseBehavior, () => _tray.IsReady, log: HostLog.Write));
         // 自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）
         if (update.Updates.Machine is { } updateMachine)
         {
-            services.AddSingleton<ICommandRouter>(new Services.Update.DesktopUpdateCommandRouter(updateMachine, log: HostLog.Write, backgroundToken: () => _supervisorCtsRef?.Token ?? CancellationToken.None));
+            services.AddSingleton<ICommandRouter>(new Update.DesktopUpdateCommandRouter(updateMachine, log: HostLog.Write, backgroundToken: () => _supervisorCtsRef?.Token ?? CancellationToken.None));
         }
         RegisterTrayServices(services, update);
     }
@@ -134,7 +133,7 @@ public sealed partial class DesktopBootstrap
         }
         // 托盘事件路由：窗口动作经委托接 deferred 代理（注册期无需窗口就绪；
         // 委托注入让退出顺序契约可用记序 fake 测试）
-        services.AddSingleton<ICommandRouter>(sp => new Services.Tray.DesktopTrayCommandRouter(
+        services.AddSingleton<ICommandRouter>(sp => new Tray.DesktopTrayCommandRouter(
             showWindow: () => _tray.RecallAsync(),
             closeWindow: () =>
             {
@@ -172,7 +171,7 @@ public sealed partial class DesktopBootstrap
                 // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
                 var tail = host.Host.StderrTail.TakeLast(12).ToList();
                 _ = app.WindowAccessor.Current.EvaluateJavaScriptAsync(
-                    Services.RecoveryPageBuilder.BuildScript(UiCopy.ReasonRuntimeCrashed(english: false), tail));
+                    RecoveryPageBuilder.BuildScript(UiCopy.ReasonRuntimeCrashed(english: false), tail));
                 return ValueTask.CompletedTask;
             },
             // 崩溃恢复导航同步刷新 webUrl——健康监视器（有界恢复）靠它作为 reload 靶点；若
@@ -227,7 +226,7 @@ public sealed partial class DesktopBootstrap
         // 初始/引导完成/崩溃恢复导航三处都会刷新，见上文与 RuntimeSupervisor 的 navigate），
         // 恒为当前 dsh web 靶点；webUrl 只有当引导未落定（dsh 未起）才为空，而该窗口页面是
         // wwwroot 引导页（有内容 → Alive），不会进入 Dead 恢复分支——reload 委托的空态只是防御性兜底。
-        _healthMonitor = new Services.PageHealthMonitor(
+        _healthMonitor = new PageHealthMonitor(
             app.WindowAccessor,
             HostLog.Write,
             reload: ct => _webUrl is null
@@ -257,7 +256,7 @@ public sealed partial class DesktopBootstrap
                 if (RuntimeVersionGate.IsBelowFloor(detected))
                 {
                     HostLog.Write($"[host] 警告：dsh {detected} 低于支持底线 {RuntimeVersionGate.MinimumVersion}，已提示用户");
-                    await Services.PagePump.ShowBannerWhenReadyAsync(app.WindowAccessor, Services.DesktopBanner.BuildVersionFloorBanner(detected, _uiLocale), supervisor.Cts.Token);
+                    await PagePump.ShowBannerWhenReadyAsync(app.WindowAccessor, DesktopBanner.BuildVersionFloorBanner(detected, _uiLocale), supervisor.Cts.Token);
                 }
             }
             else
@@ -275,7 +274,7 @@ public sealed partial class DesktopBootstrap
             // 上轮非受控退出：提示但不暗示应用故障（用户杀进程也属此类），引导导出诊断
             if (host.Marker.PreviousRunUnclean)
             {
-                await Services.PagePump.ShowBannerWhenReadyAsync(app.WindowAccessor, DesktopBanner.BuildUncleanExitBanner(_uiLocale), supervisor.Cts.Token);
+                await PagePump.ShowBannerWhenReadyAsync(app.WindowAccessor, DesktopBanner.BuildUncleanExitBanner(_uiLocale), supervisor.Cts.Token);
             }
         });
     }
@@ -312,7 +311,7 @@ public sealed partial class DesktopBootstrap
         HostLog.Write($"[nav] 已授权 IPC origin：{origin}");
     }
 
-    /// <summary>导航并等待其真正提交（<see cref="Services.RynNavigationCallbacks"/> 的
+    /// <summary>导航并等待其真正提交（<see cref="RynNavigationCallbacks"/> 的
     /// 「导航已到达」信号，先订阅后导航避免错过）。提交信号用于隔开两跳导航——
     /// <c>NavigateAsync</c> 连发会被 WebKitGTK 合并，前一跳尚未发出即被后一跳覆盖。
     /// 等待超时按「已提交」降级继续（信号只是隔跳手段，缺位时不比单跳直导更差）；
@@ -322,8 +321,8 @@ public sealed partial class DesktopBootstrap
     /// <param name="ct">引导任务取消令牌。</param>
     private async Task NavigateAndAwaitCommitAsync(AppSetup app, Uri target, CancellationToken ct)
     {
-        Services.RynNavigationCallbacks callbacks =
-            app.App.Services.GetRequiredService<Services.RynNavigationCallbacks>();
+        RynNavigationCallbacks callbacks =
+            app.App.Services.GetRequiredService<RynNavigationCallbacks>();
         TaskCompletionSource arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         callbacks.SetOnNavigated(() => arrived.TrySetResult());
         try

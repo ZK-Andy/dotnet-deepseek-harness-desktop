@@ -574,7 +574,7 @@
         }
 
         // 外部链接打开失败 toast（R2 N2）：宿主导航层拦截站外链接、经系统浏览器打开失败时，
-        // 推 desktop.externalLinkOpenerFailed 事件（见 Services/RynNavigationCallbacks）。页面侧
+        // 推 desktop.externalLinkOpenerFailed 事件（见 PageBridge/RynNavigationCallbacks）。页面侧
         // 用纯 DOM 渲染一个短暂 toast（不经 dsh slot 树——它是页面级浮动层；文案经 locale 随语言切换）。
         try {
           if (window.__ryn && window.__ryn.on && !window.__dshDesktopCompanionLinkFailToast) {

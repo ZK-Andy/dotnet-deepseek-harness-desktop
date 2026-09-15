@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """verify-ui-copy — UI 文案单一词典门禁（批次 A，ADR review-to-machine-gates）。
 
-词典 = src/DeepSeek.Harness.Desktop/Services/UiCopy.cs（唯一事实源）。校验两条不变量：
+词典 = src/DeepSeek.Harness.Desktop.Core/Localization/UiCopy.cs（唯一事实源）。校验两条不变量：
 1. UI 消费文件（C#）不得再出现 CJK 字符串字面量——全部文案必须经 UiCopy；
 2. wwwroot/index.html 的中文文案必须在 UiCopy.cs 登记过（静态页是被核对的消费方），
    覆盖两类形态：HTML 文本节点 + <script> 内引号字符串（运行时拼接进页面的文案）。
@@ -22,18 +22,18 @@ SRC = REPO / "src" / "DeepSeek.Harness.Desktop"
 CORE = REPO / "src" / "DeepSeek.Harness.Desktop.Core"
 
 # B1 起词典随 UiLocale 迁 Core（eShopOnWeb Core 亦有 Resources 先例）；UiCopy 是唯一事实源不变。
-UI_COPY = CORE / "Services" / "UiCopy.cs"
+UI_COPY = CORE / "Localization" / "UiCopy.cs"
 
 # UI 消费文件（相对各自工程根）：这些文件里禁止出现 CJK 字符串字面量（文案一律走 UiCopy）。
 # 新增 UI 消费文件时把文件加进此表并把文案迁入 UiCopy。
 # 已知盲区：CS_LITERAL 不覆盖 @"..." 逐字串与 """...""" 原始串——消费文件引入该形态时须同步扩提取器。
 CS_CONSUMERS = [
-    (SRC, "Services/Tray/TrayMenuActions.cs"),
-    (SRC, "Services/Update/UpdateBanner.cs"),
-    (CORE, "Services/UiLocale.cs"),
-    (SRC, "Services/RecoveryPageBuilder.cs"),
-    (SRC, "Services/DesktopBanner.cs"),
-    (SRC, "Services/PagePump.cs"),
+    (SRC, "Tray/TrayMenuActions.cs"),
+    (SRC, "Update/UpdateBanner.cs"),
+    (CORE, "Localization/UiLocale.cs"),
+    (SRC, "Recovery/RecoveryPageBuilder.cs"),
+    (SRC, "PageBridge/DesktopBanner.cs"),
+    (SRC, "PageBridge/PagePump.cs"),
 ]
 
 INDEX_HTML = SRC / "wwwroot" / "index.html"

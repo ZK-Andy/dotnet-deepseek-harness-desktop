@@ -27,22 +27,22 @@
 ## 运行时定位与启动
 
 * **运行时来源 = 系统全局 node + 全局 dsh**（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）：安装器不携带运行时；dsh 版本探测走 PATH（`RuntimeVersionGate.ProbeAsync`，无独立 RuntimeLocator）。PATH 上无全局 dsh 时进入**首启引导**：`RuntimeBootstrap` 确保**系统全局 node**（复用 PATH 上用户 node/npm；无则桌面下载最新官方 node 装到系统全局前缀——默认 `~/.local`、写系统位需 sudo 时提示手动命令，不自备私有 node），用其 npm `npm install -g @deepseek-ai/dsh@alpha`（装/更新到 alpha 预发布通道，落到系统全局位），验证 `dsh --version` 可解析；dsh `npm install -g` 因权限需 sudo 时提示手动命令。失败进度页可见、可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
-* dsh 版本只读探测：`Infrastructure/Services/RuntimeVersionGate.ProbeAsync` 直跑 PATH `dsh --version`（全局 dsh 模型无捆绑形态），不维护任何下载运行时目录。
-* `Infrastructure/Services/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`。首选端口失败（stderr `EADDRINUSE` 签名或子进程早退，失败尝试即时整树回收）由 `Core/Services/RuntimeLineage` 的血统判据处置（ADR `implemented/bug-fix/2026-09-12-runtime-handoff-adoption`）：新生续任者 → 收养（登记 pid＋token、退出整树收割）；更早血统残留 → 收割后重试首选端口；占用者非我方血统 → 回退 OS 分配并写漂移告警（**窗口已按 dsh URL 建好之后**再换端口——监督器崩溃重启漂移——会让「页面→壳」命令通道本次会话失效：Ryn IPC 的 CORS 允许源按建窗时的 `opts.Url` 钉死，见 ADR `implemented/bug-fix/2026-09-12-port-drift-ipc-origin-mismatch`；非引导冷启动漂移不失效——窗口随后才按漂移后的 origin 创建；无 PATH dsh 的首启引导路径先以占位页建窗，不在该告警面。设置页据此把「无自更新栈」与「命令通道失效」分成两种降级文案）。冷启动并用 `.dsh-pid` 记录复验与血统扫描收敛残留。
-* `Infrastructure/Services/HarnessUrlParser`：单行解析 `dsh web: http://127.0.0.1:<port>`。
+* dsh 版本只读探测：`Infrastructure/Runtime/RuntimeVersionGate.ProbeAsync` 直跑 PATH `dsh --version`（全局 dsh 模型无捆绑形态），不维护任何下载运行时目录。
+* `Infrastructure/Runtime/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`。首选端口失败（stderr `EADDRINUSE` 签名或子进程早退，失败尝试即时整树回收）由 `Core/RuntimeLineage` 的血统判据处置（ADR `implemented/bug-fix/2026-09-12-runtime-handoff-adoption`）：新生续任者 → 收养（登记 pid＋token、退出整树收割）；更早血统残留 → 收割后重试首选端口；占用者非我方血统 → 回退 OS 分配并写漂移告警（**窗口已按 dsh URL 建好之后**再换端口——监督器崩溃重启漂移——会让「页面→壳」命令通道本次会话失效：Ryn IPC 的 CORS 允许源按建窗时的 `opts.Url` 钉死，见 ADR `implemented/bug-fix/2026-09-12-port-drift-ipc-origin-mismatch`；非引导冷启动漂移不失效——窗口随后才按漂移后的 origin 创建；无 PATH dsh 的首启引导路径先以占位页建窗，不在该告警面。设置页据此把「无自更新栈」与「命令通道失效」分成两种降级文案）。冷启动并用 `.dsh-pid` 记录复验与血统扫描收敛残留。
+* `Infrastructure/Platform/HarnessUrlParser`：单行解析 `dsh web: http://127.0.0.1:<port>`。
 
 ## 单实例与退出
 
-* `Infrastructure/Services/LauncherActivation`：UDS 单实例仲裁（`$XDG_RUNTIME_DIR` 锁地址，dev 隔离同源）——首实例 `bind/listen` 持锁，launcher 二启发 `show` 命令请主实例显示主窗后退出；残留 socket 探活自愈，清理失败降级无监听主实例（绝不挡启动）。Windows 不启用。
+* `Infrastructure/Runtime/LauncherActivation`：UDS 单实例仲裁（`$XDG_RUNTIME_DIR` 锁地址，dev 隔离同源）——首实例 `bind/listen` 持锁，launcher 二启发 `show` 命令请主实例显示主窗后退出；残留 socket 探活自愈，清理失败降级无监听主实例（绝不挡启动）。Windows 不启用。
 * 托盘「退出」走有序编排：取消监督器 → `host.Stop()` 整树回收在管运行时（本进程子进程或收养的续任者）→ marker Release → 关窗 → 8s 看门狗强制终结；端口被非血统进程占而回退 OS 分配时写漂移告警。
 
 ## 崩溃监督
 
-* `Services/RuntimeSupervisor`：`WaitForExitAsync` + `CancellationToken` 循环；退出→`showRecovery`（`RecoveryScript` 覆写文档为“重连中”）→`host.RestartAsync(60s)`→`navigate(newUrl)`。仅重启子进程，不重启桌面进程；`supervisorCts` 随 `app.Run()` 结束取消。
+* `RuntimeSupervisor`：`WaitForExitAsync` + `CancellationToken` 循环；退出→`showRecovery`（`RecoveryScript` 覆写文档为“重连中”）→`host.RestartAsync(60s)`→`navigate(newUrl)`。仅重启子进程，不重启桌面进程；`supervisorCts` 随 `app.Run()` 结束取消。
 
 ## 插件装配与引导
 
-* 随包插件清单：`dsh-desktop-companion`（桌面伴生：更新/诊断/设置 UI 与托盘事件中继，仅随包分发）——成员登记于 `Core/Services/BundledPluginCatalog`；dshmarket 不再随包，改由首启引导经 registry 安装（`MarketInstallHelper.EnsureMarketFromRegistryAsync`，见下）。
+* 随包插件清单：`dsh-desktop-companion`（桌面伴生：更新/诊断/设置 UI 与托盘事件中继，仅随包分发）——成员登记于 `Core/Plugins/BundledPluginCatalog`；dshmarket 不再随包，改由首启引导经 registry 安装（`MarketInstallHelper.EnsureMarketFromRegistryAsync`，见下）。
 * 首启引导（`RuntimeBootstrap`）：PATH 上无全局 dsh 时，在 spawn dsh **之前**完成「确保系统全局 node（复用 PATH 用户 node/npm；无则下载最新官方 node 装到系统全局前缀）→ 用其 `npm install -g @deepseek-ai/dsh@alpha`（系统全局位）→ 验证 `dsh --version`」，node/dsh 写系统位需 sudo 时给手动命令；全程进度页可见、失败可重试（`desktop.bootstrap.retry`）。
 * **插件引导（ADR reference-alignment 批次二）**：运行时就位后、spawn dsh 前，若存在待装可选插件（现仅 `dshmarket` 预设），进度页呈现「插件准备」步（推荐 chip + 确认/跳过 + 安装日志回流）。用户确认才安装、跳过则该次不装（可经应用内市场补装）、5 分钟无决策默认跳过；companion（internal）不在勾选清单，保持 spawn 前静默自愈。
 * 启动前 reconcile（`DesktopProfileBootstrap.ReconcileProfile`）：扫描 desktop profile，移除解析目标已不存在的本地 `file:`/`link:` bundle 引用（退役随包种子属之），对齐 dsh-tauri-desk #177——不允许不可解析 bundle 引用残留。
@@ -52,13 +52,13 @@
 
 ## 外部链接接管
 
-* 宿主侧 `Services/RynNavigationCallbacks`（`Ryn.Callbacks`，Ryn 0.32.0）在导航边界统一裁决——`[RynCallback(WebViewNavigating)]`：**用户发起**（`IsUserInitiated`）的站外绝对 http(s) → `NavigationDecision.Block` + 经共享 `SystemBrowser` 开系统浏览器；同源 SPA 路由 / `ryn://` / `data:` / 非 http(s) / 宿主导航（崩溃恢复）放行。`[RynCallback(WebViewNavigated)]` 把当前 origin 刷新为实际到达 URL 的 origin、留痕并回调「页面已到达」信号（供启动横幅门控）。`ConfigureServices` 注册 `AddRynCallbacks()` + `AddRynNavigationCallbacks()`（源生成）。相较旧点击层 hack，**覆盖一切导航**（`window.location`/`window.open()`/`<form>` 等非点击路径），不再依赖前端注入捕获脚本。打开失败（`SystemBrowser` 返回 false/抛异常）时经 `EmitEvent("desktop.externalLinkOpenerFailed")` 推事件给页面，companion 渲染 toast（ADR `implemented/feature/2026-08-28-external-link-opener-failure-toast`；外部链接拦截本体见 `implemented/feature/2026-08-28-ryn-navigation-callbacks`）。
-* 宿主侧 `Services/ExternalLinkCommandRouter`（`ICommandRouter`）收 `app.openExternal` 命令，经 `ExternalLinkPolicy.IsExternalHttpLink` 复核后经 `SystemBrowser`（Linux `xdg-open` / 其余 `Process.Start(UseShellExecute)`）开系统浏览器——给已发布旧版 companion 与 Ryn 命令面保留的落地点。
+* 宿主侧 `PageBridge/RynNavigationCallbacks`（`Ryn.Callbacks`，Ryn 0.32.0）在导航边界统一裁决——`[RynCallback(WebViewNavigating)]`：**用户发起**（`IsUserInitiated`）的站外绝对 http(s) → `NavigationDecision.Block` + 经共享 `SystemBrowser` 开系统浏览器；同源 SPA 路由 / `ryn://` / `data:` / 非 http(s) / 宿主导航（崩溃恢复）放行。`[RynCallback(WebViewNavigated)]` 把当前 origin 刷新为实际到达 URL 的 origin、留痕并回调「页面已到达」信号（供启动横幅门控）。`ConfigureServices` 注册 `AddRynCallbacks()` + `AddRynNavigationCallbacks()`（源生成）。相较旧点击层 hack，**覆盖一切导航**（`window.location`/`window.open()`/`<form>` 等非点击路径），不再依赖前端注入捕获脚本。打开失败（`SystemBrowser` 返回 false/抛异常）时经 `EmitEvent("desktop.externalLinkOpenerFailed")` 推事件给页面，companion 渲染 toast（ADR `implemented/feature/2026-08-28-external-link-opener-failure-toast`；外部链接拦截本体见 `implemented/feature/2026-08-28-ryn-navigation-callbacks`）。
+* 宿主侧 `PageBridge/ExternalLinkCommandRouter`（`ICommandRouter`）收 `app.openExternal` 命令，经 `ExternalLinkPolicy.IsExternalHttpLink` 复核后经 `SystemBrowser`（Linux `xdg-open` / 其余 `Process.Start(UseShellExecute)`）开系统浏览器——给已发布旧版 companion 与 Ryn 命令面保留的落地点。
 * companion `client.js` 不再注入 capture 点击监听（外链接管已迁宿主导航层）；`__ryn_externalLinkCatcher` / `__dshDesktopCompanionLinks` 双旗认领机制退役。
 
 ## 自更新
 
-* 状态机 `Core/Services/Update/UpdateStateMachine`（移植 opencode updater-controller）：`idle→checking→downloading→ready→installing` + up-to-date/error；检查/下载/安装委托注入 + ready 持久化接口，纯逻辑可单测。启动对账（记录版本不高于当前或损坏 → 清记录）后自动检查一次，失败静默转 error；并发检查互斥。
+* 状态机 `Core/Update/UpdateStateMachine`（移植 opencode updater-controller）：`idle→checking→downloading→ready→installing` + up-to-date/error；检查/下载/安装委托注入 + ready 持久化接口，纯逻辑可单测。启动对账（记录版本不高于当前或损坏 → 清记录）后自动检查一次，失败静默转 error；并发检查互斥。
 * Feed：`releases.atom` 最新稳定 tag + `expanded_assets/<tag>` 抓资产 href（绕 api 限流）；`ReleaseMeta.Pick` 按 RID 后缀挑资产。下载 `.part` 原子改名 + SHA256SUMS 强校验（**release 未附校验文件或 HTTP 非 2xx 时 fail loud 拒装**）→ `<DSH_HOME>/updates/`。
 * 安装：Linux pkexec 脚本（等本进程退出→dpkg/rpm→runuser 降权拉起新版）；Windows Inno `/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`；macOS v1 报错引导手动。
 * UI：伴生插件注册 `sidebar.footer.action`（侧栏底部设置入口上方动作行）；**仅 ready 渲染**圆形下载钮，hover 展开版本文字，点击即装+重启；installing 转圈禁点。伴生插件另注册单一 `settings.section`「桌面设置」页（order 50，市场之后；ADR `implemented/bug-fix/2026-08-24-companion-settings-consolidation`）：更新块（当前版本 + 手动检查按钮 + 完整状态行，error 显宿主传回原因，无自更新栈降级为页内不可用提示）+ 诊断导出块 + 开机自启开关三块合一页。状态经宿主 CustomEvent `dsh-desktop-update` 推送，初值走 `ryn.invoke('desktop.update.getState')`；状态帧含 `current`（当前版本）与 error 态 `message` 字段。伴生插件客户端文案已接入 dsh client i18n（`@deepseek-ai/dsh-client-locale` 的 `zh`/`en` 字典），随 dsh 语言切换中⇄英（ADR `implemented/feature/2026-08-28-companion-client-i18n`）。
@@ -76,4 +76,4 @@
 * `appsettings.json`：`DevTools:false`（`DSH_DEVTOOLS=1` 开启）；`Update` 节（自更新仓库/超时/目录）。
 * `ryn.json`：`identifier/capabilities`。
 * 扩展点：`DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DSH_HOME` / `DSH_DESKTOP_UPDATE_FORCE`（dev 下显式开启自更新）覆盖。
-* **开发运行时隔离**：`DSH_DESKTOP_RUNTIME_DIR` 或 `DSH_DESKTOP_DEV=1` 显式标记即进入 dev 模式（判定不探测闭包存在性）——ApplicationId 自动加 `.dev` 后缀（与已装正式版可同时开窗，避开 GTK 同 id 单实例互斥），DSH_HOME 未显式覆盖时自动指向 `<仓库>/.cache/dev-home`；显式指回真实 home 时随包插件安装自动跳过防串扰。判定与隔离结论由 `Infrastructure/Services/LaunchOptions.Resolve` 单点解析为类型化配置，组合根与更新协调器经构造注入消费。
+* **开发运行时隔离**：`DSH_DESKTOP_RUNTIME_DIR` 或 `DSH_DESKTOP_DEV=1` 显式标记即进入 dev 模式（判定不探测闭包存在性）——ApplicationId 自动加 `.dev` 后缀（与已装正式版可同时开窗，避开 GTK 同 id 单实例互斥），DSH_HOME 未显式覆盖时自动指向 `<仓库>/.cache/dev-home`；显式指回真实 home 时随包插件安装自动跳过防串扰。判定与隔离结论由 `Infrastructure/LaunchOptions.Resolve` 单点解析为类型化配置，组合根与更新协调器经构造注入消费。

@@ -25,9 +25,13 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
-    <!-- 命名空间升级（B4）后的全局 using：Core 单测只消费 Core 层命名空间。 -->
+    <!-- 全局 using：Core 单测消费 Core 各域命名空间（目录即命名空间）。 -->
     <Using Include="DeepSeek.Harness.Desktop.Core" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Plugins" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.PageHealth" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Localization" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Bootstrap" />
   </ItemGroup>
 
   <ItemGroup>

@@ -25,16 +25,26 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
-    <!-- 命名空间升级（B4）后的全局 using：宿主壳测试消费全部三层命名空间（含本工程 Services*，
-         其类型经既有显式 using 或命名空间解析可达）。 -->
+    <!-- 全局 using：宿主壳测试消费全部三层各域命名空间（目录即命名空间）。 -->
     <Using Include="DeepSeek.Harness.Desktop.Core" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Plugins" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.PageHealth" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Localization" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Bootstrap" />
     <Using Include="DeepSeek.Harness.Desktop.Infrastructure" />
-    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Tray" />
     <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Update" />
-    <Using Include="DeepSeek.Harness.Desktop.Services" />
-    <Using Include="DeepSeek.Harness.Desktop.Services.Tray" />
-    <Using Include="DeepSeek.Harness.Desktop.Services.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Bootstrap" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Runtime" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.CliShim" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Plugins" />
+    <Using Include="DeepSeek.Harness.Desktop.Infrastructure.Platform" />
+    <Using Include="DeepSeek.Harness.Desktop" />
+    <Using Include="DeepSeek.Harness.Desktop.Tray" />
+    <Using Include="DeepSeek.Harness.Desktop.Update" />
+    <Using Include="DeepSeek.Harness.Desktop.Bootstrap" />
+    <Using Include="DeepSeek.Harness.Desktop.Recovery" />
+    <Using Include="DeepSeek.Harness.Desktop.PageBridge" />
   </ItemGroup>
 
   <ItemGroup>

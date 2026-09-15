@@ -116,7 +116,7 @@ public class CompositionRootSequenceTests
     public void SettleHandle_CreatedBeforeBootstrapTaskStarts()
     {
         string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
-            "src/DeepSeek.Harness.Desktop.Infrastructure/Services/FirstBootBootstrapService.cs"));
+            "src/DeepSeek.Harness.Desktop.Infrastructure/Bootstrap/FirstBootBootstrapService.cs"));
         int created = source.IndexOf("_settled = new TaskCompletionSource", StringComparison.Ordinal);
         int started = source.IndexOf("Task.Run(() => RunAsync", StringComparison.Ordinal);
         Assert.True(created >= 0 && started >= 0, "门控两端缺失：落定句柄创建或引导任务启动点");
