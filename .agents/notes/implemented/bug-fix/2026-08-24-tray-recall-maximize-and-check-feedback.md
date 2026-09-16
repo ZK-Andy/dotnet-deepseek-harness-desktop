@@ -32,7 +32,7 @@ v0.3.1 实机复验两项体验缺陷：①**X 隐藏→托盘唤回后窗口丢
 - 隐藏态预置依赖「GTK 对未映射窗口的 maximize 记为初始态」这一平台行为；若某 Linux 后端静默忽略，兜底确认在 300ms 后补齐——幂等语义下两拍同发无副作用。host.log 的「隐藏态已预置最大化」行仍是实机取证点。
 - 全屏不在跟踪范围：`SetFullscreen` 路径不采样不确认，属已知边界。
 - notify-send 在 GNOME 依赖通知守护进程（Fedora 工作站默认具备）；缺失环境由 backend 静默吞掉，不影响主流程。
-- 测试：`TrayRecallMaximizeTests` 契约 3 例（`ShouldEnsure`）。实机复验挂账：首唤两段式闪变消除、hide→recall 循环无回归、手动还原后托盘点击不被误最大化。
+- 测试：`TrayRecallMaximizeTests` 契约 3 例（`ShouldEnsure`）。实机复验（2026-09-16）：首唤两段式闪变消除、hide→recall 循环无回归、手动还原后托盘点击不被误最大化。
 
 ## Related
 
