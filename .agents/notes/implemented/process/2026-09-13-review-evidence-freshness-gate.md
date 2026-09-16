@@ -22,12 +22,13 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 - 新增 `_added_lines_for(rel, repo, staged_only, since)`：按所选 git 时刻取该路径的新增行文本（`git diff -U0` 的 `+` 行，排除 `+++` 文件头；工作树模式的 `git diff HEAD` 已同时覆盖暂存与未暂存，未跟踪文件视为整文件新增）。git 无法产出 diff 时返回 `None`，调用方 fail loud，不读成「没有新增」。
 - `_evidence_in_change` 在原有校验（路径在变更集内、`Status: implemented`、`Review:` 行严格匹配 `FULL/<date>/R1=ok R2=ok R3=ok`）之上，要求该 `Review:` 行文本命中本批新增行集合；未命中即不算证据，报错文案点明「证据须本批新产」。判定的求解顺序是先看新增行、命中后才去取继承集——最常见的「旧 ADR 被顺带改动、`Review:` 行非新增」形态因此不付继承集枚举成本。
+- **证据行规范形与同日序号**：判定只认规范形 `Review: FULL/<date>[#N]/R1=ok R2=ok R3=ok`——R 令牌之间是单个空格；日期后可选同日序号 `#N`（正整数），作为同日第二个 FULL 批的可见判别符。候选行另须**不逐字存在于该笔记 base 版本**（整篇，不限于头区）：表头搬位与把正文行搬进头区都不算本批新产。机制、先例与备选见 [评审证据行的同日判别符](2026-09-16-review-evidence-discriminator-and-recovery-dead-code.md)。
 - **继承行不算新产**（`_inherited_review_lines`）：本批删除或改名离开的笔记，其在 base 版本里的 `Review:` 行进入排除集，用**两个键**：`(笔记标题, 行)` 与 `(改名目的路径, 行)`。前者兜住「正文重写超过一半、git 改名检测落空」的形态（不加该键时 `D old.md / A renamed.md` + FULL 变更 → `--staged --enforce` exit 0）；后者兜住「git 检测到改名、但笔记标题被一并改掉」的形态——`git diff -U0 -- <新路径>` 的 pathspec 会把目的地显示为整文件新增，标题键那时已失效（不加该键时 exit 0）。按标题键而非按行文本全库排除，避免误伤同日评审的同族笔记（其 `Review:` 行文本必然逐字相同）。该枚举无法判定时返回 `None` → fail loud，不把「不知道删了什么」当「没删」。
 - **无法判定变更集 = 违规**（`_changed_paths_or_error`）：`--since <base>` 的 base 不可达（force-push 前的 before 哈希、rebase 后消失的 `base.sha`、浅克隆）或 git 调用失败即报 `cannot determine the change set`，`--enforce` exit 1——空集不得被读成「无 FULL 触发」。`_repo_changed_paths` 保留列表形态作为 `verify-review-brief.py` 的消费契约（该消费者在不可判定时降级为 LIGHT 档，拦下由档位门禁自身承担）。
 - **`--staged` 读 index 而非磁盘**（`_note_text`）：从 `git show :<path>` 读即将提交的树——证据 ADR 已入 index、工作树副本被删（部分提交流）时判据看的正是将入库内容。
 - **头区而非头 15 行**（`_header_zone`）：`Status:`/`Review:` 的判定窗口 = 第一个 `## ` 小节标题之前（上限 60 行）——固定 15 行会把长头区里的合法 `Review:` 行读成不存在，报错文案也会误指「不是新增」。
 - **`.github/workflows/**` 触发按仓库相对路径前缀判定**：`rel.startswith(".github/workflows/")`——工作流变更由行为契约面触发 FULL（此前的 `p.parts` 谓词判定恒假，见 Problem）。
-- 正当形态照常放行：新立 ADR（整文件新增）、proposed→implemented 迁移（新路径整文件新增，`Review:` 行随正文）、给既有 implemented ADR 新加或改写 `Review:` 行。
+- 正当形态照常放行：新立 ADR（整文件新增）、proposed→implemented 迁移（新路径整文件新增，`Review:` 行随正文）、给既有 implemented ADR 写入**新的** `Review:` 行文本（同日第二批用 `#N` 序号）。
 - owning ADR 的「已知边界」段指向本判据（边界由机器判据承载）；`scripts/verify-review-tier.py` 头注释写当前判定语义。
 
 ## Alternatives considered
@@ -50,11 +51,11 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 - 代价：`.github/workflows/**` 变更由 `behavior-surface` 触发 FULL，纯工作流批次也要带三审证据。
 - 判定仍不覆盖「本批跑了评审但证据 ADR 与 diff 分离」的情形（`--since` 视 base..HEAD 为一批）；跨批归属仍是执行者的动作面。
 - 判定仍不防**伪造**证据（手写一行 `Review:` 进新 ADR 与真实评审在机器看来同形）——该边界在 owning ADR 的 Alternatives 已定，本条收窄只针对「搬运既有证据」。同一逻辑的残余：正文重写超过一半**并且**标题与路径一并改掉时，三个信号（新增行、标题键、路径键）全部失效，落在伪造类。
-- 边界：改名目的地携带的 `Review:` 行若与旧笔记 base 版本**逐字相同**（公式化行只在日期上区分，故等价于同一批评审日），判据读成继承并拦下——文本上不可区分「同日新产」与「搬运」。补救：该批由另一篇 ADR（非改名目的地）承载证据行，本仓常规批次都另立 ADR。
+- 边界：改名目的地携带的 `Review:` 行若与旧笔记 base 版本**逐字相同**，判据读成继承并拦下——同日多批的区分手段是 `#N` 序号，不带序号的逐字同行一律读成搬运。补救：该批由另一篇 ADR（非改名目的地）承载证据行，本仓常规批次都另立 ADR。
 
 ## Testing
 
-`python3 scripts/verify-review-tier.py --self-test`：18 例夹具全绿——相对基线新增八例：「同批新产证据放行」/「改名重写继承行不顶包」/「改标题的改名不顶包」/「改名目的地携带新 `Review:` 行照常放行」/「不可达 base 判违规」/「`--staged` 从 index 取证据」/「未跟踪 ADR 视为整文件新增」/「工作流路径判 FULL」。真实仓库与临时夹具复验：本批变更集里三篇既有 implemented ADR（2026-08-31 / 2026-09-03 / 2026-09-12）本批新增的**严格证据行**（`FULL/<date>/R1=ok R2=ok R3=ok`）数均为 0（其中一篇本批改了正文但没动证据行）——不带新鲜度判据时该变更集放行，带判据则判 FULL 且 `--enforce` exit 1；`D old.md` / `A renamed.md` + FULL 变更：不带排除集时 `--staged --enforce` exit 0，带排除集 exit 1；改名+改标题 + FULL 变更：不带路径键 exit 0，带路径键 exit 1；同一改名目的地改带**新日期**的行则 exit 0（排除集按行文本比对，非按路径）；`--since` 的 base 不可达时判违规（`--enforce` exit 1，报告模式 exit 0）；`ci.yml` 由 `behavior-surface` 触发 FULL（该谓词判定恒假时 `_classify` 返回非 FULL）。
+`python3 scripts/verify-review-tier.py --self-test`：24 例夹具全绿——八例属「证据须本批新产」面：「同批新产证据放行」/「改名重写继承行不顶包」/「改标题的改名不顶包」/「改名目的地携带新 `Review:` 行照常放行」/「不可达 base 判违规」/「`--staged` 从 index 取证据」/「未跟踪 ADR 视为整文件新增」/「工作流路径判 FULL」；六例属规范形与同日序号面：「空白扰动的证据行不算证据」/「`FULL/<date>#2/…` 是合法证据」/「同日第二批复用同一 ADR 时 `#N` 构成新产」/「`#0` 不是合法序号」/「表头搬位的逐字同行不算新产」/「正文行搬进头区不算新产」。真实仓库与临时夹具复验：本批变更集里三篇既有 implemented ADR（2026-08-31 / 2026-09-03 / 2026-09-12）本批新增的**严格证据行**（`FULL/<date>/R1=ok R2=ok R3=ok`）数均为 0（其中一篇本批改了正文但没动证据行）——不带新鲜度判据时该变更集放行，带判据则判 FULL 且 `--enforce` exit 1；`D old.md` / `A renamed.md` + FULL 变更：不带排除集时 `--staged --enforce` exit 0，带排除集 exit 1；改名+改标题 + FULL 变更：不带路径键 exit 0，带路径键 exit 1；同一改名目的地改带**新日期**的行则 exit 0（排除集按行文本比对，非按路径）；`--since` 的 base 不可达时判违规（`--enforce` exit 1，报告模式 exit 0）；`ci.yml` 由 `behavior-surface` 触发 FULL（该谓词判定恒假时 `_classify` 返回非 FULL）。
 
 ## Related
 

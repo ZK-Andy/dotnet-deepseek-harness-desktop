@@ -45,7 +45,7 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 
 ## Testing
 
-`python3 scripts/verify-review-tier.py --self-test`：18 例夹具全绿——覆盖 LIGHT 放行、FULL 组合根拦截、证据随变更放行、gate-criteria 分类、proposed ADR 承诺分类、`--since` 抓 outgoing 已提交变更与证据放行、「顺带改动旧 ADR、`Review:` 行非新增」拦截、`R1=fail` 不计数、proposed 自证不放行，以及 2026-09-13 收窄批新增的八例（清单见 [review-evidence-freshness-gate](../../implemented/process/2026-09-13-review-evidence-freshness-gate.md) 的 Testing）。真实仓库复验：2026-09-03 那批 diff 判 FULL 且 `--enforce` exit 1（9 个触发点被拦，因缺证据载体）。
+`python3 scripts/verify-review-tier.py --self-test`：24 例夹具全绿——覆盖 LIGHT 放行、FULL 组合根拦截、证据随变更放行、gate-criteria 分类、proposed ADR 承诺分类、`--since` 抓 outgoing 已提交变更与证据放行、「顺带改动旧 ADR、`Review:` 行非新增」拦截、`R1=fail` 不计数、proposed 自证不放行，以及 2026-09-13 与 2026-09-16 两批新增的十四例（清单见 [review-evidence-freshness-gate](../../implemented/process/2026-09-13-review-evidence-freshness-gate.md) 与 [review-evidence-discriminator-and-recovery-dead-code](../../implemented/process/2026-09-16-review-evidence-discriminator-and-recovery-dead-code.md) 的 Testing）。真实仓库复验：2026-09-03 那批 diff 判 FULL 且 `--enforce` exit 1（9 个触发点被拦，因缺证据载体）。
 
 ## Related
 

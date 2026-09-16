@@ -14,9 +14,12 @@ the change before it may be committed/pushed; without evidence the gate fails
 (`--enforce`). Evidence = an ADR under .agents/notes that is part of THIS
 change set (same staged set / same base..HEAD range; in --staged mode read from
 the index, the tree being committed) and whose header zone carries a valid
-`Review:` line ADDED by this change — a pre-existing Review: line merely
-carried along in the diff does not count, whether its ADR is touched by the
-batch or removed and re-created under a new name by it (rule:
+`Review:` line that this change NEWLY PRODUCES: the line is among the added
+lines AND does not already exist verbatim in that note at the diff base. A
+pre-existing Review: line therefore does not count however it travels — its ADR
+merely touched by the batch, the line shifted within the same note (header or
+body), the note removed and re-created under a new name, or the line inherited
+from a note this batch removes (rule:
 `.agents/notes/implemented/process/2026-09-13-review-evidence-freshness-gate.md`).
 
 An undeterminable diff is a violation, not an empty change set: when the base
@@ -43,6 +46,12 @@ Tier classification (no executor discretion):
 
 Review evidence format (header zone of an implemented ADR):
     Review: FULL/yyyy-mm-dd/R1=ok R2=ok R3=ok
+    Review: FULL/yyyy-mm-dd#2/R1=ok R2=ok R3=ok   (2nd FULL batch that day)
+  - the R tokens are separated by exactly one space (canonical form); a same-day
+    second batch uses the visible `#N` ordinal rather than perturbing bytes
+  - canonical form and the base comparison close the byte-perturbation channel
+    together: `ln.strip()` still admits leading/trailing spaces and a trailing
+    `\r`, so those shapes are rejected by the freshness rule, not by the regex
   - the ADR must be part of this change set, Status must be implemented (a
     proposed ADR cannot self-certify), and the line must satisfy the freshness
     rule stated above
@@ -81,10 +90,11 @@ import tempfile
 from pathlib import Path
 
 NOTES_DIR = ".agents/notes"
-# FULL/<date>/R1=ok R2=ok R3=ok — values strictly checked (a fail/abort marks nothing).
+# Canonical evidence line — the format contract and its rationale live in the module
+# docstring; values are strictly checked here (a fail/abort marks nothing).
 REVIEW_LINE_RE = re.compile(
-    r"^Review:\s*FULL\s*/\s*(?P<date>\d{4}-\d{2}-\d{2})\s*/\s*"
-    r"R1=ok\s+R2=ok\s+R3=ok$")
+    r"^Review: FULL/(?P<date>\d{4}-\d{2}-\d{2})(?:#(?P<seq>[1-9]\d*))?/"
+    r"R1=ok R2=ok R3=ok$")
 
 # FULL-tier path triggers. Predicates take (path-string, pathlib.Path) and
 # return True when the path forces the FULL tier.
@@ -210,6 +220,20 @@ def _note_text(rel: str, repo: Path, staged_only: bool = False) -> str | None:
         return None  # listed as changed but gone from the working tree
 
 
+def _base_note_text(rel: str, repo: Path, since: str | None = None) -> str | None:
+    """The note's content at the diff base — HEAD for --staged / working tree, else
+    the --since ref. None = absent there (a new file, or a rename destination whose
+    old content is covered by the inherited-line exclusion) or unreadable.
+
+    Read only after `_added_lines_for` has already succeeded for this path, so a
+    failing `git show` here means "not in the base tree", not "the diff moment could
+    not be determined" — the latter fails loud upstream."""
+    base = since if since else "HEAD"
+    r = subprocess.run(["git", "show", f"{base}:{rel}"], cwd=repo,
+                       capture_output=True, text=True, errors="replace", check=False)
+    return r.stdout if r.returncode == 0 else None
+
+
 def _header_zone(text: str) -> list[str]:
     """The note's header zone: everything above the first `## ` section heading
     (capped), where `Status:` and `Review:` live however long the front matter is."""
@@ -317,8 +341,9 @@ def _evidence_in_change(paths: list[str], repo: Path, staged_only: bool = False,
                         since: str | None = None) -> str | None:
     """Return a violation string when the change set lacks valid review evidence,
     else None. Evidence = an implemented ADR in THIS change set whose header zone
-    carries a `Review: FULL/<date>/R1=ok R2=ok R3=ok` line ADDED by this change and
-    not inherited from a note the same change set removes."""
+    carries a `Review: FULL/<date>[#N]/R1=ok R2=ok R3=ok` line that is newly produced
+    by this change — present in the added lines, absent verbatim from the same note's
+    header at base, and not inherited from a note the same change set removes."""
     for rel in paths:
         if not rel.startswith(NOTES_DIR) or not rel.endswith(".md"):
             continue
@@ -330,6 +355,7 @@ def _evidence_in_change(paths: list[str], repo: Path, staged_only: bool = False,
             continue  # proposed cannot self-certify
         title = next((ln.strip() for ln in head if ln.startswith("# Agent Note:")), "")
         added: set[str] | None = None
+        base_lines: list[str] | None = None
         inherited: tuple[set[tuple[str, str]], dict[str, set[str]]] | None = None
         for line in head:
             stripped = line.strip()
@@ -343,6 +369,11 @@ def _evidence_in_change(paths: list[str], repo: Path, staged_only: bool = False,
                             "gate fails loud instead of guessing")
             if stripped not in added:
                 continue  # not written by this change: no need to look further
+            if base_lines is None:
+                base_raw = _base_note_text(rel, repo, since)
+                base_lines = base_raw.splitlines() if base_raw is not None else []
+            if stripped in {ln.strip() for ln in base_lines}:
+                continue  # already in this note at base: shifted, not produced here
             if inherited is None:
                 inherited = _inherited_review_lines(repo, staged_only, since)
                 if inherited is None:
@@ -354,10 +385,11 @@ def _evidence_in_change(paths: list[str], repo: Path, staged_only: bool = False,
                 continue  # inherited from a note this batch removes or renames away
             return None
     return ("no implemented ADR in the change set carries a valid "
-            "Review: FULL/<date>/R1=ok R2=ok R3=ok line added by this change "
-            "(evidence must be newly produced by the batch; an existing Review: "
-            "line carried along in the diff — including via a renamed or rewritten "
-            "note — does not count)")
+            "Review: FULL/<date>[#N]/R1=ok R2=ok R3=ok line (single spaces) newly "
+            "produced by this change (evidence must be newly produced by the batch; "
+            "an existing Review: line carried along in the diff — including via a "
+            "renamed or rewritten note, or shifted within the same note — does not "
+            "count)")
 
 
 def _scan(repo: Path, staged_only: bool = False, since: str | None = None) -> list[str]:
@@ -619,6 +651,79 @@ def _self_test() -> int:
         _commit_all(r, "rename + fresh evidence + FULL change")
         ok(_scan(r, since="HEAD~1") == [],
            "a rename destination carrying a fresh Review: line clears")
+
+        # 19) canonical spacing: a whitespace-perturbed line is NOT evidence — the
+        #     invisible-byte edit that used to manufacture a "newly added" line on a
+        #     second same-day FULL batch is closed
+        r = _new_repo(Path(td), "f19")
+        _write(r, "src/App/DesktopBootstrap.cs", "// x")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
+               EVIDENCE.replace("R1=ok R2=ok", "R1=ok  R2=ok"))
+        rows = _scan(r)
+        ok(any("FULL-tier change lacks review evidence" in x for x in rows),
+           "a whitespace-perturbed Review: line is not evidence")
+
+        # 20) the same-day ordinal `#N` is the visible token a second FULL batch uses
+        r = _new_repo(Path(td), "f20")
+        _write(r, "src/App/DesktopBootstrap.cs", "// x")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
+               EVIDENCE.replace("2026-09-03/R1", "2026-09-03#2/R1"))
+        ok(_scan(r) == [], "a `FULL/<date>#2/...` ordinal line is valid evidence")
+
+        # 21) same-day second batch reusing the SAME ADR: the ordinal makes the line
+        #     textually new, so it is genuinely produced by this change
+        r = _new_repo(Path(td), "f21")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md", EVIDENCE)
+        _commit_all(r, "first FULL batch, ordinal-less evidence")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
+               EVIDENCE.replace("2026-09-03/R1", "2026-09-03#2/R1"))
+        _write(r, "src/App/DesktopBootstrap.cs", "// second same-day batch")
+        _commit_all(r, "second batch reuses the same ADR with an ordinal")
+        ok(_scan(r, since="HEAD~1") == [],
+           "a #N ordinal is newly added evidence even in the same ADR")
+
+        # 22) the ordinal is a positive integer: `#0` is not evidence
+        r = _new_repo(Path(td), "f22")
+        _write(r, "src/App/DesktopBootstrap.cs", "// x")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
+               EVIDENCE.replace("2026-09-03/R1", "2026-09-03#0/R1"))
+        rows = _scan(r)
+        ok(any("FULL-tier change lacks review evidence" in x for x in rows),
+           "#0 is not a valid same-day ordinal")
+
+        # 23) an identical Review: line already sitting in this note's header at base
+        #     is not produced by this change even when a header reorder makes git
+        #     report it as removed+added (the b61901b shape)
+        bilingual = "中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）"
+        base_note = EVIDENCE.replace("## Problem", bilingual + "\n\n## Problem")
+        r = _new_repo(Path(td), "f23")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md", base_note)
+        _commit_all(r, "evidence first")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
+               base_note.replace(
+                   "Review: FULL/2026-09-03/R1=ok R2=ok R3=ok\n\n" + bilingual + "\n\n",
+                   bilingual + "\n\nReview: FULL/2026-09-03/R1=ok R2=ok R3=ok\n\n"))
+        _write(r, "src/App/DesktopBootstrap.cs", "// new FULL change")
+        _commit_all(r, "header reorder shifts the evidence line")
+        rows = _scan(r, since="HEAD~1")
+        ok(any("FULL-tier change lacks review evidence" in x for x in rows),
+           "a reordered identical Review: line is not newly produced")
+
+        # 24) the base comparison spans the WHOLE note, not just the header zone: a
+        #     canonical line that sat in the body at base and is moved up into the
+        #     header is not produced by this change either
+        line = "Review: FULL/2026-09-03/R1=ok R2=ok R3=ok"
+        r = _new_repo(Path(td), "f24")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
+               EVIDENCE.replace(line + "\n\n", "", 1).replace(
+                   "## Problem\n\nx", "## Problem\n\nx\n\n" + line, 1))
+        _commit_all(r, "canonical line in the body")
+        _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md", EVIDENCE)
+        _write(r, "src/App/DesktopBootstrap.cs", "// new FULL change")
+        _commit_all(r, "line moved up into the header")
+        rows = _scan(r, since="HEAD~1")
+        ok(any("FULL-tier change lacks review evidence" in x for x in rows),
+           "a body line moved into the header zone is not newly produced")
 
     if failed == 0:
         print("== verify-review-tier self-test passed ==")

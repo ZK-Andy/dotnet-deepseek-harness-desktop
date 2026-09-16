@@ -202,13 +202,6 @@ public static class UiCopy
         ? "The runtime process exited unexpectedly; restarting…"
         : "运行时进程意外退出，正在自动重启";
 
-    // ======== 过渡页（RecoveryPageBuilder.RestartingSkeleton） ========
-
-    /// <summary>过渡页：运行时重启说明行。</summary>
-    public static string RestartingNote(bool english) => english
-        ? "Runtime restarting, reconnecting…"
-        : "运行时重启中，正在重新连接…";
-
     // ======== 静态引导页登记（wwwroot/index.html；zh 常量 + EN 字典，被 verify-ui-copy 双向核对） ========
     // index.html 是静态文档，文案改动必须同步此登记（zh 字面量留在 HTML、英文收在 EN 字典），否则 verify-ui-copy 拦截。
 
