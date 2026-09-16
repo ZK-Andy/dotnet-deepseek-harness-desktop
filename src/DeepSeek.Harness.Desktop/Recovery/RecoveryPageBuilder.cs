@@ -17,24 +17,26 @@ public static class RecoveryPageBuilder
     /// 里时天然不含可执行 HTML 形态。</summary>
     /// <param name="reason">人读失败原因（如「运行时进程意外退出」）。</param>
     /// <param name="stderrTail">子进程 stderr 尾部行（supervisor 已在重启前留证）。</param>
-    public static string BuildScript(string reason, IReadOnlyList<string> stderrTail)
+    /// <param name="english">按钮/状态文案是否取英文分支（宿主 UI 语言单点）。</param>
+    public static string BuildScript(string reason, IReadOnlyList<string> stderrTail, bool english)
     {
         string payload = JsonSerializer.Serialize(new Payload(reason, stderrTail), AppJsonContext.Default.Payload);
 
         return new StringBuilder("document.documentElement.innerHTML=")
-            .Append(AppJsonContext.JsString(s_skeleton))
+            .Append(AppJsonContext.JsString(Skeleton(english)))
             .Append(";var D=")
             .Append(payload)
             .Append(';')
-            .Append(s_wire)
+            .Append(Wire(english))
             .ToString();
     }
 
     /// <summary>轻量覆写脚本（纯函数可单测）：仅「运行时重启中」静态屏，无数据回填与按钮。
     /// 用于随包插件安装后的短暂过渡——与崩溃恢复页共用注入通道，不再另养一份内嵌脚本。</summary>
-    public static string BuildRestartingScript()
+    /// <param name="english">说明行是否取英文分支（宿主 UI 语言单点）。</param>
+    public static string BuildRestartingScript(bool english)
     {
-        return "document.documentElement.innerHTML=" + AppJsonContext.JsString(s_restartingSkeleton) + ";";
+        return "document.documentElement.innerHTML=" + AppJsonContext.JsString(RestartingSkeleton(english)) + ";";
     }
 
     /// <summary>恢复页动态数据帧；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>
@@ -42,7 +44,7 @@ public static class RecoveryPageBuilder
     /// <param name="Tail">子进程 stderr 尾部行。</param>
     internal sealed record Payload(string Reason, IReadOnlyList<string> Tail);
 
-    private static readonly string s_skeleton =
+    private static string Skeleton(bool english) =>
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>DeepSeek Harness Desktop</title><style>" +
         "body{font-family:system-ui,sans-serif;background:#0f0f13;color:#e6e6ea;display:flex;flex-direction:column;" +
         "align-items:center;justify-content:center;height:100vh;gap:14px;margin:0}" +
@@ -56,26 +58,26 @@ public static class RecoveryPageBuilder
         "#ddc-status{color:#7c8cff;min-height:1.2em}</style></head>" +
         "<body><div class=\"spin\"></div><h2>DeepSeek Harness Desktop</h2>" +
         "<p id=\"ddc-reason\"></p><div id=\"ddc-tail\"></div><p id=\"ddc-status\"></p>" +
-        "<div class=\"row\"><button id=\"ddc-export\">" + UiCopy.RecoveryExportButton(english: false) + "</button><button id=\"ddc-exit\">" + UiCopy.RecoveryExitButton(english: false) + "</button></div>" +
-        "<p style=\"font-size:12px;color:#6a6a78\">" + UiCopy.RecoveryAutoRetryNote(english: false) + "</p></body></html>";
+        "<div class=\"row\"><button id=\"ddc-export\">" + UiCopy.RecoveryExportButton(english) + "</button><button id=\"ddc-exit\">" + UiCopy.RecoveryExitButton(english) + "</button></div>" +
+        "<p style=\"font-size:12px;color:#6a6a78\">" + UiCopy.RecoveryAutoRetryNote(english) + "</p></body></html>";
 
-    private static readonly string s_wire =
+    private static string Wire(bool english) =>
         "document.getElementById('ddc-reason').textContent=D.reason;" +
         "var t=document.getElementById('ddc-tail');" +
         "if(D.tail&&D.tail.length){D.tail.forEach(function(l){var d=document.createElement('div');d.textContent=l;t.appendChild(d);});t.style.display='block';}" +
         "function frame(r){try{return (typeof r==='string')?JSON.parse(r):(r||{});}catch(e){return {error:String(e)};}}" +
         "document.getElementById('ddc-export').onclick=async function(){var s=document.getElementById('ddc-status');" +
-        "s.textContent='" + UiCopy.RecoveryExporting(english: false) + "';this.disabled=true;" +
+        "s.textContent='" + UiCopy.RecoveryExporting(english) + "';this.disabled=true;" +
         "try{var o=frame(await window.__ryn.invoke('desktop.diagnostics.export',{}));" +
-        "s.textContent=o.path?('" + UiCopy.RecoveryExportedPrefix(english: false) + "'+o.path):('" + UiCopy.RecoveryExportFailedPrefix(english: false) + "'+(o.error||'" + UiCopy.RecoveryUnknownReason(english: false) + "'));}catch(e){s.textContent='" + UiCopy.RecoveryExportFailedPrefix(english: false) + "'+e;}" +
+        "s.textContent=o.path?('" + UiCopy.RecoveryExportedPrefix(english) + "'+o.path):('" + UiCopy.RecoveryExportFailedPrefix(english) + "'+(o.error||'" + UiCopy.RecoveryUnknownReason(english) + "'));}catch(e){s.textContent='" + UiCopy.RecoveryExportFailedPrefix(english) + "'+e;}" +
         "this.disabled=false;};" +
         "document.getElementById('ddc-exit').onclick=async function(){this.disabled=true;" +
         "try{await window.__ryn.invoke('desktop.recovery.exit',{});}catch(e){}};";
 
-    private static readonly string s_restartingSkeleton =
+    private static string RestartingSkeleton(bool english) =>
         "<!doctype html><html><head><meta charset=\"utf-8\"><style>" +
         "body{font-family:system-ui,sans-serif;background:#0f0f13;color:#e6e6ea;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:12px;margin:0}" +
         ".spin{width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#7c3aed;border-radius:50%;animation:r 1s linear infinite}" +
         "@keyframes r{to{transform:rotate(360deg)}}</style></head>" +
-        "<body><div class=\"spin\"></div><h2>DeepSeek Harness Desktop</h2><p>" + UiCopy.RestartingNote(english: false) + "</p></body></html>";
+        "<body><div class=\"spin\"></div><h2>DeepSeek Harness Desktop</h2><p>" + UiCopy.RestartingNote(english) + "</p></body></html>";
 }

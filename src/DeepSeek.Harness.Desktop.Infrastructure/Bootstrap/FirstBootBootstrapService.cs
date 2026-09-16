@@ -11,6 +11,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
 {
     private readonly Func<HarnessRuntimeHost> _host;
     private readonly IFirstBootUi _ui;
+    private readonly Func<bool> _isEnglish;
     private readonly Action<string> _log;
     private RuntimeBootstrapOptions _options = new();
     private bool _needed;
@@ -20,11 +21,14 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     /// <summary>创建首启引导服务。</summary>
     /// <param name="host">运行时宿主提供者（宿主在引导服务之后构造，故为惰性委托）。</param>
     /// <param name="ui">引导页反馈端口（实现侧注入）。</param>
+    /// <param name="isEnglish">失败文案是否取英文分支（惰性委托：宿主 UI 语言单点在组合根稍后构造，
+    /// 引导任务启动时已就绪——与 <paramref name="host"/> 同一延迟捕获理由）。</param>
     /// <param name="log">日志回调。</param>
-    public FirstBootBootstrapService(Func<HarnessRuntimeHost> host, IFirstBootUi ui, Action<string> log)
+    public FirstBootBootstrapService(Func<HarnessRuntimeHost> host, IFirstBootUi ui, Func<bool> isEnglish, Action<string> log)
     {
         _host = host;
         _ui = ui;
+        _isEnglish = isEnglish;
         _log = log;
     }
 
@@ -173,12 +177,13 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     private async Task<string?> RunBootstrapWithRetryAsync(CancellationToken ct)
     {
         RuntimeBootstrapOptions options = _options;
-        RuntimeBootstrapHooks hooks = RuntimeBootstrap.CreateDefaultHooks(_log);
         _log.Invoke($"[bootstrap] 引导开始：dshSpec={options.DshSpec}（用系统全局 node 的 npm 装到全局）");
 
         while (true)
         {
             Gate.Reset();
+            // hooks 逐次构造：用户在失败等待期切换语言后重试，hooks 层文案与页面同取最新 locale
+            RuntimeBootstrapHooks hooks = RuntimeBootstrap.CreateDefaultHooks(_log, _isEnglish());
             BootstrapOutcome outcome;
             try
             {
@@ -186,6 +191,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
                     options,
                     progress => _ = _ui.BootstrapStepAsync(progress.Step, progress.Message, progress.Failed),
                     hooks,
+                    _isEnglish(),
                     ct);
             }
             catch (OperationCanceledException)
@@ -198,7 +204,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
                 return version;
             }
 
-            string reason = outcome.Error ?? "未知错误";
+            string reason = outcome.Error ?? UiCopy.BootstrapUnknownError(_isEnglish());
             _log.Invoke($"[bootstrap] 引导失败：{reason}（等待用户重试或退出）");
             // 推实际失败步骤：进度页据此红色高亮失败环节（推 "Ready" 会让高亮不可达）
             await _ui.BootstrapStepAsync(outcome.Step, reason, failed: true);
@@ -282,7 +288,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
         PreinstallGate.Reset();
         // 步骤高亮：引导页把「插件准备」步点亮（renderBootstrap 按 step 序置 active）。
         // 步骤名经枚举派生（单一事实源），避免与 JS STEP_ORDER 漂移。
-        await _ui.BootstrapStepAsync(BootstrapStep.PreinstallPlugins, "可选插件准备", failed: false);
+        await _ui.BootstrapStepAsync(BootstrapStep.PreinstallPlugins, UiCopy.PreinstallStepPreparing(_isEnglish()), failed: false);
         await _ui.PreinstallDecisionAsync(pending);
         _log.Invoke($"[host] 插件引导：呈现可选插件 {string.Join(", ", pending)}，等待用户决策（5 分钟超时默认跳过）");
 
@@ -300,8 +306,8 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
         if (choice == PreinstallChoice.Skip)
         {
             _log.Invoke("[host] 插件引导：用户跳过，本次不安装可选插件");
-            await _ui.PreinstallDoneAsync(PreinstallChoice.Skip, null, "已跳过插件安装");
-            await _ui.BootstrapStepAsync(BootstrapStep.Ready, "插件准备完成", failed: false);
+            await _ui.PreinstallDoneAsync(PreinstallChoice.Skip, null, UiCopy.PreinstallSkippedMessage(_isEnglish()));
+            await _ui.BootstrapStepAsync(BootstrapStep.Ready, UiCopy.PreinstallStepReady(_isEnglish()), failed: false);
             return;
         }
 
@@ -318,7 +324,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
                 PluginProcessRunner.RunProbeAsync,
                 ct);
             bool installed = MarketInstallHelper.IsBundleInstalled(profilePkg, PresetPluginCatalog.Market);
-            await _ui.PreinstallDoneAsync(PreinstallChoice.Install, installed, installed ? "安装完成" : "安装未成功（见日志）");
+            await _ui.PreinstallDoneAsync(PreinstallChoice.Install, installed, installed ? UiCopy.PreinstallDoneMessage(_isEnglish()) : UiCopy.PreinstallFailedMessage(_isEnglish()));
             _log.Invoke($"[host] 插件引导：可选插件安装{(installed ? "成功" : "未成功")}（{PresetPluginCatalog.Market}）");
         }
         catch (Exception ex)
@@ -329,7 +335,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
         finally
         {
             // 步骤收尾：无论装/跳/失败，引导页把「插件准备」置 done 后再导航进主界面
-            await _ui.BootstrapStepAsync(BootstrapStep.Ready, "插件准备完成", failed: false);
+            await _ui.BootstrapStepAsync(BootstrapStep.Ready, UiCopy.PreinstallStepReady(_isEnglish()), failed: false);
         }
     }
 

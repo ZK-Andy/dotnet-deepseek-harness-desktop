@@ -148,7 +148,7 @@ public static partial class RuntimeBootstrap
     /// 上一源失败（保持 <paramref name="dest"/> 现有字节）即切下一源，全部失败聚合抛错。
     /// 仅吞真实源失败（网络/IO）；步超时（OCE）与编程 bug 不上抛让调用方 fail loud。</summary>
     internal static async Task DownloadWithFallbackAsync(
-        IReadOnlyList<string> urls, string dest, RuntimeBootstrapHooks hooks, CancellationToken ct)
+        IReadOnlyList<string> urls, string dest, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
     {
         var failures = new List<string>();
         foreach (string url in urls)
@@ -160,11 +160,12 @@ public static partial class RuntimeBootstrap
             }
             catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or IOException)
             {
-                failures.Add($"{url}：{ex.Message}");
+                failures.Add(UiCopy.BootstrapDownloadSourceFailed(url, ex.Message, english));
             }
         }
 
-        throw new InvalidOperationException($"Node 发行包下载：所有候选源均失败（{string.Join("；", failures)}）");
+        throw new InvalidOperationException(
+            UiCopy.BootstrapNodeDownloadFailed(string.Join(english ? "; " : "；", failures), english));
     }
 
     /// <summary>断点续传下载：dest 已有字节则带 Range 请求；206 追加、200/416 重头写——正确性由后续 SHA256 校验兜底。</summary>

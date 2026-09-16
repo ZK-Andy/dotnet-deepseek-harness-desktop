@@ -81,9 +81,11 @@ public sealed partial class DesktopBootstrap
     {
         // 首启引导服务（R3 端口实现，ADR composition-root-value-flow-pipeline 批次 1）：全局 node/dsh
         // 引导、插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主惰性提供。
+        // UI 语言同样惰性：_uiLocale 在单实例仲裁处构造（本方法之后），引导任务实际启动时必已就绪。
         IFirstBootBootstrap bootstrap = new FirstBootBootstrapService(
             () => _host,
             new FirstBootUi(() => _windowAccessor),
+            () => _uiLocale.IsEnglish,
             HostLog.Write);
         bootstrap.Resolve();
 
@@ -96,8 +98,9 @@ public sealed partial class DesktopBootstrap
     /// 依赖 <paramref name="preflight"/> 产出的 dev 判定（单实例 socket 按 dev/正式分域）。</summary>
     private bool AcquireSingleInstance(Preflight preflight)
     {
-        // 宿主 UI 语言单点（ADR host-ui-locale）：companion 上报 dsh locale，托盘/横幅据此出双语
-        _uiLocale = new UiLocale();
+        // 宿主 UI 语言单点（ADR host-ui-locale）：companion 上报 dsh locale，托盘/横幅/引导页据此出双语；
+        // 上次上报值经 profile 目录持久化（ADR ui-copy-bilingual-completion），dsh 起来前也能取到。
+        _uiLocale = new UiLocale(new DesktopUiLocaleStore(HostLog.Write));
         string? xdgRuntimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
         string? instanceSocketPath = OperatingSystem.IsWindows()
             ? null // Windows 无验证环境不启用互斥，行为维持现状（ADR 平台边界）

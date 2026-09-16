@@ -28,6 +28,7 @@ internal sealed record ExternalLinkOpenerFailedFrame(string Url);
 [JsonSerializable(typeof(ErrorFrame))]
 [JsonSerializable(typeof(AutostartCommandRouter.StateFrame), TypeInfoPropertyName = "AutostartState")]
 [JsonSerializable(typeof(CloseToTrayCommandRouter.StateFrame), TypeInfoPropertyName = "CloseToTrayState")]
+[JsonSerializable(typeof(UiLocaleCommandRouter.UiLocaleFrame))]
 [JsonSerializable(typeof(DesktopDiagnosticsCommandRouter.PathFrame))]
 [JsonSerializable(typeof(RecoveryPageBuilder.Payload))]
 [JsonSerializable(typeof(ExternalLinkOpenerFailedFrame))]

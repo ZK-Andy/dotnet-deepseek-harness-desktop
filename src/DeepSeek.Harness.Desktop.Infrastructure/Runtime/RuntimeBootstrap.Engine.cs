@@ -47,13 +47,13 @@ public static partial class RuntimeBootstrap
     }
 
     private static async Task<(int Exit, string Stdout, string Stderr)> RunCaptureAsync(
-        Action<string> log, string exe, IReadOnlyList<string> args, CancellationToken ct)
+        Action<string> log, string exe, IReadOnlyList<string> args, bool english, CancellationToken ct)
     {
         ProcessStartInfo psi = BuildCapturePsi(exe, args);
 
         log?.Invoke($"[bootstrap] run: {psi.FileName} {string.Join(' ', args)}");
         using Process p = Process.Start(psi)
-            ?? throw new InvalidOperationException($"无法启动进程 {exe}");
+            ?? throw new InvalidOperationException(UiCopy.BootstrapProcessStartFailed(exe, english));
         try
         {
             // 双流并发读：顺序先读 stdout 时 stderr 塞满 pipe buffer（~64KB）会互等死锁
@@ -85,13 +85,13 @@ public static partial class RuntimeBootstrap
 
     /// <summary>探测 PATH 上系统全局 node（取真实可执行路径）+ 其 npm-cli.js。全局 node 是那份唯一 dsh 的运行时，
     /// 桌面与终端共用（ADR simple-shell-single-global-dsh）。</summary>
-    private static async Task<(string? NodePath, string? NpmCli)> ProbeLocalNodeAsync(Action<string> log, CancellationToken ct)
+    private static async Task<(string? NodePath, string? NpmCli)> ProbeLocalNodeAsync(Action<string> log, bool english, CancellationToken ct)
     {
         try
         {
             // 确认 node 可执行（--version 非零即视为不存在），并取真实路径（process.execPath），
             // npm-cli 紧邻 node 安装在发行包布局内。
-            (int exit, string? stdout, string _) = await RunCaptureAsync(log, "node", ["-e", "console.log(process.execPath)"], ct).ConfigureAwait(false);
+            (int exit, string? stdout, string _) = await RunCaptureAsync(log, "node", ["-e", "console.log(process.execPath)"], english, ct).ConfigureAwait(false);
             if (exit != 0)
             {
                 return (null, null);
@@ -115,14 +115,14 @@ public static partial class RuntimeBootstrap
     }
 
     /// <summary>步骤级超时包装：应用退出（appCt）取消仍以 OCE 上抛；仅步超时转异常走失败重试页。</summary>
-    private static Task WithStepTimeoutAsync(int minutes, CancellationToken appCt, Func<CancellationToken, Task> action) =>
-        WithStepTimeoutAsync<object?>(minutes, appCt, async token =>
+    private static Task WithStepTimeoutAsync(int minutes, bool english, CancellationToken appCt, Func<CancellationToken, Task> action) =>
+        WithStepTimeoutAsync<object?>(minutes, english, appCt, async token =>
         {
             await action(token).ConfigureAwait(false);
             return null;
         });
 
-    private static async Task<T> WithStepTimeoutAsync<T>(int minutes, CancellationToken appCt, Func<CancellationToken, Task<T>> action)
+    private static async Task<T> WithStepTimeoutAsync<T>(int minutes, bool english, CancellationToken appCt, Func<CancellationToken, Task<T>> action)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(appCt);
         cts.CancelAfter(TimeSpan.FromMinutes(minutes));
@@ -132,7 +132,7 @@ public static partial class RuntimeBootstrap
         }
         catch (OperationCanceledException) when (!appCt.IsCancellationRequested)
         {
-            throw new InvalidOperationException($"步骤超时（>{minutes} 分钟），网络停滞或资源受限，可重试");
+            throw new InvalidOperationException(UiCopy.BootstrapStepTimeout(minutes, english));
         }
     }
 

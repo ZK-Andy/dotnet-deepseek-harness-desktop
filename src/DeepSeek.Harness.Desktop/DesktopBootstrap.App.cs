@@ -86,6 +86,8 @@ public sealed partial class DesktopBootstrap
         services.AddSingleton<ICommandRouter>(new ExternalLinkCommandRouter(log: HostLog.Write));
         // dsh 语言变更桥接（desktop.companion.setLocale，ADR host-ui-locale）
         services.AddSingleton<ICommandRouter>(new CompanionLocaleCommandRouter(_uiLocale, log: HostLog.Write));
+        // 引导页语言拉取（desktop.ui.getLocale）：页面在 dsh 启动前渲染，语言只能由宿主给
+        services.AddSingleton<ICommandRouter>(new UiLocaleCommandRouter(_uiLocale));
         // 诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）
         services.AddSingleton<ICommandRouter>(new DesktopDiagnosticsCommandRouter(
             log: HostLog.Write, healthSnapshot: () => _healthMonitor?.Snapshot));
@@ -143,6 +145,7 @@ public sealed partial class DesktopBootstrap
             },
             _tray.CloseGate,
             update.Updates.Machine,
+            _uiLocale,
             HostLog.Write,
             notify: (title, message) =>
                 sp.GetRequiredService<TrayService>().ShowNotification(title, message)));
@@ -171,7 +174,7 @@ public sealed partial class DesktopBootstrap
                 // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
                 var tail = host.Host.StderrTail.TakeLast(12).ToList();
                 _ = app.WindowAccessor.Current.EvaluateJavaScriptAsync(
-                    RecoveryPageBuilder.BuildScript(UiCopy.ReasonRuntimeCrashed(english: false), tail));
+                    RecoveryPageBuilder.BuildScript(UiCopy.ReasonRuntimeCrashed(_uiLocale.IsEnglish), tail, _uiLocale.IsEnglish));
                 return ValueTask.CompletedTask;
             },
             // 崩溃恢复导航同步刷新 webUrl——健康监视器（有界恢复）靠它作为 reload 靶点；若

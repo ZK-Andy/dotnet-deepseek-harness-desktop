@@ -14,7 +14,9 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 public static partial class RuntimeBootstrap
 {
     /// <summary>生产 hooks：HttpClient 下载（断点续传 Range）/取文本、tar 解压、子进程直跑、PATH node 探测。</summary>
-    public static RuntimeBootstrapHooks CreateDefaultHooks(Action<string> log)
+    /// <param name="log">日志回调。</param>
+    /// <param name="english">失败文案是否取英文分支（引导页错误框随宿主 UI 语言）。</param>
+    public static RuntimeBootstrapHooks CreateDefaultHooks(Action<string> log, bool english)
     {
         return new RuntimeBootstrapHooks(
             DownloadFileAsync: async (url, dest, ct) =>
@@ -30,21 +32,27 @@ public static partial class RuntimeBootstrap
             ExtractArchiveAsync: async (archive, destDir, ct) =>
             {
                 (int exit, string _, string? stderr) = await RunCaptureAsync(
-                    log, "tar", ["-xf", StripExtendedPrefix(archive), "-C", StripExtendedPrefix(destDir)], ct).ConfigureAwait(false);
+                    log, "tar", ["-xf", StripExtendedPrefix(archive), "-C", StripExtendedPrefix(destDir)], english, ct).ConfigureAwait(false);
                 if (exit != 0)
                 {
-                    throw new InvalidOperationException($"tar 解压失败 exit={exit}：{stderr.Trim()}");
+                    throw new InvalidOperationException(UiCopy.BootstrapExtractFailed(exit, stderr.Trim(), english));
                 }
             },
-            RunProcessAsync: (exe, args, ct) => RunCaptureAsync(log, exe, args, ct),
-            ProbeLocalNodeAsync: ct => ProbeLocalNodeAsync(log, ct));
+            RunProcessAsync: (exe, args, ct) => RunCaptureAsync(log, exe, args, english, ct),
+            ProbeLocalNodeAsync: ct => ProbeLocalNodeAsync(log, english, ct));
     }
 
     /// <summary>执行一次引导尝试（确保系统全局 node + 全局 dsh 就位到 alpha）。</summary>
+    /// <param name="options">引导配置（node 全局前缀/超时/发行源）。</param>
+    /// <param name="report">进度回调（步骤 + 中文诊断行，页面仅在失败时展示）。</param>
+    /// <param name="hooks">IO 与子进程注入面。</param>
+    /// <param name="english">失败文案是否取英文分支（引导页错误框随宿主 UI 语言）。</param>
+    /// <param name="ct">应用退出取消令牌。</param>
     public static async Task<BootstrapOutcome> RunAsync(
         RuntimeBootstrapOptions options,
         Action<BootstrapProgress> report,
         RuntimeBootstrapHooks hooks,
+        bool english,
         CancellationToken ct)
     {
         // 每步超时（StepTimeoutMinutes，R2 评审 B3：网络停滞时无限 spinner 无出路）。
@@ -53,34 +61,33 @@ public static partial class RuntimeBootstrap
         try
         {
             // ① 确保系统全局 node（复用 PATH / 复用已装全局 / 下载装到系统全局）
-            NodeResult node = await EnsureGlobalNodeAsync(options, report, hooks, ct).ConfigureAwait(false);
+            NodeResult node = await EnsureGlobalNodeAsync(options, report, hooks, english, ct).ConfigureAwait(false);
 
             // ② 经该 node 的 npm 把 dsh 装到系统全局位（装 / 更新到 @alpha）
             step = BootstrapStep.InstallDsh;
             report(new BootstrapProgress(BootstrapStep.InstallDsh, $"安装 dsh（{options.DshSpec}）"));
-            (int exit, string? stdout, string? stderr) = await RunNpmInstallGlobalAsync(options, node, hooks, ct).ConfigureAwait(false);
+            (int exit, string? stdout, string? stderr) = await RunNpmInstallGlobalAsync(options, node, hooks, english, ct).ConfigureAwait(false);
             if (exit != 0)
             {
                 string errText = string.IsNullOrEmpty(stderr) ? stdout ?? string.Empty : stderr;
                 // 权限不足（npm 全局位需 sudo）：不静默失败，提示用户手动执行一条安装命令。
                 if (IsPermissionError(stdout, stderr))
                 {
-                    return Fail(BootstrapStep.InstallDsh, $"npm install 需要提升权限。请在终端手动执行：sudo npm install -g {options.DshSpec}（{errText.Trim()}）");
+                    return Fail(BootstrapStep.InstallDsh, UiCopy.BootstrapNpmNeedsElevation(options.DshSpec, errText.Trim(), english));
                 }
 
-                return Fail(BootstrapStep.InstallDsh, $"npm install 失败 exit={exit}：{errText.Trim()}");
+                return Fail(BootstrapStep.InstallDsh, UiCopy.BootstrapNpmFailed(exit, errText.Trim(), english));
             }
 
             // ③ 验证 PATH dsh --version 可解析（全局 dsh 落位）
             step = BootstrapStep.VerifyDsh;
             report(new BootstrapProgress(BootstrapStep.VerifyDsh, "验证 dsh 版本"));
-            string? version = await VerifyDshAsync(options, hooks, ct).ConfigureAwait(false);
+            string? version = await VerifyDshAsync(options, hooks, english, ct).ConfigureAwait(false);
             if (version is null)
             {
                 // 定位提示（R2#2 边界）：npm 全局前缀可能与 node bin 不一致（~/.npmrc 自定义 prefix /
                 // apt root-owned node），dsh 不在 PATH → 指引用户核对 npm 全局 bin。
-                return Fail(BootstrapStep.VerifyDsh,
-                    $"安装后未能解析全局 dsh 版本（{options.DshSpec}）。请确认该 node 的 npm 全局 bin（`npm config get prefix` 下的 bin）已加入 PATH，或手动执行 `npm install -g {options.DshSpec}`。");
+                return Fail(BootstrapStep.VerifyDsh, UiCopy.BootstrapDshUnresolved(options.DshSpec, english));
             }
 
             report(new BootstrapProgress(BootstrapStep.Ready, $"dsh {version} 就绪"));
@@ -98,7 +105,7 @@ public static partial class RuntimeBootstrap
 
     /// <summary>确保系统全局 node：PATH 复用 → 已装系统全局复用 → 下载最新官方 node 装到系统全局前缀。</summary>
     private static async Task<NodeResult> EnsureGlobalNodeAsync(
-        RuntimeBootstrapOptions options, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, CancellationToken ct)
+        RuntimeBootstrapOptions options, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
     {
         report(new BootstrapProgress(BootstrapStep.EnsureNode, "检测系统全局 Node"));
         (string? nodePath, string? npmCli) = await hooks.ProbeLocalNodeAsync(ct).ConfigureAwait(false);
@@ -120,16 +127,16 @@ public static partial class RuntimeBootstrap
 
         // 都没有：下载最新官方 node 并装到系统全局前缀
         report(new BootstrapProgress(BootstrapStep.EnsureNode, "无系统 Node，下载装到系统全局"));
-        return await InstallGlobalNodeAsync(options, prefix, report, hooks, ct).ConfigureAwait(false);
+        return await InstallGlobalNodeAsync(options, prefix, report, hooks, english, ct).ConfigureAwait(false);
     }
 
     /// <summary>下载最新官方 node 发行包 → 解压 → 把 bin/lib 落进系统全局前缀；权限不足则提示用户手动命令。</summary>
     private static async Task<NodeResult> InstallGlobalNodeAsync(
-        RuntimeBootstrapOptions options, string prefix, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, CancellationToken ct)
+        RuntimeBootstrapOptions options, string prefix, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
     {
-        string nodeVersion = await ResolveLatestNodeVersionAsync(options, hooks, ct).ConfigureAwait(false);
+        string nodeVersion = await ResolveLatestNodeVersionAsync(options, hooks, english, ct).ConfigureAwait(false);
         string fileName = NodeArchiveFileName(nodeVersion)
-            ?? throw new InvalidOperationException("当前平台无对应的 Node 发行包坐标（fail loud）");
+            ?? throw new InvalidOperationException(UiCopy.BootstrapUnsupportedPlatform(english));
         string baseUrl = options.NodeDistBaseUrl.TrimEnd('/');
         string versionDir = $"v{nodeVersion}";
         string workRoot = Path.Combine(Path.GetTempPath(), "dsh-node-install-" + Guid.NewGuid().ToString("N"));
@@ -137,7 +144,7 @@ public static partial class RuntimeBootstrap
         try
         {
             // 摘要优先取自官方（信任根）：官方摘要不可达即中止（无可信摘要 → 不用镜像，防投毒）
-            string expected = await FetchSha256ExpectedAsync(options, baseUrl, versionDir, fileName, report, hooks, ct).ConfigureAwait(false);
+            string expected = await FetchSha256ExpectedAsync(options, baseUrl, versionDir, fileName, report, hooks, english, ct).ConfigureAwait(false);
 
             string archivePath = Path.Combine(workRoot, fileName);
             var candidates = new List<string> { $"{baseUrl}/{versionDir}/{fileName}" };
@@ -147,32 +154,33 @@ public static partial class RuntimeBootstrap
             }
 
             report(new BootstrapProgress(BootstrapStep.EnsureNode, $"下载 Node {nodeVersion}"));
-            await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct,
-                token => DownloadWithFallbackAsync(candidates, archivePath, hooks, token)).ConfigureAwait(false);
+            await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
+                token => DownloadWithFallbackAsync(candidates, archivePath, hooks, english, token)).ConfigureAwait(false);
 
             report(new BootstrapProgress(BootstrapStep.EnsureNode, "校验 SHA256"));
             string actual = await Sha256FileAsync(archivePath, ct).ConfigureAwait(false);
             if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException($"Node 发行包 SHA256 不匹配（期望 {ShortHash(expected)}，实际 {ShortHash(actual)}），安全中止");
+                throw new InvalidOperationException(
+                    UiCopy.BootstrapNodeHashMismatch(ShortHash(expected), ShortHash(actual), english));
             }
 
             report(new BootstrapProgress(BootstrapStep.EnsureNode, "解压 Node"));
             string extractDir = Path.Combine(workRoot, "extract");
             Directory.CreateDirectory(extractDir);
-            await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct,
+            await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
                 token => hooks.ExtractArchiveAsync(archivePath, extractDir, token)).ConfigureAwait(false);
             string inner = Directory.EnumerateDirectories(extractDir).FirstOrDefault()
-                ?? throw new InvalidOperationException("Node 发行包解压结果无内容目录");
+                ?? throw new InvalidOperationException(UiCopy.BootstrapNodeDistEmpty(english));
 
             // 落位到系统全局前缀：把发行包的 bin/lib 拷进 <prefix>/bin、<prefix>/lib
-            InstallNodeDistIntoPrefix(inner, prefix);
+            InstallNodeDistIntoPrefix(inner, prefix, english);
 
             string nodePath = Path.Combine(prefix, OperatingSystem.IsWindows() ? "node.exe" : Path.Combine("bin", "node"));
             string npmCli = Path.Combine(prefix, NpmCliRelativePath());
             if (!File.Exists(nodePath) || !File.Exists(npmCli))
             {
-                throw new InvalidOperationException($"node 装到系统全局 {prefix} 后入口缺失（布局异常）");
+                throw new InvalidOperationException(UiCopy.BootstrapNodeEntryMissing(prefix, english));
             }
 
             string nodeBinDir = NodeBinDir(prefix);
@@ -188,7 +196,7 @@ public static partial class RuntimeBootstrap
 
     /// <summary>把 Node 发行包根目录按平台布局拷进系统全局前缀：unix 拷 bin/lib，Windows 拷 node_modules/node.exe。
     /// 失败（权限/IO）翻译为"需管理员"提示。</summary>
-    private static void InstallNodeDistIntoPrefix(string nodeDistRoot, string prefix)
+    private static void InstallNodeDistIntoPrefix(string nodeDistRoot, string prefix, bool english)
     {
         try
         {
@@ -209,40 +217,39 @@ public static partial class RuntimeBootstrap
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            throw new InvalidOperationException(
-                $"无法写入系统全局 node 安装位 {prefix}（权限不足：{ex.Message}）。请以管理员权限安装 Node.js（https://nodejs.org 官方安装包/系统包管理器），或放开 {prefix} 写入权限后重试。");
+            throw new InvalidOperationException(UiCopy.BootstrapNodeInstallDenied(prefix, ex.Message, english));
         }
     }
 
     /// <summary>解析要下载/安装的 node 版本：从 <c>NodeDistBaseUrl/index.json</c> 解析最新（"取最新"）。</summary>
     private static async Task<string> ResolveLatestNodeVersionAsync(
-        RuntimeBootstrapOptions options, RuntimeBootstrapHooks hooks, CancellationToken ct)
+        RuntimeBootstrapOptions options, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
     {
-        string indexJson = await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct,
+        string indexJson = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
             token => hooks.FetchTextAsync(LatestNodeIndexUrl(options.NodeDistBaseUrl), token)).ConfigureAwait(false);
         return ParseLatestNodeVersion(indexJson)
-            ?? throw new InvalidOperationException("无法从 nodejs.org index.json 解析最新 Node 版本");
+            ?? throw new InvalidOperationException(UiCopy.BootstrapNodeVersionUnresolved(english));
     }
 
     /// <summary>下载相：从官方 SHASUMS256.txt 取可信摘要（不可达即中止，不用镜像自证）。</summary>
     private static async Task<string> FetchSha256ExpectedAsync(
         RuntimeBootstrapOptions options, string baseUrl, string versionDir, string fileName,
-        Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, CancellationToken ct)
+        Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
     {
         report(new BootstrapProgress(BootstrapStep.EnsureNode, "获取 Node 发行包 SHA256 摘要"));
         string shasums;
         try
         {
-            shasums = await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct,
+            shasums = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
                 token => hooks.FetchTextAsync($"{baseUrl}/{versionDir}/SHASUMS256.txt", token)).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            throw new InvalidOperationException($"获取 Node 发行包官方 SHA256 摘要失败：{ex.Message}", ex);
+            throw new InvalidOperationException(UiCopy.BootstrapShasumsFetchFailed(ex.Message, english), ex);
         }
 
         return SelectSha256(shasums, fileName)
-            ?? throw new InvalidOperationException($"SHASUMS256.txt 缺少 {fileName} 的摘要，安全中止");
+            ?? throw new InvalidOperationException(UiCopy.BootstrapShasumsMissing(fileName, english));
     }
 
     /// <summary>解析系统全局 node 安装前缀：<c>DSH_DESKTOP_NODE_GLOBAL_PREFIX</c> &gt; <see cref="RuntimeBootstrapOptions.NodeGlobalPrefix"/> &gt; <see cref="DefaultGlobalNodePrefix"/>。</summary>
@@ -294,7 +301,7 @@ public static partial class RuntimeBootstrap
 
     /// <summary>执行 <c>npm install -g</c>（装 / 更新 dsh 到系统全局位；用该 node 的 npm-cli，默认前缀 = 该 node 的全局前缀）。</summary>
     private static async Task<(int Exit, string? Stdout, string? Stderr)> RunNpmInstallGlobalAsync(
-        RuntimeBootstrapOptions options, NodeResult node, RuntimeBootstrapHooks hooks, CancellationToken ct)
+        RuntimeBootstrapOptions options, NodeResult node, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
     {
         var args = new List<string>
         {
@@ -307,15 +314,15 @@ public static partial class RuntimeBootstrap
             options.DshSpec,
         };
 
-        return await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct, token => hooks.RunProcessAsync(
+        return await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct, token => hooks.RunProcessAsync(
             node.NodePath, args, token)).ConfigureAwait(false);
     }
 
     /// <summary>验证 PATH 上全局 dsh 版本可解析（<c>dsh --version</c>）。</summary>
     private static async Task<string?> VerifyDshAsync(
-        RuntimeBootstrapOptions options, RuntimeBootstrapHooks hooks, CancellationToken ct)
+        RuntimeBootstrapOptions options, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
     {
-        (int exit, string? stdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, ct,
+        (int exit, string? stdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
             token => hooks.RunProcessAsync("dsh", ["--version"], token)).ConfigureAwait(false);
         return exit == 0 && RuntimeVersionGate.TryParseVersionOutput(stdout ?? string.Empty) is { } v ? v : null;
     }

@@ -23,6 +23,7 @@
 
 * 组合根（ADR `implemented/architecture/2026-09-15-composition-root-value-flow-pipeline`）= `Program.cs`（薄壳）+ `DesktopBootstrap.cs`（启动主链与阶段编排）+ 唯一 dot 分部 `DesktopBootstrap.App.cs`（应用装配、后台接线与 WebView 导航原语）；`Run()` 的阶段方法返回类型化产出（`Preflight`/`HostSetup`/`RuntimeSetup`/`UpdateSetup`/`AppSetup`/`SupervisorSetup`）、消费段收参数。`HarnessRuntimeHost.StartAsync(60s)` → `dsh web:` → `RynApplication.CreateBuilder().ConfigureOptions(opts.Url = webUrl)`。`ryn.json:identifier=io.github.ZK-Andy.dotnet-deepseek-harness-desktop` 与 `StartupWMClass` 同值，`Wayland/X11` 任务栏正确关联；`icon.png` 进 `AppContext.BaseDirectory` 并上 `hicolor/pixmaps`。
 * `CurrentWindowAccessor`（Ryn.Core）供 `RuntimeSupervisor`、`PageHealthMonitor` 与后台随包插件任务做 `EvaluateJavaScriptAsync`/`NavigateAsync`。
+* **宿主 UI 文案单点** = `Core/Localization/UiCopy`（强类型中/英双参入口）与语言单点 `UiLocale`；宿主自绘面（托盘/横幅/恢复页/首启引导页）与引导失败文案随该语言，语言来源、持久化与门禁不变量见 ADR `implemented/feature/2026-09-16-ui-copy-bilingual-completion`。
 
 ## 运行时定位与启动
 

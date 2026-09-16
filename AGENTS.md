@@ -75,7 +75,7 @@ python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/
 python3 scripts/verify-governance.py     # Issue/PR 模板治理字段 + 工作流 run: 禁插值事件载荷/env 回读
 python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（report 默认；--enforce 才 fail）
 python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）
-python3 scripts/verify-ui-copy.py    # UI 文案单一词典（UiCopy.cs 为唯一家；消费文件零 CJK 字面量 + index.html 登记）
+python3 scripts/verify-ui-copy.py    # UI 文案单一词典（UiCopy.cs 为唯一家；四条不变量：消费文件零 CJK 字面量 + index.html 登记 + EN 字典↔`*En` 常量全等 + client.js zh/en 键集相等）
 python3 scripts/verify-skill-format.py    # 技能格式（frontmatter/目录束/内链/结构）
 python3 scripts/verify-review-tier.py     # 评审档机械判定（--staged/--since；FULL 缺 Review 证据即拦——进 pre-commit/pre-push/CI）
 python3 scripts/verify-review-brief.py    # 评审简报（本地评审启动门禁：FULL 需 R1/R2/R3 简报齐、LIGHT 需 R2；简报 gitignore 不入 CI——见 review-scope-narrowing §4）

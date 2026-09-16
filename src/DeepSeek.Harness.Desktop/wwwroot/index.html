@@ -83,27 +83,94 @@
     <div id="bootstrap">
         <div class="spinner visible" id="bootSpinner"></div>
         <div id="bootSteps">
-            <div class="step" data-step="EnsureNode"><span class="dot"></span><span>确保系统全局 Node</span></div>
-            <div class="step" data-step="InstallDsh"><span class="dot"></span><span>npm 安装全局 dsh（需联网）</span></div>
-            <div class="step" data-step="VerifyDsh"><span class="dot"></span><span>验证 dsh 版本</span></div>
-            <div class="step" data-step="PreinstallPlugins"><span class="dot"></span><span>插件准备</span></div>
+            <div class="step" data-step="EnsureNode"><span class="dot"></span><span data-i18n="stepEnsureNode">确保系统全局 Node</span></div>
+            <div class="step" data-step="InstallDsh"><span class="dot"></span><span data-i18n="stepInstallDsh">npm 安装全局 dsh（需联网）</span></div>
+            <div class="step" data-step="VerifyDsh"><span class="dot"></span><span data-i18n="stepVerifyDsh">验证 dsh 版本</span></div>
+            <div class="step" data-step="PreinstallPlugins"><span class="dot"></span><span data-i18n="stepPreinstallPlugins">插件准备</span></div>
         </div>
         <div id="preinstall">
-            <h2>可选插件</h2>
-            <p>以下插件为 DeepSeek Harness 桌面体验提供增强，可自由选择安装（跳过仍可稍后在应用内补装）：</p>
+            <h2 data-i18n="optionalPluginsTitle">可选插件</h2>
+            <p data-i18n="optionalPluginsNote">以下插件为 DeepSeek Harness 桌面体验提供增强，可自由选择安装（跳过仍可稍后在应用内补装）：</p>
             <div id="preinstallChips"></div>
             <div id="preinstallActions">
-                <button id="preinstallConfirm" onclick="preinstallChoose('install')">确认安装</button>
-                <button id="preinstallSkip" class="ghost" onclick="preinstallChoose('skip')">跳过</button>
+                <button id="preinstallConfirm" onclick="preinstallChoose('install')" data-i18n="confirmInstall">确认安装</button>
+                <button id="preinstallSkip" class="ghost" onclick="preinstallChoose('skip')" data-i18n="skip">跳过</button>
             </div>
             <div id="preinstallLog"></div>
         </div>
         <div id="bootError"></div>
-        <button id="bootRetry" onclick="retryBootstrap()">重试</button>
+        <button id="bootRetry" onclick="retryBootstrap()" data-i18n="retry">重试</button>
     </div>
-    <p id="fallbackText">运行时未就绪（<code>dsh web</code> 未在时限内给出 URL）。</p>
-    <p id="fallbackHint">请检查 <code>DEEPSEEK_API_KEY</code> 与日志，或重启应用。</p>
+    <p id="fallbackText"><span data-i18n="fallbackText">运行时未就绪（</span><code>dsh web</code> <span data-i18n="fallbackTextTail">未在时限内给出 URL）。</span></p>
+    <p id="fallbackHint"><span data-i18n="fallbackHint">请检查</span> <code>DEEPSEEK_API_KEY</code> <span data-i18n="fallbackHintTail">与日志，或重启应用。</span></p>
     <script>
+        // 宿主 UI 语言（UiLocale）：页面在 dsh 启动前渲染，语言只能由宿主给（拉取而非推送，避免注入时序竞态）
+        var EN = {
+            stepEnsureNode: 'Ensure system-global Node',
+            stepInstallDsh: 'Install global dsh via npm (network required)',
+            stepVerifyDsh: 'Verify dsh version',
+            stepPreinstallPlugins: 'Plugin setup',
+            optionalPluginsTitle: 'Optional plugins',
+            optionalPluginsNote: 'These plugins enhance the DeepSeek Harness desktop experience — install any you want (skipping still lets you add them later from the in-app market):',
+            confirmInstall: 'Install',
+            skip: 'Skip',
+            retry: 'Retry',
+            fallbackText: 'Runtime not ready (',
+            fallbackTextTail: 'did not yield a URL in time).',
+            fallbackHint: 'Check',
+            fallbackHintTail: 'and the logs, or restart the app.',
+            pluginNameDshmarket: 'Plugin market (dshmarket)',
+            installing: 'Installing…',
+            preinstallSkippedAll: 'Optional plugins skipped',
+            pluginFallback: 'plugin',
+            installingPrefix: 'Installing ',
+            preinstallSkipped: 'Plugin install skipped',
+            preinstallDone: 'Install complete',
+            recommendedPrefix: 'Recommended · '
+        };
+        // 动态文案的模块级词典：英文时指向 EN；中文默认留在各调用点的字面量（T 第二参）
+        var UI = null;
+        function T(key, zh) { return UI && UI[key] ? UI[key] : zh; }
+
+        function applyLocale(locale) {
+            var english = /^en/i.test(locale || '');
+            document.documentElement.lang = english ? 'en' : 'zh-CN';
+            if (!english) { return; }
+            UI = EN;
+            var nodes = document.querySelectorAll('[data-i18n]');
+            for (var i = 0; i < nodes.length; i++) {
+                var key = nodes[i].getAttribute('data-i18n');
+                if (EN[key]) { nodes[i].textContent = EN[key]; }
+            }
+        }
+        // 语言未定前的宿主帧先入队：applyLocale 只改静态节点，若进度/插件帧先到（chips、日志行由
+        // 帧数据生成）会停在中文而与静态文案混排；语言落定后按到达序回放。1s 兜底防宿主不回包时卡帧。
+        var localeReady = false;
+        var pendingFrames = [];
+        function releaseFrames() {
+            if (localeReady) { return; }
+            localeReady = true;
+            var queued = pendingFrames;
+            pendingFrames = [];
+            for (var i = 0; i < queued.length; i++) { dispatchFrame(queued[i][0], queued[i][1]); }
+        }
+        function dispatchFrame(type, detail) {
+            try {
+                if (type === 'dsh-desktop-bootstrap') { renderBootstrap(detail || {}); }
+                else { renderPreinstall(detail || {}); }
+            } catch (e) { /* 渲染失败不影响宿主引导链路 */ }
+        }
+        function handleFrame(type, detail) {
+            if (localeReady) { dispatchFrame(type, detail); return; }
+            pendingFrames.push([type, detail]);
+        }
+        setTimeout(releaseFrames, 1000);
+        try {
+            window.__ryn.invoke('desktop.ui.getLocale', {}).then(function (r) { applyLocale(r && r.locale); })
+                .catch(function () { /* 宿主未接命令：保持中文 */ })
+                .then(releaseFrames);
+        } catch (e) { releaseFrames(); /* __ryn 未就绪：保持中文并立即放行 */ }
+
         // 首启引导状态机渲染（ADR simple-shell-single-global-dsh）：宿主经 CustomEvent 推进度，
         // 数据一律 textContent 回填（stderr/错误信息是上游不可控输出，绝不 innerHTML 拼接）。
         var STEP_ORDER = ['EnsureNode', 'InstallDsh', 'VerifyDsh', 'PreinstallPlugins'];
@@ -142,10 +209,16 @@
         // 日志一律 textContent 回填（plugin add 输出是上游不可控文本，绝不 innerHTML 拼接）。
         var PLUGIN_NAMES = { dshmarket: '插件市场（dshmarket）' };
 
+        // 插件显示名：中文默认取 PLUGIN_NAMES，英文按 pluginName<Id> 键取 EN 词典；未知插件回退 id
+        function pluginLabel(id) {
+            var zh = PLUGIN_NAMES[id];
+            return zh ? T('pluginName' + id.charAt(0).toUpperCase() + id.slice(1), zh) : id;
+        }
+
         function preinstallChoose(action) {
             try { window.__ryn.invoke('desktop.preinstall.choose', { action: action }); } catch (e) { /* IPC 未就绪时静默 */ }
             setPreinstallActions(false);
-            appendPreinstallLog(action === 'install' ? '正在安装…' : '已跳过可选插件');
+            appendPreinstallLog(action === 'install' ? T('installing', '正在安装…') : T('preinstallSkippedAll', '已跳过可选插件'));
         }
 
         function renderPreinstall(detail) {
@@ -158,13 +231,13 @@
                 setPreinstallActions(true);
             } else if (kind === 'installing') {
                 setPreinstallActions(false);
-                var pn = PLUGIN_NAMES[detail.plugin] || detail.plugin || '插件';
-                appendPreinstallLog('正在安装 ' + pn + ' …');
+                var pn = pluginLabel(detail.plugin) || T('pluginFallback', '插件');
+                appendPreinstallLog(T('installingPrefix', '正在安装 ') + pn + ' …');
             } else if (kind === 'log') {
                 appendPreinstallLog(detail.line);
             } else if (kind === 'done') {
                 setPreinstallActions(false);
-                appendPreinstallLog(detail.message || (detail.action === 'skip' ? '已跳过插件安装' : '安装完成'));
+                appendPreinstallLog(detail.message || (detail.action === 'skip' ? T('preinstallSkipped', '已跳过插件安装') : T('preinstallDone', '安装完成')));
             }
         }
 
@@ -172,10 +245,10 @@
             var chips = document.getElementById('preinstallChips');
             chips.innerHTML = '';
             plugins.forEach(function (p) {
-                var label = PLUGIN_NAMES[p] || p;
+                var label = pluginLabel(p) || p;
                 var chip = document.createElement('span');
                 chip.className = 'chip';
-                chip.textContent = '推荐 · ' + label;
+                chip.textContent = T('recommendedPrefix', '推荐 · ') + label;
                 chips.appendChild(chip);
             });
         }
@@ -195,11 +268,11 @@
         }
 
         document.addEventListener('dsh-desktop-bootstrap', function (ev) {
-            try { renderBootstrap(ev.detail || {}); } catch (e) { /* 渲染失败不影响宿主引导链路 */ }
+            handleFrame('dsh-desktop-bootstrap', ev.detail || {});
         });
 
         document.addEventListener('dsh-desktop-preinstall', function (ev) {
-            try { renderPreinstall(ev.detail || {}); } catch (e) { /* 渲染失败不影响宿主引导链路 */ }
+            handleFrame('dsh-desktop-preinstall', ev.detail || {});
         });
     </script>
 </body>

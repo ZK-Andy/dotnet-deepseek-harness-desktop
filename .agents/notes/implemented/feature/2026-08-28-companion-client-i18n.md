@@ -37,3 +37,4 @@ Status: implemented
 
 - dsh client i18n 机制（调研实证源）：`@deepseek-ai/dsh-client-locale` 的 `ctx.locale.register/bind/getSnapshot/subscribe`、slot `locale` 的注入语义（renderer `standardKit`/`SlotOutlet` 源码）、dshmarket 实证模板（闭包 `dshmarket/client/client.js` NS="dsh-market"）。
 - [companion 设置单页化](../bug-fix/2026-08-24-companion-settings-consolidation.md)：companion 信息架构的前一轮收敛，本变更不改其结构。
+- [ui-copy-bilingual-completion](2026-09-16-ui-copy-bilingual-completion.md)：`client.js` 的 `zh`/`en` 键集现由 `scripts/verify-ui-copy.py` 不变量 ④ 机器核对（键漏一边即 CI 红）。

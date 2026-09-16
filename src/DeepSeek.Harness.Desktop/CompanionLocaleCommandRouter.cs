@@ -56,27 +56,13 @@ public sealed class CompanionLocaleCommandRouter : ICommandRouter
             // 坏载荷按未上报处理（增强能力，静默忽略）
         }
 
-        // 防御校验：html[lang] 形态（zh-CN/en），2-8 字母段 + 可选子段；超面即忽略
-        if (string.IsNullOrWhiteSpace(locale) || locale.Length > 35 || !IsPlausibleLocale(locale))
+        // 防御校验：html[lang] 形态（zh-CN/en）；超面即忽略。判据单一事实源在 UiLocale（与持久回读共用）。
+        if (locale is null || !UiLocale.IsPlausibleLocale(locale))
         {
             return ValueTask.FromResult("null");
         }
 
         _uiLocale.Set(locale);
         return ValueTask.FromResult("{}");
-    }
-
-    /// <summary>宽松合法性：字母段（- 分隔）形态即可，具体语言分支由 <see cref="UiLocale.IsEnglish"/> 判。</summary>
-    private static bool IsPlausibleLocale(string locale)
-    {
-        foreach (string part in locale.Split('-'))
-        {
-            if (part.Length is < 2 or > 8 || !part.All(char.IsAsciiLetterOrDigit))
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

@@ -8,7 +8,7 @@ public class RecoveryPageBuilderTests
     [Fact]
     public void Script_ContainsSkeleton_Buttons_AndPayload()
     {
-        string script = RecoveryPageBuilder.BuildScript("运行时进程意外退出", new[] { "line-1", "line-2" });
+        string script = RecoveryPageBuilder.BuildScript("运行时进程意外退出", new[] { "line-1", "line-2" }, english: false);
 
         Assert.Contains("ddc-reason", script);
         Assert.Contains("ddc-tail", script);
@@ -24,7 +24,7 @@ public class RecoveryPageBuilderTests
     public void StderrLines_Escaped_NotRawHtml_InjectionSafe()
     {
         const string evil = "</div><script>alert(1)</script><img src=x onerror=alert(2)>";
-        string script = RecoveryPageBuilder.BuildScript("reason", new[] { evil });
+        string script = RecoveryPageBuilder.BuildScript("reason", new[] { evil }, english: false);
 
         // 恶意行必须以 JSON 字符串转义形态存在（< → \u003C），不存在裸 <script>
         Assert.DoesNotContain("<script>alert(1)</script>", script);
@@ -38,9 +38,21 @@ public class RecoveryPageBuilderTests
     [Fact]
     public void EmptyTail_TailHidden_NoCrash()
     {
-        string script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>());
+        string script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>(), english: false);
 
         Assert.Contains("D.tail&&D.tail.length", script);
+    }
+
+    /// <summary>验证 english=true 时整页文案取英文分支（按钮/重试说明/导出状态，不留中文半面）。</summary>
+    [Fact]
+    public void English_BuildScript_UsesEnglishCopy()
+    {
+        string script = RecoveryPageBuilder.BuildScript("runtime crashed", Array.Empty<string>(), english: true);
+
+        Assert.Contains("Export Diagnostics", script);
+        Assert.Contains("Quit App", script);
+        Assert.Contains("Auto-retry in progress", script);
+        Assert.DoesNotContain("导出诊断包", script);
     }
 }
 

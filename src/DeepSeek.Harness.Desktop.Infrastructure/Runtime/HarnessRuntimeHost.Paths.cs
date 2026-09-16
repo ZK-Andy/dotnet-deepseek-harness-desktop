@@ -44,9 +44,14 @@ public sealed partial class HarnessRuntimeHost
         psi.StandardErrorEncoding = Encoding.UTF8;
     }
 
+    /// <summary>desktop profile 目录下的状态文件路径（PID/端口/UI 语言同族：按 profile 隔离，
+    /// 不与 web 会话的 home 根状态互顶）。</summary>
+    /// <param name="fileName">状态文件名。</param>
+    internal static string ResolveProfileStatePath(string fileName) =>
+        Path.Combine(ResolveDshHome(), "profiles", DesktopProfileName, fileName);
+
     /// <summary>上次 spawn 的 dsh PID 文件路径（按 profile 隔离，同端口文件）。</summary>
-    internal static string ResolvePidFilePath() =>
-        Path.Combine(ResolveDshHome(), "profiles", DesktopProfileName, PidFileName);
+    internal static string ResolvePidFilePath() => ResolveProfileStatePath(PidFileName);
 
     /// <summary>记录在管运行时的 PID + 血统 token（本次 spawn 的子进程，或收养的续任者；尽力而为：
     /// 写失败仅导致下次冷启动清扫落空，端口漂移告警兜底）。</summary>
@@ -72,8 +77,7 @@ public sealed partial class HarnessRuntimeHost
     /// <summary>端口状态文件路径（落于当前 profile 目录）。桌面端与 web 会话共享同一 DSH_HOME，
     /// home 根的全局端口记忆会让两类 dsh 实例互相抢占端口——v0.3.5 实机事故：自更新拉起后
     /// 与 web 会话在同一端口互顶，恢复屏循环直至用户重启电脑。按 profile 隔离后各记各的端口。</summary>
-    internal static string ResolvePortFilePath() =>
-        Path.Combine(ResolveDshHome(), "profiles", DesktopProfileName, PortFileName);
+    internal static string ResolvePortFilePath() => ResolveProfileStatePath(PortFileName);
 
     /// <summary>旧版端口记忆位置（home 根）：仅作迁移回读，不再写入。</summary>
     internal static string ResolveLegacyPortFilePath() => Path.Combine(ResolveDshHome(), PortFileName);

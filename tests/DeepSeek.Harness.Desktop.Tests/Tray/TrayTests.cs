@@ -155,6 +155,7 @@ public class DesktopTrayCommandRouterTests
             },
             closeGate: gate,
             updateMachine: machine,
+            uiLocale: new UiLocale(),
             log: logs is null ? null : logs.Add);
         return (router, calls);
     }
@@ -284,7 +285,7 @@ public class TrayCheckFeedbackTests
     [Fact]
     public void UpToDate_PromptsAlreadyLatest()
     {
-        string? message = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.UpToDate, Current: "9.9.9"));
+        string? message = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.UpToDate, Current: "9.9.9"), english: false);
 
         Assert.Equal("已是最新版本", message);
     }
@@ -293,7 +294,7 @@ public class TrayCheckFeedbackTests
     [Fact]
     public void Ready_IncludesTargetVersion_AndInstallHint()
     {
-        string? message = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.Ready, Version: "1.2.3"));
+        string? message = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.Ready, Version: "1.2.3"), english: false);
 
         Assert.Contains("1.2.3", message);
         Assert.Contains("桌面设置", message);
@@ -303,7 +304,7 @@ public class TrayCheckFeedbackTests
     [Fact]
     public void Error_IncludesReason()
     {
-        string? message = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.Error, Message: "网络不可达"));
+        string? message = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.Error, Message: "网络不可达"), english: false);
 
         Assert.Contains("检查更新失败", message);
         Assert.Contains("网络不可达", message);
@@ -317,7 +318,32 @@ public class TrayCheckFeedbackTests
     [InlineData(UpdateStatus.Installing)]
     public void IntermediateStates_DoNotNotify(UpdateStatus status)
     {
-        Assert.Null(TrayCheckFeedback.Message(new UpdateState(status)));
+        Assert.Null(TrayCheckFeedback.Message(new UpdateState(status), english: false));
+    }
+
+    /// <summary>验证英文分支：三个结束态都出英文文案（宿主 UI 语言为英文时通知不回落中文）。</summary>
+    [Fact]
+    public void English_AllEndStates_UseEnglishCopy()
+    {
+        Assert.Equal("Already up to date", TrayCheckFeedback.Message(new UpdateState(UpdateStatus.UpToDate), english: true));
+
+        string? ready = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.Ready, Version: "1.2.3"), english: true);
+        Assert.Contains("1.2.3", ready);
+        Assert.Contains("Desktop Settings", ready);
+
+        string? error = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.Error, Message: "network unreachable"), english: true);
+        Assert.Contains("Update check failed", error);
+        Assert.Contains("network unreachable", error);
+    }
+
+    /// <summary>验证英文分支下缺失原因的兜底也是英文（不混入中文「未知原因」）。</summary>
+    [Fact]
+    public void English_MissingReason_FallsBackToEnglish()
+    {
+        string? message = TrayCheckFeedback.Message(new UpdateState(UpdateStatus.Error), english: true);
+
+        Assert.Contains("Update check failed", message);
+        Assert.Contains("unknown reason", message);
     }
 }
 
