@@ -115,6 +115,13 @@ public static class StalePackagePruner
 
         // 持锁整体跳过前置：下载锁被持有 = 他实例正在下载（.part 在途），本器绝不在途删包/删锁
         string lockPath = Path.Combine(updatesDir, DownloadLockFile);
+        if (PathLinkGuard.IsLink(lockPath))
+        {
+            // 链接锁：探测与删除都会经链接作用到目标，fail safe 整体跳过（ADR profile-lock-path-symlink-rejection）
+            log?.Invoke($"[update] 清理跳过：下载锁是符号链接（{lockPath}）——拒符号链接，不动任何文件");
+            return;
+        }
+
         if (File.Exists(lockPath) && !CanAcquireLock(lockPath))
         {
             log?.Invoke("[update] 清理跳过：下载锁被持有（他实例下载中）");

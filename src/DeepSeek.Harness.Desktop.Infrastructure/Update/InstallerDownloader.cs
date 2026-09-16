@@ -133,13 +133,24 @@ public sealed class InstallerDownloader
     /// <summary>
     /// 尝试独占下载锁（<c>.download.lock</c>，FileShare.None）；被其他进程持有时返回 null。
     /// 锁句柄随进程死亡自动释放，不存在陈锁。
+    /// 锁路径为符号链接/重解析点时**抛异常拒绝**——此处不复用 null 那条契约，那条的语义是「他实例下载中」，
+    /// 用它承载链接拒绝会骗调用方（ADR profile-lock-path-symlink-rejection）。
     /// </summary>
+    /// <param name="destDir">下载目标目录（锁文件所在目录，不存在则创建）。</param>
+    /// <returns>独占锁句柄；他实例持有时为 null。</returns>
     public static FileStream? TryAcquireDownloadLock(string destDir)
     {
         Directory.CreateDirectory(destDir);
+        string lockPath = Path.Combine(destDir, ".download.lock");
+        if (PathLinkGuard.IsLink(lockPath))
+        {
+            throw new InvalidOperationException(
+                $"下载锁是符号链接/重解析点（{lockPath}）——拒符号链接，不把独占锁施加到链接目标；请先解除该链接");
+        }
+
         try
         {
-            return File.Open(Path.Combine(destDir, ".download.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            return File.Open(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         }
         catch (IOException)
         {

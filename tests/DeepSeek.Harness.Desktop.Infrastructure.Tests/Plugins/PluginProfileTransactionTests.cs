@@ -303,4 +303,140 @@ public class PluginProfileTransactionTests
             Directory.Delete(home, recursive: true);
         }
     }
+
+    /// <summary>验证 active profile 为符号链接时 Begin 拒绝（fail loud），不穿链把链接目标当 profile 拷贝。</summary>
+    [Fact]
+    public void Begin_SymlinkedActiveProfile_Throws()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 符号链接行为按 Linux 断言
+        }
+
+        string home = NewHome();
+        string outside = OutsideDir("tx-profile");
+        try
+        {
+            File.WriteAllText(Path.Combine(outside, "package.json"), """{"marker":"outside"}""");
+            Directory.CreateDirectory(Path.Combine(home, "profiles"));
+            Directory.CreateSymbolicLink(ProfileDir(home), outside);
+
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+                () => PluginProfileTransaction.Begin(home, _ => { }));
+
+            Assert.Contains("符号链接", ex.Message);
+        }
+        finally
+        {
+            UnlinkThenDeleteHome(home, ProfileDir(home));
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    /// <summary>验证提交前 active profile 被换成符号链接时 Activate 拒绝，且拒链先于 journal 写出（不污染事务状态）。</summary>
+    [Fact]
+    public void Activate_SymlinkedActiveProfile_ThrowsBeforeWritingJournal()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 符号链接行为按 Linux 断言
+        }
+
+        string home = SeedActiveProfile(NewHome(), "old");
+        string outside = OutsideDir("tx-activate");
+        try
+        {
+            var tx = PluginProfileTransaction.Begin(home, _ => { });
+
+            Directory.Delete(ProfileDir(home), recursive: true);
+            Directory.CreateSymbolicLink(ProfileDir(home), outside);
+
+            Assert.Throws<InvalidOperationException>(() => tx.Activate());
+            Assert.False(File.Exists(Path.Combine(home, "profiles", ".pending.json")),
+                "拒链必须先于 journal 写出");
+        }
+        finally
+        {
+            UnlinkThenDeleteHome(home, ProfileDir(home));
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    /// <summary>验证 pending journal 为符号链接时 Recover 拒绝，且链接目标原封不动。</summary>
+    [Fact]
+    public void Recover_SymlinkedJournal_Throws_TargetIntact()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 符号链接行为按 Linux 断言
+        }
+
+        string home = SeedActiveProfile(NewHome(), "old");
+        string outside = Path.Combine(Path.GetTempPath(), $"tx-journal-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(outside, """{"SchemaVersion":1}""");
+            File.CreateSymbolicLink(Path.Combine(home, "profiles", ".pending.json"), outside);
+
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+                () => PluginProfileTransaction.Recover(home, _ => { }));
+
+            Assert.Contains("符号链接", ex.Message);
+            Assert.Equal("""{"SchemaVersion":1}""", File.ReadAllText(outside));
+        }
+        finally
+        {
+            File.Delete(Path.Combine(home, "profiles", ".pending.json"));
+            Directory.Delete(home, recursive: true);
+            File.Delete(outside);
+        }
+    }
+
+    /// <summary>验证 stray staging 目录为符号链接时清扫跳过并记日志，链接目标内容不被递归删除。</summary>
+    [Fact]
+    public void Recover_StrayStagingSymlink_SkipsAndLogs()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 符号链接行为按 Linux 断言
+        }
+
+        string home = SeedActiveProfile(NewHome(), "old");
+        string outside = OutsideDir("tx-stray");
+        var logs = new List<string>();
+        try
+        {
+            File.WriteAllText(Path.Combine(outside, "keep.txt"), "keep");
+            Directory.CreateSymbolicLink(Path.Combine(home, ".tx-stray"), outside);
+
+            PluginProfileTransaction.Recover(home, logs.Add);
+
+            Assert.Contains(logs, l => l.Contains("符号链接"));
+            Assert.True(File.Exists(Path.Combine(outside, "keep.txt")), "链接目标内容不得被删");
+        }
+        finally
+        {
+            Directory.Delete(Path.Combine(home, ".tx-stray"));
+            Directory.Delete(home, recursive: true);
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    private static string OutsideDir(string prefix)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"{prefix}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    /// <summary>先摘链（不递归，避免递归删除与链接目标纠缠）再递归删 home。</summary>
+    private static void UnlinkThenDeleteHome(string home, string link)
+    {
+        if (Directory.Exists(link) && new DirectoryInfo(link).LinkTarget is not null)
+        {
+            Directory.Delete(link);
+        }
+
+        Directory.Delete(home, recursive: true);
+    }
 }

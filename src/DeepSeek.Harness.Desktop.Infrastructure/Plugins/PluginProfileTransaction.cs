@@ -91,6 +91,8 @@ public sealed class PluginProfileTransaction
             throw new InvalidOperationException($"事务 Begin 失败：active profile 不存在（{activeProfile}）；调用链必须先 EnsureProfile");
         }
 
+        ThrowIfLink(activeProfile, "active profile");
+
         string stagingHome = Path.Combine(dshHome, $"{StagingHomePrefix}{Guid.NewGuid():N}");
         var tx = new PluginProfileTransaction(dshHome, stagingHome, log);
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -118,6 +120,8 @@ public sealed class PluginProfileTransaction
     public void Activate()
     {
         string activeProfile = Path.Combine(_dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        ThrowIfLink(activeProfile, "active profile");
+        ThrowIfLink(_pendingPath, "事务 journal");
         WritePending(new PendingRecord(SchemaVersion, StagingHome, StagingProfileDir, _rollbackDir, ProfileTxStep.Prepared));
         Directory.Move(activeProfile, _rollbackDir);
         WritePending(new PendingRecord(SchemaVersion, StagingHome, StagingProfileDir, _rollbackDir, ProfileTxStep.ActiveMoved));
@@ -147,6 +151,9 @@ public sealed class PluginProfileTransaction
     {
         string profilesRoot = Path.Combine(dshHome, "profiles");
         string pendingPath = Path.Combine(profilesRoot, PendingFileName);
+        // 链接守卫在存在性判断之前：File.Exists 对悬空链的判定随平台而异，嵌进 if 内会让悬空 journal
+        // 链被「当作无 journal」跳过（与 Activate 的无条件守卫也不一致）
+        ThrowIfLink(pendingPath, "事务 journal");
         if (File.Exists(pendingPath))
         {
             PendingRecord record;
@@ -173,6 +180,8 @@ public sealed class PluginProfileTransaction
 
     private static void Replay(PendingRecord record, string pendingPath, Action<string> log)
     {
+        // 重放要移动目录：active profile 为链接即拒（移动会作用于链接自身或穿链），fail loud
+        ThrowIfLink(Path.Combine(Path.GetDirectoryName(pendingPath)!, HarnessRuntimeHost.DesktopProfileName), "active profile");
         switch (record.Step)
         {
             case ProfileTxStep.Prepared:
@@ -268,6 +277,16 @@ public sealed class PluginProfileTransaction
         }
     }
 
+    /// <summary>命名路径的链接守卫：为链接即 fail loud，绝不穿链读写或移动（ADR profile-lock-path-symlink-rejection）。</summary>
+    private static void ThrowIfLink(string path, string what)
+    {
+        if (PathLinkGuard.IsLink(path))
+        {
+            throw new InvalidOperationException(
+                $"{what} 是符号链接/重解析点（{path}）——拒符号链接，不穿链读写或移动；请先解除该链接");
+        }
+    }
+
     private static readonly JsonSerializerOptions s_pendingJsonOptions = new() { WriteIndented = true };
 
     private void WritePending(PendingRecord record) =>
@@ -279,6 +298,13 @@ public sealed class PluginProfileTransaction
     {
         if (!Directory.Exists(dir))
         {
+            return;
+        }
+
+        // 链接不删：Directory.Delete(recursive) 对链接的行为随平台而异，绝不冒险穿链
+        if (PathLinkGuard.IsLink(dir))
+        {
+            log?.Invoke($"[host] 插件事务：{what} 是符号链接，跳过删除（{dir}）——拒符号链接");
             return;
         }
 

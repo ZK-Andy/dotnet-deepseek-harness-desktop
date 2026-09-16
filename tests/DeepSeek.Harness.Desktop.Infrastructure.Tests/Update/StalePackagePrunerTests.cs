@@ -237,6 +237,40 @@ public class StalePackagePrunerTests
         }
     }
 
+    /// <summary>验证下载锁为符号链接时整轮清扫跳过（记日志）：过期包与死残留都不动，链接与其目标原封不动
+    /// （ADR profile-lock-path-symlink-rejection）。</summary>
+    [Fact]
+    public void Run_SymlinkedDownloadLock_AbortsSweep()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 符号链接行为按 Linux 断言
+        }
+
+        string dir = CreateTempUpdatesDir();
+        string outside = Path.Combine(Path.GetTempPath(), $"updates-lock-{Guid.NewGuid():N}");
+        var logs = new List<string>();
+        try
+        {
+            string stale = Path.Combine(dir, "deepseek-harness-desktop-0.4.3_linux-x86_64.rpm");
+            File.WriteAllBytes(stale, [1]);
+            File.WriteAllText(outside, "victim");
+            File.CreateSymbolicLink(Path.Combine(dir, ".download.lock"), outside);
+
+            StalePackagePruner.Run(dir, "0.4.4", logs.Add);
+
+            Assert.True(File.Exists(stale), "拒链时整轮跳过，过期包不得被删");
+            Assert.Equal("victim", File.ReadAllText(outside));
+            Assert.Contains(logs, l => l.Contains("符号链接"));
+        }
+        finally
+        {
+            File.Delete(Path.Combine(dir, ".download.lock"));
+            Directory.Delete(dir, recursive: true);
+            File.Delete(outside);
+        }
+    }
+
     private static string CreateTempUpdatesDir()
     {
         string dir = Path.Combine(Path.GetTempPath(), $"updates-{Guid.NewGuid():N}");

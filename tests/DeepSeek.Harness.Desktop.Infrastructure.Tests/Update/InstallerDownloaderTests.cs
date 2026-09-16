@@ -149,4 +149,36 @@ public class InstallerDownloaderTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    /// <summary>验证下载锁为符号链接时拒绝获取（抛异常带路径），不复用 null 的「他实例下载中」语义——
+    /// 把链接拒绝伪装成忙会让调用方一直以为有别的实例在下载（ADR profile-lock-path-symlink-rejection）。</summary>
+    [Fact]
+    public void TryAcquireDownloadLock_SymlinkedLock_Throws()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 符号链接行为按 Linux 断言
+        }
+
+        string dir = TempDir();
+        string outside = Path.Combine(Path.GetTempPath(), $"dl-lock-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(outside, "victim");
+            File.CreateSymbolicLink(Path.Combine(dir, ".download.lock"), outside);
+
+            InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+                () => { _ = InstallerDownloader.TryAcquireDownloadLock(dir); });
+
+            Assert.Contains("符号链接", ex.Message);
+            Assert.Equal("victim", File.ReadAllText(outside));
+        }
+        finally
+        {
+            File.Delete(Path.Combine(dir, ".download.lock"));
+            Directory.Delete(dir, true);
+            File.Delete(outside);
+        }
+    }
 }
