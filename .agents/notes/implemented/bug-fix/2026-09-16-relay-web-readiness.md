@@ -31,7 +31,7 @@ Review: FULL/2026-09-16/R1=ok R2=ok R3=ok
 - `ServingNotReady`：TCP 可连但 HTTP 无声（空体/超时）——web 面尚未挂载，**继续等，不导航**；
 - `Ready`：HTTP 响应带响应体，或 3xx 重定向（无 cookie 的裸请求可能被引导到带 token 的 URL，重定向同样证明路由与认证已挂载）。
 
-`HarnessRuntimeHost.TryRideMarketRelayAsync` 只在 `Ready` 时走收养链；`ServingNotReady` 时按原节拍继续等待，并在决定继续等待后留痕一条「已监听但 web 面未就绪」（每次等待只记一条，防 1s 节拍刷 host.log；取消不留痕——那时并未继续等）。探针单次 HTTP 超时 1.5s、不跟随重定向、环回不走代理；整次探测按**剩余预算**收紧（TCP 预检与 HTTP 段共用同一预算，实际等待取剩余预算与 1.5s 的较小者），故单轮迭代不会把等待拖过总预算；任何探测异常折算为「未就绪」，绝不因探测失败判死。等待的三条退出线（证据消失 / 总预算 / helper 从未出现的宽限窗）与收养、收割、漂移处置全部不变，预算耗尽仍回落既有路径（其 bind 预探测兜底）。
+`HarnessRuntimeHost.TryRideMarketRelayAsync` 只在 `Ready` **且该就绪连续维持满稳定窗（2s ≈ 连续 3 拍，见 [relay-restart-client-module-collapse](2026-09-19-relay-restart-client-module-collapse.md)）** 时走收养链；`ServingNotReady` 时按原节拍继续等待，并在决定继续等待后留痕一条「已监听但 web 面未就绪」（每次等待只记一条，防 1s 节拍刷 host.log；取消不留痕——那时并未继续等）。探针单次 HTTP 超时 1.5s、不跟随重定向、环回不走代理；整次探测按**剩余预算**收紧（TCP 预检与 HTTP 段共用同一预算，实际等待取剩余预算与 1.5s 的较小者），故单轮迭代不会把等待拖过总预算；任何探测异常折算为「未就绪」，绝不因探测失败判死。等待的三条退出线（证据消失 / 总预算 / helper 从未出现的宽限窗）与收养、收割、漂移处置全部不变，预算耗尽仍回落既有路径（其 bind 预探测兜底）。
 
 同批撤除 `RelayServingProbeOverride` 注入口：它唯一的用途是替掉 TCP 判据，而真实探针已由 Linux 假进程用例证明可用——正是 HANDOFF 待办「接力等待注入口可撤其一」写明的触发条件（「下次动该文件」）。就绪判据如今有专门契约用例，注入口不再有消费者。
 
@@ -44,9 +44,9 @@ Review: FULL/2026-09-16/R1=ok R2=ok R3=ok
 
 ## Consequences
 
-- 恢复期间用户看到的是**恢复屏**而不是空白页；接管命中（导航）推迟到 web 面真就绪，导航次数回到 1 次，不再依赖看门狗 reload 兜底。
+- 恢复期间用户看到的是**恢复屏**而不是空白页；接管命中（导航）推迟到 web 面就绪**并连续维持满稳定窗**，导航次数回到 1 次，不再依赖看门狗 reload 兜底。
 - 代价：若续任者 web 面迟迟不就绪，壳会等满接力预算（与 `RestartAsync` 恢复时限同源）再回落既有路径——比现状多等，但多等期间页面不白，且原路径的 bind 预探测兜底不变。
-- 观测面：新增 `[host] 市场接力续任者端口 … 已监听但 web 面未就绪：继续等待，不导航进空白页`；接管命中行文案不变（测试与既有判读口径不受影响）。
+- 观测面：新增 `[host] 市场接力续任者端口 … 已监听但 web 面未就绪：继续等待，不导航进空白页`；接管命中行在既有前缀后追加稳定窗措辞（`[host] 市场接力续任者已接管首选端口 <port>（就绪连续维持 ≥2s）：跳过竞争 spawn，转入收养处置`），前缀与既有判读口径不变。
 - 就绪判据依赖 dsh 的 HTTP 契约（裸请求有响应体或 3xx）：dsh 若改成空体 200 的「就绪」形态，探针会误判为未就绪——该契约留档于探针的 XML doc 与本文。
 
 ## Testing
@@ -61,3 +61,4 @@ Review: FULL/2026-09-16/R1=ok R2=ok R3=ok
 - [bind 预探测压缩端口等待](../architecture/2026-09-13-port-wait-compression.md)：其「dsh 加载整树才 bind」的测量正是「端口可连早于 web 面可服务」的前提。
 - [收养市场接力的 dsh 续任者（运行时交接）](2026-09-12-runtime-handoff-adoption.md)：本决定只改「何时判定接手」，收养判据、收割面保护与判活 token 复验均以彼为准。
 - [页面健康观测](../process/2026-08-26-page-health-monitor.md)：本轮兜底恢复的提供者；其去抖代价是本决定要避开的。
+- [relay-restart-client-module-collapse](2026-09-19-relay-restart-client-module-collapse.md)：本决定的三态就绪判据之上加「连续维持」稳定窗（单拍 `Ready` 可能是将死前驱的应答）。

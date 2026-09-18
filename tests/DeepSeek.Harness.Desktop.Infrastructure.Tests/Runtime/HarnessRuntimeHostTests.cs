@@ -618,6 +618,84 @@ public class HarnessRuntimeHostTests
     }
 
     /// <summary>
+    /// 稳定窗接线回归（ADR relay-restart-client-module-collapse，Linux /proc 真探针）：市场自重启窗口里
+    /// 将死的前驱仍会应答 web 面，形态是「就绪一两拍随即断线」——稳定窗未满足前绝不收养，让 WebView 免于
+    /// 被导航进「连上随即断线」的窗口。这里走真 1s 节拍：第二拍 Ready（距首拍 ≥1s）仍不得收养，随后断线
+    /// 更不得收养——把稳定窗降到一拍（≥1s）即会让本用例红。非 Linux（无 /proc env 枚举）自跳过。
+    /// </summary>
+    [Fact]
+    public async Task TryRideMarketRelayAsync_TransientWebReady_DoesNotAdoptBeforeStableWindow()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 血统枚举靠 /proc environ；其他平台 Enumerate 恒空，接力路径不可达
+        }
+
+        var logs = new List<string>();
+        string home = Path.Combine(Path.GetTempPath(), "dsh-relay-transient-" + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable(HarnessRuntimeHost.HomeOverrideEnv, home);
+        var processes = new List<System.Diagnostics.Process>();
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var responder = new CancellationTokenSource();
+        (TcpListener listener, Task serving) = LoopbackHttpResponder.Start(
+            port,
+            LoopbackHttpResponder.Response("HTTP/1.1 401 Unauthorized", "dsh web authentication required; probe"),
+            responder.Token);
+        int delays = 0;
+        try
+        {
+            StartFakeRelayProcesses(home, "relay-test-token", processes);
+
+            using var host = new HarnessRuntimeHost(logs.Add)
+            {
+                // 首拍就绪后按真节拍等 1s（第二拍仍 Ready），第二拍之后再撤走应答者（监听器仍在但不回话）：
+                // 将死前驱「就绪一两拍随即断线」的形态——1s 窗会在此收养，2s 窗不会
+                RelayDelayOverride = async _ =>
+                {
+                    if (++delays == 1)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1));
+                        return;
+                    }
+
+                    responder.Cancel();
+                },
+            };
+            Uri? relayed = await host.TryRideMarketRelayAsync(
+                port, DateTimeOffset.UtcNow.AddSeconds(-1), TimeSpan.FromSeconds(2.5), CancellationToken.None);
+
+            Assert.True(delays >= 2, $"真节拍只走了 {delays} 拍，未构成「两拍连续 Ready」对照");
+            Assert.Null(relayed);
+            Assert.DoesNotContain(logs, l => l.Contains("收养"));
+            Assert.DoesNotContain(logs, l => l.Contains("已接管首选端口"));
+        }
+        finally
+        {
+            responder.Cancel();
+            await serving;
+            listener.Stop();
+            foreach (System.Diagnostics.Process p in processes)
+            {
+                try
+                {
+                    p.Kill(entireProcessTree: true);
+                    p.Dispose();
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+                {
+                    // 假进程恰好已退出/无权限/平台不支持树杀：清理目标已达成
+                }
+            }
+
+            Environment.SetEnvironmentVariable(HarnessRuntimeHost.HomeOverrideEnv, null);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
     /// 接线面回归（R2 评审 Suggestion 采用，gated）：真实 RestartAsync 入口走接力分支——同一 host 实例
     /// 内（进程内重启：_port 已就位、supervisedStart 非空）在管 dsh 退出后，假 helper/续任者接管首选端口
     /// → 接力分支直接收养续任者（同端口裸 origin），绝不 spawn 竞争 dsh（.dsh-pid 记录被收养 pid+token

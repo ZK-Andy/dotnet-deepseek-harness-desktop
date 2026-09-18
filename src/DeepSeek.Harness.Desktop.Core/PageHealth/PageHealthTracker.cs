@@ -6,10 +6,10 @@ public enum PageHealth
     /// <summary>探针异常（窗口未就绪/导航中）——不计入任何计数。</summary>
     Unknown,
 
-    /// <summary>页面有内容。</summary>
+    /// <summary>页面有可见内容。</summary>
     Alive,
 
-    /// <summary>页面空白（body 无子节点）。</summary>
+    /// <summary>页面空白（body 缺失或可见文本为空）。</summary>
     Dead,
 }
 

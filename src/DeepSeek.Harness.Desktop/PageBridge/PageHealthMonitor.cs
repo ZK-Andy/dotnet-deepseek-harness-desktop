@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ryn.Core;
 
 namespace DeepSeek.Harness.Desktop.PageBridge;
@@ -6,7 +7,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// 页面健康轮询观测 + 有界恢复：宿主侧定时对 WebView 跑一条只读探针表达式，
 /// 不注入脚本、不改页面、不依赖 companion 存活——历史上 companion 自身缺 apply
 /// 致整页白屏的事故形态决定了探针不能住在插件里。迁移经日志留痕，最新快照供诊断包收录。
-/// 已知边界：dsh 崩溃后恢复页本身是壳的文档（有内容），此阶段按 alive 记录——
+/// 已知边界：dsh 崩溃后恢复页本身是壳的文档（有可读文本），此阶段按 alive 记录——
 /// 该时段进程监督已有独立信号，这里的靶心是「dsh 在跑但页面空白」。
 /// 有界恢复：连续 Dead 达阈值宣告、且注入 <paramref name="reload"/> 恢复委托时，在预算内
 /// 触发一次 reload（ADR reference-alignment 批次五）；预算耗尽转入观测-only，成功恢复复位
@@ -15,9 +16,14 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// </summary>
 public sealed class PageHealthMonitor
 {
-    /// <summary>只读探针：body 有子节点即视为有内容。锚点刻意不绑 dsh 内部组件结构。</summary>
+    /// <summary>
+    /// 只读探针：回报 body 的可见文本长度观测值（<c>text:&lt;len&gt;</c>，len = <c>innerText.trim().length</c>，
+    /// body 缺失按 0），由 <see cref="Parse"/> 映射为健康态——「有子节点」不等于「有内容」：整树 client 模块
+    /// 热替换后的塌陷页子节点仍在（实测 3 个）而可见文本归空（ADR relay-restart-client-module-collapse）。
+    /// 锚点刻意不绑 dsh 内部组件结构。
+    /// </summary>
     public const string ProbeScript =
-        "(function(){var b=document.body;if(!b)return 'dead';return b.childElementCount===0?'dead':'alive';})()";
+        "(function(){var b=document.body;var t=b?b.innerText:null;return 'text:'+(t?t.trim().length:0);})()";
 
     private readonly CurrentWindowAccessor _window;
     private readonly Action<string>? _log;
@@ -72,13 +78,24 @@ public sealed class PageHealthMonitor
         }
     }
 
-    /// <summary>探针结果解析（纯函数可单测）：容忍桥接的引号包裹与空白。</summary>
-    public static PageHealth Parse(string? raw) => raw?.Trim().Trim('"') switch
+    /// <summary>
+    /// 探针观测值解析（纯函数可单测）：DOM 形态 → 健康态的单一判读点。<c>text:0</c> 判 Dead、
+    /// <c>text:&lt;n&gt;</c>（n&gt;0）判 Alive；桥接的引号包裹与空白照常容忍；空串、形状不认识或非十进制
+    /// 数字一律 Unknown——记不进探针计数，绝不因读不懂观测值触发恢复。
+    /// </summary>
+    /// <param name="raw">探针原样回报值（桥接可能带引号包裹）。</param>
+    /// <returns>本次探针结论。</returns>
+    public static PageHealth Parse(string? raw)
     {
-        "alive" => PageHealth.Alive,
-        "dead" => PageHealth.Dead,
-        _ => PageHealth.Unknown,
-    };
+        string value = raw?.Trim().Trim('"') ?? string.Empty;
+        if (!value.StartsWith("text:", StringComparison.Ordinal)
+            || !int.TryParse(value.AsSpan("text:".Length), NumberStyles.None, CultureInfo.InvariantCulture, out int length))
+        {
+            return PageHealth.Unknown;
+        }
+
+        return length > 0 ? PageHealth.Alive : PageHealth.Dead;
+    }
 
     private void Record(PageHealth sample, CancellationToken ct)
     {

@@ -34,6 +34,9 @@ public sealed partial class HarnessRuntimeHost
     private static readonly TimeSpan s_relayWaitInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan s_relayHelperGrace = TimeSpan.FromSeconds(2);
 
+    /// <summary>接力就绪的稳定窗：单拍 Ready 可能是将死前驱的应答，须连续维持该窗才收养（见 <see cref="RelayWebReadinessGate"/>）。</summary>
+    private static readonly TimeSpan s_relayReadyStableWindow = TimeSpan.FromSeconds(2);
+
     /// <summary>relay 等待的血统残留枚举注入口（生产 null = 真扫 /proc；仅供测试闭环）。</summary>
     internal Func<IReadOnlyList<RuntimeLineage.Subject>>? RelayResidueOverride { get; set; }
 
@@ -43,9 +46,12 @@ public sealed partial class HarnessRuntimeHost
     /// <summary>
     /// 市场接力共存等待（ADR market-restart-adopt-first）：进程内重启入口先观察「市场自重启 helper
     /// 正拉起续任者」的证据，在场则不再 spawn 竞争者——等续任者的 **web 面**就绪（不只是端口可连，
-    /// ADR relay-web-readiness）后直接走既有交接处置收养，把 WebView 一次导航到已可服务的页面。helper 不在场或中途消失即快速回落常规探测与 spawn，
+    /// ADR relay-web-readiness）、且该就绪**连续维持**达稳定窗（ADR relay-restart-client-module-collapse：
+    /// 单拍 Ready 可能是将死前驱的应答，收养即把 WebView 送进「连上随即断线」的窗口）后，直接走既有交接
+    /// 处置收养，把 WebView 一次导航到已可服务的页面。helper 不在场或中途消失即快速回落常规探测与 spawn，
     /// 崩溃恢复路径的额外等待不超过一个宽限窗；总预算与恢复时限同源，超时也回落原路径（其 bind
-    /// 预探测兜底），绝不因 helper 卡住而推迟恢复。
+    /// 预探测兜底），绝不因 helper 卡住而推迟恢复。就绪判定先于预算判定（既有次序）：边界处命中稳定就绪
+    /// 即收养，优于回落一次注定失败的 spawn。
     /// </summary>
     /// <param name="port">首选端口（监督器在管运行时的端口）。</param>
     /// <param name="supervisedStart">刚退出那个运行时的起始时刻（交接判据参照，此处非 null）。</param>
@@ -63,6 +69,7 @@ public sealed partial class HarnessRuntimeHost
         DateTimeOffset graceEnd = DateTimeOffset.UtcNow + s_relayHelperGrace;
         bool helperSeen = false;
         bool webPendingLogged = false;
+        var readyGate = new RelayWebReadinessGate(s_relayReadyStableWindow);
         while (true)
         {
             if (ct.IsCancellationRequested)
@@ -93,9 +100,9 @@ public sealed partial class HarnessRuntimeHost
             RuntimeLineageProbes.LoopbackWebProbe readiness = await RuntimeLineageProbes
                 .ProbeLoopbackWebAsync(port, ct, deadline - DateTimeOffset.UtcNow)
                 .ConfigureAwait(false);
-            if (readiness == RuntimeLineageProbes.LoopbackWebProbe.Ready)
+            if (readyGate.Observe(readiness, DateTimeOffset.UtcNow))
             {
-                _log?.Invoke($"[host] 市场接力续任者已接管首选端口 {port}：跳过竞争 spawn，转入收养处置");
+                _log?.Invoke($"[host] 市场接力续任者已接管首选端口 {port}（就绪连续维持 ≥{s_relayReadyStableWindow.TotalSeconds:0}s）：跳过竞争 spawn，转入收养处置");
                 return await RecoverFromFailureAsync(port, StartFailure.PortConflict, supervisedStart, timeout, ct)
                     .ConfigureAwait(false);
             }
