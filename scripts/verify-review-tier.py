@@ -44,6 +44,10 @@ Tier classification (no executor discretion):
       resources/**, templates/**, docs/**
   LIGHT (light review R2 may suffice): everything else.
 
+The test baseline value lives at `scripts/test-baseline.json`, outside `docs/**`,
+precisely so that a baseline bump stays LIGHT; fixture 25 pins that (ADR
+`2026-09-19-baseline-home-tier-decoupling`).
+
 Review evidence format (header zone of an implemented ADR):
     Review: FULL/yyyy-mm-dd/R1=ok R2=ok R3=ok
     Review: FULL/yyyy-mm-dd#2/R1=ok R2=ok R3=ok   (2nd FULL batch that day)
@@ -724,6 +728,15 @@ def _self_test() -> int:
         rows = _scan(r, since="HEAD~1")
         ok(any("FULL-tier change lacks review evidence" in x for x in rows),
            "a body line moved into the header zone is not newly produced")
+
+        # 25) a baseline-value bump stays LIGHT: the machine baseline home and the
+        #     README badges sit outside docs/**, so re-tracking the value is not a
+        #     behavior-surface change (ADR baseline-home-tier-decoupling)
+        r = _new_repo(Path(td), "f25")
+        baseline_bump = ["README.md", "README.en.md", "scripts/test-baseline.json",
+                         NOTES_DIR + "/implemented/testing/2026-09-12-coverage-baseline-from-ci-cobertura.md"]
+        ok(_classify(baseline_bump, r) == (False, []),
+           "a baseline-value bump outside docs/** classifies LIGHT")
 
     if failed == 0:
         print("== verify-review-tier self-test passed ==")

@@ -49,7 +49,7 @@ Review: FULL/2026-09-16#2/R1=ok R2=ok R3=ok
 
 ## Testing
 
-- `python3 scripts/verify-review-tier.py --self-test`：24 例夹具全绿——相对基线新增六例：「空白扰动的证据行不算证据」/「`FULL/<date>#2/...` 是合法证据」/「同日第二批复用同一 ADR 时 `#N` 构成新产」/「`#0` 不是合法序号」/「表头搬位的逐字同行不算新产」/「正文行搬进头区不算新产」。
+- `python3 scripts/verify-review-tier.py --self-test`：该批时点 24 例夹具全绿——相对基线新增六例：「空白扰动的证据行不算证据」/「`FULL/<date>#2/...` 是合法证据」/「同日第二批复用同一 ADR 时 `#N` 构成新产」/「`#0` 不是合法序号」/「表头搬位的逐字同行不算新产」/「正文行搬进头区不算新产」。
 - 后两例经变异实测确认非空转：base 比对换回头区投影 → 仅「正文行搬进头区」变红；删掉 base 比对块 → 它与「表头搬位」一起变红（证明候选行确在 `_added_lines_for` 的 `added` 集合内，旧判据会放行）。
 - 历史先例复核：`3230a5d`（`R1=ok` 之后加空格）与 `9853d5a`（空格搬到 `R3=ok` 之前）追加的证据行均为双空格形态，规范形下不匹配；`b61901b` 的搬位行文本逐字等于 base 版本。三条都由实测复算。
 - `dotnet build` 0 error、`dotnet test` 全绿；`verify-ui-copy` / `verify-code-health --enforce` / `verify-code-conventions --enforce` / `verify-adr-format` / `verify-md-links` / `verify-doc-budgets --manifest` 全绿。

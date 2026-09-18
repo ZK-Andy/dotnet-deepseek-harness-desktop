@@ -115,7 +115,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ├── src/DeepSeek.Harness.Desktop.Infrastructure/  # adapters (Ryn/native, dsh process, file/network, updates)
 ├── tests/DeepSeek.Harness.Desktop.Tests/          # xunit: shell / composition root
 ├── tests/DeepSeek.Harness.Desktop.Core.Tests/     # xunit: Core
-├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit: Infrastructure (three-project counts in the docs/testing.md baseline line)
+├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit: Infrastructure (three-project counts in scripts/test-baseline.json)
 ├── scripts/                                    # gates + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```

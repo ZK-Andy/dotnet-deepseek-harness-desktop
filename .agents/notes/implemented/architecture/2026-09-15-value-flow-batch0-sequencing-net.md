@@ -19,7 +19,7 @@ Review: FULL/2026-09-15/R1=ok R2=ok R3=ok
 
 - \`dotnet build -warnaserror\` 0 警告；\`dotnet test\` 621/621（基线 614 + 新增 7）；机械化门禁（adr-format/md-links/code-health/code-conventions/handoff/governance/cookbook）全绿。
 - 零行为变更自证：无 env 注入 / 无公共 API 签名变化（新增类型为新增面）/ 无 spawn 形态变化 / 无可观察副作用变化；等待逻辑 await 序与分支逐一等价（R2 逐分支核毕）。
-- 测试数 614→621：README 双语徽章/testing.md 基线行暂维持 614 旧值（双件互相一致），覆盖率跟值随 CI cobertura 跟值批统一刷新。
+- 测试数 614→621：README 双语徽章/机器家 `scripts/test-baseline.json` 暂维持 614 旧值（双件互相一致），覆盖率跟值随 CI cobertura 跟值批统一刷新。
 - 测试 RepoRoot 与 ArchitectureTests 的重复上溯收敛为 [TestRepoRoot](../../../../tests/DeepSeek.Harness.Desktop.Tests/TestRepoRoot.cs) 单点（批次 3 收口）。
 
 ## Alternatives considered

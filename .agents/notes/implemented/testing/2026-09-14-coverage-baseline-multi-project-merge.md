@@ -8,7 +8,7 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 
 ## Problem
 
-`dotnet test <sln>` 每个测试工程起一个测试宿主，`--collect:"XPlat Code Coverage"` 因此每个工程各产一份 `coverage.cobertura.xml`。测试拆成主工程/Core/Infrastructure 三工程后，CI `coverage summary` 步原本的 `grep line-rate ... | head -20` 打出三行分片值（0.1743 / 0.5736 / 0.5405）——每份文件都含它引用程序集的全部源行（未被该工程测试触及的记 `hits=0`），单份文件的 `line-rate` 只描述该工程切片。基线（README 双语徽章 + `docs/testing.md` 基线行）若照旧取一行即失真，取哪一行也没有口径。
+`dotnet test <sln>` 每个测试工程起一个测试宿主，`--collect:"XPlat Code Coverage"` 因此每个工程各产一份 `coverage.cobertura.xml`。测试拆成主工程/Core/Infrastructure 三工程后，CI `coverage summary` 步原本的 `grep line-rate ... | head -20` 打出三行分片值（0.1743 / 0.5736 / 0.5405）——每份文件都含它引用程序集的全部源行（未被该工程测试触及的记 `hits=0`），单份文件的 `line-rate` 只描述该工程切片。基线（README 双语徽章 + 机器家 `scripts/test-baseline.json`）若照旧取一行即失真，取哪一行也没有口径。
 
 ## Decision
 
@@ -16,7 +16,7 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 
 新增 `scripts/coverage-summary.py` 承担合并并打印机器可解析的基线行 `coverage-summary: covered=<c> valid=<v> line-rate=<rate> (<pct>%)`；无 cobertura 文件即 exit 1（缺失产物不得打印看似合理的 0%），XML 损坏 exit 2。`ci.yml` 的 `coverage summary` 步调用该脚本。脚本自带 `--self-test`，夹具钉住两个判据点：跨文件 max hits 不因某片 0-hits 而失去命中、程序集前缀归一后同物理行合并为一个键。
 
-同批完成 B1/B2/B4 挂账的标准跟值：基线取 CI `34793499164`（B4 代码面）合并值 `4040/7306 = 55.30%`，README 双语徽章与 `docs/testing.md` 基线行随值更新，测试数 612→614。
+同批完成 B1/B2/B4 挂账的标准跟值：基线取 CI `34793499164`（B4 代码面）合并值 `4040/7306 = 55.30%`，README 双语徽章与机器家 `scripts/test-baseline.json` 随值更新，测试数 612→614。
 
 ## Alternatives considered
 
@@ -40,5 +40,5 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 ## Related
 
 - [覆盖率基线取 CI cobertura 实测](2026-09-12-coverage-baseline-from-ci-cobertura.md)：基线来源与人工跟值义务；本批的跟值台账行在该篇。
-- [README 事实徽章与基线行一致性机械校验](2026-09-13-readme-badge-baseline-gate.md)：断言两个家相等，值的来源由本篇与上篇定。
+- [README 事实徽章与基线一致性机械校验](2026-09-13-readme-badge-baseline-gate.md)：断言两个家相等，值的来源由本篇与上篇定。
 - [clean-architecture-b4-finalization](../architecture/2026-09-14-clean-architecture-b4-finalization.md)：三工程镜像拆分（本批合并口径的触发面）。

@@ -55,7 +55,7 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Testing
 
-`python3 scripts/verify-review-tier.py --self-test`：24 例夹具全绿——八例属「证据须本批新产」面：「同批新产证据放行」/「改名重写继承行不顶包」/「改标题的改名不顶包」/「改名目的地携带新 `Review:` 行照常放行」/「不可达 base 判违规」/「`--staged` 从 index 取证据」/「未跟踪 ADR 视为整文件新增」/「工作流路径判 FULL」；六例属规范形与同日序号面：「空白扰动的证据行不算证据」/「`FULL/<date>#2/…` 是合法证据」/「同日第二批复用同一 ADR 时 `#N` 构成新产」/「`#0` 不是合法序号」/「表头搬位的逐字同行不算新产」/「正文行搬进头区不算新产」。真实仓库与临时夹具复验：本批变更集里三篇既有 implemented ADR（2026-08-31 / 2026-09-03 / 2026-09-12）本批新增的**严格证据行**（`FULL/<date>/R1=ok R2=ok R3=ok`）数均为 0（其中一篇本批改了正文但没动证据行）——不带新鲜度判据时该变更集放行，带判据则判 FULL 且 `--enforce` exit 1；`D old.md` / `A renamed.md` + FULL 变更：不带排除集时 `--staged --enforce` exit 0，带排除集 exit 1；改名+改标题 + FULL 变更：不带路径键 exit 0，带路径键 exit 1；同一改名目的地改带**新日期**的行则 exit 0（排除集按行文本比对，非按路径）；`--since` 的 base 不可达时判违规（`--enforce` exit 1，报告模式 exit 0）；`ci.yml` 由 `behavior-surface` 触发 FULL（该谓词判定恒假时 `_classify` 返回非 FULL）。
+`python3 scripts/verify-review-tier.py --self-test`：该批时点 24 例夹具全绿——八例属「证据须本批新产」面：「同批新产证据放行」/「改名重写继承行不顶包」/「改标题的改名不顶包」/「改名目的地携带新 `Review:` 行照常放行」/「不可达 base 判违规」/「`--staged` 从 index 取证据」/「未跟踪 ADR 视为整文件新增」/「工作流路径判 FULL」；六例属规范形与同日序号面：「空白扰动的证据行不算证据」/「`FULL/<date>#2/…` 是合法证据」/「同日第二批复用同一 ADR 时 `#N` 构成新产」/「`#0` 不是合法序号」/「表头搬位的逐字同行不算新产」/「正文行搬进头区不算新产」。真实仓库与临时夹具复验：本批变更集里三篇既有 implemented ADR（2026-08-31 / 2026-09-03 / 2026-09-12）本批新增的**严格证据行**（`FULL/<date>/R1=ok R2=ok R3=ok`）数均为 0（其中一篇本批改了正文但没动证据行）——不带新鲜度判据时该变更集放行，带判据则判 FULL 且 `--enforce` exit 1；`D old.md` / `A renamed.md` + FULL 变更：不带排除集时 `--staged --enforce` exit 0，带排除集 exit 1；改名+改标题 + FULL 变更：不带路径键 exit 0，带路径键 exit 1；同一改名目的地改带**新日期**的行则 exit 0（排除集按行文本比对，非按路径）；`--since` 的 base 不可达时判违规（`--enforce` exit 1，报告模式 exit 0）；`ci.yml` 由 `behavior-surface` 触发 FULL（该谓词判定恒假时 `_classify` 返回非 FULL）。
 
 ## Related
 

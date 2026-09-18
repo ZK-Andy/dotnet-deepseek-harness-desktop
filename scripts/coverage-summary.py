@@ -6,7 +6,8 @@
 project. Each file covers the assemblies that project references and reports
 every source line of them (hits 0 where that project's tests never reach), so a
 single file's `line-rate` describes one project's slice, not the run. The
-baseline README / docs/testing.md track is the UNION over the files: key
+baseline track (README badges / `scripts/test-baseline.json`) is the UNION over
+the files: key
 `(assembly, source path, line)`, hits = max across files. Coverlet writes the
 path as `<Assembly>/Services/X.cs` in some files and `Services/X.cs` in
 others, so a leading path segment equal to the package (assembly) name is
