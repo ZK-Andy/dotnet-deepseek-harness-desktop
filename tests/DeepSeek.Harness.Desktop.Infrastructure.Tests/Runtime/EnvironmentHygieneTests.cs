@@ -18,7 +18,9 @@ public class EnvironmentHygieneTests
     [InlineData("pnpm_config_minimum_release_age", true)]
     [InlineData("PNPM_HOME", true)]
     [InlineData("Corepack_Home", true)]
-    [InlineData("DSH_DESKTOP_SPAWN_TOKEN", false)]
+    [InlineData("DSH_DESKTOP_DSH_HOME", false)]
+    [InlineData("HARNESS_DESKTOP_LINEAGE", false)]
+    [InlineData("HARNESS_DESKTOP_LINEAGE_HOME", false)]
     [InlineData("DSH_HOME", false)]
     [InlineData("PATH", false)]
     [InlineData("NODE_OPTIONS_EXTRA", false)]
@@ -35,7 +37,9 @@ public class EnvironmentHygieneTests
         psi.Environment["npm_config_registry"] = "https://evil.example";
         psi.Environment["pnpm_config_store_dir"] = "/tmp/store";
         psi.Environment["corepack_home"] = "/tmp/corepack";
-        psi.Environment["DSH_DESKTOP_SPAWN_TOKEN"] = "tok";
+        psi.Environment["DSH_DESKTOP_DSH_HOME"] = "/home/u/.dsh";
+        psi.Environment["HARNESS_DESKTOP_LINEAGE"] = "tok";
+        psi.Environment["HARNESS_DESKTOP_LINEAGE_HOME"] = "/home/u/.dsh";
         psi.Environment["DSH_HOME"] = "/home/u/.dsh";
         psi.Environment["PATH"] = "/usr/bin";
 
@@ -46,7 +50,9 @@ public class EnvironmentHygieneTests
         Assert.False(psi.Environment.ContainsKey("npm_config_registry"));
         Assert.False(psi.Environment.ContainsKey("pnpm_config_store_dir"));
         Assert.False(psi.Environment.ContainsKey("corepack_home"));
-        Assert.Equal("tok", psi.Environment["DSH_DESKTOP_SPAWN_TOKEN"]);
+        Assert.Equal("/home/u/.dsh", psi.Environment["DSH_DESKTOP_DSH_HOME"]);
+        Assert.Equal("tok", psi.Environment["HARNESS_DESKTOP_LINEAGE"]);
+        Assert.Equal("/home/u/.dsh", psi.Environment["HARNESS_DESKTOP_LINEAGE_HOME"]);
         Assert.Equal("/home/u/.dsh", psi.Environment["DSH_HOME"]);
         Assert.Equal("/usr/bin", psi.Environment["PATH"]);
     }

@@ -54,7 +54,7 @@ public class SpawnEnvironmentHygieneTests
         Assert.False(psi.Environment.ContainsKey("corepack_home"));
     }
 
-    /// <summary>验证 dsh web 宿主 spawn 剥离继承噪声，且自有 DSH_HOME/token 注入不受影响。</summary>
+    /// <summary>验证 dsh web 宿主 spawn 剥离继承噪声，且自有 DSH_HOME/血统标记注入不受影响。</summary>
     [Fact]
     public async Task BuildStartPsi_StripsNoise_KeepsOwnInjection() => await WithNoiseAsync(() =>
     {
@@ -62,7 +62,8 @@ public class SpawnEnvironmentHygieneTests
 
         AssertInheritanceProof(psi);
         Assert.Equal("/home/u/.dsh", psi.Environment["DSH_HOME"]);
-        Assert.Equal("tok", psi.Environment["DSH_DESKTOP_SPAWN_TOKEN"]);
+        Assert.Equal("tok", psi.Environment[RuntimeLineage.TokenEnv]);
+        Assert.Equal("/home/u/.dsh", psi.Environment[RuntimeLineage.LineageHomeEnv]);
         Assert.Equal("dsh", psi.FileName);
         return Task.CompletedTask;
     });

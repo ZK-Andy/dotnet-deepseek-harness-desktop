@@ -23,7 +23,7 @@ Review: LIGHT/2026-09-09/R2=ok（0 Blocker、2 Suggestion 均为文档口径，�
 - `RuntimeVersionGate.BuildProbePsi`（`dsh --version` 探针；否则宿主 `NODE_OPTIONS` 会在探针期执行代码）
 - `RuntimeBootstrap.BuildCapturePsi`（引导捕获面：全局 node 探测、npm 全局安装）
 
-**一处刻意偏离上游**：不剥 `DSH_DESKTOP_*`。该前缀承载本壳自有注入——`DSH_DESKTOP_SPAWN_TOKEN` 是孤儿清扫的跨启动复验凭据（ADR self-update-exit-reaps-dsh-child 缺口 B），剥了就失去零误杀复验能力。
+**一处刻意偏离上游**：不剥 `DSH_DESKTOP_*`。该前缀承载本壳宿主配置注入（`DSH_DESKTOP_DSH_HOME` 等），剥了子进程就看不到生效 home；血统标记另走不带该前缀、也不含 `KEY/PASSWORD/SECRET/TOKEN` 子串的名字（`HARNESS_DESKTOP_LINEAGE`/`_HOME`），才躲得开这条清洗（ADR exit-app-scope-ghost-residue）。
 
 **spec 形状 allowlist** `MarketInstallHelper.IsValidRegistrySpec`（`Services/MarketInstallHelper.Spec.cs`，以上游 `packageNameFromSpec` 判据为基，另拒 `link:` 且 `file:`/`link:` 前缀按大小写不敏感匹配）：拒空串、前导 `-`、含空白或反斜杠、含 `://`、`file:`/`link:` 前缀、scoped 缺 `/`；包名过 `PACKAGE_NAME_PATTERN`、版本或 dist-tag 过 `VERSION_PATTERN`（`latest` 等 tag 合法）。
 
@@ -50,5 +50,5 @@ Review: LIGHT/2026-09-09/R2=ok（0 Blocker、2 Suggestion 均为文档口径，�
 ## Related
 
 - 上游可吸收点分析（§A3 环境净化 / §A4 spec 收紧）：`.plan/journal/2026-09-09-upstream-desktop-absorb-analysis.md`
-- [self-update-exit-reaps-dsh-child](../bug-fix/2026-08-28-self-update-exit-reaps-dsh-child.md)：`DSH_DESKTOP_SPAWN_TOKEN` 不剥的理由。
+- [self-update-exit-reaps-dsh-child](../bug-fix/2026-08-28-self-update-exit-reaps-dsh-child.md)：不剥 `DSH_DESKTOP_*`（宿主配置注入）的理由；血统标记另走非 `DSH_`、非凭据形的名字（ADR exit-app-scope-ghost-residue）。
 - [gui-path-enrichment](../process/2026-08-25-gui-path-enrichment.md)：另一条 spawn 环境策略（PATH 增补，只加不减；与本篇互补）。

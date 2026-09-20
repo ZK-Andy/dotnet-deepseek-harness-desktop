@@ -4,9 +4,24 @@ using System.Net.Sockets;
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
 /// <summary>loopback bind 探针（Infrastructure 边界探测面）平台契约：空闲判 Free、监听态占用判 Occupied、
-/// 已 bind 未 listen 的内核语义固化（Linux-only 断言）。</summary>
+/// 已 bind 未 listen 的内核语义固化（Linux-only 断言）；另钉血统 token 的 environ 读取（新名优先 + 旧名回退）。</summary>
 public class RuntimeLineageProbeTests
 {
+    /// <summary>血统 token 读取：新名优先；取不到（含空值）回退旧名；两者都无则 null。
+    /// 旧名回退是升级窗口的必需项——上一版 `.dsh-pid` 记录只带旧名，只读新名会让孤儿复验失配而被跳过。</summary>
+    [Fact]
+    public void ReadTokenFromEnviron_PrefersNewName_FallsBackToLegacy()
+    {
+        string current = RuntimeLineage.TokenEnv;
+        string legacy = RuntimeLineage.LegacyTokenEnv;
+
+        Assert.Equal("new-tok", RuntimeLineageProbes.ReadTokenFromEnviron($"{current}=new-tok\0PATH=/usr/bin"));
+        Assert.Equal("old-tok", RuntimeLineageProbes.ReadTokenFromEnviron($"{legacy}=old-tok\0PATH=/usr/bin"));
+        Assert.Equal("new-tok", RuntimeLineageProbes.ReadTokenFromEnviron($"{legacy}=old-tok\0{current}=new-tok"));
+        Assert.Equal("old-tok", RuntimeLineageProbes.ReadTokenFromEnviron($"{current}=\0{legacy}=old-tok"));
+        Assert.Null(RuntimeLineageProbes.ReadTokenFromEnviron("PATH=/usr/bin\0HOME=/home/u"));
+        Assert.Null(RuntimeLineageProbes.ReadTokenFromEnviron(string.Empty));
+    }
 
     /// <summary>bind 探测：空闲端口判 Free——dsh 此刻 bind 不会立即失败（ADR port-wait-compression）。</summary>
     [Fact]

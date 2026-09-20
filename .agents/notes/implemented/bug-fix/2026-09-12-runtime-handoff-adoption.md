@@ -22,7 +22,7 @@ Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
 
 **壳侧单方解决，市场功能零改动**：把「抢输端口」变成可用结局，判据一律靠可证血统。
 
-1. **血统判据**（`RuntimeLineage`）：锚点 = spawn 时注入的 `DSH_DESKTOP_SPAWN_TOKEN`（市场 helper 与续任者由 dsh 以 `env: process.env` 转发，故同属血统）＋生效 `DSH_HOME` 一致＋命令行形状＋**运行时面排除**。缺一不动——零误杀优先。
+1. **血统判据**（`RuntimeLineage`）：锚点 = spawn 时注入的 `HARNESS_DESKTOP_LINEAGE`＋`HARNESS_DESKTOP_LINEAGE_HOME`（市场 helper、续任者与 dsh 全部后代由 dsh 以 `env: process.env` 转发，故同属血统——两个名字都刻意躲开上游 `scrubbedParentEnv()` 的 `DSH_*`/凭据形剥离，见 [幽灵残留 ADR](2026-09-20-exit-app-scope-ghost-residue.md)）＋home 标记与生效 home 一致＋命令行形状＋**运行时面排除**。缺一不动——零误杀优先。
    - 命令行形状：helper 判据 = 市场重启日志名前缀 `dsh-market-restart-`，或 `node -e` + `restart` 形状兜底（上游改名时 helper 的 `node -e` 源码内嵌 `--profile`，会被形状判据误认成新生服务端而被收养——兜底只放宽「收割」，是刻意保留的改名韧性）；其余 `--profile <desktop>` 形状为服务端。
    - 运行时面排除三态化：候选与本壳在管运行时（`_process` 或收养的续任者）的父链关系分「可证在内 / 可证在外 / 不可证」，**只有可证在外才进残留面**；在管树的后代（同一次 spawn 的整棵子树共享同一 token，只比 token 会把在跑的 MCP/后台作业当残留）、以及**在管运行时的祖先**（收割其整树会连带杀死在管运行时；收养场景下市场 helper 正是续任者的父亲）一律排除；父链读不到/自环/超深同样排除（宁可漏杀）。
 2. **端口冲突处置**（`RuntimeLineage.PlanPortConflict`，纯判定）：**端口此刻仍有回环监听**且存在「比刚退出那个运行时更晚诞生」（`StartTime` 比较）的血统服务端 → **收养**；更早的血统残留与市场 helper → **收割后重试首选端口**；端口已空且无残留 → 直接重试首选端口；占用者无血统 → 回退 OS 分配＋漂移告警（观测位语义不变）。两条不变量：①收养以「端口在服务」为前提——续任者尚未 bind 或已死时收养会导航到死端口，此时落回收割路径；②**收养时的收割面绝不含续任者自身、其祖先或父链不可证者**（见 Alternatives「为什么不能只调换收割与收养的顺序」）。
@@ -65,7 +65,7 @@ Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
 ## Testing
 
 - `RuntimeLineageTests`（19 个测试方法 / 22 个用例）：home 不符、无关命令行 → None；helper 标记优先于其内嵌的 `--profile`，且 `node -e`+`restart` 形状兜底可判 helper；端口签名须同时命中标记与端口且端口后不接数字；父链归属三态（Inside / Outside / Unknown，自环与超深归 Unknown）；运行时面排除（在管树后代、**在管运行时祖先**、父链不可证者，冷启动无在管时全收）；处置计划矩阵（新生续任者收养且无关残留入收割面 / **续任者祖先绝不入收割面（B1 回归）** / 端口无监听时不收养 / 更早残留收割重试 / 端口忙无残留回退 / 端口空无残留重试 / 无参照不收养 / 起始时刻未知不收养）。
-- `HarnessRuntimeHostTests` 增 `BuildStartPsi_CarriesLineageTokenAndHome`：spawn 环境注入血统 token 环境变量 `DSH_DESKTOP_SPAWN_TOKEN`（`RuntimeLineage.TokenEnv`）与生效 `DSH_HOME`（血统判据、清扫与交接处置的共同前提）。
+- `HarnessRuntimeHostTests` 增 `BuildStartPsi_CarriesLineageTokenAndHome`：spawn 环境注入血统 token `RuntimeLineage.TokenEnv` 与 home 标记 `RuntimeLineage.LineageHomeEnv`，并仍设 `DSH_HOME`（血统判据、清扫与交接处置的共同前提）。
 - 全量 `dotnet test` 569 通过（原 546 + 23 新）；`verify-code-health --enforce`、`verify-code-conventions --enforce`、`dotnet format --verify-no-changes` 全绿。
 - 覆盖率基线（CI `build-test` cobertura）：本篇所在代码面（0.4.9，作业 `34641155703`）3718/6722 = `line-rate=0.5531`，口径见 [coverage-baseline-from-ci-cobertura](../testing/2026-09-12-coverage-baseline-from-ci-cobertura.md)——新增面以 `/proc` 探针与 host 交接接线为主，走实机验收路径而非单测，故总额随被测面扩大略降。
 - 实机验收清单（发布后逐条过）：①市场装插件→点重启：URL/origin 不变、只有一个桌面 dsh、残留端口无占用、host.log 有收养行；②`kill -9` 在管 dsh：恢复不慢于今天；③端口被无关进程占：仍是漂移＋告警；④冷启动前人为留残留：被血统收割且 origin 不变；⑤人为制造端口冲突：失败尝试被立即收割、无悬挂残留。

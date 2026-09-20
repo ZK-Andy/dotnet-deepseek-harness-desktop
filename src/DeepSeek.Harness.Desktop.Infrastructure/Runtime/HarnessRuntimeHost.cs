@@ -176,11 +176,13 @@ public sealed partial class HarnessRuntimeHost : IDisposable
             home,
             Path.PathSeparator);
 
-        // 血统 token（ADR self-update-exit-reaps-dsh-child 缺口 B；血统判据见 RuntimeLineage）：
-        // 宿主异常死亡时 dsh 成 systemd 收养孤儿占端口。给本次 spawn 的 dsh 注入唯一 token（经环境变量），
-        // 并把 pid+token 落盘；清扫时复验该 PID 进程环境带的 token。市场自重启的 helper 与续任者由 dsh
-        // 以 `env: process.env` 转发同一变量，故同属血统——端口冲突时据此收养续任者或收割残留。
+        // 血统标记（ADR self-update-exit-reaps-dsh-child 缺口 B / exit-app-scope-ghost-residue；判据见 RuntimeLineage）：
+        // 宿主异常死亡时 dsh 成 systemd 收养孤儿占端口。给本次 spawn 的 dsh 注入唯一 token + home 标记（经环境变量），
+        // 并把 pid+token 落盘；清扫时复验该 PID 进程环境带的 token。市场自重启的 helper、续任者以及 dsh 裸 spawn 的
+        // 下游（MCP stdio 服务器等）都以 `env: process.env` 继承这两个变量，故父进程死后仍可证归属——
+        // 端口冲突时据此收养续任者、冷启动时据此收割残留。变量名不得改成 DSH_*/凭据形（见 RuntimeLineage.TokenEnv）。
         psi.Environment[RuntimeLineage.TokenEnv] = spawnToken;
+        psi.Environment[RuntimeLineage.LineageHomeEnv] = home;
         return psi;
     }
 

@@ -48,4 +48,5 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 ## Related
 
 - [runtime-handoff-adoption](2026-09-12-runtime-handoff-adoption.md)：血统扫描/收养是「带 token 可见」的残留面；本篇是「token 被剥不可见」的补集。
+- [退出后 GNOME app scope 幽灵残留](2026-09-20-exit-app-scope-ghost-residue.md)：补上「裸 spawn 下游不可见」那一半（血统标记改名为跨上游清洗存活的名字）；scope 收割与之互补，退役条件不变。
 - [self-update-exit-reaps-dsh-child](2026-08-28-self-update-exit-reaps-dsh-child.md)：`OrphanDshReaper` 的 token 复验清扫；本收割与其同接 `HarvestLineageResidue` 收敛点。

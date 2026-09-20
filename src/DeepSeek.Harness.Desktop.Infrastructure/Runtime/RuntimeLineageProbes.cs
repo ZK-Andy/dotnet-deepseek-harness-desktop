@@ -67,7 +67,8 @@ public static class RuntimeLineageProbes
         return candidates;
     }
 
-    /// <summary>读某进程 env 里的血统 token（<see cref="RuntimeLineage.TokenEnv"/>）。</summary>
+    /// <summary>读某进程 env 里的血统 token（<see cref="RuntimeLineage.TokenEnv"/>；旧名回退见
+    /// <see cref="RuntimeLineage.LegacyTokenEnv"/>）。</summary>
     /// <param name="pid">进程 id。</param>
     /// <returns>token；进程已死/无权限/非 Linux 返回 null（调用方按「不匹配」处理，零误杀）。</returns>
     public static string? ReadToken(int pid)
@@ -79,7 +80,7 @@ public static class RuntimeLineageProbes
 
         try
         {
-            return EnvValue(File.ReadAllText($"/proc/{pid}/environ"), RuntimeLineage.TokenEnv);
+            return ReadTokenFromEnviron(File.ReadAllText($"/proc/{pid}/environ"));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -87,6 +88,17 @@ public static class RuntimeLineageProbes
             return null;
         }
     }
+
+    /// <summary>从 environ 原文取血统 token（纯函数）：先新名，取不到再回退旧名——升级窗口内上一版 dsh 的
+    /// <c>.dsh-pid</c> 记录只带旧名，只读新名会让它「复验不匹配」而被跳过，孤儿继续占住首选端口。</summary>
+    /// <param name="environ">NUL 分隔的 environ 原文。</param>
+    /// <returns>token；两处都没有（或都是空值）返回 null（调用方按不匹配处理）。</returns>
+    internal static string? ReadTokenFromEnviron(string environ) =>
+        NonEmpty(EnvValue(environ, RuntimeLineage.TokenEnv))
+        ?? NonEmpty(EnvValue(environ, RuntimeLineage.LegacyTokenEnv));
+
+    /// <summary>空值折算为「不存在」——否则一个空串新名会遮蔽有效的旧名（零误杀方向要求「读不到即不匹配」）。</summary>
+    private static string? NonEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     /// <summary>读某进程的父进程 id（<c>/proc/&lt;pid&gt;/stat</c> 第 4 字段，comm 含空格故从最后一个 ')' 起切）。</summary>
     /// <param name="pid">进程 id。</param>
@@ -286,7 +298,7 @@ public static class RuntimeLineageProbes
             return new RuntimeLineage.Candidate(
                 pid,
                 token,
-                EnvValue(environ, HarnessRuntimeHost.EcosystemHomeEnv),
+                EnvValue(environ, RuntimeLineage.LineageHomeEnv),
                 cmdLine,
                 TryReadStartTime(pid));
         }

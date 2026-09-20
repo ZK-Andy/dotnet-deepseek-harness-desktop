@@ -49,6 +49,7 @@ public class HarnessRuntimeHostTests
         System.Diagnostics.ProcessStartInfo psi = HarnessRuntimeHost.BuildStartPsi(port: 0, home: "/home/u/.dsh", spawnToken: "token-xyz");
 
         Assert.Equal("token-xyz", psi.Environment[RuntimeLineage.TokenEnv]);
+        Assert.Equal("/home/u/.dsh", psi.Environment[RuntimeLineage.LineageHomeEnv]);
         Assert.Equal("/home/u/.dsh", psi.Environment["DSH_HOME"]);
     }
 
@@ -507,7 +508,7 @@ public class HarnessRuntimeHostTests
             RelayResidueOverride = () =>
             {
                 var orphan = new RuntimeLineage.Candidate(
-                    999999, "orphan-token", "/home/u/.dsh",
+                    999999, "orphan-token", LineageHome: null,
                     $"node /usr/bin/dsh --profile {HarnessRuntimeHost.DesktopProfileName} --port 0",
                     DateTimeOffset.UtcNow);
                 return (IReadOnlyList<RuntimeLineage.Subject>)new[] {
@@ -527,6 +528,54 @@ public class HarnessRuntimeHostTests
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(4), $"回落耗时 {sw.Elapsed}，孤儿被当成了接力证据");
         Assert.Contains(logs, l => l.Contains("无接力证据，宽限窗耗尽"));
         Assert.DoesNotContain(logs, l => l.Contains("收养"));
+    }
+
+    /// <summary>
+    /// 后代类（MCP stdio 服务器/工具 runner）绝不算接力证据——它的父进程仍活也一样：一个活着的工具
+    /// runner 若算作证据，端口无新生服务端时壳会白等满接力预算才回落（本用例以宽限窗内回落钉住）。
+    /// </summary>
+    [Fact]
+    public async Task TryRideMarketRelayAsync_LiveToolRunnerDescendant_IsNotEvidence_BailsOnGrace()
+    {
+        var logs = new List<string>();
+        var started = new System.Diagnostics.ProcessStartInfo("/bin/sh", "-c \"while :; do sleep 1; done\"")
+        {
+            UseShellExecute = false,
+        };
+        using System.Diagnostics.Process runner = System.Diagnostics.Process.Start(started)
+            ?? throw new InvalidOperationException("无法启动工具 runner 假进程");
+        try
+        {
+            DateTimeOffset supervisedStart = DateTimeOffset.UtcNow.AddMinutes(-1);
+            using var host = new HarnessRuntimeHost(logs.Add)
+            {
+                // 后代类残留：父进程（本测试进程）活着，出生晚于被监督运行时——旧判据会把它当接力证据
+                RelayResidueOverride = () =>
+                {
+                    var descendant = new RuntimeLineage.Candidate(
+                        runner.Id, "runner-token", LineageHome: "/home/u/.dsh",
+                        "node /usr/bin/tool-runner --serve",
+                        supervisedStart.AddSeconds(30));
+                    return (IReadOnlyList<RuntimeLineage.Subject>)
+                        [new RuntimeLineage.Subject(descendant, RuntimeLineage.LineageKind.RuntimeDescendant)];
+                },
+                RelayDelayOverride = _ => Task.CompletedTask,
+            };
+
+            var budget = TimeSpan.FromSeconds(15);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Uri? relayed = await host.TryRideMarketRelayAsync(
+                LoopbackHttpResponder.ReserveFreePort(), supervisedStart, budget, CancellationToken.None);
+            sw.Stop();
+
+            Assert.Null(relayed);
+            Assert.True(sw.Elapsed < TimeSpan.FromSeconds(4), $"回落耗时 {sw.Elapsed}，后代类被当成了接力证据");
+            Assert.Contains(logs, l => l.Contains("无接力证据，宽限窗耗尽"));
+        }
+        finally
+        {
+            runner.Kill(entireProcessTree: true);
+        }
     }
 
     /// <summary>
@@ -816,7 +865,7 @@ public class HarnessRuntimeHostTests
                 UseShellExecute = false,
             };
             psi.Environment[RuntimeLineage.TokenEnv] = token;
-            psi.Environment[HarnessRuntimeHost.EcosystemHomeEnv] = home;
+            psi.Environment[RuntimeLineage.LineageHomeEnv] = home;
             processes.Add(System.Diagnostics.Process.Start(psi)
                 ?? throw new InvalidOperationException("无法启动接力假进程"));
         }

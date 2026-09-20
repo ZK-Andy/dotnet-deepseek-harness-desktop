@@ -5,10 +5,10 @@ namespace DeepSeek.Harness.Desktop.Core;
 /// 冲突时的处置计划（收养原地接力的续任者 / 收割血统残留 / 回退漂移）。
 /// </summary>
 /// <remarks>
-/// 血统锚点 = 壳 spawn dsh 时注入的 <see cref="TokenEnv"/>（唯一 GUID）。市场自重启的 helper 与它拉起的
-/// 续任者由 dsh 以 <c>env: process.env</c> 转发该变量，因而同属血统；dsh 自己的沙箱子进程经
-/// <c>scrubbedParentEnv</c> 剥掉全部 <c>DSH_*</c>，不在本判据覆盖内（见 ADR runtime-handoff-adoption 的
-/// <c>## Deferred</c> 与 proposed note dsh-sandbox-child-orphan-leak）。
+/// 血统锚点 = 壳 spawn dsh 时注入的 <see cref="TokenEnv"/>（唯一 GUID）与 <see cref="LineageHomeEnv"/>
+/// （生效 home）。市场自重启的 helper 与它拉起的续任者由 dsh 以 <c>env: process.env</c> 转发这两个变量，
+/// 因而同属血统；dsh 裸 spawn 的下游（MCP stdio 服务器、看门狗、工具 runner）同样继承，故父进程死后
+/// 仍可证归属（ADR exit-app-scope-ghost-residue）。
 ///
 /// 判定一律「证据可证才动手」：token 缺失、home 不一致、父链归属不可证（读不到/自环/超深）一律按
 /// 「不动」处理——零误杀优先于收全，收不到的残留按端口漂移告警留给人工判读。
@@ -16,8 +16,23 @@ namespace DeepSeek.Harness.Desktop.Core;
 /// </remarks>
 public static class RuntimeLineage
 {
-    /// <summary>壳 spawn dsh 时注入的血统 token 环境变量名（唯一 GUID；市场 helper 与续任者继承）。</summary>
-    public const string TokenEnv = "DSH_DESKTOP_SPAWN_TOKEN";
+    /// <summary>壳 spawn dsh 时注入的血统 token 环境变量名（唯一 GUID；市场 helper、续任者与 dsh 的全部后代继承）。</summary>
+    /// <remarks>名字是**跨上游 env 清洗的契约**：不得带 <c>DSH_</c> 前缀，也不得含
+    /// <c>KEY</c>/<c>PASSWORD</c>/<c>SECRET</c>/<c>TOKEN</c> 子串——上游 <c>scrubbedParentEnv()</c> 恰好剥掉这两类
+    /// （旧的 <c>DSH_DESKTOP_SPAWN_TOKEN</c> 两条都命中，后代 env 里读不到它）。改名即静默失效：后代不可见，
+    /// 退化为「只认 dsh 服务端与市场 helper」，不误杀但漏收。</remarks>
+    public const string TokenEnv = "HARNESS_DESKTOP_LINEAGE";
+
+    /// <summary>壳 spawn dsh 时注入的 home 标记环境变量名（值为生效 home；dsh 的全部后代继承）。</summary>
+    /// <remarks>同 <see cref="TokenEnv"/> 的名字契约（跨上游 env 清洗存活），且与它同一注入点、同一剥离面——
+    /// 凡带 <see cref="TokenEnv"/> 的候选必带本标记，故血统判定只有这一处 home 来源。存在理由：被清洗的后代
+    /// 没有 <c>DSH_HOME</c>，而 dev 实例与正式版共用主机、home 不同——跨实例零误杀只能靠这个标记比对。</remarks>
+    public const string LineageHomeEnv = "HARNESS_DESKTOP_LINEAGE_HOME";
+
+    /// <summary>改名前的 token 环境变量名：**只读**，仅用于升级窗口内复验上一版留在 <c>.dsh-pid</c> 里的孤儿。</summary>
+    /// <remarks>写侧恒用 <see cref="TokenEnv"/>。上一版的 dsh 只带旧名，只读新名会让它的记录「复验不匹配」
+    /// 而被跳过（孤儿继续占首选端口 → 漂移）。退役条件：本改名发布后再跨一个 minor（上一版孤儿不再可能出现）即可删。</remarks>
+    public const string LegacyTokenEnv = "DSH_DESKTOP_SPAWN_TOKEN";
 
     /// <summary>dsh 绑定端口被占时打印的 stderr 签名：它先打签名再悬挂约 40s 才退出，故签名是更早的失败信号。</summary>
     public const string PortConflictMarker = "EADDRINUSE";
@@ -31,13 +46,13 @@ public static class RuntimeLineage
     /// <summary>血统进程快照（<see cref="Enumerate"/> 的产物）。</summary>
     /// <param name="Pid">进程 id。</param>
     /// <param name="Token"><see cref="TokenEnv"/> 的取值——存在即属血统候选。</param>
-    /// <param name="Home">该进程 env 的 <c>DSH_HOME</c>（壳 spawn 时写入其生效 home）。</param>
+    /// <param name="LineageHome"><see cref="LineageHomeEnv"/> 的取值——血统判定的唯一 home 来源（跨上游清洗存活）。</param>
     /// <param name="CmdLine">完整命令行（NUL 已替为空格）。</param>
     /// <param name="StartTime">进程起始时刻；读不到为 null（按「不可证新生」处理）。</param>
     public sealed record Candidate(
         int Pid,
         string Token,
-        string? Home,
+        string? LineageHome,
         string CmdLine,
         DateTimeOffset? StartTime);
 
@@ -52,6 +67,10 @@ public static class RuntimeLineage
 
         /// <summary>市场自重启 helper：只会催生竞争者，不收养、只收割。</summary>
         MarketRestartHelper,
+
+        /// <summary>本壳血统后代：带 home 标记，但既非本 profile 的 dsh 服务端也非市场 helper——
+        /// dsh 裸 spawn 的下游（MCP stdio 服务器、其看门狗、工具 runner）。只收割，不收养。</summary>
+        RuntimeDescendant,
     }
 
     /// <summary>血统残留项（<see cref="SelectResidue"/> 的产物）。</summary>
@@ -91,7 +110,7 @@ public static class RuntimeLineage
     /// <summary>端口冲突处置计划。</summary>
     /// <param name="Action">本次处置动作。</param>
     /// <param name="Successor">要收养的续任者（仅 <see cref="PortConflictAction.Adopt"/> 非 null）。</param>
-    /// <param name="Harvest">要收割的血统残留（可为空；保证不含续任者自身及其祖先）。</param>
+    /// <param name="Harvest">要收割的血统残留（可为空；保证不含续任者自身、其祖先及其后代）。</param>
     public sealed record PortConflictPlan(
         PortConflictAction Action,
         Subject? Successor,
@@ -101,10 +120,14 @@ public static class RuntimeLineage
     /// <param name="candidate">进程快照。</param>
     /// <param name="expectedHome">本次生效的 DSH home（<c>HarnessRuntimeHost.ResolveDshHome()</c>）。</param>
     /// <param name="profileName">桌面 profile 名。</param>
-    /// <returns>血统类别；证据不足（home 不符/命令行不符）一律 <see cref="LineageKind.None"/>。</returns>
+    /// <returns>血统类别；证据不足（无标记或 home 不符）一律 <see cref="LineageKind.None"/>。</returns>
+    /// <remarks>home 只有 <see cref="LineageHomeEnv"/> 一处来源：它与 <see cref="TokenEnv"/> 同注入点、同剥离面，
+    /// 因而「有 token 者必有标记」——dsh 自身与它被清洗过的后代都在内，无需第二个 home 源。
+    /// 标记是**归属凭据**：终端里另起的 dsh 没有标记，即便 home 相同也不会被判成我方血统（零误杀优先）；
+    /// 被上游剥掉（改了名字形态）则整体退化为 <see cref="LineageKind.None"/>，只漏收不误杀。</remarks>
     public static LineageKind Classify(Candidate candidate, string expectedHome, string profileName)
     {
-        if (!HomeMatches(candidate.Home, expectedHome))
+        if (!HomeMatches(candidate.LineageHome, expectedHome))
         {
             return LineageKind.None;
         }
@@ -115,9 +138,12 @@ public static class RuntimeLineage
             return LineageKind.MarketRestartHelper;
         }
 
-        return candidate.CmdLine.Contains($"--profile {profileName}", StringComparison.Ordinal)
-            ? LineageKind.RuntimeServer
-            : LineageKind.None;
+        if (candidate.CmdLine.Contains($"--profile {profileName}", StringComparison.Ordinal))
+        {
+            return LineageKind.RuntimeServer;
+        }
+
+        return LineageKind.RuntimeDescendant;
     }
 
     /// <summary>某条 stderr 行是否是「首选端口被占」签名（EADDRINUSE 且点名该端口，端口后不接数字）。</summary>
@@ -155,9 +181,9 @@ public static class RuntimeLineage
     /// <param name="profileName">桌面 profile 名。</param>
     /// <param name="readParentPid">读父进程 id 的探针（注入；生产用 <see cref="RuntimeLineageProbes.ReadParentPid"/>）。</param>
     /// <returns>残留列表；空即无残留。</returns>
-    /// <remarks>「在管运行时面」= 在管进程自身、其后代（同一次 spawn 的整棵子树共享同一 token，只比 token
-    /// 会把在跑的 MCP/后台作业当残留）、以及它的**祖先**（杀祖先的整树会连带杀死在管运行时，收养场景下
-    /// helper 正是收养目标的父亲）。父链归属不可证时同样排除——零误杀优先。</remarks>
+    /// <remarks>「在管运行时面」= 在管进程自身、其后代（同一次 spawn 的整棵子树共享同一标记，
+    /// <see cref="LineageKind.RuntimeDescendant"/> 正由此而来）、以及它的**祖先**（杀祖先的整树会连带杀死在管
+    /// 运行时，收养场景下 helper 正是收养目标的父亲）。父链归属不可证时同样排除——零误杀优先。</remarks>
     public static IReadOnlyList<Subject> SelectResidue(
         IEnumerable<Candidate> candidates,
         int? trackedPid,
@@ -193,8 +219,8 @@ public static class RuntimeLineage
     /// <returns>处置计划。</returns>
     /// <remarks>两个不变量：①只有「端口在服务」且「可证诞生于刚退出那个运行时之后」的血统服务端才被收养——
     /// 参照缺失、起始时刻读不到、或端口此刻无监听（续任者尚未 bind / 已死）都落回收割路径；
-    /// ②收养时收割面绝不含续任者自身、其祖先或父链不可证者——helper 是续任者的父亲，整树击杀会连带杀死
-    /// 要收养的运行时。</remarks>
+    /// ②收养时收割面绝不含续任者自身、其祖先、**其后代**或父链不可证者——helper 是续任者的父亲，整树击杀会
+    /// 连带杀死要收养的运行时；后代（续任者收养后自拉的 MCP 服务等）同属「不得动」面。</remarks>
     public static PortConflictPlan PlanPortConflict(
         bool portBusy,
         DateTimeOffset? supervisedStart,
@@ -287,13 +313,14 @@ public static class RuntimeLineage
         ClassifyMembership(candidatePid, trackedPid, readParentPid) != TreeMembership.Outside
         || ClassifyMembership(trackedPid, candidatePid, readParentPid) != TreeMembership.Outside;
 
-    /// <summary>收割该残留是否会连带杀死续任者（续任者落在其子树内，或父链不可证）。</summary>
+    /// <summary>收割该残留是否会连带杀死续任者（续任者落在其子树内、它是续任者的后代，或父链不可证）。
+    /// 与 <see cref="ProtectedByRuntime"/> 同判据、只换参照系：收养瞬间续任者刚自拉的 MCP 服务也在「不得动」面内。</summary>
     /// <param name="subject">候选残留。</param>
     /// <param name="successor">收养目标。</param>
     /// <param name="readParentPid">读父进程 id 的探针。</param>
     /// <returns>会连带杀死返回 true（该残留必须从收割面剔除）。</returns>
     private static bool HarvestKillsSuccessor(Subject subject, Subject successor, Func<int, int?> readParentPid) =>
-        ClassifyMembership(successor.Candidate.Pid, subject.Candidate.Pid, readParentPid) != TreeMembership.Outside;
+        ProtectedByRuntime(subject.Candidate.Pid, successor.Candidate.Pid, readParentPid);
 
     /// <summary>命令行是否形如市场自重启 helper。</summary>
     /// <param name="cmdLine">完整命令行。</param>
@@ -344,11 +371,13 @@ public static class RuntimeLineage
     /// <param name="subject">血统残留项。</param>
     /// <param name="supervisedStart">刚退出那个运行时的起始时刻。</param>
     /// <returns>接力证据返回 true。</returns>
-    /// <remarks>起始时刻读不到的候选按「不可证新生」处理（与收养判据一致）→ 非证据；调用方还须
-    /// 另行核父链存活——临终 dsh 生前自拉起且继承 token 的子进程同样可证新生，但它的父进程已死，
+    /// <remarks>接力证据只认市场 helper 与新生服务端：<see cref="LineageKind.RuntimeDescendant"/>（dsh 裸 spawn
+    /// 的下游——MCP stdio 服务器、工具 runner）即便诞生更晚、父进程仍活，也只算残留——否则一个活着的工具
+    /// runner 会把恢复窗口白等到预算上限。起始时刻读不到的候选按「不可证新生」处理 → 非证据；
+    /// 调用方还须另行核父链存活——临终 dsh 生前自拉起且继承标记的子进程同样可证新生，但它的父进程已死，
     /// 不是本次接力的正主，在场既不延长等待也不触发宽限内等待。</remarks>
     public static bool IsRelayEvidence(Subject subject, DateTimeOffset? supervisedStart) =>
-        IsBornAfter(subject.Candidate, supervisedStart);
+        subject.Kind != LineageKind.RuntimeDescendant && IsBornAfter(subject.Candidate, supervisedStart);
 
     /// <summary>home 比对：两侧去尾分隔符后按平台大小写语义比较；任一为空即不匹配。</summary>
     /// <param name="candidateHome">候选进程 env 里的 home。</param>

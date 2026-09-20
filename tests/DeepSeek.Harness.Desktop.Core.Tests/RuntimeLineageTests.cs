@@ -6,13 +6,15 @@ public class RuntimeLineageTests
     private const string Home = "/home/u/.dsh";
     private const string Profile = "dotnet-desktop";
 
+    /// <summary>默认夹具 = 本壳 spawn 的 dsh：带 home 标记（真实 dsh 与它被清洗的后代都带——同注入点、同剥离面）。
+    /// 表达「同 home 但非本壳血统」（终端另起的 dsh）须显式传 <c>lineageHome: null</c>。</summary>
     private static RuntimeLineage.Candidate Candidate(
         int pid,
-        string? home = Home,
         string? cmdLine = null,
         DateTimeOffset? startTime = null,
-        string token = "token-a") =>
-        new(pid, token, home, cmdLine ?? $"node /home/u/.local/bin/dsh --profile {Profile} --port 36111 --no-open", startTime);
+        string token = "token-a",
+        string? lineageHome = Home) =>
+        new(pid, token, lineageHome, cmdLine ?? $"node /home/u/.local/bin/dsh --profile {Profile} --port 36111 --no-open", startTime);
 
     private static RuntimeLineage.Subject RuntimeServer(int pid, DateTimeOffset? startTime) =>
         new(Candidate(pid, startTime: startTime), RuntimeLineage.LineageKind.RuntimeServer);
@@ -28,15 +30,6 @@ public class RuntimeLineageTests
     {
         Dictionary<int, int> map = edges.ToDictionary(edge => edge.Pid, edge => edge.Parent);
         return pid => map.TryGetValue(pid, out int parent) ? parent : pid == 1 ? 0 : null;
-    }
-
-    /// <summary>home 不一致（另一 home 的壳实例）不算我方血统：跨实例绝不误杀。</summary>
-    [Fact]
-    public void Classify_HomeMismatch_IsNone()
-    {
-        Assert.Equal(
-            RuntimeLineage.LineageKind.None,
-            RuntimeLineage.Classify(Candidate(42, home: "/home/u/other-home"), Home, Profile));
     }
 
     /// <summary>本 profile 的 dsh 服务端是本方血统（可被收养）。</summary>
@@ -70,13 +63,42 @@ public class RuntimeLineageTests
             RuntimeLineage.Classify(Candidate(42, cmdLine: renamed), Home, Profile));
     }
 
-    /// <summary>无关命令行（不带本 profile）不算血统。</summary>
+    /// <summary>无标记即非我方血统——**归属凭据是标记本身**：命令行形如本 profile 的服务端也判 None。
+    /// 否则终端里另起一个同 home 的 `dsh --profile dotnet-desktop` 会被当血统服务端收割。</summary>
     [Fact]
-    public void Classify_UnrelatedCmdLine_IsNone()
+    public void Classify_NoMarker_IsNoneEvenWithServerCmdLine()
     {
         Assert.Equal(
             RuntimeLineage.LineageKind.None,
-            RuntimeLineage.Classify(Candidate(42, cmdLine: "node /home/u/.local/bin/dsh --profile web"), Home, Profile));
+            RuntimeLineage.Classify(
+                Candidate(42, cmdLine: $"node /home/u/.local/bin/dsh --profile {Profile}", lineageHome: null),
+                Home,
+                Profile));
+    }
+
+    /// <summary>被上游 env 清洗过的后代只剩 home 标记仍可证归属：dsh 裸 spawn 的下游
+    /// （MCP stdio 服务器、看门狗、工具 runner）是 ADR exit-app-scope-ghost-residue 的收割对象。</summary>
+    [Fact]
+    public void Classify_MarkerOnlyDescendant_IsRuntimeDescendant()
+    {
+        Assert.Equal(
+            RuntimeLineage.LineageKind.RuntimeDescendant,
+            RuntimeLineage.Classify(
+                Candidate(4417, cmdLine: "node .../codegraph.js serve --mcp --path /mnt/work/x", lineageHome: Home),
+                Home,
+                Profile));
+    }
+
+    /// <summary>标记 home 与本实例不同（dev 实例与正式版并存）不算血统：跨实例绝不误杀对方在跑的 MCP 服务。</summary>
+    [Fact]
+    public void Classify_MarkerHomeMismatch_IsNone()
+    {
+        Assert.Equal(
+            RuntimeLineage.LineageKind.None,
+            RuntimeLineage.Classify(
+                Candidate(42, cmdLine: "node .../codegraph.js serve --mcp", lineageHome: "/home/u/other-home"),
+                Home,
+                Profile));
     }
 
     /// <summary>端口冲突签名要求同时点名 EADDRINUSE 与该端口，且端口后不得再接数字（否则 :3611 会命中 :36111）。</summary>
@@ -150,7 +172,8 @@ public class RuntimeLineageTests
         Assert.Empty(residue);
     }
 
-    /// <summary>无在管运行时（冷启动）时凡血统可证者皆残留。</summary>
+    /// <summary>无在管运行时（冷启动）时凡血统可证者皆残留：服务端、市场 helper、以及被清洗过只剩
+    /// home 标记的后代（MCP stdio 服务器一类）。</summary>
     [Fact]
     public void SelectResidue_WithoutTrackedRuntime_KeepsAllLineageProcesses()
     {
@@ -158,12 +181,14 @@ public class RuntimeLineageTests
         [
             Candidate(1000),
             Candidate(1001, cmdLine: "node -e /tmp/dsh-market-restart-x.err.log restart"),
+            Candidate(4417, cmdLine: "node .../codegraph.js serve --mcp", lineageHome: Home),
         ];
 
         IReadOnlyList<RuntimeLineage.Subject> residue = RuntimeLineage.SelectResidue(candidates, null, Home, Profile, ParentMap());
 
-        Assert.Equal(2, residue.Count);
+        Assert.Equal(3, residue.Count);
         Assert.Contains(residue, s => s.Kind == RuntimeLineage.LineageKind.MarketRestartHelper);
+        Assert.Contains(residue, s => s.Kind == RuntimeLineage.LineageKind.RuntimeDescendant);
     }
 
     /// <summary>可证诞生于刚退出那个运行时之后的血统服务端 = 接力续任者 → 收养；无关残留照常进收割面。</summary>
@@ -205,6 +230,30 @@ public class RuntimeLineageTests
         Assert.Equal(RuntimeLineage.PortConflictAction.Adopt, plan.Action);
         Assert.Equal(11294, plan.Successor!.Candidate.Pid);
         Assert.Empty(plan.Harvest);
+    }
+
+    /// <summary>续任者的**后代**（收养瞬间它已自拉的 MCP 服务等）同样绝不能被放进收割面——
+    /// 后代类残留把整棵子树纳入收割面之后，这层对称保护是「不误杀收养目标自己人」的必需项。</summary>
+    [Fact]
+    public void PlanPortConflict_SuccessorDescendant_IsNeverHarvested()
+    {
+        var supervisedStart = new DateTimeOffset(2026, 9, 12, 2, 3, 0, TimeSpan.Zero);
+        RuntimeLineage.Subject[] residue =
+        [
+            RuntimeServer(11294, supervisedStart.AddSeconds(29)),
+            new(
+                Candidate(11295, cmdLine: "node .../codegraph.js serve --mcp", startTime: supervisedStart.AddSeconds(31), lineageHome: Home),
+                RuntimeLineage.LineageKind.RuntimeDescendant),
+            Helper(7777),
+        ];
+        // 11295 是续任者 11294 的后代；7777 挂在 init 下（可证在外）
+        Func<int, int?> parents = ParentMap((11294, 1), (11295, 11294), (7777, 1));
+
+        RuntimeLineage.PortConflictPlan plan = RuntimeLineage.PlanPortConflict(true, supervisedStart, residue, parents);
+
+        Assert.Equal(RuntimeLineage.PortConflictAction.Adopt, plan.Action);
+        Assert.Equal(11294, plan.Successor!.Candidate.Pid);
+        Assert.Equal([7777], plan.Harvest.Select(s => s.Candidate.Pid));
     }
 
     /// <summary>端口此刻无监听（续任者尚未 bind 或已死）→ 不收养，按残留收割后自己重启，origin 同样不变。</summary>
@@ -321,6 +370,21 @@ public class RuntimeLineageTests
         Assert.False(RuntimeLineage.ShouldKeepWaitingRelay(
             relayEvidencePresent: true,
             helperSeenEver: true, pastGrace: false, pastDeadline: true));
+    }
+
+    /// <summary>接力证据只认市场 helper 与新生服务端；后代类（MCP stdio / 工具 runner）即便晚生、父进程仍活
+    /// 也永不算证据——否则一个活着的工具 runner 会把恢复窗口白等到预算上限。</summary>
+    [Fact]
+    public void IsRelayEvidence_DescendantIsNeverEvidence()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        var descendant = new RuntimeLineage.Subject(
+            Candidate(4417, cmdLine: "node .../codegraph.js serve --mcp", startTime: now),
+            RuntimeLineage.LineageKind.RuntimeDescendant);
+
+        Assert.False(RuntimeLineage.IsRelayEvidence(descendant, now.AddMinutes(-1)));
+        Assert.True(RuntimeLineage.IsRelayEvidence(Helper(1, startTime: now), now.AddMinutes(-1)));
+        Assert.True(RuntimeLineage.IsRelayEvidence(RuntimeServer(1, startTime: now), now.AddMinutes(-1)));
     }
 
     /// <summary>纯判定：接力证据只认可证诞生于被监督运行时之后的主体（陈旧残留不延长等待）。</summary>

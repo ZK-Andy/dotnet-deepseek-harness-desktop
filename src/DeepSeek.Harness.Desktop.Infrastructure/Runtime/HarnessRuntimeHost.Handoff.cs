@@ -79,9 +79,8 @@ public sealed partial class HarnessRuntimeHost
 
             IReadOnlyList<RuntimeLineage.Subject> residue =
                 RelayResidueOverride?.Invoke() ?? FindLineageResidue();
-            // 证据判定含父链存活核：临终 dsh 生前自拉起、继承 token 的子进程（PTC worker / pnpm 子壳，
-            // --profile argv 形状可判 RuntimeServer）同样可证新生，但其父已死——不是本次接力的正主，
-            // 不得当无 helper 的「固定证据」把恢复拖到预算上限。
+            // 证据判定两重核：后代类（MCP/工具 runner）永不算证据——父活也不延长等待；临终 dsh 生前自拉起、
+            // 继承标记的子进程（PTC worker / pnpm 子壳，--profile 形状可判服务端）虽可证新生但父已死，同非正主。
             bool helperNow = false;
             bool evidenceNow = false;
             foreach (RuntimeLineage.Subject s in residue)

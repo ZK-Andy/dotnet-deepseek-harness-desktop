@@ -7,8 +7,8 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// npm/pnpm/corepack 配置环境（上游 Electron 宿主 spawn 处同款 denylist，
 /// <c>apps/desktop/src/host-process.ts:108-111</c>）。</summary>
 /// <remarks>与上游的两处刻意偏离：①上游连 <c>DSH_DESKTOP_*</c> 一并剥离，我方保留——该前缀承载
-/// 本壳自有注入（孤儿清扫 token，ADR self-update-exit-reaps-dsh-child 缺口 B），剥了会失去
-/// 跨启动复验能力；②<c>NODE_OPTIONS</c> 按大小写不敏感匹配（上游为精确匹配），更严且 fail-closed。
+/// 本壳宿主配置注入（如 <c>DSH_DESKTOP_DSH_HOME</c>），剥了子进程就看不到生效 home；②<c>NODE_OPTIONS</c>
+/// 按大小写不敏感匹配（上游为精确匹配），更严且 fail-closed。
 /// 调用约定：先 <see cref="StripInherited"/>，再写我方变量。</remarks>
 internal static class EnvironmentHygiene
 {
