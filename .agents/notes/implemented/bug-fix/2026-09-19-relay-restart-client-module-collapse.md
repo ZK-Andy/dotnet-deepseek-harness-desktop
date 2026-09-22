@@ -65,13 +65,14 @@ C（不再收养续任者）的复访触发见 `## Deferred`；D（上游把重�
 ## Deferred
 
 - **C｜不再收养续任者，改由壳自 spawn**：检出市场 helper 即收割，由壳自 spawn，等自家 dsh 给出 URL 后按 token URL 导航（冷启动路径，新 URL 天然绕缓存）；代价是 ~40s 恢复窗。**复访触发 = A/B 的实机验收结论**——塌陷仍落在用户可见窗口内，或稳定窗把收养推迟到不可接受，则评估 C。
+  复访触发已满足一次（2026-09-20/21 实机验收）：两次市场接力均无可见塌陷、稳定窗延迟未被报告为不可接受 → **C 维持 Deferred**；触发条件保留，下次实测出现可见塌陷或收养延迟不可接受时再评估。
 
 ## Testing
 
 - 探针契约（`PageHealthMonitorTests`）：DOM 形态观测值 → Dead/Alive/Unknown 表（含带符号、前导空白、非十进制、旧观测值等乱值）；脚本 token 契约（只回报 `text:`、用 `innerText`、无 `childElementCount`）；壳自有文档夹具（`wwwroot/index.html` 真实产物的可见 `<h1>` + 恢复页骨架里作为元素文本落地的文案）在内容判据下判 Alive。
 - 稳定窗（`RelayWebReadinessGateTests`）：单拍 Ready 不接稳；连续满窗接稳；`NotServing` 与 `ServingNotReady` 均清零重计；非正稳定窗 fail loud（不退化成单拍即接稳）。
 - 接力窗口（`HarnessRuntimeHostTests`，Linux 真 `/proc` 探针 + 假 helper/续任者 + `LoopbackHttpResponder`）：走真 1s 节拍、两拍 Ready 后断连 → 窗口内不收养、无接管留痕（把稳定窗降到一拍即会红）；既有「稳定 Ready → 一次收养」用例继续覆盖正路。
-- 实机验收（待装机后触发市场插件更新/自重启；Linux，n=1【探索性】）：侧栏会话与归档列表保持可见，或 ≤30s 内自动恢复，无需整机重启；无变更纯重启不留空白页。
+- 实机验收（2026-09-20 05:31 / 2026-09-21 06:02，Linux 真机，随 v0.5.4/v0.5.5 装机触发，取证 `~/.dsh/logs/host.log`）：市场接力两次（续任者 pid 5717 / pid 10860），就绪连续维持 ≥2s 后收养并导航，页面持续可用（收养后仍能拦截外链导航）；修复上线后日志 `dead` 与有界恢复各 0 次，侧栏会话与归档列表未见空白、无需整机重启。安装器首启补装一项无独立留痕（各次冷启均走「随包插件无需安装（companion 已就位），跳过」），不据此销账。
 
 ## Related
 
