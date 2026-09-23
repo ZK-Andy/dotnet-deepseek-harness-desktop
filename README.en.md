@@ -90,6 +90,10 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 (Full architecture: [docs/architecture.md](docs/architecture.md).)
 
+[![Full architecture diagram](assets/architecture.svg)](docs/architecture.html)
+
+> Interactive edition (themes / pan-zoom / search / relation tracing / export): open [docs/architecture.html](docs/architecture.html) locally in a browser.
+
 ## Development
 
 ```sh

@@ -91,6 +91,10 @@
 
 （详细架构见 [docs/architecture.md](docs/architecture.md)。）
 
+[![全量架构图](assets/architecture.svg)](docs/architecture.html)
+
+> 交互版（主题/平移/缩放/搜索/关系追踪/导出）用浏览器本地打开 [docs/architecture.html](docs/architecture.html)。
+
 ## 开发
 
 ```sh

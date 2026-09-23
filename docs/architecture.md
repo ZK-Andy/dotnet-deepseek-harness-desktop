@@ -4,6 +4,12 @@
 
 ## 概览
 
+> 交互版架构图用浏览器本地打开 [architecture.html](architecture.html)（深/浅色主题、平移/缩放、搜索、关系追踪、导出 PNG/SVG）。静态预览：
+>
+> [![全量架构图](../assets/architecture.svg)](architecture.html)
+>
+> 图源规约见 [architecture.diagram.json](architecture.diagram.json)（archify `architecture` 类型，`--quality showcase` 校验 9/9 后 `deliver` 生成本页 HTML 与缩略图 SVG；改图只改 JSON 并重新生成，不手改产物）。
+
 ```
 ┌─────────────┐ spawn --profile dotnet-desktop --port 0 ┌────────────────┐
 │ Ryn Shell   │ ─────────────────────────────▶  │ dsh web (Node)  │
