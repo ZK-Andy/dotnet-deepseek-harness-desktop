@@ -218,7 +218,7 @@ public sealed partial class HarnessRuntimeHost : IDisposable
     /// （监督器已被 cancel，不会再有新的 spawn 与它竞争）。</summary>
     public void Stop()
     {
-        if (!_lifecycleGate.Wait(TimeSpan.FromSeconds(3)))
+        if (!_lifecycleGate.Wait(TimeSpan.FromSeconds(s_timeouts.LifecycleGateWaitSeconds)))
         {
             _log?.Invoke("[host] Stop：生命周期门被占用（spawn 进行中？）跳过本次回收，残留交冷启动孤儿清扫兜底");
             return;

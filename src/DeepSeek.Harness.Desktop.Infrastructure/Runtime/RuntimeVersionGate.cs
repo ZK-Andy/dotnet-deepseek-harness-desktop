@@ -18,8 +18,11 @@ public static class RuntimeVersionGate
     /// </summary>
     public const string MinimumVersion = "0.1.2-alpha.2";
 
-    /// <summary>版本探测时限：<c>dsh --version</c> 是毫秒级调用，超时按未知处理而非阻塞启动。</summary>
-    public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(8);
+    /// <summary>版本探测时限：<c>dsh --version</c> 是毫秒级调用，超时按未知处理而非阻塞启动
+    /// （可调参数，见 <see cref="RuntimeTimeouts"/>；<see cref="MinimumVersion"/> 才是协议底线，保持固定）。</summary>
+    public static TimeSpan ProbeTimeout => TimeSpan.FromSeconds(s_timeouts.VersionProbeTimeoutSeconds);
+
+    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
 
     private static readonly Regex s_versionToken = new(
         @"v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?",

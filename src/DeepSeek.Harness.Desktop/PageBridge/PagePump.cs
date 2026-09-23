@@ -10,11 +10,15 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// </summary>
 internal static class PagePump
 {
-    /// <summary>窗口就绪后注入横幅：Current 未就绪的 InvalidOperationException 逐秒重试（上限 30 次）；
+    /// <summary>页面注入超时家（单例装载，见 <c>RuntimeTimeouts</c>）。</summary>
+    private static readonly RuntimeTimeouts s_timeouts =
+        RuntimeTimeouts.Load(AppContext.BaseDirectory);
+
+    /// <summary>窗口就绪后注入横幅：Current 未就绪的 InvalidOperationException 按节拍重试（上限见配置）；
     /// 其余异常记日志放弃——横幅是增强告知，绝不拖垮启动链路。</summary>
     internal static async Task ShowBannerWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
     {
-        for (int attempt = 0; attempt < 30 && !ct.IsCancellationRequested; attempt++)
+        for (int attempt = 0; attempt < s_timeouts.BannerMaxAttempts && !ct.IsCancellationRequested; attempt++)
         {
             try
             {
@@ -33,7 +37,7 @@ internal static class PagePump
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                await Task.Delay(TimeSpan.FromSeconds(s_timeouts.BannerRetryDelaySeconds), ct);
             }
             catch (OperationCanceledException)
             {
@@ -42,7 +46,7 @@ internal static class PagePump
         }
     }
 
-    /// <summary>推一条引导进度到 wwwroot 引导页；未就绪重试（上限 15 次），耗尽记日志放弃。</summary>
+    /// <summary>推一条引导进度到 wwwroot 引导页；未就绪按配置重试，耗尽记日志放弃。</summary>
     internal static async Task PushBootstrapStateAsync(CurrentWindowAccessor accessor, string step, string message, bool failed)
     {
         // detail 必须是帧对象本身的 JSON（页面直接读 detail.step 等，无 JSON.parse）——
@@ -53,7 +57,7 @@ internal static class PagePump
         string script = "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-bootstrap',{detail:"
             + frameJson
             + "}));}catch(e){}})();";
-        for (int attempt = 0; attempt < 15; attempt++)
+        for (int attempt = 0; attempt < s_timeouts.PushMaxAttempts; attempt++)
         {
             try
             {
@@ -70,7 +74,7 @@ internal static class PagePump
                 return;
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(400));
+            await Task.Delay(TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds));
         }
 
         HostLog.Write("[bootstrap] 进度推送重试耗尽（页面始终未就绪）");
@@ -89,7 +93,7 @@ internal static class PagePump
     internal static async Task RetryPushPreinstallAsync(CurrentWindowAccessor accessor, PreinstallFrame frame)
     {
         string script = PreinstallEventScript(frame);
-        for (int attempt = 0; attempt < 15; attempt++)
+        for (int attempt = 0; attempt < s_timeouts.PushMaxAttempts; attempt++)
         {
             try
             {
@@ -106,7 +110,7 @@ internal static class PagePump
                 return;
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(400));
+            await Task.Delay(TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds));
         }
 
         HostLog.Write("[preinstall] 状态推送重试耗尽（页面始终未就绪）");

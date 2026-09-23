@@ -16,7 +16,8 @@ public static partial class RuntimeBootstrap
     /// <summary>生产 hooks：HttpClient 下载（断点续传 Range）/取文本、tar 解压、子进程直跑、PATH node 探测。</summary>
     /// <param name="log">日志回调。</param>
     /// <param name="english">失败文案是否取英文分支（引导页错误框随宿主 UI 语言）。</param>
-    public static RuntimeBootstrapHooks CreateDefaultHooks(Action<string> log, bool english)
+    /// <param name="options">引导可调参数（取文本超时，见 <see cref="RuntimeBootstrapOptions"/>）。</param>
+    public static RuntimeBootstrapHooks CreateDefaultHooks(Action<string> log, bool english, RuntimeBootstrapOptions options)
     {
         return new RuntimeBootstrapHooks(
             DownloadFileAsync: async (url, dest, ct) =>
@@ -26,7 +27,7 @@ public static partial class RuntimeBootstrap
             },
             FetchTextAsync: async (url, ct) =>
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(options.FetchTextTimeoutSeconds) };
                 return await http.GetStringAsync(url, ct).ConfigureAwait(false);
             },
             ExtractArchiveAsync: async (archive, destDir, ct) =>

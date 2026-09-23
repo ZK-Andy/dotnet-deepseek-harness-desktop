@@ -166,7 +166,9 @@ public sealed partial class DesktopBootstrap
         _supervisorCtsRef = cts; // 自更新后台任务 token 持有器接线（见顶部声明）
         var supervisor = new RuntimeSupervisor(
             host.Host,
-            restartTimeout: TimeSpan.FromSeconds(60),
+            restartTimeout: TimeSpan.FromSeconds(_timeouts.SupervisorRestartTimeoutSeconds),
+            recoveredRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorRecoveredRetryDelaySeconds),
+            failedRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorFailedRetryDelaySeconds),
             showRecovery: () =>
             {
                 // 恢复页三件套（ADR diag-masking-and-recovery-page）：失败原因 + stderr 尾部展示 +
@@ -225,7 +227,7 @@ public sealed partial class DesktopBootstrap
         // 宿主只读探针轮询，不注入不依赖 companion——「dsh 在跑但页面空白」类事故（历史三起全靠
         // 人肉发现）从此有自动留痕；连续 Dead 达阈值后在预算内触发一次有界 reload，耗尽转观测-only，
         // 成功恢复复位预算（防误报引发无限重载循环，对齐参照 plugin_boot.rs 的有界刷新门控）。
-        // 首拍延迟 10s 避开启动空窗，探针异常按 Unknown 续跑。reload 委托捕获 webUrl（字段，
+        // 首拍延迟（HealthInitialDelaySeconds）避开启动空窗，探针异常按 Unknown 续跑。reload 委托捕获 webUrl（字段，
         // 初始/引导完成/崩溃恢复导航三处都会刷新，见上文与 RuntimeSupervisor 的 navigate），
         // 恒为当前 dsh web 靶点；webUrl 只有当引导未落定（dsh 未起）才为空，而该窗口页面是
         // wwwroot 引导页（有内容 → Alive），不会进入 Dead 恢复分支——reload 委托的空态只是防御性兜底。
@@ -235,7 +237,7 @@ public sealed partial class DesktopBootstrap
             reload: ct => _webUrl is null
                 ? ValueTask.CompletedTask
                 : app.WindowAccessor.Current.NavigateAsync(_webUrl, ct));
-        _ = _healthMonitor.RunAsync(TimeSpan.FromSeconds(10), supervisor.Cts.Token);
+        _ = _healthMonitor.RunAsync(TimeSpan.FromSeconds(_timeouts.HealthInitialDelaySeconds), supervisor.Cts.Token);
     }
 
     private void SharedHomeBannerTask(Preflight preflight, AppSetup app, HostSetup host, SupervisorSetup supervisor)
@@ -245,8 +247,8 @@ public sealed partial class DesktopBootstrap
         // 只需等首启引导落定——版本探针走 PATH 上全局 dsh（bundled=null），提前跑会探到空。
         _ = Task.Run(async () =>
         {
-            // 引导落定前横幅不抢跑；120s 超时按已定继续（降级语义在 BootstrapSettleGate 内），取消即放弃。
-            if (!await preflight.Bootstrap.WaitSettledAsync(TimeSpan.FromSeconds(120), supervisor.Cts.Token))
+            // 引导落定前横幅不抢跑；超时（BootstrapSettleTimeoutSeconds）按已定继续（降级语义在 BootstrapSettleGate 内），取消即放弃。
+            if (!await preflight.Bootstrap.WaitSettledAsync(TimeSpan.FromSeconds(_timeouts.BootstrapSettleTimeoutSeconds), supervisor.Cts.Token))
             {
                 return;
             }
@@ -333,11 +335,11 @@ public sealed partial class DesktopBootstrap
             await app.WindowAccessor.Current.NavigateAsync(target);
             try
             {
-                await arrived.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+                await arrived.Task.WaitAsync(TimeSpan.FromSeconds(_timeouts.NavCommitTimeoutSeconds), ct);
             }
             catch (TimeoutException)
             {
-                HostLog.Write("[nav] 等待导航提交信号超时（5s），按已提交继续");
+                HostLog.Write($"[nav] 等待导航提交信号超时（{_timeouts.NavCommitTimeoutSeconds}s），按已提交继续");
             }
         }
         finally

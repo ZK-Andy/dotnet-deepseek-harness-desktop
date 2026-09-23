@@ -22,6 +22,7 @@ public sealed partial class DesktopBootstrap
     // 需要的是延迟捕获；Run 尾部也用它释放（唯一 CTS 持有字段，勿再引入别名）。
     private CancellationTokenSource? _supervisorCtsRef;
     private UiLocale _uiLocale = null!;
+    private RuntimeTimeouts _timeouts = new();
     private PrimaryListener? _instanceListener;
     private Tray.TrayController _tray = null!;
     private PageHealthMonitor? _healthMonitor;
@@ -79,6 +80,8 @@ public sealed partial class DesktopBootstrap
 
     private Preflight ResolveRuntimeAndDev()
     {
+        // 运行时超时家（与 A 类启动配置同点解析一次，消费段收值；见 RuntimeTimeouts）。
+        _timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
         // 首启引导服务（R3 端口实现，ADR composition-root-value-flow-pipeline 批次 1）：全局 node/dsh
         // 引导、插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主惰性提供。
         // UI 语言同样惰性：_uiLocale 在单实例仲裁处构造（本方法之后），引导任务实际启动时必已就绪。
@@ -127,7 +130,7 @@ public sealed partial class DesktopBootstrap
                     HostLog.Write,
                     out _instanceListener))
             {
-                bool notified = LauncherActivation.NotifyPrimary(instanceSocketPath, TimeSpan.FromSeconds(2));
+                bool notified = LauncherActivation.NotifyPrimary(instanceSocketPath, TimeSpan.FromSeconds(_timeouts.NotifyPrimaryTimeoutSeconds));
                 HostLog.Write(
                     $"[host] 已有主实例在运行（launcher 二次启动）：通知显示主窗{(notified ? "成功" : "未达（主实例可能正忙）")}，本次启动退出");
                 return false;
@@ -234,7 +237,7 @@ public sealed partial class DesktopBootstrap
 
         DshWebUrl? webUrl = preflight.Bootstrap.IsNeeded
             ? null
-            : DshWebUrl.FromNullable(host.Host.StartAsync(timeout: TimeSpan.FromSeconds(60)).GetAwaiter().GetResult());
+            : DshWebUrl.FromNullable(host.Host.StartAsync(timeout: TimeSpan.FromSeconds(_timeouts.SpawnTimeoutSeconds)).GetAwaiter().GetResult());
         if (!preflight.Bootstrap.IsNeeded)
         {
             HostLog.Write($"[host] runtime = {host.Host.RuntimeDescription}");
@@ -319,7 +322,7 @@ public sealed partial class DesktopBootstrap
         preflight.Bootstrap.Cancel();
         try
         {
-            supervisor.Task.Wait(TimeSpan.FromSeconds(2));
+            supervisor.Task.Wait(TimeSpan.FromSeconds(_timeouts.SupervisorJoinTimeoutSeconds));
         }
         catch (AggregateException)
         {

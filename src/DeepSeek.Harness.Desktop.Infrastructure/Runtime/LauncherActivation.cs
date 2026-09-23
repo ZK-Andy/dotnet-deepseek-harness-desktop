@@ -19,6 +19,15 @@ public static class LauncherActivation
     /// <summary>二启通知命令行。</summary>
     public const string ShowCommand = "show";
 
+    /// <summary>单实例 IPC 超时家（单例装载，见 <see cref="RuntimeTimeouts"/>；同文件 <c>PrimaryListener</c> 共用）。</summary>
+    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
+
+    /// <summary>accept 循环异常退避节拍（供 <c>PrimaryListener</c>）。</summary>
+    internal static TimeSpan IpcAcceptRetryDelay => TimeSpan.FromSeconds(s_timeouts.IpcAcceptRetryDelaySeconds);
+
+    /// <summary>服务端单次读超时（供 <c>PrimaryListener</c>）。</summary>
+    internal static TimeSpan IpcServeTimeout => TimeSpan.FromSeconds(s_timeouts.IpcServeTimeoutSeconds);
+
     /// <summary>主实例对 <see cref="ShowCommand"/> 的应答。</summary>
     public const string AckResponse = "ok";
 
@@ -247,7 +256,7 @@ public sealed class PrimaryListener : IDisposable
                 // 退避一拍再续：持久性故障（如 fd 耗尽）下避免热旋刷爆 host.log
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                    await Task.Delay(LauncherActivation.IpcAcceptRetryDelay, ct);
                 }
                 catch (OperationCanceledException)
                 {
@@ -269,7 +278,7 @@ public sealed class PrimaryListener : IDisposable
         {
             using (client)
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                using var cts = new CancellationTokenSource(LauncherActivation.IpcServeTimeout);
                 byte[] buffer = new byte[256];
                 int read = await client.ReceiveAsync(buffer, cts.Token).ConfigureAwait(false);
                 string command = System.Text.Encoding.UTF8.GetString(buffer, 0, read).Trim();

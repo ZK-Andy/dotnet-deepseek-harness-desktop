@@ -16,6 +16,15 @@ public sealed record RuntimeBootstrapOptions
     /// <summary>单个下载/安装步骤的超时（分钟）。</summary>
     public int StepTimeoutMinutes { get; init; } = 10;
 
+    /// <summary>文本抓取（index.json 等）单次 HTTP 超时（秒）。下载走无限超时 + 取消令牌（断点续传长耗时）。</summary>
+    public int FetchTextTimeoutSeconds { get; init; } = 30;
+
+    /// <summary>引导失败后等用户重试信号的轮询节拍（毫秒）。</summary>
+    public int PreinstallPollIntervalMilliseconds { get; init; } = 200;
+
+    /// <summary>插件引导等用户决策的超时（分钟）：超时默认跳过，可从应用内市场补装。</summary>
+    public int PreinstallChoiceTimeoutMinutes { get; init; } = 5;
+
     /// <summary>node 官方发行目录基址（含尾随 dist 段）。</summary>
     public string NodeDistBaseUrl { get; init; } = "https://nodejs.org/dist";
 
@@ -51,10 +60,10 @@ public sealed record RuntimeBootstrapOptions
                 options = options with { DshSpec = s.GetString()! };
             }
 
-            if (section.TryGetProperty(nameof(StepTimeoutMinutes), out JsonElement t) && t.ValueKind == JsonValueKind.Number)
-            {
-                options = options with { StepTimeoutMinutes = t.GetInt32() };
-            }
+            options = options with { StepTimeoutMinutes = GetInt(section, nameof(StepTimeoutMinutes), options.StepTimeoutMinutes) };
+            options = options with { FetchTextTimeoutSeconds = GetInt(section, nameof(FetchTextTimeoutSeconds), options.FetchTextTimeoutSeconds) };
+            options = options with { PreinstallPollIntervalMilliseconds = GetInt(section, nameof(PreinstallPollIntervalMilliseconds), options.PreinstallPollIntervalMilliseconds) };
+            options = options with { PreinstallChoiceTimeoutMinutes = GetInt(section, nameof(PreinstallChoiceTimeoutMinutes), options.PreinstallChoiceTimeoutMinutes) };
 
             if (section.TryGetProperty(nameof(NodeDistBaseUrl), out JsonElement b) && b.ValueKind == JsonValueKind.String)
             {
@@ -79,4 +88,9 @@ public sealed record RuntimeBootstrapOptions
             return new RuntimeBootstrapOptions();
         }
     }
+
+    private static int GetInt(JsonElement section, string name, int current) =>
+        section.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt32()
+            : current;
 }

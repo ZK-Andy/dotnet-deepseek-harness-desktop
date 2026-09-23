@@ -12,11 +12,14 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// </summary>
 public static class RuntimeLineageProbes
 {
+    /// <summary>运行时超时家（单例装载，见 <see cref="RuntimeTimeouts"/>）。</summary>
+    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
+
     /// <summary>端口探活的单次超时（TCP 连接本机回环：连不上即无人监听）。</summary>
-    private static readonly TimeSpan s_portProbeTimeout = TimeSpan.FromMilliseconds(500);
+    private static TimeSpan s_portProbeTimeout => TimeSpan.FromMilliseconds(s_timeouts.PortProbeTimeoutMilliseconds);
 
     /// <summary>web 面就绪探针的单次超时（HTTP 要等后端应答，比 TCP 探活留更宽余量）。</summary>
-    private static readonly TimeSpan s_webProbeTimeout = TimeSpan.FromMilliseconds(1500);
+    private static TimeSpan s_webProbeTimeout => TimeSpan.FromMilliseconds(s_timeouts.WebProbeTimeoutMilliseconds);
 
     /// <summary>web 面就绪探针的复用客户端：不跟随重定向（3xx 本身就是「已应答」判据）、环回不走代理；
     /// 超时交每次探测自己的取消令牌（<c>Timeout.InfiniteTimeSpan</c> 防两处超时打架）。</summary>

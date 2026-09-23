@@ -34,6 +34,7 @@ public class UpdateOptionsParseTests
         Assert.Equal("ZK-Andy/dotnet-deepseek-harness-desktop", o.Repository);
         Assert.Equal(15, o.FeedTimeoutSeconds);
         Assert.Equal(30, o.DownloadTimeoutMinutes);
+        Assert.Equal(10, o.PkexecObserveSeconds);
         Assert.Equal("updates", o.UpdatesDirName);
     }
 
@@ -60,17 +61,18 @@ public class UpdateOptionsParseTests
         Assert.Equal(15, o.FeedTimeoutSeconds);
     }
 
-    /// <summary>验证合法 Update 节逐键覆盖默认值：仓库/feed 秒数/下载分钟/更新目录名。</summary>
+    /// <summary>验证合法 Update 节逐键覆盖默认值：仓库/feed 秒数/下载分钟/授权观察秒数/更新目录名。</summary>
     [Fact]
     public void Parse_ValidSection_OverridesAllKeys()
     {
         var o = UpdateOptions.Parse("""
-            {"Update":{"Repository":"me/mirror","FeedTimeoutSeconds":7,"DownloadTimeoutMinutes":45,"UpdatesDirName":"dl"}}
+            {"Update":{"Repository":"me/mirror","FeedTimeoutSeconds":7,"DownloadTimeoutMinutes":45,"PkexecObserveSeconds":20,"UpdatesDirName":"dl"}}
             """);
 
         Assert.Equal("me/mirror", o.Repository);
         Assert.Equal(7, o.FeedTimeoutSeconds);
         Assert.Equal(45, o.DownloadTimeoutMinutes);
+        Assert.Equal(20, o.PkexecObserveSeconds);
         Assert.Equal("dl", o.UpdatesDirName);
     }
 
@@ -85,6 +87,7 @@ public class UpdateOptionsParseTests
         Assert.Equal("ZK-Andy/dotnet-deepseek-harness-desktop", o.Repository);
         Assert.Equal(15, o.FeedTimeoutSeconds);
         Assert.Equal(30, o.DownloadTimeoutMinutes);
+        Assert.Equal(10, o.PkexecObserveSeconds);
         Assert.Equal("updates", o.UpdatesDirName);
     }
 }

@@ -14,6 +14,9 @@ public sealed record UpdateOptions
     /// <summary>安装包下载超时（分钟）。</summary>
     public int DownloadTimeoutMinutes { get; init; } = 30;
 
+    /// <summary>pkexec 授权窗口的最长观察时间（秒）：超时视为授权通过、安装进行中。</summary>
+    public int PkexecObserveSeconds { get; init; } = 10;
+
     /// <summary>下载与 ready 持久化目录；相对路径基于 DSH_HOME。</summary>
     public string UpdatesDirName { get; init; } = "updates";
 
@@ -62,15 +65,9 @@ public sealed record UpdateOptions
             options = options with { Repository = repo.GetString()! };
         }
 
-        if (section.TryGetProperty(nameof(FeedTimeoutSeconds), out JsonElement feed) && feed.ValueKind == JsonValueKind.Number)
-        {
-            options = options with { FeedTimeoutSeconds = feed.GetInt32() };
-        }
-
-        if (section.TryGetProperty(nameof(DownloadTimeoutMinutes), out JsonElement dl) && dl.ValueKind == JsonValueKind.Number)
-        {
-            options = options with { DownloadTimeoutMinutes = dl.GetInt32() };
-        }
+        options = options with { FeedTimeoutSeconds = GetInt(section, nameof(FeedTimeoutSeconds), options.FeedTimeoutSeconds) };
+        options = options with { DownloadTimeoutMinutes = GetInt(section, nameof(DownloadTimeoutMinutes), options.DownloadTimeoutMinutes) };
+        options = options with { PkexecObserveSeconds = GetInt(section, nameof(PkexecObserveSeconds), options.PkexecObserveSeconds) };
 
         if (section.TryGetProperty(nameof(UpdatesDirName), out JsonElement dir) && dir.ValueKind == JsonValueKind.String)
         {
@@ -79,4 +76,9 @@ public sealed record UpdateOptions
 
         return options;
     }
+
+    private static int GetInt(JsonElement section, string name, int current) =>
+        section.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt32()
+            : current;
 }

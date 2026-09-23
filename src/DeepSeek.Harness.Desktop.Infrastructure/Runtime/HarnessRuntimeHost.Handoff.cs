@@ -30,12 +30,18 @@ public sealed partial class HarnessRuntimeHost
     /// <summary>在管运行时 pid：本进程子进程优先，其次收养的续任者；皆无则 null。</summary>
     private int? TrackedPid => _process is { HasExited: false } process ? process.Id : _adoptedPid;
 
-    /// <summary>relay 等待的探测节拍与 helper 宽限窗（测试经内部注入口覆写延迟以压缩时长）。</summary>
-    private static readonly TimeSpan s_relayWaitInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan s_relayHelperGrace = TimeSpan.FromSeconds(2);
+    /// <summary>运行时超时家（单例装载，见 <see cref="RuntimeTimeouts"/>）：relay 节拍/宽限/稳定窗与收养轮询
+    /// 皆出此源；测试经内部注入口覆写延迟以压缩时长（<see cref="RelayDelayOverride"/>）。</summary>
+    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
+
+    /// <summary>relay 等待的探测节拍。</summary>
+    private static TimeSpan s_relayWaitInterval => TimeSpan.FromSeconds(s_timeouts.RelayWaitIntervalSeconds);
+
+    /// <summary>relay 等待的 helper 宽限窗。</summary>
+    private static TimeSpan s_relayHelperGrace => TimeSpan.FromSeconds(s_timeouts.RelayHelperGraceSeconds);
 
     /// <summary>接力就绪的稳定窗：单拍 Ready 可能是将死前驱的应答，须连续维持该窗才收养（见 <see cref="RelayWebReadinessGate"/>）。</summary>
-    private static readonly TimeSpan s_relayReadyStableWindow = TimeSpan.FromSeconds(2);
+    private static TimeSpan s_relayReadyStableWindow => TimeSpan.FromSeconds(s_timeouts.RelayReadyStableWindowSeconds);
 
     /// <summary>relay 等待的血统残留枚举注入口（生产 null = 真扫 /proc；仅供测试闭环）。</summary>
     internal Func<IReadOnlyList<RuntimeLineage.Subject>>? RelayResidueOverride { get; set; }
@@ -328,7 +334,7 @@ public sealed partial class HarnessRuntimeHost
                 return;
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(s_timeouts.AdoptedExitPollIntervalSeconds)).ConfigureAwait(false);
         }
     }
 

@@ -14,6 +14,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     private readonly Func<bool> _isEnglish;
     private readonly Action<string> _log;
     private RuntimeBootstrapOptions _options = new();
+    private RuntimeTimeouts _timeouts = new();
     private bool _needed;
     private TaskCompletionSource? _settled;
     private CancellationTokenSource? _cts;
@@ -48,6 +49,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
         // 全局 dsh（都在 PATH 上），桌面与终端共用同一套；没有系统 node 时由桌面装 node 到系统全局前缀
         //（需 sudo 则提示手动命令），而非桌面包私有运行时/私有 PATH。
         _options = RuntimeBootstrapOptions.Load(AppContext.BaseDirectory);
+        _timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
         // 若系统全局 node 已由桌面装好（此前安装/用户手动），把它暴露到进程 PATH，让宿主 spawn 与探测能解析。
         EnsureRuntimeNodeOnPath();
 
@@ -143,7 +145,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
             }
 
             HarnessRuntimeHost host = _host();
-            Uri? url = await host.StartAsync(timeout: TimeSpan.FromSeconds(60), bootCt);
+            Uri? url = await host.StartAsync(timeout: TimeSpan.FromSeconds(_timeouts.SpawnTimeoutSeconds), bootCt);
             if (url is null)
             {
                 _log.Invoke($"[bootstrap] 引导完成但 dsh 未在时限内给出 URL。stderr 尾巴：\n{string.Join('\n', host.StderrTail.TakeLast(8))}");
@@ -183,7 +185,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
         {
             Gate.Reset();
             // hooks 逐次构造：用户在失败等待期切换语言后重试，hooks 层文案与页面同取最新 locale
-            RuntimeBootstrapHooks hooks = RuntimeBootstrap.CreateDefaultHooks(_log, _isEnglish());
+            RuntimeBootstrapHooks hooks = RuntimeBootstrap.CreateDefaultHooks(_log, _isEnglish(), options);
             BootstrapOutcome outcome;
             try
             {
@@ -213,7 +215,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
             // 取消在此抛出 OCE（不吞）——由 RunAsync 的取消分支收口同一日志语义。
             while (!Gate.IsSignaled && !ct.IsCancellationRequested)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(200), ct);
+                await Task.Delay(TimeSpan.FromMilliseconds(_options.PreinstallPollIntervalMilliseconds), ct);
             }
 
             if (ct.IsCancellationRequested)
@@ -290,16 +292,16 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
         // 步骤名经枚举派生（单一事实源），避免与 JS STEP_ORDER 漂移。
         await _ui.BootstrapStepAsync(BootstrapStep.PreinstallPlugins, UiCopy.PreinstallStepPreparing(_isEnglish()), failed: false);
         await _ui.PreinstallDecisionAsync(pending);
-        _log.Invoke($"[host] 插件引导：呈现可选插件 {string.Join(", ", pending)}，等待用户决策（5 分钟超时默认跳过）");
+        _log.Invoke($"[host] 插件引导：呈现可选插件 {string.Join(", ", pending)}，等待用户决策（{_options.PreinstallChoiceTimeoutMinutes} 分钟超时默认跳过）");
 
         PreinstallChoice choice;
         try
         {
-            choice = await PreinstallGate.Choice.WaitAsync(TimeSpan.FromMinutes(5), ct);
+            choice = await PreinstallGate.Choice.WaitAsync(TimeSpan.FromMinutes(_options.PreinstallChoiceTimeoutMinutes), ct);
         }
         catch (TimeoutException)
         {
-            _log.Invoke("[host] 插件引导等待用户决策超时（5 分钟），默认跳过（可从应用内市场补装）");
+            _log.Invoke($"[host] 插件引导等待用户决策超时（{_options.PreinstallChoiceTimeoutMinutes} 分钟），默认跳过（可从应用内市场补装）");
             choice = PreinstallChoice.Skip;
         }
 

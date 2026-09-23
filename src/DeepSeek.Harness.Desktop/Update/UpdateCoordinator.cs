@@ -93,7 +93,7 @@ public sealed class UpdateCoordinator
                     .FetchSha256Async(updateOptions.Repository, version, Path.GetFileName(assetPath), ct);
                 // 授权通过（LaunchAsync 观察窗口内未取消）后：主动关闭窗口让进程退出，
                 // 安装脚本的等待环随即放行 rpm/dpkg 并拉起新版。缺这步脚本会死等本进程。
-                await UpdateInstaller.LaunchAsync(assetPath, updatesDir, expectedSha, ct, log: _log);
+                await UpdateInstaller.LaunchAsync(assetPath, updatesDir, expectedSha, TimeSpan.FromSeconds(updateOptions.PkexecObserveSeconds), ct, log: _log);
                 _log?.Invoke("[update] 授权通过，关闭应用以继续安装…");
                 // 安装路径与托盘退出共用闸门：先批准，Close 才不会被 hide-to-tray 拦截转成隐藏
                 _closeGate.ApproveExit();

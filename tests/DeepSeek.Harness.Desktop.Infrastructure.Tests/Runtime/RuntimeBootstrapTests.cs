@@ -443,7 +443,7 @@ public class Utf8TextStreamsTests
 /// <summary>RuntimeBootstrapOptions 配置装载（ADR simple-shell-single-global-dsh）。</summary>
 public class RuntimeBootstrapOptionsTests
 {
-    /// <summary>验证 appsettings 缺 RuntimeBootstrap 节时返回默认值（dsh @alpha、步超时 10m、官方 dist）。</summary>
+    /// <summary>验证 appsettings 缺 RuntimeBootstrap 节时返回默认值（dsh @alpha、步超时 10m、官方 dist、取文本 30s、轮询 200ms、决策 5m）。</summary>
     [Fact]
     public void Load_MissingSection_ReturnsDefaults()
     {
@@ -456,6 +456,9 @@ public class RuntimeBootstrapOptionsTests
             Assert.Equal("@deepseek-ai/dsh@alpha", options.DshSpec);
             Assert.Equal(10, options.StepTimeoutMinutes);
             Assert.Equal("https://nodejs.org/dist", options.NodeDistBaseUrl);
+            Assert.Equal(30, options.FetchTextTimeoutSeconds);
+            Assert.Equal(200, options.PreinstallPollIntervalMilliseconds);
+            Assert.Equal(5, options.PreinstallChoiceTimeoutMinutes);
         }
         finally
         {
@@ -463,7 +466,7 @@ public class RuntimeBootstrapOptionsTests
         }
     }
 
-    /// <summary>验证合法配置节逐项覆盖默认值：dsh spec/步超时/分发与镜像/全局前缀。</summary>
+    /// <summary>验证合法配置节逐项覆盖默认值：dsh spec/步超时/分发与镜像/全局前缀/取文本秒数/轮询毫秒/决策分钟。</summary>
     [Fact]
     public void Load_ValidSection_Overrides()
     {
@@ -472,7 +475,7 @@ public class RuntimeBootstrapOptionsTests
         try
         {
             File.WriteAllText(Path.Combine(dir, "appsettings.json"), """
-                {"RuntimeBootstrap":{"DshSpec":"@deepseek-ai/dsh@0.1.1-rc.2","StepTimeoutMinutes":5,"NodeDistBaseUrl":"https://mirror.example/dist","NodeMirrorBaseUrl":"https://cdn.example.com/node","NodeGlobalPrefix":"/usr/local"}}
+                {"RuntimeBootstrap":{"DshSpec":"@deepseek-ai/dsh@0.1.1-rc.2","StepTimeoutMinutes":5,"NodeDistBaseUrl":"https://mirror.example/dist","NodeMirrorBaseUrl":"https://cdn.example.com/node","NodeGlobalPrefix":"/usr/local","FetchTextTimeoutSeconds":45,"PreinstallPollIntervalMilliseconds":500,"PreinstallChoiceTimeoutMinutes":10}}
                 """);
             var options = RuntimeBootstrapOptions.Load(dir);
             Assert.Equal("@deepseek-ai/dsh@0.1.1-rc.2", options.DshSpec);
@@ -480,6 +483,9 @@ public class RuntimeBootstrapOptionsTests
             Assert.Equal("https://mirror.example/dist", options.NodeDistBaseUrl);
             Assert.Equal("https://cdn.example.com/node", options.NodeMirrorBaseUrl);
             Assert.Equal("/usr/local", options.NodeGlobalPrefix);
+            Assert.Equal(45, options.FetchTextTimeoutSeconds);
+            Assert.Equal(500, options.PreinstallPollIntervalMilliseconds);
+            Assert.Equal(10, options.PreinstallChoiceTimeoutMinutes);
         }
         finally
         {

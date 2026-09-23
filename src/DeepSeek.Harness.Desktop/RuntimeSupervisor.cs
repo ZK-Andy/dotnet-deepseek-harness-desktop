@@ -8,6 +8,8 @@ public sealed class RuntimeSupervisor
 {
     private readonly HarnessRuntimeHost _host;
     private readonly TimeSpan _restartTimeout;
+    private readonly TimeSpan _recoveredRetryDelay;
+    private readonly TimeSpan _failedRetryDelay;
     private readonly Func<ValueTask> _showRecovery;
     private readonly Func<Uri, ValueTask> _navigate;
     private readonly Action<string>? _log;
@@ -15,18 +17,24 @@ public sealed class RuntimeSupervisor
     /// <summary>创建监督器。</summary>
     /// <param name="host">运行时宿主。</param>
     /// <param name="restartTimeout">单次重启等待 URL 的时限。</param>
+    /// <param name="recoveredRetryDelay">重启未给出 URL 后的重试延迟（可调参数，见 <c>Infrastructure.Runtime.RuntimeTimeouts</c>）。</param>
+    /// <param name="failedRetryDelay">恢复失败后的重试延迟（可调参数，同上）。</param>
     /// <param name="showRecovery">展示恢复屏（如 WebView 显示"重启中"页）。</param>
     /// <param name="navigate">导航 WebView 到新 URL。</param>
     /// <param name="log">日志回调（可选）。</param>
     public RuntimeSupervisor(
         HarnessRuntimeHost host,
         TimeSpan restartTimeout,
+        TimeSpan recoveredRetryDelay,
+        TimeSpan failedRetryDelay,
         Func<ValueTask> showRecovery,
         Func<Uri, ValueTask> navigate,
         Action<string>? log = null)
     {
         _host = host;
         _restartTimeout = restartTimeout;
+        _recoveredRetryDelay = recoveredRetryDelay;
+        _failedRetryDelay = failedRetryDelay;
         _showRecovery = showRecovery;
         _navigate = navigate;
         _log = log;
@@ -62,8 +70,8 @@ public sealed class RuntimeSupervisor
                 }
                 else
                 {
-                    _log?.Invoke("[supervisor] 重启未给出 URL，2s 后重试");
-                    await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                    _log?.Invoke($"[supervisor] 重启未给出 URL，{_recoveredRetryDelay.TotalSeconds:0}s 后重试");
+                    await Task.Delay(_recoveredRetryDelay, ct);
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -72,10 +80,10 @@ public sealed class RuntimeSupervisor
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"[supervisor] 恢复失败：{ex.Message}（1s 后重试）");
+                _log?.Invoke($"[supervisor] 恢复失败：{ex.Message}（{_failedRetryDelay.TotalSeconds:0}s 后重试）");
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                    await Task.Delay(_failedRetryDelay, ct);
                 }
                 catch (OperationCanceledException)
                 {

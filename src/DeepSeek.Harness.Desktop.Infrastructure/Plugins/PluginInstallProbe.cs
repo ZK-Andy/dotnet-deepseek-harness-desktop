@@ -11,9 +11,12 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Plugins;
 /// </summary>
 public static class PluginInstallProbe
 {
-    /// <summary>等待探针 URL 的时限：与主 spawn 的 60s 同宽（探针走同一插件树加载路径，慢启动不该被误杀）。
+    /// <summary>等待探针 URL 的时限：与主 spawn 同宽（探针走同一插件树加载路径，慢启动不该被误杀），
+    /// 共用 <see cref="RuntimeTimeouts.SpawnTimeoutSeconds"/> 同一配置源，不再各自写死。
     /// 消费方为 <see cref="PluginProcessRunner.RunProbeAsync"/>。</summary>
-    internal static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(60);
+    internal static TimeSpan ProbeTimeout => TimeSpan.FromSeconds(s_timeouts.SpawnTimeoutSeconds);
+
+    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
 
     /// <summary>构造探针 spawn 的启动信息：复用 <see cref="HarnessRuntimeHost.BuildStartPsi"/> 单一事实源
     /// （env 净化、PATH 富化、血统 token 同一实现），端口让 OS 分配（<c>--port 0</c>）避开首选端口与

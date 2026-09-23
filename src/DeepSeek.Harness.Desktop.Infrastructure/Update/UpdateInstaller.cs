@@ -10,27 +10,28 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
 /// </summary>
 public static class UpdateInstaller
 {
-    /// <summary>pkexec 授权窗口的最长观察时间：超时视为授权通过、安装进行中。</summary>
-    private static readonly TimeSpan s_launchObserveWindow = TimeSpan.FromSeconds(10);
-
     /// <summary>
     /// 启动安装流程。Linux 下等待授权窗口：快速非零退出（用户取消/拒绝）抛
     /// <see cref="InvalidOperationException"/>；仍在运行则正常返回（安装已展开）。
     /// </summary>
     /// <param name="assetPath">已校验的安装包本地路径。</param>
     /// <param name="workDir">日志等辅助文件的落盘目录（updates 目录）。</param>
+    /// <param name="expectedSha256">安装包期望哈希（root 侧复验用）。</param>
+    /// <param name="observeWindow">pkexec 授权窗口的最长观察时间（可调参数，见 <c>UpdateOptions.PkexecObserveSeconds</c>）：
+    /// 超时视为授权通过、安装进行中。</param>
+    /// <param name="cancellationToken">调用方取消令牌。</param>
     /// <param name="log">可选日志注入（宿主接 HostLog）：安装派生的授权观察结果进 host.log——安装
     /// 成败结论状态机 Error 态已打，但「授权窗口是否通过/安装进程是否展开」的中间过程只有这里能留痕。</param>
-    public static async Task LaunchAsync(string assetPath, string workDir, string expectedSha256, CancellationToken cancellationToken, Action<string>? log = null)
+    public static async Task LaunchAsync(string assetPath, string workDir, string expectedSha256, TimeSpan observeWindow, CancellationToken cancellationToken, Action<string>? log = null)
     {
         string exePath = Environment.ProcessPath
             ?? throw new InvalidOperationException("无法定位当前可执行文件路径");
         if (OperatingSystem.IsLinux())
         {
-            log?.Invoke($"[update] 安装：派生 pkexec（包 {Path.GetFileName(assetPath)}，观察窗口 {s_launchObserveWindow.TotalSeconds:0}s）");
+            log?.Invoke($"[update] 安装：派生 pkexec（包 {Path.GetFileName(assetPath)}，观察窗口 {observeWindow.TotalSeconds:0}s）");
             using Process p = await LaunchLinuxAsync(assetPath, workDir, exePath, expectedSha256).ConfigureAwait(false);
             using var observe = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            observe.CancelAfter(s_launchObserveWindow);
+            observe.CancelAfter(observeWindow);
             try
             {
                 await p.WaitForExitAsync(observe.Token).ConfigureAwait(false);
