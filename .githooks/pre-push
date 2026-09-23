@@ -12,17 +12,33 @@ if [[ -x scripts/change-scope.sh ]]; then
   echo
 fi
 
-# 仅当 src/** 或 tests/** 有变更时才跑 dotnet；否则跳过以省时
-CHANGED="$(git diff --name-only HEAD 2>/dev/null || true; git diff --cached --name-only 2>/dev/null || true)"
-if echo "$CHANGED" | grep -qE "^(src|tests)/"; then
+# 增量面 = outgoing 已提交 + 工作树 + 已暂存（去重）。
+# 教训（a3de599→25875fe）：只看工作树/index 时，已提交的 outgoing 变更在工作树干净即整个跳过
+# dotnet 段，IDE0005 逃逸到 CI 才暴露。origin/main 缺失时回退工作树/index（提示可见）。
+OUTGOING=""
+if git rev-parse --verify origin/main >/dev/null 2>&1; then
+  OUTGOING="$(git diff --name-only origin/main...HEAD 2>/dev/null || true)"
+else
+  echo "(origin/main 不存在，增量判定仅覆盖工作树/已暂存——CI 仍会全量拦截)"
+fi
+WORKTREE="$(git diff --name-only 2>/dev/null || true)"
+CACHED="$(git diff --cached --name-only 2>/dev/null || true)"
+CHANGED="$(printf '%s\n%s\n%s\n' "$OUTGOING" "$WORKTREE" "$CACHED" | sort -u)"
+# src/tests 内容与 format 结论源（.editorconfig/slnx 结构）命中任一即跑 `dotnet` 段。
+# 纯 .editorconfig 改动可翻转 format 结论却命中不了 ^(src|tests)/（R1 Suggestion），故一并纳入。
+if echo "$CHANGED" | grep -qE "^(src|tests)/|\.slnx$|^\.editorconfig$"; then
   export DOTNET_CLI_HOME="$ROOT/.dotnet-cache/cli"
   export NUGET_PACKAGES="$ROOT/.dotnet-cache/nuget"
   echo "-> dotnet build -c Debug"
   dotnet build dotnet-deepseek-harness-desktop.slnx -c Debug --nologo -v q
+  # 编码规范门禁（与 CI ubuntu 腿同命令）：IDE0005 的唯一强制路径，主工程 build 不报，
+  # 缺此步即重演 a3de599 逃逸。置于 build 后、test 前，红即 fail loud。
+  echo "-> dotnet format --verify-no-changes --severity warn"
+  dotnet format dotnet-deepseek-harness-desktop.slnx --verify-no-changes --severity warn
   echo "-> dotnet test -c Debug --no-build"
   dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build --nologo
 else
-  echo "src/tests 无变更，跳过 dotnet build/test（CI 仍会全量）"
+  echo "src/tests 无变更，跳过 dotnet build/format/test（CI 仍会全量）"
 fi
 
 # 文档门禁（增量也跑，防推坏链接）
