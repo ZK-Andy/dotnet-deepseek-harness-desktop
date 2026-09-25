@@ -66,9 +66,35 @@ jobs:
       - name: 打 Windows 包（安装器 exe，文件名含 windows 标识；不再产独立 zip）
         shell: bash
         run: bash scripts/package-windows.sh artifacts/publish-win-x64
+      - name: 安装 WebView2 Evergreen（运行态实验，ADR smoke-runner-deepening）
+        shell: bash
+        env:
+          # Git Bash 会把 /silent /install 当 POSIX 路径转换（cookbook [脚本]；
+          # smoke-install-windows.sh /VERYSILENT 同款先例），此处排除。
+          MSYS2_ARG_CONV_EXCL: '*'
+        run: |
+          set -euo pipefail
+          EXE="$RUNNER_TEMP/MicrosoftEdgeWebview2Setup.exe"
+          for i in 1 2 3; do
+            curl -sSL --fail --retry 2 -o "$EXE" "https://go.microsoft.com/fwlink/p/?LinkId=2124703" && break || sleep 10
+          done
+          [[ -f "$EXE" ]] || { echo "::error::Evergreen 下载失败（3 次重试）"; exit 1; }
+          "$EXE" /silent /install
+          echo "== WebView2 版本留痕（证据位；fail loud 由安装器退出码承担） =="
+          powershell -NoProfile -Command "Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' | Select-Object Name | Format-Table -HideTableHeaders | Out-String -Width 200"
       - name: 安装冒烟（静默安装→启动→等 dsh web URL 行或引导启动行）
         shell: bash
+        env:
+          SMOKE_SHOT_DIR: ${{ github.workspace }}/smoke-shots
         run: bash scripts/smoke-install-windows.sh "$(ls artifacts/win-x64/*-setup.exe | head -1)"
+      - name: 上传冒烟截图（best-effort，人眼复核）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-shot-windows-x64
+          path: ${{ github.workspace }}/smoke-shots/
+          if-no-files-found: warn
+          retention-days: 7
       - name: 上传
         uses: actions/upload-artifact@v4
         with:

@@ -32,6 +32,28 @@ APP_BIN="/usr/bin/deepseek-harness-desktop"
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-1320}"
 APP_TIMEOUT=$((SMOKE_WAIT + 20))
 PASS_RE='\[host\] dsh web =|\[bootstrap\] 引导开始：'
+
+# 判定结论（ADR smoke-runner-deepening）：命中 ① 全链还是 ② 安装链必须打印成结论。
+smoke_verdict() { # $1=日志
+  if grep -qE '\[host\] dsh web =' "$1" 2>/dev/null; then
+    echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"
+  else
+    echo "SMOKE_VERDICT=install-chain（仅引导启动）"
+  fi
+}
+
+# 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
+# CI 无显示时 $DISPLAY 为空即跳过（Xvfb 全链是下批事项，不在本批）。
+smoke_shot() { # $1=文件名
+  [[ -n "${SMOKE_SHOT_DIR:-}" && -n "${DISPLAY:-}" ]] || return 0
+  mkdir -p "$SMOKE_SHOT_DIR" 2>/dev/null || return 0
+  local shot="$SMOKE_SHOT_DIR/$1"
+  if command -v import >/dev/null 2>&1; then import -window root "$shot" 2>/dev/null || true
+  elif command -v scrot >/dev/null 2>&1; then scrot "$shot" 2>/dev/null || true
+  elif command -v gnome-screenshot >/dev/null 2>&1; then gnome-screenshot -f "$shot" 2>/dev/null || true
+  else echo "note: 截图跳过（无可用截图工具）" >&2
+  fi
+}
 wait_url() { # $1=日志 $2=pid
   local log="$1" pid="$2"
   for _ in $(seq 1 "$SMOKE_WAIT"); do
@@ -77,7 +99,10 @@ smoke_deb() {
     # 现场必须落进 CI 日志：应用秒退时 stderr 是唯一定位线索（arm64 首跑实证）
     echo "error: [deb] 冒烟失败——${SMOKE_WAIT}s 内未出现 dsh web URL 或引导启动行。日志尾部：" >&2
     cat "$log" >&2
+  else
+    smoke_verdict "$log"
   fi
+  smoke_shot "smoke-linux-deb.png"
   rm -rf "$home" "$log"
   [[ $rc -eq 0 ]]
 }
@@ -113,10 +138,12 @@ pid=$!
 # 双信号同款（dsh web URL 行或引导启动行）
 for _ in $(seq 1 "$SMOKE_WAIT"); do
   if grep -qE "$PASS_RE" "$log"; then
-    grep -m1 -E "$PASS_RE" "$log"; kill $pid 2>/dev/null; exit 0
+    grep -m1 -E "$PASS_RE" "$log"
+    if grep -qE '\[host\] dsh web =' "$log"; then echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"; else echo "SMOKE_VERDICT=install-chain（仅引导启动）"; fi
+    kill $pid 2>/dev/null; exit 0
   fi
   if ! kill -0 $pid 2>/dev/null; then
-    grep -qE "$PASS_RE" "$log" && { grep -m1 -E "$PASS_RE" "$log"; exit 0; }
+    if grep -qE "$PASS_RE" "$log"; then grep -m1 -E "$PASS_RE" "$log"; if grep -qE '\[host\] dsh web =' "$log"; then echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"; else echo "SMOKE_VERDICT=install-chain（仅引导启动）"; fi; exit 0; fi
     break
   fi
   sleep 1

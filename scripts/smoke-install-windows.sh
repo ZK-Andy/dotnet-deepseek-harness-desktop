@@ -10,6 +10,8 @@
 # 实测边界（2026-08-29 首跑）：Windows runner 的壳同样在窗口创建（Ryn Run）即
 # 退出——WebView2 初始化的原生依赖在 runner 环境不可用，全链信号不可达，冒烟
 # 停在②安装链位；「装得上、起得来」的启动段覆盖由此完成。
+# 运行态实验（ADR smoke-runner-deepening）：package-windows.yml 在冒烟前装
+# WebView2 Evergreen，若此后 ① 命中则运行态自动进 CI——verdict 行即结论。
 #
 # 信号源 = <DSH_HOME>/logs/host.log（HostLog 双写 stdout 与该文件）+ 启动器 stdout
 # 捕获（工程为 Exe 控制台子系统，重定向通常可达；host.log 为权威源）。
@@ -32,6 +34,27 @@ export MSYS2_ARG_CONV_EXCL='*'
 
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-1320}"
 PASS_RE='\[host\] dsh web =|\[bootstrap\] 引导开始：'
+
+# 判定结论（ADR smoke-runner-deepening）：命中 ① 全链还是 ② 安装链必须打印成结论。
+smoke_verdict() { # $1=stdout $2=host.log
+  if grep -qE '\[host\] dsh web =' "$1" 2>/dev/null || { [[ -f "$2" ]] && grep -qE '\[host\] dsh web =' "$2"; }; then
+    echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"
+  else
+    echo "SMOKE_VERDICT=install-chain（仅引导启动）"
+  fi
+}
+
+# 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
+# 落盘目录由调用方经 SMOKE_SHOT_DIR 注入；未设（本地跑）即跳过。无桌面会话时静默跳过。
+smoke_shot() { # $1=文件名
+  [[ -n "${SMOKE_SHOT_DIR:-}" ]] || return 0
+  mkdir -p "$SMOKE_SHOT_DIR" 2>/dev/null || return 0
+  local winshot
+  winshot="$(cygpath -w "$SMOKE_SHOT_DIR/$1" 2>/dev/null || echo "$SMOKE_SHOT_DIR/$1")"
+  SMOKE_SHOT_WIN="$winshot" powershell -NoProfile -Command \
+    "Add-Type -AssemblyName System.Drawing,System.Windows.Forms; \$s=[Windows.Forms.Screen]::PrimaryScreen.Bounds; \$b=New-Object Drawing.Bitmap(\$s.Width,\$s.Height); \$g=[Drawing.Graphics]::FromImage(\$b); \$g.CopyFromScreen(0,0,0,0,\$b.Size); \$b.Save(\$env:SMOKE_SHOT_WIN); \$g.Dispose(); \$b.Dispose()" 2>/dev/null \
+    || echo "note: 截图跳过（无桌面会话）" >&2
+}
 
 INSTALL_DIR="$(mktemp -d)/app"
 HOME_DIR="$(mktemp -d)"
@@ -102,6 +125,8 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
   if grep -qE "$PASS_RE" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$PASS_RE" "$LOG"; }; then
     grep -m1 -E "$PASS_RE" "$OUT" 2>/dev/null || grep -m1 -E "$PASS_RE" "$LOG"
     rc=0
+    smoke_verdict "$OUT" "$LOG"
+    smoke_shot "smoke-windows.png"
     # PASS 也打印壳输出尾部：壳何时/为何退出（如窗口创建即退出）需要证据在案
     echo "--- 壳输出尾部（PASS 证据）---" >&2
     tail -5 "$OUT" >&2 || true
@@ -109,7 +134,12 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
   fi
   if ! kill -0 "$pid" 2>/dev/null; then
     # 进程已退出：补扫一次（信号可能刚好落在退出前），仍无即 fail fast
-    grep -qE "$PASS_RE" "$OUT" 2>/dev/null && rc=0
+    if grep -qE "$PASS_RE" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$PASS_RE" "$LOG"; }; then
+      grep -m1 -E "$PASS_RE" "$OUT" 2>/dev/null || grep -m1 -E "$PASS_RE" "$LOG"
+      rc=0
+      smoke_verdict "$OUT" "$LOG"
+      smoke_shot "smoke-windows.png"
+    fi
     break
   fi
   sleep 1
@@ -122,6 +152,7 @@ if [[ $rc -ne 0 ]]; then
     echo "--- host.log 尾部 ---" >&2
     tail -30 "$LOG" >&2
   fi
+  smoke_shot "smoke-windows-fail.png"
 fi
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true

@@ -113,7 +113,18 @@ jobs:
 
       - name: 安装冒烟（装包→首启引导→等 dsh web URL 行）
         shell: bash
+        env:
+          SMOKE_SHOT_DIR: ${{ github.workspace }}/smoke-shots
         run: bash scripts/smoke-install-linux.sh artifacts/${{ matrix.rid }}
+
+      - name: 上传冒烟截图（best-effort，无显示时空过，人眼复核）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-shot-linux-${{ matrix.arch }}
+          path: ${{ github.workspace }}/smoke-shots/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: 上传预览/发布产物（7 天，与 pilot-harness pilot-harness-* 一致）
         uses: actions/upload-artifact@v4

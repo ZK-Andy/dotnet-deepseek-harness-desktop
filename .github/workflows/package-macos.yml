@@ -85,7 +85,17 @@ jobs:
           bash scripts/verify-package-layout.sh --target "$MNT/DeepSeek.Harness.Desktop.app/Contents/MacOS"
           hdiutil detach "$MNT"
       - name: 安装冒烟（挂载→拷入 /Applications→启动→等 dsh web URL 行或引导启动行）
+        env:
+          SMOKE_SHOT_DIR: ${{ github.workspace }}/smoke-shots
         run: bash scripts/smoke-install-macos.sh "$(ls artifacts/${{ matrix.rid }}/*.dmg | head -1)"
+      - name: 上传冒烟截图（best-effort，人眼复核）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-shot-macos-${{ matrix.arch }}
+          path: ${{ github.workspace }}/smoke-shots/
+          if-no-files-found: warn
+          retention-days: 7
       - name: 上传
         uses: actions/upload-artifact@v4
         with:

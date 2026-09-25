@@ -28,6 +28,25 @@ APP_NAME="DeepSeek.Harness.Desktop"
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-1320}"
 PASS_RE='\[host\] dsh web =|\[bootstrap\] 引导开始：'
 
+# 判定结论（ADR smoke-runner-deepening）：命中 ① 全链还是 ② 安装链必须打印成结论，
+# 不能靠翻日志。arch 自带出处（x64 leg 跑在 ARM runner = Rosetta 下验证）。
+smoke_verdict() { # $1=stdout $2=host.log
+  if grep -qE '\[host\] dsh web =' "$1" 2>/dev/null || { [[ -f "$2" ]] && grep -qE '\[host\] dsh web =' "$2"; }; then
+    echo "SMOKE_VERDICT=full-chain（dsh web 就绪） arch=$(uname -m)"
+  else
+    echo "SMOKE_VERDICT=install-chain（仅引导启动） arch=$(uname -m)"
+  fi
+}
+
+# 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
+# 落盘目录由调用方经 SMOKE_SHOT_DIR 注入；未设（本地跑）即跳过。
+smoke_shot() { # $1=文件名
+  [[ -n "${SMOKE_SHOT_DIR:-}" ]] || return 0
+  mkdir -p "$SMOKE_SHOT_DIR" 2>/dev/null || return 0
+  screencapture -x -t png "$SMOKE_SHOT_DIR/$1" 2>/dev/null \
+    || echo "note: 截图跳过（无 WindowServer 会话或 screencapture 不可用）" >&2
+}
+
 MNT="$(mktemp -d)/mnt"
 HOME_DIR="$(mktemp -d)"
 OUT="$(mktemp)"
@@ -62,6 +81,8 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
   if grep -qE "$PASS_RE" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$PASS_RE" "$LOG"; }; then
     grep -m1 -E "$PASS_RE" "$OUT" 2>/dev/null || grep -m1 -E "$PASS_RE" "$LOG"
     rc=0
+    smoke_verdict "$OUT" "$LOG"
+    smoke_shot "smoke-macos.png"
     # PASS 也打印壳输出尾部：壳何时/为何退出（如窗口创建即退出）需要证据在案
     echo "--- 壳输出尾部（PASS 证据）---" >&2
     tail -5 "$OUT" >&2 || true
@@ -69,7 +90,12 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
   fi
   if ! kill -0 "$SMOKE_PID" 2>/dev/null; then
     # 进程已退出：补扫一次（信号可能刚好落在退出前），仍无即 fail fast
-    grep -qE "$PASS_RE" "$OUT" 2>/dev/null && rc=0
+    if grep -qE "$PASS_RE" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$PASS_RE" "$LOG"; }; then
+      grep -m1 -E "$PASS_RE" "$OUT" 2>/dev/null || grep -m1 -E "$PASS_RE" "$LOG"
+      rc=0
+      smoke_verdict "$OUT" "$LOG"
+      smoke_shot "smoke-macos.png"
+    fi
     break
   fi
   sleep 1
@@ -82,5 +108,6 @@ if [[ $rc -ne 0 ]]; then
     echo "--- host.log 尾部 ---" >&2
     tail -30 "$LOG" >&2
   fi
+  smoke_shot "smoke-macos-fail.png"
 fi
 exit $rc
