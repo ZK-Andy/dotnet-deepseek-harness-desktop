@@ -4,9 +4,11 @@
 # 对构建产物目录中的 deb/rpm 做「干净环境装包 → 启动 → 等 dsh web URL」验证：
 #   deb → runner 原生 apt 安装（真实解析 Depends）
 #   rpm → fedora 容器内 dnf 安装（AutoReqProv:no 的显式 Requires 是否够，装了才知道）
-# 判定信号（双信号，命中其一即 PASS）：
+# 判定信号（双信号）：
 #   ①`[host] dsh web =`（注意是等号——`dsh web:` 冒号格式是 dsh 子进程自检输出，壳打印的是等号格式；首版判定串错位致冒烟恒败，CI 实证）= 全链 PASS（装包→引导→dsh web 就绪）；
-#   ②`[bootstrap] 引导开始：` = 安装链 PASS（装包→依赖齐→运行时检测→首启引导已启动）。
+#   ②`[bootstrap] 引导开始：` = 安装链保底（装包→依赖齐→运行时检测→首启引导已启动）。
+# 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
+# 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
 #     CI 的无显示环境壳必然在窗口创建（Ryn Run）即退出（GTK 需 display，已记录边界），
 #     引导是后台任务会随之夭折——全链信号在 CI 不可达，②为 CI 判定位；①在真桌面/
 #     有显示环境命中。引导下载/安装全链的验证在实机验收转交（批次一沙箱 E2E 已通）。
@@ -31,7 +33,9 @@ APP_BIN="/usr/bin/deepseek-harness-desktop"
 # 引导步数或 StepTimeoutMinutes 变化时必须同批重算。SMOKE_WAIT_SECONDS 可覆写。
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-1320}"
 APP_TIMEOUT=$((SMOKE_WAIT + 20))
-PASS_RE='\[host\] dsh web =|\[bootstrap\] 引导开始：'
+FULL_RE='\[host\] dsh web ='
+BOOT_RE='\[bootstrap\] 引导开始：'
+PASS_RE="$FULL_RE|$BOOT_RE"
 
 # 判定结论（ADR smoke-runner-deepening）：命中 ① 全链还是 ② 安装链必须打印成结论。
 smoke_verdict() { # $1=日志
@@ -54,19 +58,30 @@ smoke_shot() { # $1=文件名
   else echo "note: 截图跳过（无可用截图工具）" >&2
   fi
 }
-wait_url() { # $1=日志 $2=pid
-  local log="$1" pid="$2"
+wait_url() { # $1=日志 $2=pid：①命中即 0；只有②（超时或退出时）亦 0；双无才 1
+  local log="$1" pid="$2" boot_seen=0 start="$SECONDS"
   for _ in $(seq 1 "$SMOKE_WAIT"); do
-    if grep -qE "$PASS_RE" "$log"; then
-      grep -m1 -E "$PASS_RE" "$log"
+    if grep -qE "$FULL_RE" "$log"; then
+      grep -m1 -E "$FULL_RE" "$log"
       return 0
     fi
+    if [[ $boot_seen -eq 0 ]] && grep -qE "$BOOT_RE" "$log"; then
+      boot_seen=1
+      grep -m1 -E "$BOOT_RE" "$log"
+      echo "note: 已见②安装链（$((SECONDS - start))s），继续等①至超时/退出…" >&2
+    fi
     if ! kill -0 "$pid" 2>/dev/null; then
-      grep -qE "$PASS_RE" "$log" && { grep -m1 -E "$PASS_RE" "$log"; return 0; }
+      if grep -qE "$FULL_RE" "$log"; then grep -m1 -E "$FULL_RE" "$log"; return 0; fi
+      if grep -qE "$BOOT_RE" "$log"; then echo "note: 进程已退出，未见①，按②安装链收工" >&2; return 0; fi
       return 1
     fi
     sleep 1
   done
+  if grep -qE "$FULL_RE" "$log"; then grep -m1 -E "$FULL_RE" "$log"; return 0; fi
+  if grep -qE "$BOOT_RE" "$log"; then
+    echo "note: ${SMOKE_WAIT}s 内未见①，按②安装链收工" >&2
+    return 0
+  fi
   return 1
 }
 
@@ -86,7 +101,7 @@ smoke_deb() {
   }
   tail -3 "$apt_log" >&2 || true
   rm -f "$apt_log"
-  echo "== [deb] 启动冒烟（等 dsh web URL 行或引导启动行）"
+  echo "== [deb] 启动冒烟（等①全链，②保底；②命中后继续等①至超时/退出）"
   set +e
   env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder \
     timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
@@ -120,6 +135,8 @@ smoke_rpm_container() {
     -e SMOKE_APP_BIN="$APP_BIN" \
     -e SMOKE_WAIT="$SMOKE_WAIT" \
     -e PASS_RE="$PASS_RE" \
+    -e FULL_RE="$FULL_RE" \
+    -e BOOT_RE="$BOOT_RE" \
     -e APP_TIMEOUT="$APP_TIMEOUT" \
     fedora:44 bash -s <<'INNER'
 # 刻意不带 -e：dnf 失败走显式分支打印包安装诊断，而非无声退出
@@ -134,20 +151,27 @@ home=$(mktemp -d)
 timeout "$APP_TIMEOUT" env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder \
   "$SMOKE_APP_BIN" >"$log" 2>&1 &
 pid=$!
-# 与宿主侧 wait_url 同款探活：进程秒退时立即失败，不空转满等待窗；
-# 双信号同款（dsh web URL 行或引导启动行）
+# 与宿主侧 wait_url 同款语义：②命中后继续等①至超时/退出（ADR smoke-wait-full-after-boot）
 for _ in $(seq 1 "$SMOKE_WAIT"); do
-  if grep -qE "$PASS_RE" "$log"; then
-    grep -m1 -E "$PASS_RE" "$log"
+  if grep -qE "$FULL_RE" "$log"; then
+    grep -m1 -E "$FULL_RE" "$log"
     if grep -qE '\[host\] dsh web =' "$log"; then echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"; else echo "SMOKE_VERDICT=install-chain（仅引导启动）"; fi
     kill $pid 2>/dev/null; exit 0
   fi
+  if [[ "${boot_seen:-0}" -eq 0 ]] && grep -qE "$BOOT_RE" "$log"; then
+    boot_seen=1
+    grep -m1 -E "$BOOT_RE" "$log"
+    echo "note: 已见②安装链，继续等①至超时/退出…" >&2
+  fi
   if ! kill -0 $pid 2>/dev/null; then
-    if grep -qE "$PASS_RE" "$log"; then grep -m1 -E "$PASS_RE" "$log"; if grep -qE '\[host\] dsh web =' "$log"; then echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"; else echo "SMOKE_VERDICT=install-chain（仅引导启动）"; fi; exit 0; fi
+    if grep -qE "$FULL_RE" "$log"; then grep -m1 -E "$FULL_RE" "$log"; if grep -qE '\[host\] dsh web =' "$log"; then echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"; else echo "SMOKE_VERDICT=install-chain（仅引导启动）"; fi; exit 0; fi
+    if grep -qE "$BOOT_RE" "$log"; then echo "note: 进程已退出，未见①，按②安装链收工" >&2; echo "SMOKE_VERDICT=install-chain（仅引导启动）"; exit 0; fi
     break
   fi
   sleep 1
 done
+if grep -qE "$FULL_RE" "$log"; then grep -m1 -E "$FULL_RE" "$log"; echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"; kill $pid 2>/dev/null; exit 0; fi
+if grep -qE "$BOOT_RE" "$log"; then echo "note: ${SMOKE_WAIT}s 内未见①，按②安装链收工" >&2; echo "SMOKE_VERDICT=install-chain（仅引导启动）"; kill $pid 2>/dev/null; exit 0; fi
 echo "error: [rpm] 冒烟失败——${SMOKE_WAIT}s 内未出现 dsh web URL 或引导启动行。尾部："
 tail -30 "$log" >&2
 kill $pid 2>/dev/null

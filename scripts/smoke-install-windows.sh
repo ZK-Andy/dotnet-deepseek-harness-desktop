@@ -4,9 +4,11 @@
 # 只有 staging 布局断言、无「装得上、起得来」覆盖的缺口（libadwaita 事件同类的
 # 缺依赖/起不来事故在 win 的对应面：WebView2 runtime、VC++ 运行库、原生 DLL）。
 #
-# 判定信号与 Linux 冒烟同款双信号（命中其一即 PASS）：
+# 判定信号与 Linux 冒烟同款双信号：
 #   ①`[host] dsh web =` = 全链 PASS（装包→首启引导→dsh web 就绪）；
-#   ②`[bootstrap] 引导开始：` = 安装链 PASS。
+#   ②`[bootstrap] 引导开始：` = 安装链保底。
+# 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
+# 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
 # 实测边界（2026-08-29 首跑）：Windows runner 的壳同样在窗口创建（Ryn Run）即
 # 退出——WebView2 初始化的原生依赖在 runner 环境不可用，全链信号不可达，冒烟
 # 停在②安装链位；「装得上、起得来」的启动段覆盖由此完成。
@@ -33,7 +35,9 @@ APP_NAME="DeepSeek.Harness.Desktop"
 export MSYS2_ARG_CONV_EXCL='*'
 
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-1320}"
-PASS_RE='\[host\] dsh web =|\[bootstrap\] 引导开始：'
+FULL_RE='\[host\] dsh web ='
+BOOT_RE='\[bootstrap\] 引导开始：'
+PASS_RE="$FULL_RE|$BOOT_RE"
 
 # 判定结论（ADR smoke-runner-deepening）：命中 ① 全链还是 ② 安装链必须打印成结论。
 smoke_verdict() { # $1=stdout $2=host.log
@@ -114,16 +118,21 @@ if [[ ! -f "$INSTALL_DIR/unins000.exe" ]]; then
 fi
 echo "== 安装完成（install.log 尾部留痕）"
 tail -3 "$HOME_DIR/install.log" >&2
-echo "== 启动冒烟（等 dsh web URL 行或引导启动行，窗=${SMOKE_WAIT}s）"
+echo "== 启动冒烟（等①全链，②保底；②命中后继续等①至超时/退出，窗=${SMOKE_WAIT}s）"
 set +e
 env DSH_DESKTOP_DSH_HOME="$HOME_DIR" DEEPSEEK_API_KEY=placeholder \
   "$APP_EXE" >"$OUT" 2>&1 &
 pid=$!
 rc=1
+boot_seen=0
+SECONDS=0
 LOG="$HOME_DIR/logs/host.log"
+log_has() { # $1=正则：stdout 或 host.log 任一命中
+  grep -qE "$1" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$1" "$LOG"; }
+}
 for _ in $(seq 1 "$SMOKE_WAIT"); do
-  if grep -qE "$PASS_RE" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$PASS_RE" "$LOG"; }; then
-    grep -m1 -E "$PASS_RE" "$OUT" 2>/dev/null || grep -m1 -E "$PASS_RE" "$LOG"
+  if log_has "$FULL_RE"; then
+    grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
     rc=0
     smoke_verdict "$OUT" "$LOG"
     smoke_shot "smoke-windows.png"
@@ -132,18 +141,41 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
     tail -5 "$OUT" >&2 || true
     break
   fi
+  if [[ $boot_seen -eq 0 ]] && log_has "$BOOT_RE"; then
+    boot_seen=1
+    grep -m1 -E "$BOOT_RE" "$OUT" 2>/dev/null || grep -m1 -E "$BOOT_RE" "$LOG"
+    echo "note: 已见②安装链（${SECONDS}s），继续等①至超时/退出…" >&2
+  fi
   if ! kill -0 "$pid" 2>/dev/null; then
-    # 进程已退出：补扫一次（信号可能刚好落在退出前），仍无即 fail fast
-    if grep -qE "$PASS_RE" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$PASS_RE" "$LOG"; }; then
-      grep -m1 -E "$PASS_RE" "$OUT" 2>/dev/null || grep -m1 -E "$PASS_RE" "$LOG"
+    # 进程已退出：补扫一次（信号可能刚好落在退出前），按最佳信号收工
+    if log_has "$FULL_RE"; then
+      grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
       rc=0
       smoke_verdict "$OUT" "$LOG"
       smoke_shot "smoke-windows.png"
+      echo "--- 壳输出尾部（PASS 证据）---" >&2
+      tail -5 "$OUT" >&2 || true
+    elif log_has "$BOOT_RE"; then
+      echo "note: 进程已退出，未见①，按②安装链收工" >&2
+      rc=0
+      smoke_verdict "$OUT" "$LOG"
+      smoke_shot "smoke-windows.png"
+      echo "--- 壳输出尾部（PASS 证据）---" >&2
+      tail -5 "$OUT" >&2 || true
     fi
     break
   fi
   sleep 1
 done
+# 超时仍只有②：按安装链 PASS（等满窗语义），而非失败
+if [[ $rc -ne 0 ]] && log_has "$BOOT_RE"; then
+  echo "note: ${SMOKE_WAIT}s 内未见①，按②安装链收工" >&2
+  rc=0
+  smoke_verdict "$OUT" "$LOG"
+  smoke_shot "smoke-windows.png"
+  echo "--- 壳输出尾部（PASS 证据）---" >&2
+  tail -5 "$OUT" >&2 || true
+fi
 set -e
 if [[ $rc -ne 0 ]]; then
   echo "error: [win] 冒烟失败——${SMOKE_WAIT}s 内未出现 dsh web URL 或引导启动行。stdout 尾部：" >&2
