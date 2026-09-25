@@ -164,30 +164,14 @@ public sealed partial class DesktopBootstrap
         // 原 `using var supervisorCts`：生命周期由 Run 的 finally 释放（本方法接线 _supervisorCtsRef）。
         var cts = new CancellationTokenSource();
         _supervisorCtsRef = cts; // 自更新后台任务 token 持有器接线（见顶部声明）
+        RynNavigationCallbacks navCallbacks = app.App.Services.GetRequiredService<RynNavigationCallbacks>();
         var supervisor = new RuntimeSupervisor(
             host.Host,
             restartTimeout: TimeSpan.FromSeconds(_timeouts.SupervisorRestartTimeoutSeconds),
             recoveredRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorRecoveredRetryDelaySeconds),
             failedRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorFailedRetryDelaySeconds),
-            showRecovery: () =>
-            {
-                // 恢复页三件套（ADR diag-masking-and-recovery-page）：失败原因 + stderr 尾部展示 +
-                // 导出诊断/退出动作。desktop.* 走 Ryn 层 IPC 不依赖 dsh 存活；数据经 textContent
-                // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
-                var tail = host.Host.StderrTail.TakeLast(12).ToList();
-                _ = app.WindowAccessor.Current.EvaluateJavaScriptAsync(
-                    RecoveryPageBuilder.BuildScript(UiCopy.ReasonRuntimeCrashed(_uiLocale.IsEnglish), tail, _uiLocale.IsEnglish));
-                return ValueTask.CompletedTask;
-            },
-            // 崩溃恢复导航同步刷新 webUrl——健康监视器（有界恢复）靠它作为 reload 靶点；若
-            // 崩溃重启用新端口（ADDR child-process-reaping-port-drift 的端口漂移）而 webUrl
-            // 仍指向旧 URL，监视器的 reload 会打到已死的旧端口、甚至覆写刚恢复的导航。
-            navigate: url =>
-            {
-                _webUrl = url;
-                AuthorizeIpcOriginFor(app.WindowAccessor, url);
-                return app.WindowAccessor.Current.NavigateAsync(url);
-            },
+            showRecovery: () => ShowRecoveryPageAsync(app, host),
+            navigate: url => NavigateAfterAdoptAsync(app, navCallbacks, url),
             log: HostLog.Write);
         // 引导期门控：宿主尚无 dsh 进程时 WaitForExitAsync 立即完成，监督器会空转进恢复循环
         // 并用恢复屏覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
@@ -219,6 +203,42 @@ public sealed partial class DesktopBootstrap
             () => _instanceListener?.Dispose(),
             quitWindow.Close,
             log: HostLog.Write);
+    }
+
+    /// <summary>恢复屏展示 + 恢复周期起点打点（ADR adopt-skip-navigate-on-self-reload）。</summary>
+    private ValueTask ShowRecoveryPageAsync(AppSetup app, HostSetup host)
+    {
+        // 周期起点：子进程退出后、RestartAsync 等待前。周期内的导航到达即页内自刷
+        // （市场 doRestart 轮询到新 boot 即 reload），收养 navigate 据此免导航。
+        _lastRecoveryShownAtUtc = DateTimeOffset.UtcNow;
+        // 恢复页三件套（ADR diag-masking-and-recovery-page）：失败原因 + stderr 尾部展示 +
+        // 导出诊断/退出动作。desktop.* 走 Ryn 层 IPC 不依赖 dsh 存活；数据经 textContent
+        // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
+        var tail = host.Host.StderrTail.TakeLast(12).ToList();
+        _ = app.WindowAccessor.Current.EvaluateJavaScriptAsync(
+            RecoveryPageBuilder.BuildScript(UiCopy.ReasonRuntimeCrashed(_uiLocale.IsEnglish), tail, _uiLocale.IsEnglish));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>收养后导航：页内已自刷即免导航，只做收养登记。</summary>
+    private ValueTask NavigateAfterAdoptAsync(AppSetup app, RynNavigationCallbacks navCallbacks, Uri url)
+    {
+        // webUrl 同步刷新——健康监视器（有界恢复）靠它作为 reload 靶点；若崩溃重启用新端口
+        // （ADR child-process-reaping-port-drift 的端口漂移）而 webUrl 仍指向旧 URL，
+        // 监视器的 reload 会打到已死的旧端口、甚至覆写刚恢复的导航。
+        _webUrl = url;
+        AuthorizeIpcOriginFor(app.WindowAccessor, url);
+        // 免导航（ADR adopt-skip-navigate-on-self-reload）：周期内有到达即视为页内自刷
+        // （市场 doRestart 轮询到新 boot 即 location.reload；谓词只比时间戳，同源靠前提假设），
+        // 再 NavigateAsync 即第二跳——只做收养登记（上文 _webUrl + origin 授权），跳过实际导航。
+        // 无到达时走既有导航。
+        if (AdoptNavigateGate.ShouldSkipAdoptNavigate(navCallbacks.LastNavigatedAtUtc, _lastRecoveryShownAtUtc))
+        {
+            HostLog.Write($"[nav] 收养时恢复周期内已有页面到达（视为页内自刷，{url.GetLeftPart(UriPartial.Authority)}），跳过壳侧导航");
+            return ValueTask.CompletedTask;
+        }
+
+        return app.WindowAccessor.Current.NavigateAsync(url);
     }
 
     private void SetupHealthMonitor(AppSetup app, SupervisorSetup supervisor)

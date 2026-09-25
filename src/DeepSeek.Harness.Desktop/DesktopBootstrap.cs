@@ -31,6 +31,9 @@ public sealed partial class DesktopBootstrap
     private Uri? _webUrl;
     private HarnessRuntimeHost _host = null!;
     private Core.ExitPipeline _exit = null!;
+    // 本次恢复周期起点（恢复屏展示时刻，由 showRecovery 写入、收养 navigate 读出：
+    // 周期内有导航到达即页内已自刷，跳过壳侧导航。跨异步回调的延迟接线态，留字段）。
+    private DateTimeOffset _lastRecoveryShownAtUtc;
 
     // —— 启动编排阶段产出（ADR composition-root-value-flow-pipeline 批次 2）——
     // 阶段方法返回真实产出（上一形态的空载荷 token 已删除），消费段收参数：产出的值本身就是

@@ -108,6 +108,21 @@ public class RynNavigationCallbacksTests
         Assert.Equal(1, calls);
     }
 
+    /// <summary>到达时间戳（ADR adopt-skip-navigate-on-self-reload）：初值 null，到达后非空且不早于起点。</summary>
+    [Fact]
+    public void Navigated_RecordsArrivalTimestamp()
+    {
+        var handler = new RynNavigationCallbacks();
+
+        Assert.Null(handler.LastNavigatedAtUtc);
+
+        DateTimeOffset before = DateTimeOffset.UtcNow;
+        handler.OnWebViewNavigated(new WebViewNavigatedContext(new Uri("http://127.0.0.1:41449/")));
+
+        Assert.NotNull(handler.LastNavigatedAtUtc);
+        Assert.True(handler.LastNavigatedAtUtc >= before);
+    }
+
     /// <summary>宿主导航（IsUserInitiated=false）→ 一律 Allow：崩溃恢复 NavigateAsync 不被误拦（B1）。</summary>
     [Theory]
     [InlineData("https://x.example/", "http://127.0.0.1:41449")]

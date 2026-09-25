@@ -30,6 +30,21 @@ public sealed class RynNavigationCallbacks
     // origin 会让漂移后的同源 SPA 路由被误判为外部。初始值由构造注入（首启 webUrl 的 Authority）。
     private string? _currentOrigin;
     private Action? _onNavigatedImpl;
+    private DateTimeOffset? _lastNavigatedAtUtc;
+    private readonly object _navStampGate = new();
+
+    /// <summary>最近一次导航到达时刻（UTC；尚无到达即 null）。收养免导航裁决的观测信号
+    /// （ADR adopt-skip-navigate-on-self-reload）：恢复周期内有到达即页内已自刷。</summary>
+    public DateTimeOffset? LastNavigatedAtUtc
+    {
+        get
+        {
+            lock (_navStampGate)
+            {
+                return _lastNavigatedAtUtc;
+            }
+        }
+    }
 
     /// <summary>创建导航回调。</summary>
     /// <param name="opener">打开外部 URL 的委托；null 时默认用系统默认浏览器（见 <see cref="SystemBrowser"/>）。</param>
@@ -106,6 +121,11 @@ public sealed class RynNavigationCallbacks
     public void OnWebViewNavigated(WebViewNavigatedContext context)
     {
         _currentOrigin = context.Url.GetLeftPart(UriPartial.Authority);
+        lock (_navStampGate)
+        {
+            _lastNavigatedAtUtc = DateTimeOffset.UtcNow;
+        }
+
         _log?.Invoke($"[nav] 导航已到达：{context.Url}（origin → {_currentOrigin}）");
         Volatile.Read(ref _onNavigatedImpl)?.Invoke();
     }
