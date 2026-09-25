@@ -54,6 +54,20 @@ public class RecoveryPageBuilderTests
         Assert.Contains("Auto-retry in progress", script);
         Assert.DoesNotContain("导出诊断包", script);
     }
+
+    /// <summary>验证残留锁死原因（UiCopy.ReasonDshResidueLocked）同样经 JSON 转义落地、中英文分支各就各位（ADR residue-lock-fail-loud）。</summary>
+    [Fact]
+    public void ResidueLockedReason_Escaped_Payload_Bilingual()
+    {
+        string script = RecoveryPageBuilder.BuildScript(UiCopy.ReasonDshResidueLocked(english: false), Array.Empty<string>(), english: false);
+
+        Assert.Contains("u6B8B", script, StringComparison.OrdinalIgnoreCase); // “残”字转义，中文以 JSON 形态落地
+
+        string en = RecoveryPageBuilder.BuildScript(UiCopy.ReasonDshResidueLocked(english: true), Array.Empty<string>(), english: true);
+
+        Assert.Contains("cannot be safely reaped", en);
+        Assert.DoesNotContain("残留", en);
+    }
 }
 
 /// <summary>恢复页退出路由：与托盘退出同一条顺序契约——先批准闸门再关窗。</summary>

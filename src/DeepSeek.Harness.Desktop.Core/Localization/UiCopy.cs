@@ -207,6 +207,12 @@ public static class UiCopy
         ? "The runtime process exited unexpectedly; restarting…"
         : "运行时进程意外退出，正在自动重启";
 
+    /// <summary>恢复页：残留锁死原因（ADR residue-lock-fail-loud——残留占住文件/端口且无法安全回收，
+    /// 跳过重启防碰撞；用户手动结束残留进程后监督器下轮自动恢复）。</summary>
+    public static string ReasonDshResidueLocked(bool english) => english
+        ? "A leftover runtime process is holding files/ports and cannot be safely reaped; restart is paused to avoid a collision. End the leftover process and recovery will resume on its own."
+        : "检测到无法安全回收的残留运行时进程（占住文件/端口），已暂停自动重启以防冲突；手动结束残留进程后将自动恢复";
+
     // ======== 静态引导页登记（wwwroot/index.html；zh 常量 + EN 字典，被 verify-ui-copy 双向核对） ========
     // index.html 是静态文档，文案改动必须同步此登记（zh 字面量留在 HTML、英文收在 EN 字典），否则 verify-ui-copy 拦截。
 

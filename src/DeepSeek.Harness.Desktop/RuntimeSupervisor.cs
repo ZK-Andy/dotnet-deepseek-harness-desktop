@@ -10,7 +10,7 @@ public sealed class RuntimeSupervisor
     private readonly TimeSpan _restartTimeout;
     private readonly TimeSpan _recoveredRetryDelay;
     private readonly TimeSpan _failedRetryDelay;
-    private readonly Func<ValueTask> _showRecovery;
+    private readonly Func<bool, ValueTask> _showRecovery;
     private readonly Func<Uri, ValueTask> _navigate;
     private readonly Action<string>? _log;
 
@@ -19,7 +19,8 @@ public sealed class RuntimeSupervisor
     /// <param name="restartTimeout">单次重启等待 URL 的时限。</param>
     /// <param name="recoveredRetryDelay">重启未给出 URL 后的重试延迟（可调参数，见 <c>Infrastructure.Runtime.RuntimeTimeouts</c>）。</param>
     /// <param name="failedRetryDelay">恢复失败后的重试延迟（可调参数，同上）。</param>
-    /// <param name="showRecovery">展示恢复屏（如 WebView 显示"重启中"页）。</param>
+    /// <param name="showRecovery">展示恢复屏：参数为是否因残留锁死而展示（true = 带锁原因，
+    /// 恢复屏即 fail loud 界面；false = 普通崩溃原因）。</param>
     /// <param name="navigate">导航 WebView 到新 URL。</param>
     /// <param name="log">日志回调（可选）。</param>
     public RuntimeSupervisor(
@@ -27,7 +28,7 @@ public sealed class RuntimeSupervisor
         TimeSpan restartTimeout,
         TimeSpan recoveredRetryDelay,
         TimeSpan failedRetryDelay,
-        Func<ValueTask> showRecovery,
+        Func<bool, ValueTask> showRecovery,
         Func<Uri, ValueTask> navigate,
         Action<string>? log = null)
     {
@@ -61,7 +62,18 @@ public sealed class RuntimeSupervisor
 
             try
             {
-                await _showRecovery();
+                // 残留预检（ADR residue-lock-fail-loud）：verified 僵尸顺手杀；杀不掉/不敢杀
+                // 即跳过本轮重启——盲目 spawn 只会端口碰撞。恢复屏带锁原因（恢复页提示），
+                // failedRetryDelay 后重探（用户手动清理后自动恢复）
+                if (_host.TryDetectUnreapableResidue())
+                {
+                    _log?.Invoke("[supervisor] 残留无法安全回收，跳过本轮重启（fail loud，恢复屏已带锁原因）");
+                    await _showRecovery(true);
+                    await Task.Delay(_failedRetryDelay, ct);
+                    continue;
+                }
+
+                await _showRecovery(false);
                 Uri? url = await _host.RestartAsync(_restartTimeout, ct);
                 if (url is not null)
                 {

@@ -81,18 +81,21 @@ public sealed partial class HarnessRuntimeHost : IDisposable
     /// <summary>StartAsync 的门内主体（Stop 之后的部分）：残留收敛 + spawn + 交接处置 + 端口记忆。</summary>
     private async Task<Uri?> StartInnerAsync(TimeSpan timeout, CancellationToken ct)
     {
-        // 冷启动（_port 未初始化）时收敛上次遗留的运行时残留（ADR self-update-exit-reaps-dsh-child 缺口 B）。
-        // 两条判据并用：.dsh-pid 记录复验（跨平台快路径）+ 血统扫描（记录被后续 spawn 覆盖后的主路径）。
-        // 仅冷启动做：进程内重启时在管运行时由 StopCore 与交接处置负责。
+        // 冷启动（_port 未初始化）时收敛上次遗留的运行时残留（ADR self-update-exit-reaps-dsh-child 缺口 B
+        // + residue-lock-fail-loud）。两条判据并用：.dsh-pid 记录复验（跨平台快路径）+ 血统扫描
+        // （记录被后续 spawn 覆盖后的主路径）。仅冷启动做：进程内重启时在管运行时由 StopCore 与交接处置负责。
         bool coldStart = _port is null;
         if (coldStart)
         {
             _log?.Invoke($"[host] 冷启动：清扫孤儿 dsh（{ResolvePidFilePath()}）");
-            OrphanDshReaper.Reap(
-                ResolvePidFilePath(),
-                RuntimeLineageProbes.ReadToken,
-                RuntimeLineageProbes.KillTree,
-                _log);
+            if (TryDetectUnreapableResidue())
+            {
+                // 杀不掉即 fail loud：盲目 spawn 只会端口碰撞，不 spawn（return null 走既有降级路径），
+                // 监督器随后每轮带锁原因上屏（恢复页提示），明细见 EnsureNoResidue 留痕行
+                _log?.Invoke("[host] 冷启动残留无法回收，跳过 spawn（fail loud）：手动清理残留进程后重启即恢复");
+                return null;
+            }
+
             HarvestLineageResidue("冷启动");
         }
 
@@ -194,6 +197,22 @@ public sealed partial class HarnessRuntimeHost : IDisposable
     public Task<Uri?> RestartAsync(TimeSpan timeout, CancellationToken ct = default)
     {
         return StartAsync(timeout, ct);
+    }
+
+    /// <summary>预检运行时残留是否"杀不掉"（ADR residue-lock-fail-loud）：verified 僵尸顺手杀，
+    /// 仍活或活着但验不明归属即报 <see cref="OrphanDshReaper.ResidueState.Unreapable"/>。
+    /// 监督器每轮重启前调用——跳过注定碰撞的 spawn，恢复屏带锁原因（恢复页提示）。
+    /// 人读原因由调用方按 UI 语言经 <c>UiCopy</c> 本地化（宿主不掌握语言，见 R3）。</summary>
+    /// <returns>true = 残留无法安全回收，不得 spawn（fail loud）；false = 可直接重启。</returns>
+    public bool TryDetectUnreapableResidue()
+    {
+        OrphanDshReaper.ResidueState state = OrphanDshReaper.EnsureNoResidue(
+            ResolvePidFilePath(),
+            RuntimeLineageProbes.ReadToken,
+            RuntimeLineageProbes.TryIsAlive,
+            RuntimeLineageProbes.KillTree,
+            _log);
+        return state == OrphanDshReaper.ResidueState.Unreapable;
     }
 
     /// <summary>当在管运行时退出时完成（用于崩溃监督；无在管运行时立即完成）。本进程子进程挂

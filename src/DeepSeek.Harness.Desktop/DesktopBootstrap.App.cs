@@ -170,7 +170,7 @@ public sealed partial class DesktopBootstrap
             restartTimeout: TimeSpan.FromSeconds(_timeouts.SupervisorRestartTimeoutSeconds),
             recoveredRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorRecoveredRetryDelaySeconds),
             failedRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorFailedRetryDelaySeconds),
-            showRecovery: () => ShowRecoveryPageAsync(app, host),
+            showRecovery: isLockBlocked => ShowRecoveryPageAsync(app, host, isLockBlocked),
             navigate: url => NavigateAfterAdoptAsync(app, navCallbacks, url),
             log: HostLog.Write);
         // 引导期门控：宿主尚无 dsh 进程时 WaitForExitAsync 立即完成，监督器会空转进恢复循环
@@ -206,7 +206,8 @@ public sealed partial class DesktopBootstrap
     }
 
     /// <summary>恢复屏展示 + 恢复周期起点打点（ADR adopt-skip-navigate-on-self-reload）。</summary>
-    private ValueTask ShowRecoveryPageAsync(AppSetup app, HostSetup host)
+    /// <param name="isLockBlocked">残留锁死跳过重启（ADR residue-lock-fail-loud）：原因取锁文案（恢复页提示），否则普通崩溃原因。</param>
+    private ValueTask ShowRecoveryPageAsync(AppSetup app, HostSetup host, bool isLockBlocked = false)
     {
         // 周期起点：子进程退出后、RestartAsync 等待前。周期内的导航到达即页内自刷
         // （市场 doRestart 轮询到新 boot 即 reload），收养 navigate 据此免导航。
@@ -215,8 +216,11 @@ public sealed partial class DesktopBootstrap
         // 导出诊断/退出动作。desktop.* 走 Ryn 层 IPC 不依赖 dsh 存活；数据经 textContent
         // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
         var tail = host.Host.StderrTail.TakeLast(12).ToList();
+        string reason = isLockBlocked
+            ? UiCopy.ReasonDshResidueLocked(_uiLocale.IsEnglish)
+            : UiCopy.ReasonRuntimeCrashed(_uiLocale.IsEnglish);
         _ = app.WindowAccessor.Current.EvaluateJavaScriptAsync(
-            RecoveryPageBuilder.BuildScript(UiCopy.ReasonRuntimeCrashed(_uiLocale.IsEnglish), tail, _uiLocale.IsEnglish));
+            RecoveryPageBuilder.BuildScript(reason, tail, _uiLocale.IsEnglish));
         return ValueTask.CompletedTask;
     }
 
