@@ -31,7 +31,8 @@ public static partial class MarketInstallHelper
     /// <summary>
     /// 校验一个 registry spec（<c>name</c> / <c>name@version|tag</c> / <c>@scope/name[@version|tag]</c>）。
     /// 拒绝：空串、前导 <c>-</c>、含空白或反斜杠、含 <c>://</c>、<c>file:</c>/<c>link:</c> 前缀、
-    /// scoped 缺 <c>/</c>、包名或版本形状不合。
+    /// scoped 缺 <c>/</c>、版本 <c>^</c> 前缀（pnpm 不支持，ADR pnpm-caret-spec-rejection）、
+    /// 包名或版本形状不合。
     /// </summary>
     /// <param name="spec">待校验 spec。</param>
     /// <param name="reason">不合法原因（合法时为空串）。</param>
@@ -76,6 +77,14 @@ public static partial class MarketInstallHelper
         }
 
         (string name, string? version) = SplitSpec(spec);
+        if (version is not null && version.StartsWith('^'))
+        {
+            // pnpm 不支持 caret range（竞品 ERR_PNPM_SPEC_NOT_SUPPORTED 全员安装失败教训）：
+            // 形状正则顺带也能拒，但独立断言不依赖正则附带效果，放宽即失守
+            reason = $"版本含 pnpm 不支持的 '^' 前缀（ERR_PNPM_SPEC_NOT_SUPPORTED）：{version}";
+            return false;
+        }
+
         if (!PackageNamePattern().IsMatch(name))
         {
             reason = $"包名形状不合法：{name}";

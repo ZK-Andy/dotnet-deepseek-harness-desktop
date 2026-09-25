@@ -59,6 +59,11 @@ public static class UiCopy
         ? $"Could not resolve the global dsh version after install ({dshSpec}). Make sure the npm global bin of that node (the bin under `npm config get prefix`) is on PATH, or run `npm install -g {dshSpec}` manually."
         : $"安装后未能解析全局 dsh 版本（{dshSpec}）。请确认该 node 的 npm 全局 bin（`npm config get prefix` 下的 bin）已加入 PATH，或手动执行 `npm install -g {dshSpec}`。";
 
+    /// <summary>引导：DshSpec 非 registry 形态（caret range 等 pnpm 不支持形，ADR pnpm-caret-spec-rejection）。</summary>
+    public static string BootstrapInvalidDshSpec(string dshSpec, string reason, bool english) => english
+        ? $"Invalid DshSpec ({dshSpec}): {reason}. Use a registry spec like @deepseek-ai/dsh@alpha."
+        : $"DshSpec 非法（{dshSpec}）：{reason}。请用 registry 形态，如 @deepseek-ai/dsh@alpha。";
+
     /// <summary>引导：当前平台无 Node 发行包坐标。</summary>
     public static string BootstrapUnsupportedPlatform(bool english) => english
         ? "No Node distribution archive coordinates for this platform"

@@ -247,6 +247,25 @@ public class RuntimeBootstrapTests
         Assert.Contains("sudo npm install -g @deepseek-ai/dsh@alpha", outcome.Error);
     }
 
+    /// <summary>验证 DshSpec 含 caret range 时秒级 fail loud：停在 InstallDsh 步，一次 npm 都不跑，中英文案分支（ADR pnpm-caret-spec-rejection）。</summary>
+    [Fact]
+    public async Task RunAsync_CaretDshSpec_FailsLoudWithoutSpawning()
+    {
+        (RuntimeBootstrapHooks hooks, List<string> calls) = GlobalNodeHooks();
+        BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@^0.1.2" }, _ => { }, hooks, english: false, CancellationToken.None);
+        Assert.False(outcome.Success);
+        Assert.Equal(BootstrapStep.InstallDsh, outcome.Step);
+        Assert.Contains("ERR_PNPM_SPEC_NOT_SUPPORTED", outcome.Error);
+        Assert.DoesNotContain(calls, c => c.Contains("install -g", StringComparison.Ordinal));
+
+        (RuntimeBootstrapHooks enHooks, _) = GlobalNodeHooks();
+        BootstrapOutcome en = await RuntimeBootstrap.RunAsync(
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@^0.1.2" }, _ => { }, enHooks, english: true, CancellationToken.None);
+        Assert.Contains("Invalid DshSpec", en.Error);
+        Assert.DoesNotContain("非法", en.Error);
+    }
+
     /// <summary>验证安装成功但 PATH dsh --version 无法解析时失败，停在 VerifyDsh 步。</summary>
     [Fact]
     public async Task RunAsync_VerifyFails_ReturnsError()

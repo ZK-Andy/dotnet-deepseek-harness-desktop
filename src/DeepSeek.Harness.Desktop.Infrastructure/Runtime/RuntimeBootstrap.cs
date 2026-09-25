@@ -66,6 +66,13 @@ public static partial class RuntimeBootstrap
 
             // ② 经该 node 的 npm 把 dsh 装到系统全局位（装 / 更新到 @alpha）
             step = BootstrapStep.InstallDsh;
+            // DshSpec 合约 = registry 形态（ADR pnpm-caret-spec-rejection）：appsettings 可配，
+            // 配错（caret range 等 pnpm 不支持形）必须秒级 fail loud，不能等 npm 跑数分钟才失败
+            if (!Plugins.MarketInstallHelper.IsValidRegistrySpec(options.DshSpec, out string specReason))
+            {
+                return Fail(BootstrapStep.InstallDsh, UiCopy.BootstrapInvalidDshSpec(options.DshSpec, specReason, english));
+            }
+
             report(new BootstrapProgress(BootstrapStep.InstallDsh, $"安装 dsh（{options.DshSpec}）"));
             (int exit, string? stdout, string? stderr) = await RunNpmInstallGlobalAsync(options, node, hooks, english, ct).ConfigureAwait(false);
             if (exit != 0)

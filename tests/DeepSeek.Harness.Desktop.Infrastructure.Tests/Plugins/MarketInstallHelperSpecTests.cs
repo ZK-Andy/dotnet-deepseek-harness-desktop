@@ -15,6 +15,7 @@ public class MarketInstallHelperSpecTests
     [InlineData("pkg@next")]
     [InlineData("@scope/name")]
     [InlineData("@deepseek-ai/dsh-mcp-client@0.1.1-rc.2")]
+    [InlineData("@deepseek-ai/dsh@alpha")]
     public void IsValidRegistrySpec_AcceptsRegistryShapes(string spec) =>
         Assert.True(MarketInstallHelper.IsValidRegistrySpec(spec, out string reason), reason);
 
@@ -34,10 +35,21 @@ public class MarketInstallHelperSpecTests
     [InlineData("UPPER")]
     [InlineData("@Scope/name")]
     [InlineData("pkg@1.0.0 beta")]
+    [InlineData("dshmarket@^1.2.3")]
+    [InlineData("@scope/name@^0.1.1")]
+    [InlineData("pkg@^latest")]
     public void IsValidRegistrySpec_RejectsInjectionAndLocalShapes(string spec)
     {
         Assert.False(MarketInstallHelper.IsValidRegistrySpec(spec, out string reason));
         Assert.NotEmpty(reason);
+    }
+
+    /// <summary>验证 caret 前缀被显式拒绝（非顺带形状错误）：原因点名 ERR_PNPM_SPEC_NOT_SUPPORTED（竞品教训钉子）。</summary>
+    [Fact]
+    public void IsValidRegistrySpec_RejectsCaretWithNamedReason()
+    {
+        Assert.False(MarketInstallHelper.IsValidRegistrySpec("dshmarket@^1.2.3", out string reason));
+        Assert.Contains("ERR_PNPM_SPEC_NOT_SUPPORTED", reason);
     }
 
     /// <summary>验证 registry 来源的非法 spec 在拼参数前被拒：执行器一次都不跑，且日志留原因。</summary>
