@@ -13,8 +13,9 @@
 # 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
 # mac runner 有 WindowServer 会话，①应命中；若 WKWebView/WindowServer 在 runner
 # 会话受限使壳提前退出（①前），②为保底判定位（已记录边界，同 Linux CI）。
-# 诊断分支 D2（用完即删，见 echo_verdict_lines/wait_verdict）：终态 (a)/(b) 二选一实验——
-# verdict 行回显 + verdict 落定后再截图；不改任何判定逻辑，确证后整段删除。
+# verdict 观测 + 截图门（ADR macos-cookie-grace-reload）：应用侧 verdict/重进/探针行回显到 step 日志
+# （token 脱敏），截图等 verdict 行数静默后再拍（应用侧 grace 重载可能改写终页）；
+# 到达后拍截图内容见证（与 Linux 同阈值，中央裁剪避菜单栏/Dock）。判定逻辑见各函数。
 #
 # 信号源 = <DSH_HOME>/logs/host.log（HostLog 双写 stdout 与该文件；unix 形态 stdout
 # 重定向同样捕获，双源并查，去重防双计）。
@@ -43,8 +44,11 @@ APP_NAME="DeepSeek.Harness.Desktop"
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
 # 落定窗：①出现后等导航提交（commit 延迟毫秒级，90s 只防 runner 卡顿）。
 SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
-# 诊断 D2：截图前等应用侧 verdict 行（探针 15s×2 + 重进导航 30s + 再探针 30s ≈ 95s，取 150s 有界）。
+# 截图前等应用侧 verdict 行静默：探针 + grace 重载 + 再探针全程可超 100s，取 150s 有界（只定截图时机，不判门）。
 VERDICT_WAIT="${SMOKE_VERDICT_SECONDS:-150}"
+# 裁决后重绘窗（秒）：提交回调早于新页出像素，立刻拍易拍到上一跳旧帧（Linux 同款）；非数字按默认。
+SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
+[[ "$SMOKE_REPAINT_SECONDS" =~ ^[0-9]+$ ]] || SMOKE_REPAINT_SECONDS=3
 FULL_RE='\[host\] dsh web ='
 BOOT_RE='\[bootstrap\] 引导开始：'
 PASS_RE="$FULL_RE|$BOOT_RE"
@@ -73,22 +77,30 @@ smoke_shot() { # $1=文件名
     || echo "note: 截图跳过（无 WindowServer 会话或 screencapture 不可用）" >&2
 }
 
-# 诊断 D2（用完即删）：应用侧 verdict/重进/探针行回显到 step 日志（token 脱敏），
-# 让 CI 日志直接回答终态是 healthy 还是 auth/unknown。判定逻辑不动。
+# 应用侧 verdict/重进/探针行回显到 step 日志（token 脱敏）：CI 日志直接可见终态是 healthy
+# 还是 auth/unknown。只读观测，不判门。
 echo_verdict_lines() {
-  { grep -ahE '\[nav\] 页面裁决=|\[nav\] 检测到鉴权页|鉴权探针' "$OUT" 2>/dev/null; [[ -f "${LOG:-}" ]] && grep -ahE '\[nav\] 页面裁决=|\[nav\] 检测到鉴权页|鉴权探针' "$LOG" 2>/dev/null; true; } \
+  { grep -ahE '\[nav\] 页面裁决=|\[nav\] 检测到鉴权页|鉴权探针|终页非健康' "$OUT" 2>/dev/null; [[ -f "${LOG:-}" ]] && grep -ahE '\[nav\] 页面裁决=|\[nav\] 检测到鉴权页|鉴权探针|终页非健康' "$LOG" 2>/dev/null; true; } \
     | sed -E 's/token=[^& ]*/token=***/g' | sort -u >&2 || true
 }
 
-# 诊断 D2（用完即删）：有界等最后一条裁决行出现。$1=秒（默认 VERDICT_WAIT）。
+# verdict 静默等待：截图时机 aid，不判门（恒 0）。等裁决行出现后"裁决行数 + grace 触发行数"
+# 双双 QUIET 秒不变即返；grace 触发（应用侧重载在途）即重置静默计数——文本相同的两条裁决行被
+# sort -u 压成一行也误不了事。预算耗尽按现状截图。
+# $1=总预算秒（默认 VERDICT_WAIT），$2=静默秒（默认 5）。
+# 事件驱动（双计数静默），非固定睡眠——应用侧 1 条还是 2 条 verdict（grace 重载）都对齐终页。
 wait_verdict() {
-  local i
-  for i in $(seq 1 "${1:-$VERDICT_WAIT}"); do
-    [[ -n "$(page_verdict_state)" ]] && { echo "note: 已见页面裁决（用时 ${i}s）" >&2; return 0; }
+  local budget="${1:-$VERDICT_WAIT}" quiet="${2:-5}" i vlast=-1 glast=-1 vstable=0 n g
+  for i in $(seq 1 "$budget"); do
+    n=$( { grep -ahE "$PAGE_LINE_RE" "$OUT" 2>/dev/null; [[ -f "${LOG:-}" ]] && grep -ahE "$PAGE_LINE_RE" "$LOG" 2>/dev/null; true; } | sort -u | grep -c . || true )
+    g=$( { grep -ahE '终页非健康.*grace' "$OUT" 2>/dev/null; [[ -f "${LOG:-}" ]] && grep -ahE '终页非健康.*grace' "$LOG" 2>/dev/null; true; } | sort -u | grep -c . || true )
+    if [[ "$n" -gt 0 && "$n" -eq "$vlast" && "$g" -eq "$glast" ]]; then vstable=$((vstable + 1)); else vstable=0; fi
+    vlast="$n"; glast="$g"
+    if [[ "$vstable" -ge "$quiet" ]]; then echo "note: 页面裁决已稳定（${n} 行，静默 ${vstable}s，总用时 ${i}s）" >&2; return 0; fi
     sleep 1
   done
-  echo "note: ${1:-$VERDICT_WAIT}s 内未见页面裁决行" >&2
-  return 1
+  echo "note: verdict 等待预算耗尽（末态 ${vlast} 行），按现状截图" >&2
+  return 0
 }
 
 # 落定等待与心跳实现在 smoke-settle-lib.sh（上已 source）。
@@ -121,14 +133,36 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   timeout_fallback >/dev/null 2>&1 && tpass "fallback-boot-flips" || tfail "fallback-boot-flips"
   : >"$OUT"; : >"$LOG"
   timeout_fallback >/dev/null 2>&1 && tfail "fallback-empty-should-not-flip" || tpass "fallback-empty-noflip"
-  # 诊断 D2（用完即删）：verdict 等待与回显回归
+  # verdict 静默等待：单行静默即返；空文件耗尽预算仍 0（只定截图时机，不判门）；增长后稳定才返
   printf '[nav] 页面裁决=healthy（origin=x 可见文本 10 字）\n' >"$OUT"; : >"$LOG"
-  wait_verdict 3 >/dev/null 2>&1 && tpass "verdict-wait-seen" || tfail "verdict-wait-seen"
+  wait_verdict 10 2 >/dev/null 2>&1 && tpass "verdict-quiescent-seen" || tfail "verdict-quiescent-seen"
   : >"$OUT"; : >"$LOG"
-  wait_verdict 2 >/dev/null 2>&1 && tfail "verdict-wait-missing-should-fail" || tpass "verdict-wait-missing-fails"
+  wait_verdict 3 2 >/dev/null 2>&1 && tpass "verdict-quiescent-missing-proceeds" || tfail "verdict-quiescent-missing-proceeds"
+  printf '[nav] 页面裁决=healthy（origin=x 可见文本 10 字）\n' >"$OUT"
+  ( sleep 1; printf '[nav] 页面裁决=auth（origin=x 可见文本 5 字）\n' >>"$OUT" ) &
+  bg=$!
+  wait_verdict 10 2 >/dev/null 2>&1
+  [[ "$(grep -cE '页面裁决=' "$OUT")" -eq 2 ]] && tpass "verdict-quiescent-waits-growth" || tfail "verdict-quiescent-waits-growth"
+  wait "$bg" 2>/dev/null || true
+  # grace 感知：verdict 稳定中途出现 grace 触发行 → 静默重置，不早返
+  printf '[nav] 页面裁决=unknown（x）\n' >"$OUT"; : >"$LOG"
+  ( sleep 1; printf '[nav] 终页非健康（unknown），grace 8s 后无 token 重载一次\n' >>"$OUT"; sleep 1; printf '[nav] 页面裁决=unknown（x，重载后）\n' >>"$OUT" ) &
+  bg=$!
+  wait_verdict 12 2 >/dev/null 2>&1
+  [[ "$(grep -cE '页面裁决=' "$OUT")" -eq 2 ]] && tpass "verdict-quiescent-grace-reset" || tfail "verdict-quiescent-grace-reset"
+  wait "$bg" 2>/dev/null || true
   printf '[nav] 页面裁决=auth（origin=http://127.0.0.1:1/?token=SECRET 可见文本 5 字）\n' >"$OUT"
   echo_verdict_lines 2>&1 | grep -q 'SECRET' && tfail "verdict-echo-masks-token" || tpass "verdict-echo-masks-token"
   echo_verdict_lines 2>&1 | grep -q 'token=\*\*\*' && tpass "verdict-echo-keeps-marker" || tfail "verdict-echo-keeps-marker"
+  # mac 截图内容见证夹具（中央裁剪）：白（401 墙形态）判失败，浅底深块（UI 形态）判通过
+  if command -v convert >/dev/null 2>&1; then
+    convert -size 1024x768 xc:white "$tdir/m_white.png" 2>/dev/null
+    convert -size 1024x768 xc:"#cccccc" -fill "#222222" -draw "rectangle 100,84 400,684" "$tdir/m_ui.png" 2>/dev/null
+    smoke_capture_witness "$tdir/m_white.png" "800x600+0+0" "center" >/dev/null 2>&1 && tfail "mac-witness-blank-should-fail" || tpass "mac-witness-blank-fails"
+    smoke_capture_witness "$tdir/m_ui.png" "800x600+0+0" "center" >/dev/null 2>&1 && tpass "mac-witness-ui-passes" || tfail "mac-witness-ui-fails"
+  else
+    echo "skip: 无 convert，跳过 mac 截图内容见证夹具"
+  fi
   rm -rf "$tdir"
   [[ $fail -eq 0 ]] && echo "self-test: PASS" || echo "self-test: FAIL"
   return $fail
@@ -181,9 +215,18 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
     if wait_settled "$SMOKE_PID"; then
       rc=0
       smoke_verdict "$OUT" "$LOG"
-      wait_verdict || true
+      wait_verdict
       echo_verdict_lines
+      # 裁决尘埃落定后再等有界重绘窗：提交回调早于新页出像素，立刻拍易拍到上一跳旧帧；只拍才睡。
+      if [[ -n "${SMOKE_SHOT_DIR:-}" ]]; then
+        sleep "$SMOKE_REPAINT_SECONDS"
+      fi
       smoke_shot "smoke-macos.png"
+      # 内容见证（与 Linux 同阈值，中央裁剪避菜单栏/Dock）：401 墙/引导页像素即红，截图缺失亦红。
+      # 落定/裁决门：显示腿 mac 开门（ADR macos-cookie-grace-reload）——到达过不算绿。
+      if [[ -n "${SMOKE_SHOT_DIR:-}" ]]; then
+        smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-macos.png" "800x600+0+0" "center" || rc=1
+      fi
       # PASS 也打印壳输出尾部：壳何时/为何退出（如窗口创建即退出）需要证据在案
       echo "--- 壳输出尾部（PASS 证据）---" >&2
       tail -5 "$OUT" >&2 || true
@@ -212,7 +255,6 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
       if wait_settled ""; then
         rc=0
         smoke_verdict "$OUT" "$LOG"
-        wait_verdict || true
         echo_verdict_lines
         smoke_shot "smoke-macos.png"
         echo "--- 壳输出尾部（PASS 证据）---" >&2

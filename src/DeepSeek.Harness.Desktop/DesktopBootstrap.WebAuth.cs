@@ -8,9 +8,10 @@ namespace DeepSeek.Harness.Desktop;
 public sealed partial class DesktopBootstrap
 {
     /// <summary>
-    /// 网页会话落定自愈（ADR webauth-token-reentry + page-verdict-gate）：第二跳提交后，
-    /// token→303→cookie 链可能在 WebView 未落定（终页为 dsh 401 文本）。裁决为鉴权页则有界重进
+    /// 网页会话落定自愈（ADR webauth-token-reentry + page-verdict-gate + macos-cookie-grace-reload）：
+    /// 第二跳提交后，token→303→cookie 链可能在 WebView 未落定（终页为 dsh 401 文本）。裁决为鉴权页则有界重进
     /// token URL 一次，再坏只 fail loud（不挡启动、不循环）。探针超时/异常按未知放过启动；
+    /// macOS 域内终态非健康时再加一次有界 grace 重载（cookie 落盘宽限后无 token 重载裸 origin 做纯 cookie 检验）；
     /// 冒烟显示腿（deb）只认 <c>页面裁决=healthy</c>（unknown/auth 皆红），未置位腿（mac/win）仍按到达落定、auth 仍红。
     /// </summary>
     private async Task SettleWebSessionAsync(AppSetup app, DshWebUrl url, CancellationToken ct)
@@ -20,14 +21,36 @@ public sealed partial class DesktopBootstrap
         Core.WebAuthRecovery.PageVerdictDetail detail = Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin);
         if (detail.Verdict != Core.WebAuthRecovery.PageVerdict.Auth)
         {
-            LogPageVerdict(detail, expectedOrigin, reentered: false);
+            LogPageVerdict(detail, expectedOrigin, string.Empty);
+        }
+        else
+        {
+            HostLog.Write("[nav] 检测到鉴权页，重进 token URL（第 1 次）");
+            await NavigateAndAwaitCommitAsync(app, url.Value, ct).ConfigureAwait(false);
+            sample = await ProbePageSampleAsync(app, ct).ConfigureAwait(false);
+            detail = Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin);
+            LogPageVerdict(detail, expectedOrigin, "，重进后");
+        }
+
+        if (detail.Verdict == Core.WebAuthRecovery.PageVerdict.Healthy)
+        {
             return;
         }
 
-        HostLog.Write("[nav] 检测到鉴权页，重进 token URL（第 1 次）");
-        await NavigateAndAwaitCommitAsync(app, url.Value, ct);
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        // macOS grace 重载（ADR macos-cookie-grace-reload，有界 1 次）：303 跟进与 cookie 落盘竞速时首轮
+        // 终页可能是 401；宽限后无 token 重载裸 origin——cookie 若已落盘即 200 UI，否则仍 401，
+        // 纯 cookie 检验，不重铸（铸币只在 token 跳发生）。退出取消照常上抛。
+        HostLog.Write($"[nav] 终页非健康（{detail.Verdict}），grace {_timeouts.AuthGraceReloadDelaySeconds}s 后无 token 重载一次");
+        await Task.Delay(TimeSpan.FromSeconds(_timeouts.AuthGraceReloadDelaySeconds), ct).ConfigureAwait(false);
+        await NavigateAndAwaitCommitAsync(app, url.AuthorityRoot, ct).ConfigureAwait(false);
         sample = await ProbePageSampleAsync(app, ct).ConfigureAwait(false);
-        LogPageVerdict(Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin), expectedOrigin, reentered: true);
+        detail = Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin);
+        LogPageVerdict(detail, expectedOrigin, "，grace 重载后");
     }
 
     /// <summary>
@@ -37,23 +60,22 @@ public sealed partial class DesktopBootstrap
     /// </summary>
     /// <param name="detail">Core 裁决明细（采样只拆一次，此处不重复拆）。</param>
     /// <param name="expectedOrigin">期望 origin（无采样时用于留痕）。</param>
-    /// <param name="reentered">是否已重进过 token URL。</param>
-    private static void LogPageVerdict(Core.WebAuthRecovery.PageVerdictDetail detail, string expectedOrigin, bool reentered)
+    /// <param name="recovery">恢复动作标记（空串 = 无动作；如"重进后"/"grace 重载后"）：只进日志尾巴，不参与裁决。</param>
+    private static void LogPageVerdict(Core.WebAuthRecovery.PageVerdictDetail detail, string expectedOrigin, string recovery)
     {
-        string tail = reentered ? "，重进后" : string.Empty;
         string where = detail.HasSample
             ? $"origin={detail.Origin} 可见文本 {detail.VisibleTextLength} 字"
             : $"探针无采样，期望 origin={expectedOrigin}";
         switch (detail.Verdict)
         {
             case Core.WebAuthRecovery.PageVerdict.Healthy:
-                HostLog.Write($"[nav] 页面裁决={Core.WebAuthRecovery.VerdictHealthy}（{where}{tail}）");
+                HostLog.Write($"[nav] 页面裁决={Core.WebAuthRecovery.VerdictHealthy}（{where}{recovery}）");
                 break;
             case Core.WebAuthRecovery.PageVerdict.Auth:
-                HostLog.Write($"[nav] 页面裁决={Core.WebAuthRecovery.VerdictAuth}（{where}{tail}，请重开 dsh 打印的 URL；启动继续）");
+                HostLog.Write($"[nav] 页面裁决={Core.WebAuthRecovery.VerdictAuth}（{where}{recovery}，请重开 dsh 打印的 URL；启动继续）");
                 break;
             default:
-                HostLog.Write($"[nav] 页面裁决={Core.WebAuthRecovery.VerdictUnknown}（{where}{tail}）");
+                HostLog.Write($"[nav] 页面裁决={Core.WebAuthRecovery.VerdictUnknown}（{where}{recovery}）");
                 break;
         }
     }

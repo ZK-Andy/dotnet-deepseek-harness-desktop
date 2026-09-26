@@ -118,3 +118,29 @@ heartbeat() {
 timeout_fallback() {
   [[ ${rc:-1} -ne 0 ]] && ! log_has "$FULL_RE" && log_has "$BOOT_RE"
 }
+
+# 截图内容见证（ADR page-verdict-gate）：外部 origin 上 DOM 探针回不来，故内容真伪由**截图本身**判——
+# 近空白（401 墙：实测 mean≈1.00/sd≈0.04）与深色引导页（mean≈0.14）判失败，真 UI（mean≈0.81/sd≈0.13）通过。
+# 阈值取自 CI 实测四图；无 convert 即 fail loud（调用点已限定显示腿）。
+# $1=截图路径；$2=裁剪几何（默认 1200x800+0+0，Linux Xvfb 全屏沿用）；
+# $3=gravity（默认空；mac 全屏截图含菜单栏/Dock 时传 center 取中央避边框 chrome）。0=内容像 UI。
+# bash 3.2 安全：无数组展开（mac runner 默认 bash 3.2，空数组 + set -u 即炸）。
+smoke_capture_witness() {
+  local shot="$1" crop="${2:-1200x800+0+0}" gravity="${3:-}" stats mean sd
+  [[ -s "$shot" ]] || { echo "error: 截图缺失，内容见证不通过：$shot" >&2; return 1; }
+  command -v convert >/dev/null 2>&1 || { echo "error: 无 convert，截图内容见证无法执行（显示腿须装 imagemagick）" >&2; return 1; }
+  if [[ -n "$gravity" ]]; then
+    stats="$(convert "$shot" -gravity "$gravity" -crop "$crop" +repage -colorspace Gray -format '%[fx:mean] %[fx:standard_deviation]' info: 2>/dev/null || true)"
+  else
+    stats="$(convert "$shot" -crop "$crop" +repage -colorspace Gray -format '%[fx:mean] %[fx:standard_deviation]' info: 2>/dev/null || true)"
+  fi
+  mean="${stats%% *}"; sd="${stats##* }"
+  if [[ -z "$mean" || -z "$sd" || "$mean" == "$stats" ]]; then
+    echo "error: 截图统计失败（ImageMagick），内容见证不通过" >&2; return 1
+  fi
+  if awk "BEGIN{exit !($mean >= 0.35 && $sd >= 0.08)}"; then
+    echo "note: 截图内容见证通过（mean=$mean sd=$sd）" >&2; return 0
+  fi
+  echo "error: 截图内容见证不通过（mean=$mean sd=$sd）：近空白/深色页（401 墙或引导页）不算 UI" >&2
+  return 1
+}

@@ -70,24 +70,8 @@ LIB="$SCRIPT_DIR/smoke-settle-lib.sh"
 # shellcheck disable=SC1091
 source "$LIB"
 
-# 截图内容见证（ADR page-verdict-gate）：外部 origin 上 DOM 探针回不来，故内容真伪由**截图本身**判——
-# 近空白（401 墙：实测 mean≈1.00/sd≈0.04）与深色引导页（mean≈0.14）判失败，真 UI（mean≈0.81/sd≈0.13）通过。
-# 阈值取自 CI 实测四图；无 convert 即 fail loud（调用点已限定显示腿，见 ADR smoke-witness-real-and-eval-first-hop）。
-smoke_capture_witness() { # $1=截图路径；0=内容像 UI
-  local shot="$1" stats mean sd
-  [[ -s "$shot" ]] || { echo "error: 截图缺失，内容见证不通过：$shot" >&2; return 1; }
-  command -v convert >/dev/null 2>&1 || { echo "error: 无 convert，截图内容见证无法执行（显示腿须装 imagemagick）" >&2; return 1; }
-  stats="$(convert "$shot" -crop 1200x800+0+0 +repage -colorspace Gray -format '%[fx:mean] %[fx:standard_deviation]' info: 2>/dev/null || true)"
-  mean="${stats%% *}"; sd="${stats##* }"
-  if [[ -z "$mean" || -z "$sd" || "$mean" == "$stats" ]]; then
-    echo "error: 截图统计失败（ImageMagick），内容见证不通过" >&2; return 1
-  fi
-  if awk "BEGIN{exit !($mean >= 0.35 && $sd >= 0.08)}"; then
-    echo "note: 截图内容见证通过（mean=$mean sd=$sd）" >&2; return 0
-  fi
-  echo "error: 截图内容见证不通过（mean=$mean sd=$sd）：近空白/深色页（401 墙或引导页）不算 UI" >&2
-  return 1
-}
+# 截图内容见证实现在 smoke-settle-lib.sh（上已 source）：`smoke_capture_witness` 显示腿共用，
+# Linux 沿用默认裁剪几何（Xvfb 全屏），阈值与既有自测夹具不变（R1：禁止手抄复刻）。
 
 # 判定结论（ADR smoke-runner-deepening）：命中 ① 全链还是 ② 安装链必须打印成结论。
 smoke_verdict() { # $1=日志
