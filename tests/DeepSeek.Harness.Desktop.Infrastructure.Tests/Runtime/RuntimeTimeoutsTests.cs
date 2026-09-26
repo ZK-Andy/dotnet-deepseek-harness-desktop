@@ -75,6 +75,7 @@ public class RuntimeTimeoutsTests
             "SupervisorJoinTimeoutSeconds":12,"SupervisorRestartTimeoutSeconds":62,
             "SupervisorRecoveredRetryDelaySeconds":13,"SupervisorFailedRetryDelaySeconds":14,
             "HealthInitialDelaySeconds":15,"BootstrapSettleTimeoutSeconds":16,"NavCommitTimeoutSeconds":17,
+            "AuthProbeTimeoutSeconds":25,
             "IpcServeTimeoutSeconds":18,"IpcAcceptRetryDelaySeconds":19,
             "VersionProbeTimeoutSeconds":20,"BannerMaxAttempts":21,"BannerRetryDelaySeconds":22,
             "PushMaxAttempts":23,"PushRetryDelayMilliseconds":24}}
@@ -96,6 +97,7 @@ public class RuntimeTimeoutsTests
         Assert.Equal(15, o.HealthInitialDelaySeconds);
         Assert.Equal(16, o.BootstrapSettleTimeoutSeconds);
         Assert.Equal(17, o.NavCommitTimeoutSeconds);
+        Assert.Equal(25, o.AuthProbeTimeoutSeconds);
         Assert.Equal(18, o.IpcServeTimeoutSeconds);
         Assert.Equal(19, o.IpcAcceptRetryDelaySeconds);
         Assert.Equal(20, o.VersionProbeTimeoutSeconds);

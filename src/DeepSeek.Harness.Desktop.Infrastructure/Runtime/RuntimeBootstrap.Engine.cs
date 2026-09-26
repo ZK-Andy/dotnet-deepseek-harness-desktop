@@ -125,6 +125,40 @@ public static partial class RuntimeBootstrap
         }
     }
 
+    /// <summary>
+    /// 解析装机 node 的 npm 全局 bin 目录（P1 根因修复）：`npm config get prefix` 本地查询（无网络），
+    /// 目录映射复用 <see cref="NodeBinDir"/>（R1 S4，不手抄第二份）。目录不存在或查询失败返回 null
+    /// （调用方沿用既有 PATH）。纯定位逻辑可单测（hooks 注入）。
+    /// </summary>
+    internal static async Task<string?> ResolveNpmGlobalBinDirAsync(
+        NodeResult node, RuntimeBootstrapHooks hooks, CancellationToken ct)
+    {
+        try
+        {
+            (int exit, string? stdout, string? _) = await hooks.RunProcessAsync(
+                node.NodePath, [node.NpmCli, "config", "get", "prefix"], ct).ConfigureAwait(false);
+            if (exit != 0)
+            {
+                return null;
+            }
+
+            string prefix = (stdout ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(prefix))
+            {
+                return null;
+            }
+
+            string binDir = NodeBinDir(prefix);
+            return Directory.Exists(binDir) ? binDir : null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // best-effort 降级（R2 S3）：前缀查询异常一律沿用既有 PATH（VerifyDsh 失败会给出指引，
+            // 不静默装坏）；OCE 不吞，调用链收口。ex 仅用于过滤器区分 OCE。
+            return null;
+        }
+    }
+
     /// <summary>探测 PATH 上系统全局 node（取真实可执行路径）+ 其 npm-cli.js。全局 node 是那份唯一 dsh 的运行时，
     /// 桌面与终端共用（ADR simple-shell-single-global-dsh）。</summary>
     private static async Task<(string? NodePath, string? NpmCli)> ProbeLocalNodeAsync(Action<string> log, bool english, CancellationToken ct)

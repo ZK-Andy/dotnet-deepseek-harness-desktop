@@ -90,6 +90,17 @@ public static partial class RuntimeBootstrap
                 return Fail(BootstrapStep.InstallDsh, UiCopy.BootstrapNpmFailed(exit, errText.Trim(), english));
             }
 
+            // npm 全局 bin 暴露（P1 根因）：复用预装 node 时其 npm 前缀与我方前缀无关，
+            // 装完的 dsh 不在进程 PATH → 后续 VerifyDsh 注定失败。这里确定性解析装机 node 的
+            // npm 前缀并补进 PATH（本地查询，无网络）；解析不到则沿用既有 PATH，走既有指引失败。
+            report(new BootstrapProgress(BootstrapStep.InstallDsh, "暴露 npm 全局 bin 到 PATH"));
+            string? npmBinDir = await ResolveNpmGlobalBinDirAsync(node, hooks, ct).ConfigureAwait(false);
+            if (npmBinDir is not null)
+            {
+                PrependPathToProcessEnv(npmBinDir);
+                report(new BootstrapProgress(BootstrapStep.InstallDsh, $"npm 全局 bin 已暴露：{npmBinDir}"));
+            }
+
             // ③ 验证 PATH dsh --version 可解析（全局 dsh 落位）
             step = BootstrapStep.VerifyDsh;
             report(new BootstrapProgress(BootstrapStep.VerifyDsh, "验证 dsh 版本"));
