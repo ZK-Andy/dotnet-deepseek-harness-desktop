@@ -139,8 +139,8 @@ smoke_capture_witness() {
     echo "error: 截图统计失败（ImageMagick），内容见证不通过" >&2; return 1
   fi
   if awk "BEGIN{exit !($mean >= 0.35 && $sd >= 0.08)}"; then
-    echo "note: 截图内容见证通过（mean=$mean sd=$sd）" >&2; return 0
+    echo "note: 截图内容见证通过（mean=${mean} sd=${sd}）" >&2; return 0
   fi
-  echo "error: 截图内容见证不通过（mean=$mean sd=$sd）：近空白/深色页（401 墙或引导页）不算 UI" >&2
+  echo "error: 截图内容见证不通过（mean=${mean} sd=${sd}）：近空白/深色页（401 墙或引导页）不算 UI" >&2
   return 1
 }

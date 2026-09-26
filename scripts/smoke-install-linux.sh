@@ -107,7 +107,7 @@ smoke_shot() { # $1=文件名
     if shot_capped gnome-screenshot -f "$shot" 2>/dev/null && [[ -s "$shot" ]]; then fired="gnome-screenshot"; else rm -f "$shot"; fi
   fi
   if [[ -n "$fired" ]]; then
-    echo "note: 截图已存（${fired}）：$shot（$(wc -c <"$shot" 2>/dev/null || echo ?) 字节）" >&2
+    echo "note: 截图已存（${fired}）：${shot}（$(wc -c <"$shot" 2>/dev/null || echo ?) 字节）" >&2
   else
     echo "note: 截图失败（import/scrot/gnome-screenshot 均无或全败）" >&2
   fi
@@ -306,7 +306,8 @@ smoke_deb() {
   echo "== [deb] 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s；DISPLAY=${DISPLAY:-<无>}）"
   set +e
   # 无人值守跳过可选插件（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
-  env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
+  # 诊断复演（M/R 二选一，用完即删）：同 mac 腿，Linux 参考迹一并留痕。
+  env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip DSH_DESKTOP_DIAG_HTTP_REPLAY=1 \
     timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
   pid=$!
   # 动态作用域：wait_url→wait_settled 读得到；钉在本次调用内，不外泄给后续腿（R2 S3）。

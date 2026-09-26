@@ -199,7 +199,8 @@ hdiutil detach "$MNT"
 echo "== 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s）"
 set +e
 # 无人值守跳过可选插件（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
-env DSH_DESKTOP_DSH_HOME="$HOME_DIR" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
+# 诊断复演（M/R 二选一，用完即删）：dsh 认证链托管复演，全程 loud，默认关闭，CI 显式开。
+env DSH_DESKTOP_DSH_HOME="$HOME_DIR" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip DSH_DESKTOP_DIAG_HTTP_REPLAY=1 \
   "$INSTALLED/Contents/MacOS/$APP_NAME" >"$OUT" 2>&1 &
 SMOKE_PID=$!
 rc=1

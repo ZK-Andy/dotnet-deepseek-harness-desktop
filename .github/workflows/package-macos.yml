@@ -27,7 +27,9 @@ jobs:
     # 参照 Ryn 的 release.yml：每个 RID 在原生 OS 上构建；
     # 本项目发布为 JIT（csproj PublishAot=false）可交叉编，故两档均用 macos-latest 单 runner 矩阵内切 rid，
     # 避免占 2 台 mac（原 x64 用 macos-13 已排队 9m+，现 ARM via Rosetta 交叉编）
+    # fail-fast=false（与 package-linux 同款）：一腿红不连坐另一腿——x64 病 runner 抖动时也保住 arm64 的 verdict/像素证据。
     strategy:
+      fail-fast: false
       matrix:
         include:
           - arch: arm64

@@ -129,7 +129,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "== 安装（静默，DIR=$WIN_DIR）"
+echo "== 安装（静默，DIR=${WIN_DIR}）"
 # 安装环节取证：Inno 是 GUI 子系统，stdout 恒空——唯一诊断面是 /LOG 安装日志
 # （逐文件动作）。安装器后台运行 + 步级超时（首次实跑 88MB 闭包静默装曾 >7min
 # 无任何输出，用户终止——卡在哪一步只能靠 /LOG 回答）；超时即 dump 日志尾部 +
