@@ -58,6 +58,9 @@ public sealed record RuntimeTimeouts
     /// <summary>导航提交信号等待超时（秒）：超时按已提交继续。</summary>
     public int NavCommitTimeoutSeconds { get; init; } = 5;
 
+    /// <summary>鉴权自愈的可见文本探针超时（秒）：超时按未知跳过自愈，绝不拖死启动（病 renderer 超时 30s 实证）。</summary>
+    public int AuthProbeTimeoutSeconds { get; init; } = 15;
+
     /// <summary>单实例 IPC 服务端单次读超时（秒）。</summary>
     public int IpcServeTimeoutSeconds { get; init; } = 5;
 
@@ -129,6 +132,7 @@ public sealed record RuntimeTimeouts
         options = options with { HealthInitialDelaySeconds = GetInt(section, nameof(HealthInitialDelaySeconds), options.HealthInitialDelaySeconds) };
         options = options with { BootstrapSettleTimeoutSeconds = GetInt(section, nameof(BootstrapSettleTimeoutSeconds), options.BootstrapSettleTimeoutSeconds) };
         options = options with { NavCommitTimeoutSeconds = GetInt(section, nameof(NavCommitTimeoutSeconds), options.NavCommitTimeoutSeconds) };
+        options = options with { AuthProbeTimeoutSeconds = GetInt(section, nameof(AuthProbeTimeoutSeconds), options.AuthProbeTimeoutSeconds) };
         options = options with { IpcServeTimeoutSeconds = GetInt(section, nameof(IpcServeTimeoutSeconds), options.IpcServeTimeoutSeconds) };
         options = options with { IpcAcceptRetryDelaySeconds = GetInt(section, nameof(IpcAcceptRetryDelaySeconds), options.IpcAcceptRetryDelaySeconds) };
         options = options with { VersionProbeTimeoutSeconds = GetInt(section, nameof(VersionProbeTimeoutSeconds), options.VersionProbeTimeoutSeconds) };

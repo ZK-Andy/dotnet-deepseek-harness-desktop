@@ -324,7 +324,9 @@ public sealed partial class DesktopBootstrap
         Uri landing = url.AuthorityRoot;
         AuthorizeIpcOriginFor(app.WindowAccessor, landing);
         await NavigateAndAwaitCommitAsync(app, landing, ct);
-        await app.WindowAccessor.Current.NavigateAsync(url.Value);
+        // 第二跳同样等提交（R2 S2）：否则探针采到旧落地误触发重进；提交等待有界（NavCommitTimeoutSeconds）。
+        await NavigateAndAwaitCommitAsync(app, url.Value, ct);
+        await SettleWebSessionAsync(app, url, ct);
     }
 
     /// <summary>导航前授权 <paramref name="url"/> 的 origin 可 IPC（Ryn 0.38 受信 origin 集合，ADR
@@ -356,7 +358,9 @@ public sealed partial class DesktopBootstrap
         callbacks.SetOnNavigated(() => arrived.TrySetResult());
         try
         {
+            HostLog.Write($"[nav] 发起导航：{target.GetLeftPart(UriPartial.Authority)}");
             await app.WindowAccessor.Current.NavigateAsync(target);
+            HostLog.Write($"[nav] 导航调用已返回：{target.GetLeftPart(UriPartial.Authority)}");
             try
             {
                 await arrived.Task.WaitAsync(TimeSpan.FromSeconds(_timeouts.NavCommitTimeoutSeconds), ct);
