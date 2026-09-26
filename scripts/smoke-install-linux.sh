@@ -48,7 +48,13 @@ SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
 # 落定窗：①出现后等导航提交，再等应用终页裁决。预算须覆盖含自愈重进的最坏链
 # （建窗 120 残量 + 2×(导航调用 30 + 提交 5) + 探针 15×2 + 重进 35 + 再探针 30 ≈ 285s，
 # ADR page-verdict-gate），故 ci 矩阵按架构给值（SMOKE_SETTLE_SECONDS；见 package-linux.yml）。
+# 硬上限（用户令）：冒烟总时长不许超 3 分钟，落定窗不得超过 120s——CI 矩阵值超限即夹紧，避免"加时间换绿"。
+SMOKE_MAX_SETTLE_SECONDS="${SMOKE_MAX_SETTLE_SECONDS:-120}"
 SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
+if [[ "$SETTLE_WAIT" =~ ^[0-9]+$ ]] && (( SETTLE_WAIT > SMOKE_MAX_SETTLE_SECONDS )); then
+  echo "note: 落定窗 ${SETTLE_WAIT}s 超过上限 ${SMOKE_MAX_SETTLE_SECONDS}s，按上限执行（时长硬约束）" >&2
+  SETTLE_WAIT="$SMOKE_MAX_SETTLE_SECONDS"
+fi
 # 裁决后重绘窗（秒）：WebKit 提交回调早于新页出像素，裁决一过立刻拍易拍到上一跳旧帧
 # （ADR page-verdict-gate）；无显示时 smoke_shot 本就早退，不睡。非数字按默认。
 SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
