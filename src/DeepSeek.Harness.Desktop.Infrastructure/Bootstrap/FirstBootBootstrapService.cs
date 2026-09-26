@@ -287,6 +287,14 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     /// </summary>
     private async Task RunPreinstallPhaseAsync(CancellationToken ct)
     {
+        // 无人值守跳过（P2）：CI/自动化首启无用户点选，5 分钟决策等待纯烧时间。
+        // opt-in 环境变量，默认关闭，真人首启行为零变化（可从应用内市场补装）。
+        if (ShouldAutoSkipPreinstall(Environment.GetEnvironmentVariable(PreinstallAutoSkipEnv)))
+        {
+            _log.Invoke("[host] 插件引导：DSH_DESKTOP_PREINSTALL_AUTO=skip，无人值守跳过可选插件（可从应用内市场补装）");
+            return;
+        }
+
         string home = HarnessRuntimeHost.ResolveDshHome();
         string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
         string profilePkg = Path.Combine(profileDir, "package.json");
@@ -350,6 +358,20 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
             await _ui.BootstrapStepAsync(BootstrapStep.Ready, UiCopy.PreinstallStepReady(_isEnglish()), failed: false);
         }
     }
+
+    /// <summary>无人值守跳过的 opt-in 环境变量名（<c>DSH_DESKTOP_*</c> 惯例，R1 S3 单源）。</summary>
+    internal const string PreinstallAutoSkipEnv = "DSH_DESKTOP_PREINSTALL_AUTO";
+
+    /// <summary>无人值守跳过的 opt-in 取值（贴合 <c>PreinstallChoice.Skip</c> 域）。</summary>
+    internal const string PreinstallAutoSkipValue = "skip";
+
+    /// <summary>
+    /// 无人值守跳过判定（真纯函数可单测，对齐 <c>DevEnvironment.IsDevRuntime</c> 先例，R1 S2）：
+    /// 仅 opt-in 取值（大小写不敏感）跳过，未设/其他值一律走用户决策；fail-closed。
+    /// </summary>
+    /// <param name="raw">环境变量原值（调用方传入）。</param>
+    internal static bool ShouldAutoSkipPreinstall(string? raw) =>
+        string.Equals(raw, PreinstallAutoSkipValue, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>流式执行器：把 <c>dsh plugin add</c> 的每行输出推给插件引导页日志区。
     /// 统一走 <see cref="PluginProcessRunner.RunStreamingAsync"/>——单一实现、含取消/异常整树击杀

@@ -170,7 +170,8 @@ smoke_deb() {
   rm -f "$apt_log"
   echo "== [deb] 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s）"
   set +e
-  env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder \
+  # 无人值守跳过可选插件（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
+  env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
     timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
   pid=$!
   wait_url "$log" "$pid" "$home"; rc=$?
@@ -222,7 +223,8 @@ if ! dnf install -y --setopt=install_weak_deps=False "/pkg/$SMOKE_PKG_NAME" >"$l
   exit 1
 fi
 home=$(mktemp -d)
-timeout "$APP_TIMEOUT" env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder \
+# 无人值守跳过可选插件（同上，容器内同样无人点选）。
+timeout "$APP_TIMEOUT" env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
   "$SMOKE_APP_BIN" >"$log" 2>&1 &
 pid=$!
 OUT="$log"; LOG=""
