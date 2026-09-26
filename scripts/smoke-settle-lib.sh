@@ -60,10 +60,11 @@ nav_token_seen() { nav_lines | grep -E "$NAV_TOKEN_RE" >/dev/null; }
 
 # 落定等待：①后等导航提交，再（显示腿）等应用终页裁决。$1=pid（可空：空即只查一次，进程已死不再等）。
 # 到达门（≥2 到达且含 token 第二跳，或①之后到达 ≥2 次）满足后：
-#   auth 裁决 → 立即 1（终页确认是鉴权页）；
-#   PAGE_VERDICT_REQUIRED=1（有显示的腿）→ 还要 `页面裁决=healthy` 才 0，unknown 或未出现皆 1；
-#   未置位的腿（本批 mac/win）维持"到达即落定"——裁决行与 unknown 不拦，auth 仍拦。
-# 读调用方 SETTLE_WAIT / PAGE_VERDICT_REQUIRED 全局。
+#   auth 裁决 → 立即 1（终页确认是鉴权页，机器可判的坏页门）；
+#   其余（healthy/unknown/缺行）一律 0：外部 origin（dsh 的 http 页）上 Ryn 桥把 eval 回包
+#   POST 到页面 origin（桥 `_ipcBase` 默认空串），打不到宿主 ⇒ 该页 DOM 探针恒超时，
+#   与预算无关；内容见证改由截图承担（`smoke_capture_witness`）。
+# 读调用方 SETTLE_WAIT 全局。
 wait_settled() {
   local pid="${1:-}" i n arrived=0 state=""
   for i in $(seq 1 "$SETTLE_WAIT"); do
@@ -76,20 +77,8 @@ wait_settled() {
         echo "error: 落定但页面裁决=auth（终页为鉴权页），按失败计" >&2
         return 1
       fi
-      if [[ "${PAGE_VERDICT_REQUIRED:-0}" == "1" ]]; then
-        if [[ "$state" == "healthy" ]]; then
-          echo "note: 导航已落定且页面裁决=healthy（到达 ${n} 次，用时 ${i}s）" >&2
-          return 0
-        fi
-        if [[ "$state" == "unknown" ]]; then
-          echo "error: 落定但页面裁决=unknown（探针失败或页面非同源），按失败计" >&2
-          return 1
-        fi
-        # 无裁决行：探针（15s×2）尚在进行，继续等到预算耗尽。
-      else
-        echo "note: 导航已落定（到达 ${n} 次，含 token 第二跳或①后双到达，用时 ${i}s）" >&2
-        return 0
-      fi
+      echo "note: 导航已落定（到达 ${n} 次，裁决=${state:-无}，用时 ${i}s）" >&2
+      return 0
     fi
     if [[ -z "$pid" ]]; then
       if [[ "$arrived" -eq 1 ]]; then
@@ -109,10 +98,6 @@ wait_settled() {
     fi
     sleep 1
   done
-  if [[ "$arrived" -eq 1 && "${PAGE_VERDICT_REQUIRED:-0}" == "1" ]]; then
-    echo "error: 落定后 ${SETTLE_WAIT}s 内未见页面裁决行（探针未回；按失败计）" >&2
-    return 1
-  fi
   echo "error: 落定超时（${SETTLE_WAIT}s 内未见 token 第二跳且①后到达不足 2 次；到达 $(nav_count) 次）" >&2
   return 1
 }

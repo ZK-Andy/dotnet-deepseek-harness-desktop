@@ -18,7 +18,10 @@ Related: 直接起因是 dispatch run `36240692140`（`ec515cc`）的 artifact �
 - 桥回报解码（产品）：新增 `PageBridge.RynProbeValue.Decode` 作采样入口——JSON 字符串还原转义、裸值原样返回、JSON `null`/空 → 无值；不用 `Trim('"')`（转义残留、把转义原文当文本）。
 - 终页裁决收敛为唯一纯函数：`Core.WebAuthRecovery.Classify(rawSample, expectedOrigin)` 三态（同源 + 文本非空 + 不含鉴权标记 → `healthy`；命中标记 → `auth`；其余 → `unknown`），`ClassifyDetail` 同判并带出 origin/长度供留痕（采样只拆一次）。重进只做一次，由编排形状（探针→至多一次重进→再探针）保证，无计数常量。
 - 唯一留痕：落定期只写一行 `[nav] 页面裁决=<token>`（记实际 origin 与文本长度，不记内容；origin 不含 token），token 常量由应用侧 `Core.WebAuthRecovery.Verdict{Healthy,Auth,Unknown}` 拥有，冒烟正则消费同一串——改 token 即显示腿缺行转红（fail loud），未置位腿丢 `auth` 门。
-- 门禁（`smoke-settle-lib.sh`）：新增 `page_verdict_state`（只认**最后一条**裁决，重试期旧行不遮新行）与 `PAGE_VERDICT_REQUIRED`；到达门之上——`auth` 立即 FAIL（不置位的腿同样拦），置位腿（本批：Linux deb）必须见到 `healthy` 才落定，`unknown` 或裁决行始终未出现皆 FAIL。
+- 门禁（`smoke-settle-lib.sh`）：新增 `page_verdict_state`（只认**最后一条**裁决，重试期旧行不遮新行）与 `PAGE_VERDICT_REQUIRED`；到达门之上——`auth` 立即 FAIL（不置位的腿同样拦），置位腿（本批：Linux deb）曾要求 `healthy` 才落定；现改为 **`auth` 否决 + 截图内容见证**——
+  外部 origin（dsh 的 http 页）上 Ryn 桥把 eval 回包 POST 到页面 origin（桥 `_ipcBase` 默认空串），
+  打不到宿主 ⇒ 该页 DOM 探针恒超时（与预算无关，实测 15s×2/45s×2 同形）；故 deb 腿在截图后跑
+  `smoke_capture_witness`：近空白（401 墙 mean≈1.00/sd≈0.04）与深色引导页（mean≈0.14）判失败，真 UI（mean≈0.81/sd≈0.13）通过。
 - 截图时序（`smoke-install-linux.sh`）：裁决通过后再等 `SMOKE_REPAINT_SECONDS`（默认 3s，仅在有显示时）才拍，避开上一跳旧像素；睡后补一次进程探活留痕（不改 rc）。
 - 落定窗预算（`package-linux.yml`）：窗口须覆盖「建窗残量 + 两跳导航(30+5)×2 + 探针 15×2」≈100s 的最坏链，amd64 90s→180s（arm64 仍 300s）。
 - 范围：本批只开 Linux deb 腿；mac/win 腿不置位（到达即落定，`auth` 仍红），rpm 容器腿无 X（①不可达，恒②安装链，落定门不适用）。

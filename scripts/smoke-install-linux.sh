@@ -70,6 +70,25 @@ LIB="$SCRIPT_DIR/smoke-settle-lib.sh"
 # shellcheck disable=SC1091
 source "$LIB"
 
+# 截图内容见证（ADR page-verdict-gate）：外部 origin 上 DOM 探针回不来，故内容真伪由**截图本身**判——
+# 近空白（401 墙：实测 mean≈1.00/sd≈0.04）与深色引导页（mean≈0.14）判失败，真 UI（mean≈0.81/sd≈0.13）通过。
+# 阈值取自 CI 实测四图；无 convert 时跳过（记 note，不拦冒烟）。
+smoke_capture_witness() { # $1=截图路径；0=内容像 UI
+  local shot="$1" stats mean sd
+  [[ -s "$shot" ]] || { echo "error: 截图缺失，内容见证不通过：$shot" >&2; return 1; }
+  command -v convert >/dev/null 2>&1 || { echo "note: 无 convert，跳过截图内容见证" >&2; return 0; }
+  stats="$(convert "$shot" -crop 1200x800+0+0 +repage -colorspace Gray -format '%[fx:mean] %[fx:standard_deviation]' info: 2>/dev/null || true)"
+  mean="${stats%% *}"; sd="${stats##* }"
+  if [[ -z "$mean" || -z "$sd" || "$mean" == "$stats" ]]; then
+    echo "error: 截图统计失败（ImageMagick），内容见证不通过" >&2; return 1
+  fi
+  if awk "BEGIN{exit !($mean >= 0.35 && $sd >= 0.08)}"; then
+    echo "note: 截图内容见证通过（mean=$mean sd=$sd）" >&2; return 0
+  fi
+  echo "error: 截图内容见证不通过（mean=$mean sd=$sd）：近空白/深色页（401 墙或引导页）不算 UI" >&2
+  return 1
+}
+
 # 判定结论（ADR smoke-runner-deepening）：命中 ① 全链还是 ② 安装链必须打印成结论。
 smoke_verdict() { # $1=日志
   if grep -qE '\[host\] dsh web =' "$1" 2>/dev/null; then
@@ -191,17 +210,26 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   log="$tdir/w5"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-exit-settled" || tfail "wait_url-exit-settled"
-  # wait_url × 裁决门（deb 腿的真实组合，ADR page-verdict-gate）：①+到达+healthy → 0；到达齐但缺裁决 → 1
+  # wait_url × 落定（ADR page-verdict-gate 新语义）：①+到达+healthy → 0；到达齐缺裁决 → 亦 0（内容见证在截图）
   log="$tdir/w6"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$log"
   sleep 30 & live=$!
-  PAGE_VERDICT_REQUIRED=1
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-verdict-healthy" || tfail "wait_url-verdict-healthy"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   log="$tdir/w7"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
   sleep 30 & live=$!
-  PAGE_VERDICT_REQUIRED=1
-  SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-verdict-missing-should-fail" || tpass "wait_url-verdict-missing-fails"
+  SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-verdict-missing-passes" || tfail "wait_url-verdict-missing-passes"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  # 截图内容见证夹具：白（401 墙形态）/深色（引导页形态）判失败，浅色有结构判通过
+  if command -v convert >/dev/null 2>&1; then
+    convert -size 1200x800 xc:white "$tdir/w_white.png" 2>/dev/null
+    convert -size 1200x800 xc:"#111111" "$tdir/w_dark.png" 2>/dev/null
+    convert -size 1200x800 xc:"#cccccc" -fill "#222222" -draw "rectangle 0,0 300,800" "$tdir/w_ui.png" 2>/dev/null
+    smoke_capture_witness "$tdir/w_white.png" >/dev/null 2>&1 && tfail "witness-blank-should-fail" || tpass "witness-blank-fails"
+    smoke_capture_witness "$tdir/w_dark.png" >/dev/null 2>&1 && tfail "witness-dark-should-fail" || tpass "witness-dark-fails"
+    smoke_capture_witness "$tdir/w_ui.png" >/dev/null 2>&1 && tpass "witness-ui-passes" || tfail "witness-ui-passes"
+  else
+    echo "skip: 无 convert，跳过截图内容见证夹具"
+  fi
   PAGE_VERDICT_REQUIRED=0
   # 落定①后计数（ADR settle-gate-and-probe-retry）：①前双到达不算落定；①后双到达即落定（Linux 只报最终 URL）
   # 注意：此前 wait_url 用例把 OUT/LOG 指走，此处显式复位回自测夹具（settle-ok 先例同理）。
@@ -222,20 +250,17 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   # 显示腿裁决门（PAGE_VERDICT_REQUIRED=1）：arrivals + healthy → 0
   printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
-  PAGE_VERDICT_REQUIRED=1
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-healthy" || tfail "settle-verdict-healthy"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   # 同门：arrivals + unknown → 1（到达过不算绿）
   printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=unknown（探针无采样，期望 origin=http://127.0.0.1:1）\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
-  PAGE_VERDICT_REQUIRED=1
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-verdict-unknown-should-fail" || tpass "settle-verdict-unknown-fails"
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-unknown-passes" || tfail "settle-verdict-unknown-passes"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   # 同门：arrivals 齐但裁决行始终不出现（探针未回）→ 1
   printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
-  PAGE_VERDICT_REQUIRED=1
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-verdict-missing-should-fail" || tpass "settle-verdict-missing-fails"
+  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-missing-passes" || tfail "settle-verdict-missing-passes"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   # LOG 兜底（宿主腿形态，R2 S5）：OUT 无裁决行、裁决只在 host.log → 仍读得到且 auth 判红
   printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$OUT"
@@ -247,13 +272,11 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   # 只认最后一条：healthy 之后又坏成 auth（页面塌陷）→ 1，旧 healthy 不得冒充绿
   printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
-  PAGE_VERDICT_REQUIRED=1
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-verdict-relapse-should-fail" || tpass "settle-verdict-relapse-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   # 只认最后一条：auth 之后重试恢复 healthy → 0（终页确实是 UI）
   printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
-  PAGE_VERDICT_REQUIRED=1
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-recovery" || tfail "settle-verdict-recovery"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   PAGE_VERDICT_REQUIRED=0
@@ -298,6 +321,9 @@ smoke_deb() {
     kill -0 "$pid" 2>/dev/null || echo "note: 重绘窗内应用已退出，截图可能为空窗（rc 仍按落定结论）" >&2
   fi
   smoke_shot "smoke-linux-deb.png"
+  if [[ $rc -eq 0 && -n "${DISPLAY:-}" && -n "${SMOKE_SHOT_DIR:-}" ]]; then
+    smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-linux-deb.png" || rc=1
+  fi
   kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
   set -e
   sudo apt-get remove -y deepseek-harness-desktop >/dev/null 2>&1 || sudo dpkg -r deepseek-harness-desktop >/dev/null 2>&1 || true
