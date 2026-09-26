@@ -13,6 +13,8 @@
 # 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
 # mac runner 有 WindowServer 会话，①应命中；若 WKWebView/WindowServer 在 runner
 # 会话受限使壳提前退出（①前），②为保底判定位（已记录边界，同 Linux CI）。
+# 诊断分支 D2（用完即删，见 echo_verdict_lines/wait_verdict）：终态 (a)/(b) 二选一实验——
+# verdict 行回显 + verdict 落定后再截图；不改任何判定逻辑，确证后整段删除。
 #
 # 信号源 = <DSH_HOME>/logs/host.log（HostLog 双写 stdout 与该文件；unix 形态 stdout
 # 重定向同样捕获，双源并查，去重防双计）。
@@ -41,6 +43,8 @@ APP_NAME="DeepSeek.Harness.Desktop"
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
 # 落定窗：①出现后等导航提交（commit 延迟毫秒级，90s 只防 runner 卡顿）。
 SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
+# 诊断 D2：截图前等应用侧 verdict 行（探针 15s×2 + 重进导航 30s + 再探针 30s ≈ 95s，取 150s 有界）。
+VERDICT_WAIT="${SMOKE_VERDICT_SECONDS:-150}"
 FULL_RE='\[host\] dsh web ='
 BOOT_RE='\[bootstrap\] 引导开始：'
 PASS_RE="$FULL_RE|$BOOT_RE"
@@ -67,6 +71,24 @@ smoke_shot() { # $1=文件名
   mkdir -p "$SMOKE_SHOT_DIR" 2>/dev/null || return 0
   screencapture -x -t png "$SMOKE_SHOT_DIR/$1" 2>/dev/null \
     || echo "note: 截图跳过（无 WindowServer 会话或 screencapture 不可用）" >&2
+}
+
+# 诊断 D2（用完即删）：应用侧 verdict/重进/探针行回显到 step 日志（token 脱敏），
+# 让 CI 日志直接回答终态是 healthy 还是 auth/unknown。判定逻辑不动。
+echo_verdict_lines() {
+  { grep -ahE '\[nav\] 页面裁决=|\[nav\] 检测到鉴权页|鉴权探针' "$OUT" 2>/dev/null; [[ -f "${LOG:-}" ]] && grep -ahE '\[nav\] 页面裁决=|\[nav\] 检测到鉴权页|鉴权探针' "$LOG" 2>/dev/null; true; } \
+    | sed -E 's/token=[^& ]*/token=***/g' | sort -u >&2 || true
+}
+
+# 诊断 D2（用完即删）：有界等最后一条裁决行出现。$1=秒（默认 VERDICT_WAIT）。
+wait_verdict() {
+  local i
+  for i in $(seq 1 "${1:-$VERDICT_WAIT}"); do
+    [[ -n "$(page_verdict_state)" ]] && { echo "note: 已见页面裁决（用时 ${i}s）" >&2; return 0; }
+    sleep 1
+  done
+  echo "note: ${1:-$VERDICT_WAIT}s 内未见页面裁决行" >&2
+  return 1
 }
 
 # 落定等待与心跳实现在 smoke-settle-lib.sh（上已 source）。
@@ -99,6 +121,14 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   timeout_fallback >/dev/null 2>&1 && tpass "fallback-boot-flips" || tfail "fallback-boot-flips"
   : >"$OUT"; : >"$LOG"
   timeout_fallback >/dev/null 2>&1 && tfail "fallback-empty-should-not-flip" || tpass "fallback-empty-noflip"
+  # 诊断 D2（用完即删）：verdict 等待与回显回归
+  printf '[nav] 页面裁决=healthy（origin=x 可见文本 10 字）\n' >"$OUT"; : >"$LOG"
+  wait_verdict 3 >/dev/null 2>&1 && tpass "verdict-wait-seen" || tfail "verdict-wait-seen"
+  : >"$OUT"; : >"$LOG"
+  wait_verdict 2 >/dev/null 2>&1 && tfail "verdict-wait-missing-should-fail" || tpass "verdict-wait-missing-fails"
+  printf '[nav] 页面裁决=auth（origin=http://127.0.0.1:1/?token=SECRET 可见文本 5 字）\n' >"$OUT"
+  echo_verdict_lines 2>&1 | grep -q 'SECRET' && tfail "verdict-echo-masks-token" || tpass "verdict-echo-masks-token"
+  echo_verdict_lines 2>&1 | grep -q 'token=\*\*\*' && tpass "verdict-echo-keeps-marker" || tfail "verdict-echo-keeps-marker"
   rm -rf "$tdir"
   [[ $fail -eq 0 ]] && echo "self-test: PASS" || echo "self-test: FAIL"
   return $fail
@@ -151,12 +181,15 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
     if wait_settled "$SMOKE_PID"; then
       rc=0
       smoke_verdict "$OUT" "$LOG"
+      wait_verdict || true
+      echo_verdict_lines
       smoke_shot "smoke-macos.png"
       # PASS 也打印壳输出尾部：壳何时/为何退出（如窗口创建即退出）需要证据在案
       echo "--- 壳输出尾部（PASS 证据）---" >&2
       tail -5 "$OUT" >&2 || true
     else
       rc=1
+      echo_verdict_lines
       smoke_shot "smoke-macos-fail.png"
       echo "--- 壳输出尾部（FAIL 证据）---" >&2
       tail -30 "$OUT" >&2 || true
@@ -179,11 +212,14 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
       if wait_settled ""; then
         rc=0
         smoke_verdict "$OUT" "$LOG"
+        wait_verdict || true
+        echo_verdict_lines
         smoke_shot "smoke-macos.png"
         echo "--- 壳输出尾部（PASS 证据）---" >&2
         tail -5 "$OUT" >&2 || true
       else
         rc=1
+        echo_verdict_lines
         smoke_shot "smoke-macos-fail.png"
         echo "--- 壳输出尾部（FAIL 证据）---" >&2
         tail -30 "$OUT" >&2 || true
