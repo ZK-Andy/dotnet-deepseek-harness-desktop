@@ -64,16 +64,33 @@ smoke_verdict() { # $1=日志
 
 # 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
 # CI 经 xvfb-run 启动（ADR smoke-linux-xvfb-fullchain）时 $DISPLAY 存在即真实开火；
-# 无显示（本地直跑/rpm 容器）仍跳过。
+# 无显示（本地直跑/rpm 容器）仍跳过。调用方须在 kill 之前拍（活页终页证据；死后拍多为空）。
+# 工具链 fail loud 化：按序试 import/scrot/gnome-screenshot，坏工具（存在但拍失败，
+# 曾遮掉可用 scrot 致空包）即清残文件换下一个；开火/全败皆留痕（含字节数）。
 smoke_shot() { # $1=文件名
   [[ -n "${SMOKE_SHOT_DIR:-}" && -n "${DISPLAY:-}" ]] || return 0
   mkdir -p "$SMOKE_SHOT_DIR" 2>/dev/null || return 0
-  local shot="$SMOKE_SHOT_DIR/$1"
-  if command -v import >/dev/null 2>&1; then import -window root "$shot" 2>/dev/null || true
-  elif command -v scrot >/dev/null 2>&1; then scrot "$shot" 2>/dev/null || true
-  elif command -v gnome-screenshot >/dev/null 2>&1; then gnome-screenshot -f "$shot" 2>/dev/null || true
-  else echo "note: 截图跳过（无可用截图工具）" >&2
+  local shot="$SMOKE_SHOT_DIR/$1" fired=""
+  if [[ -z "$fired" ]] && command -v import >/dev/null 2>&1; then
+    if shot_capped import -window root "$shot" 2>/dev/null && [[ -s "$shot" ]]; then fired="import"; else rm -f "$shot"; fi
   fi
+  if [[ -z "$fired" ]] && command -v scrot >/dev/null 2>&1; then
+    if shot_capped scrot "$shot" 2>/dev/null && [[ -s "$shot" ]]; then fired="scrot"; else rm -f "$shot"; fi
+  fi
+  if [[ -z "$fired" ]] && command -v gnome-screenshot >/dev/null 2>&1; then
+    if shot_capped gnome-screenshot -f "$shot" 2>/dev/null && [[ -s "$shot" ]]; then fired="gnome-screenshot"; else rm -f "$shot"; fi
+  fi
+  if [[ -n "$fired" ]]; then
+    echo "note: 截图已存（${fired}）：$shot（$(wc -c <"$shot" 2>/dev/null || echo ?) 字节）" >&2
+  else
+    echo "note: 截图失败（import/scrot/gnome-screenshot 均无或全败）" >&2
+  fi
+}
+
+# 截图单工具封顶（R2 轻审）：DISPLAY 存在但 X 失联时坏工具若阻塞会拖住 kill/收尾；
+# timeout 存在即 20s 封顶（runner 有；缺则直跑，不引入新依赖）。
+shot_capped() {
+  if command -v timeout >/dev/null 2>&1; then timeout 20 "$@"; else "$@"; fi
 }
 
 # 落定等待与心跳实现在 smoke-settle-lib.sh（上已 source）。
@@ -127,6 +144,18 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-timeout-should-fail" || tpass "settle-timeout-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   heartbeat "60" "$tdir/home" 2>&1 | grep -q "等待中（60s）" && tpass "heartbeat" || tfail "heartbeat"
+  # smoke_shot：无 DISPLAY 即静默跳过（不建目录不拦冒烟）；fake scrot 开火留痕且非空
+  DISPLAY= SMOKE_SHOT_DIR="$tdir/shots" smoke_shot "no.png" >/dev/null 2>&1 \
+    && [[ ! -e "$tdir/shots/no.png" ]] && tpass "shot-nodisplay" || tfail "shot-nodisplay"
+  mkdir -p "$tdir/fakebin"
+  printf '#!/bin/sh\nprintf "PNG" > "$1"\n' >"$tdir/fakebin/scrot"; chmod +x "$tdir/fakebin/scrot"
+  PATH="$tdir/fakebin:/usr/bin:/bin" DISPLAY=:99 SMOKE_SHOT_DIR="$tdir/shots" smoke_shot "s.png" >/dev/null 2>&1 \
+    && [[ -s "$tdir/shots/s.png" ]] && tpass "shot-fires" || tfail "shot-fires"
+  # 主回归：坏 import（存在但落空文件、零退出）不得遮掉可用 scrot（注释空包事故钉死）
+  printf '#!/bin/sh\n: > "$1"\n' >"$tdir/fakebin/import"; chmod +x "$tdir/fakebin/import"
+  rm -f "$tdir/shots/s2.png"
+  PATH="$tdir/fakebin:/usr/bin:/bin" DISPLAY=:99 SMOKE_SHOT_DIR="$tdir/shots" smoke_shot "s2.png" >/dev/null 2>&1 \
+    && [[ "$(cat "$tdir/shots/s2.png")" == "PNG" ]] && tpass "shot-fallback" || tfail "shot-fallback"
   # wait_url 集成：①+落定 → 0；只有②（短窗）→ 0；双无 → 1；①无落定 → 1
   log="$tdir/w1"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
   sleep 30 & live=$!
@@ -177,6 +206,7 @@ smoke_deb() {
     timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
   pid=$!
   wait_url "$log" "$pid" "$home"; rc=$?
+  smoke_shot "smoke-linux-deb.png"
   kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
   set -e
   sudo apt-get remove -y deepseek-harness-desktop >/dev/null 2>&1 || sudo dpkg -r deepseek-harness-desktop >/dev/null 2>&1 || true
@@ -187,7 +217,6 @@ smoke_deb() {
   else
     smoke_verdict "$log"
   fi
-  smoke_shot "smoke-linux-deb.png"
   rm -rf "$home" "$log"
   [[ $rc -eq 0 ]]
 }
