@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 /// 缺节/坏 JSON/逐键覆盖/类型不符回退与 UpdateOptions 同哲学。</summary>
 public class RuntimeTimeoutsTests
 {
-    /// <summary>验证全部 27 项默认值与收归前字面量一致：任一漂移即行为变更，测试先红。</summary>
+    /// <summary>验证全部 28 项默认值与收归前字面量一致：任一漂移即行为变更，测试先红。</summary>
     [Fact]
     public void Defaults_MatchPreMigrationLiterals()
     {
@@ -27,6 +27,7 @@ public class RuntimeTimeoutsTests
         Assert.Equal(10, o.HealthInitialDelaySeconds);
         Assert.Equal(120, o.BootstrapSettleTimeoutSeconds);
         Assert.Equal(5, o.NavCommitTimeoutSeconds);
+        Assert.Equal(30, o.NavCallTimeoutSeconds);
         Assert.Equal(15, o.AuthProbeTimeoutSeconds);
         Assert.Equal(2, o.AuthProbeAttempts);
         Assert.Equal(120, o.WindowReadyTimeoutSeconds);
@@ -78,7 +79,7 @@ public class RuntimeTimeoutsTests
             "LifecycleGateWaitSeconds":9,"SpawnTimeoutSeconds":61,"NotifyPrimaryTimeoutSeconds":11,
             "SupervisorJoinTimeoutSeconds":12,"SupervisorRestartTimeoutSeconds":62,
             "SupervisorRecoveredRetryDelaySeconds":13,"SupervisorFailedRetryDelaySeconds":14,
-            "HealthInitialDelaySeconds":15,"BootstrapSettleTimeoutSeconds":16,"NavCommitTimeoutSeconds":17,
+            "HealthInitialDelaySeconds":15,"BootstrapSettleTimeoutSeconds":16,"NavCommitTimeoutSeconds":17,"NavCallTimeoutSeconds":31,
             "AuthProbeTimeoutSeconds":25,"AuthProbeAttempts":28,"WindowReadyTimeoutSeconds":26,"WindowReadyPollIntervalSeconds":27,
             "IpcServeTimeoutSeconds":18,"IpcAcceptRetryDelaySeconds":19,
             "VersionProbeTimeoutSeconds":20,"BannerMaxAttempts":21,"BannerRetryDelaySeconds":22,
@@ -101,6 +102,7 @@ public class RuntimeTimeoutsTests
         Assert.Equal(15, o.HealthInitialDelaySeconds);
         Assert.Equal(16, o.BootstrapSettleTimeoutSeconds);
         Assert.Equal(17, o.NavCommitTimeoutSeconds);
+        Assert.Equal(31, o.NavCallTimeoutSeconds);
         Assert.Equal(25, o.AuthProbeTimeoutSeconds);
         Assert.Equal(28, o.AuthProbeAttempts);
         Assert.Equal(26, o.WindowReadyTimeoutSeconds);

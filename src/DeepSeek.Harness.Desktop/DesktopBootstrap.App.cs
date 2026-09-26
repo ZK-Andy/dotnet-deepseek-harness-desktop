@@ -353,6 +353,7 @@ public sealed partial class DesktopBootstrap
     /// 「导航已到达」信号，先订阅后导航避免错过）。提交信号用于隔开两跳导航——
     /// <c>NavigateAsync</c> 连发会被 WebKitGTK 合并，前一跳尚未发出即被后一跳覆盖。
     /// 等待超时按「已提交」降级继续（信号只是隔跳手段，缺位时不比单跳直导更差）；
+    /// 调用本身亦有界（ADR navigate-call-timeout：arm64 实证原生调用可挂起，无界等即永卡）；
     /// 取消（应用退出）照常传播。</summary>
     /// <param name="app">Ryn 应用装配产出（导航回调服务来源）。</param>
     /// <param name="target">导航靶点。</param>
@@ -366,8 +367,22 @@ public sealed partial class DesktopBootstrap
         try
         {
             HostLog.Write($"[nav] 发起导航：{target.GetLeftPart(UriPartial.Authority)}");
-            await app.WindowAccessor.Current.NavigateAsync(target);
-            HostLog.Write($"[nav] 导航调用已返回：{target.GetLeftPart(UriPartial.Authority)}");
+            try
+            {
+                // 调用有界（ADR navigate-call-timeout）：超时 loud 后沿"按已提交继续"走提交等待与探针；
+                // 悬空原生调用 fire-and-forget 可接受（探针先例），应用退出取消照常上抛。
+                await app.WindowAccessor.Current.NavigateAsync(target).AsTask()
+                    .WaitAsync(TimeSpan.FromSeconds(_timeouts.NavCallTimeoutSeconds), ct).ConfigureAwait(false);
+                HostLog.Write($"[nav] 导航调用已返回：{target.GetLeftPart(UriPartial.Authority)}");
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (TimeoutException)
+            {
+                HostLog.Write($"[nav] 导航调用超时（{_timeouts.NavCallTimeoutSeconds}s），按已提交继续");
+            }
             try
             {
                 await arrived.Task.WaitAsync(TimeSpan.FromSeconds(_timeouts.NavCommitTimeoutSeconds), ct);

@@ -58,6 +58,10 @@ public sealed record RuntimeTimeouts
     /// <summary>导航提交信号等待超时（秒）：超时按已提交继续。</summary>
     public int NavCommitTimeoutSeconds { get; init; } = 5;
 
+    /// <summary>导航调用本身超时（秒）：原生调用可挂起（arm64 实证），无界等即永卡；
+    /// 超时 loud 后按已提交继续（ADR navigate-call-timeout；默认 30s）。</summary>
+    public int NavCallTimeoutSeconds { get; init; } = 30;
+
     /// <summary>鉴权自愈的可见文本探针超时（秒）：超时按未知跳过自愈，绝不拖死启动（病 renderer 超时 30s 实证）。</summary>
     public int AuthProbeTimeoutSeconds { get; init; } = 15;
 
@@ -143,6 +147,7 @@ public sealed record RuntimeTimeouts
         options = options with { HealthInitialDelaySeconds = GetInt(section, nameof(HealthInitialDelaySeconds), options.HealthInitialDelaySeconds) };
         options = options with { BootstrapSettleTimeoutSeconds = GetInt(section, nameof(BootstrapSettleTimeoutSeconds), options.BootstrapSettleTimeoutSeconds) };
         options = options with { NavCommitTimeoutSeconds = GetInt(section, nameof(NavCommitTimeoutSeconds), options.NavCommitTimeoutSeconds) };
+        options = options with { NavCallTimeoutSeconds = GetInt(section, nameof(NavCallTimeoutSeconds), options.NavCallTimeoutSeconds) };
         options = options with { AuthProbeTimeoutSeconds = GetInt(section, nameof(AuthProbeTimeoutSeconds), options.AuthProbeTimeoutSeconds) };
         options = options with { AuthProbeAttempts = GetInt(section, nameof(AuthProbeAttempts), options.AuthProbeAttempts) };
         options = options with { WindowReadyTimeoutSeconds = GetInt(section, nameof(WindowReadyTimeoutSeconds), options.WindowReadyTimeoutSeconds) };
