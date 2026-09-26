@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
@@ -79,6 +80,47 @@ public static partial class RuntimeBootstrap
                 // 进程已自行退出：无需击杀
             }
 
+            throw;
+        }
+    }
+
+    /// <summary>流式行单行上限：npm 进度行（`\r` 刷新的单行 bar）可达数 KB，超限截断防日志爆炸。
+    /// 经 <see cref="Plugins.PluginProcessRunner.PumpAsync"/> 的截断参数生效（R1 简化统一，无自有行泵）。</summary>
+    internal const int MaxStreamLineChars = 300;
+
+    /// <summary>
+    /// 流式捕获执行：与 <see cref="RunCaptureAsync"/> 同返回形态（exit/stdout/stderr 在截断后累积，
+    /// 超长行按 <see cref="MaxStreamLineChars"/> 截断——长错误行进失败文案时已被截断，定位够用），
+    /// 另把子进程每行输出经 <paramref name="log"/> 透传（`[bootstrap] &lt;exe&gt;&gt;` 前缀，外部输出原文直放，
+    /// 对齐 stderr 尾巴惯例）。行泵与整树击杀复用 <see cref="Plugins.PluginProcessRunner"/> 同语义。
+    /// </summary>
+    internal static async Task<(int Exit, string Stdout, string Stderr)> RunStreamingCaptureAsync(
+        Action<string> log, string exe, IReadOnlyList<string> args, bool english, CancellationToken ct)
+    {
+        ProcessStartInfo psi = BuildCapturePsi(exe, args);
+        string tag = Path.GetFileNameWithoutExtension(StripExtendedPrefix(exe));
+
+        log?.Invoke($"[bootstrap] run: {psi.FileName} {string.Join(' ', args)}");
+        using Process p = Process.Start(psi)
+            ?? throw new InvalidOperationException(UiCopy.BootstrapProcessStartFailed(exe, english));
+        var outSb = new StringBuilder();
+        var errSb = new StringBuilder();
+        try
+        {
+            // 双流并发泵：与 RunCaptureAsync 同一死锁防御（单流先读满会互等）
+            Task[] pumps = new[]
+            {
+                Plugins.PluginProcessRunner.PumpAsync(p.StandardOutput, outSb, line => log?.Invoke($"[bootstrap] {tag}> {line}"), ct, MaxStreamLineChars),
+                Plugins.PluginProcessRunner.PumpAsync(p.StandardError, errSb, line => log?.Invoke($"[bootstrap] {tag}> {line}"), ct, MaxStreamLineChars),
+            };
+            await p.WaitForExitAsync(ct).ConfigureAwait(false);
+            await Task.WhenAll(pumps).ConfigureAwait(false);
+            return (p.ExitCode, outSb.ToString(), errSb.ToString());
+        }
+        catch (Exception)
+        {
+            // 取消/异常路径必须整树击杀（与 RunCaptureAsync 同一孤儿防御）
+            Plugins.PluginProcessRunner.KillTree(p);
             throw;
         }
     }

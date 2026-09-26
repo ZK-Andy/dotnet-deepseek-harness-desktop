@@ -179,19 +179,28 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     private async Task<string?> RunBootstrapWithRetryAsync(CancellationToken ct)
     {
         RuntimeBootstrapOptions options = _options;
-        _log.Invoke($"[bootstrap] 引导开始：dshSpec={options.DshSpec}（用系统全局 node 的 npm 装到全局）");
+        int attempt = 0;
 
         while (true)
         {
+            attempt++;
             Gate.Reset();
             // hooks 逐次构造：用户在失败等待期切换语言后重试，hooks 层文案与页面同取最新 locale
             RuntimeBootstrapHooks hooks = RuntimeBootstrap.CreateDefaultHooks(_log, _isEnglish(), options);
+            // ②冒烟信号契约：`引导开始：` 子串必须保留（smoke-install-*.sh 的 BOOT_RE 锚定它）。
+            _log.Invoke($"[bootstrap] 引导开始：第 {attempt} 次尝试，dshSpec={options.DshSpec}（用系统全局 node 的 npm 装到全局）");
+            var attemptTimer = System.Diagnostics.Stopwatch.StartNew();
             BootstrapOutcome outcome;
             try
             {
                 outcome = await RuntimeBootstrap.RunAsync(
                     options,
-                    progress => _ = _ui.BootstrapStepAsync(progress.Step, progress.Message, progress.Failed),
+                    progress =>
+                    {
+                        // 步骤锚点同步记 host.log：冒烟心跳与人肉定位"卡在哪一步"读它，不读 UI。
+                        _log.Invoke($"[bootstrap] 步骤 {progress.Step}：{progress.Message}");
+                        _ = _ui.BootstrapStepAsync(progress.Step, progress.Message, progress.Failed);
+                    },
                     hooks,
                     _isEnglish(),
                     ct);
@@ -203,11 +212,12 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
 
             if (outcome.Success && outcome.DshVersion is { } version)
             {
+                _log.Invoke($"[bootstrap] 第 {attempt} 次尝试成功（耗时 {attemptTimer.Elapsed.TotalSeconds:0}s）");
                 return version;
             }
 
             string reason = outcome.Error ?? UiCopy.BootstrapUnknownError(_isEnglish());
-            _log.Invoke($"[bootstrap] 引导失败：{reason}（等待用户重试或退出）");
+            _log.Invoke($"[bootstrap] 引导失败（第 {attempt} 次，耗时 {attemptTimer.Elapsed.TotalSeconds:0}s）：{reason}（等待用户重试或退出）");
             // 推实际失败步骤：进度页据此红色高亮失败环节（推 "Ready" 会让高亮不可达）
             await _ui.BootstrapStepAsync(outcome.Step, reason, failed: true);
 

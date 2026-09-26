@@ -55,9 +55,9 @@ internal static class PluginProcessRunner
     }
 
     /// <summary>取消/异常路径整树击杀进程树：ReadToEndAsync/WaitForExit 的 OCE 会跳过等待，
-    /// using dispose 只关句柄不杀进程——不杀则进程带写权成孤儿（RunAsync/RunStreamingAsync 共用）。
-    /// 已自行退出的进程不重复击杀。调用方在 catch 内负责重抛。</summary>
-    private static void KillTree(System.Diagnostics.Process p)
+    /// using dispose 只关句柄不杀进程——不杀则进程带写权成孤儿（RunAsync/RunStreamingAsync 共用；
+    /// 引导流式捕获复用同一语义，R1 简化统一）。已自行退出的进程不重复击杀。调用方在 catch 内负责重抛。</summary>
+    internal static void KillTree(System.Diagnostics.Process p)
     {
         try
         {
@@ -70,13 +70,20 @@ internal static class PluginProcessRunner
     }
 
     /// <summary>逐行泵出进程流（测试可注入内存流验证行转发与累积；生产经进程 stdout/stderr）。
-    /// 取消由调用方经 <paramref name="ct"/> 传递。</summary>
+    /// 取消由调用方经 <paramref name="ct"/> 传递。
+    /// 超长行按 <paramref name="maxLineChars"/> 截断后转发与累积（0 = 不限，保持调用方原文行为；
+    /// 引导透传用 <see cref="Runtime.RuntimeBootstrap.MaxStreamLineChars"/> 防 npm 进度行刷爆日志，R1 简化统一）。</summary>
     internal static async Task PumpAsync(
-        System.IO.StreamReader reader, StringBuilder sb, Action<string>? onLine, CancellationToken ct)
+        System.IO.TextReader reader, StringBuilder sb, Action<string>? onLine, CancellationToken ct, int maxLineChars = 0)
     {
         string? line;
         while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) is not null)
         {
+            if (maxLineChars > 0 && line.Length > maxLineChars)
+            {
+                line = line[..maxLineChars] + "…";
+            }
+
             sb.AppendLine(line);
             onLine?.Invoke(line);
         }

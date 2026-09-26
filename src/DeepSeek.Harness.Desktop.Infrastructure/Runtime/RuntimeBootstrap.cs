@@ -13,7 +13,8 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// </summary>
 public static partial class RuntimeBootstrap
 {
-    /// <summary>生产 hooks：HttpClient 下载（断点续传 Range）/取文本、tar 解压、子进程直跑、PATH node 探测。</summary>
+    /// <summary>生产 hooks：HttpClient 下载（断点续传 Range）/取文本、tar 解压、子进程直跑、PATH node 探测。
+    /// 子进程输出默认流式透传 host.log（ADR bootstrap-provisioning-observability），测试 fakes 不受影响。</summary>
     /// <param name="log">日志回调。</param>
     /// <param name="english">失败文案是否取英文分支（引导页错误框随宿主 UI 语言）。</param>
     /// <param name="options">引导可调参数（取文本超时，见 <see cref="RuntimeBootstrapOptions"/>）。</param>
@@ -23,7 +24,9 @@ public static partial class RuntimeBootstrap
             DownloadFileAsync: async (url, dest, ct) =>
             {
                 using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+                log?.Invoke($"[bootstrap] 下载开始：{url}");
                 await DownloadResumableAsync(http, url, dest, ct).ConfigureAwait(false);
+                log?.Invoke($"[bootstrap] 下载完成：{dest} {new FileInfo(dest).Length:N0} 字节");
             },
             FetchTextAsync: async (url, ct) =>
             {
@@ -39,7 +42,7 @@ public static partial class RuntimeBootstrap
                     throw new InvalidOperationException(UiCopy.BootstrapExtractFailed(exit, stderr.Trim(), english));
                 }
             },
-            RunProcessAsync: (exe, args, ct) => RunCaptureAsync(log, exe, args, english, ct),
+            RunProcessAsync: (exe, args, ct) => RunStreamingCaptureAsync(log, exe, args, english, ct),
             ProbeLocalNodeAsync: ct => ProbeLocalNodeAsync(log, english, ct));
     }
 
