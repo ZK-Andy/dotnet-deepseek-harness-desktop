@@ -32,6 +32,11 @@ public sealed class RynNavigationCallbacks
     private Action? _onNavigatedImpl;
     private DateTimeOffset? _lastNavigatedAtUtc;
     private readonly object _navStampGate = new();
+    // 宿主亲手授权过的 origin（spawn 的 dsh loopback authority 形态，如 http://127.0.0.1:41449）：
+    // 宿主编排的页内跳转（eval 首跳）在引擎眼里与用户点击无异，但目标本就是自家后端——放行。
+    // 只增不减（端口漂移由新实例/新授权覆盖，旧端口留集无害：环回本机，无外站可冒充）。
+    private readonly HashSet<string> _authorizedOrigins = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _originsGate = new();
 
     /// <summary>最近一次导航到达时刻（UTC；尚无到达即 null）。收养免导航裁决的观测信号
     /// （ADR adopt-skip-navigate-on-self-reload）：恢复周期内有到达即页内已自刷。</summary>
@@ -75,6 +80,32 @@ public sealed class RynNavigationCallbacks
     /// </summary>
     public void SetOnNavigated(Action onNavigated) => Volatile.Write(ref _onNavigatedImpl, onNavigated);
 
+    /// <summary>登记宿主授权的 origin（与原生 <c>AuthorizeIpcOrigin</c> 同点调用）：
+    /// 用户发起且目标为集内 origin 的导航放行；集外仍按外部策略。仅绝对环回 URI 入集
+    /// （不变量自持，不依赖调用点纪律），其余输入静默忽略。</summary>
+    /// <param name="origin">dsh 端点 URI（如裸 origin 根）。</param>
+    public void AuthorizeOrigin(Uri? origin)
+    {
+        if (origin is not { IsAbsoluteUri: true } || !origin.IsLoopback)
+        {
+            return;
+        }
+
+        lock (_originsGate)
+        {
+            _authorizedOrigins.Add(origin.GetLeftPart(UriPartial.Authority));
+        }
+    }
+
+    /// <summary>目标 URL 的 authority 是否在已授权集内。</summary>
+    private bool IsAuthorizedOrigin(Uri url)
+    {
+        lock (_originsGate)
+        {
+            return _authorizedOrigins.Contains(url.GetLeftPart(UriPartial.Authority));
+        }
+    }
+
     /// <summary>用户发起的站外 http(s) 导航 → 拦截并交系统浏览器；宿主导航与同源/其它 scheme 放行。</summary>
     /// <param name="context">导航上下文（目标 URL、是否新窗口/重定向/用户发起）。</param>
     [RynCallback(RynCallbackKind.WebViewNavigating)]
@@ -84,6 +115,14 @@ public sealed class RynNavigationCallbacks
         // 是 IsUserInitiated=false，必须放行，否则恢复流程会被本回调误拦（B1）。
         if (!context.IsUserInitiated)
         {
+            return NavigationDecision.Allow;
+        }
+
+        // 已授权 origin（宿主亲手 spawn 的 dsh loopback）：宿主编排的页内跳转（eval 首跳）
+        // 在引擎眼里是用户发起，但目标是自家后端——放行；任意外站仍走下外部策略。
+        if (IsAuthorizedOrigin(context.Url))
+        {
+            _log?.Invoke($"[nav] 放行已授权 origin 导航：{context.Url.GetLeftPart(UriPartial.Authority)}");
             return NavigationDecision.Allow;
         }
 

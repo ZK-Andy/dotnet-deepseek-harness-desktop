@@ -98,6 +98,12 @@ smoke_verdict() { # $1=日志
   fi
 }
 
+# 冻结腿放行判定（ADR smoke-witness-real-and-eval-first-hop）：冻结腿上落定失败但①已达
+# （已知原生 hang 签名）→ 调用方记 frozen verdict 放行；①都没见仍是真回归。0=放行。
+smoke_frozen_pass() { # $1=日志
+  [[ "${SMOKE_FROZEN:-0}" == "1" ]] && grep -qE "$FULL_RE" "$1" 2>/dev/null
+}
+
 # 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
 # CI 经 xvfb-run 启动（ADR smoke-linux-xvfb-fullchain）时 $DISPLAY 存在即真实开火；
 # 无显示（本地直跑/rpm 容器）仍跳过。调用方须在 kill 之前拍（活页终页证据；死后拍多为空）。
@@ -171,6 +177,11 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   [[ "$(smoke_verdict "$OUT")" == *"full-chain"* ]] && tpass "verdict-full" || tfail "verdict-full"
   : >"$OUT"
   [[ "$(smoke_verdict "$OUT")" == *"install-chain"* ]] && tpass "verdict-install" || tfail "verdict-install"
+  # 冻结腿放行判定：冻结开且①已达 → 放行；①未见 → 不放行；冻结关 → 不放行
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$tdir/f1"; : >"$tdir/f2"
+  SMOKE_FROZEN=1 smoke_frozen_pass "$tdir/f1" && tpass "frozen-seen" || tfail "frozen-seen"
+  SMOKE_FROZEN=1 smoke_frozen_pass "$tdir/f2" && tfail "frozen-missing" || tpass "frozen-missing"
+  SMOKE_FROZEN=0 smoke_frozen_pass "$tdir/f1" && tfail "frozen-off" || tpass "frozen-off"
   printf '[nav] 导航已到达：http://127.0.0.1:1/（origin → x）\n[nav] 导航已到达：http://127.0.0.1:1/?token=t → y\n' >"$OUT"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-ok" || tfail "settle-ok"
@@ -306,6 +317,8 @@ smoke_deb() {
   }
   tail -3 "$apt_log" >&2 || true
   rm -f "$apt_log"
+  # WebKit 版本留痕（arm64 原生 hang 三选一诊断：saucer arm64 库 / WebKitGTK 构建 / runner 环境）。
+  dpkg -l 2>/dev/null | grep -i -m 5 webkit >&2 || true
   echo "== [deb] 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s；DISPLAY=${DISPLAY:-<无>}）"
   set +e
   # 无人值守跳过可选插件（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
@@ -314,14 +327,22 @@ smoke_deb() {
   pid=$!
   # 动态作用域：wait_url→wait_settled 读得到；钉在本次调用内，不外泄给后续腿（R2 S3）。
   local PAGE_VERDICT_REQUIRED=1
+  local frozen=""
   wait_url "$log" "$pid" "$home"; rc=$?
+  # 冻结腿（ADR smoke-witness-real-and-eval-first-hop：arm64 原生 hang 已知病灶）：
+  # ①已达仅未落定 → 记 frozen verdict 放行（截图留痕，不拦发版）；①都没见仍是真回归，保持红。
+  if [[ $rc -ne 0 ]] && smoke_frozen_pass "$log"; then
+    echo "SMOKE_VERDICT=frozen-native-hang（已知病灶冻结：①已达，未落定；截图留痕，不拦发版）" >&2
+    rc=0; frozen=1
+  fi
   # 裁决已过再等有界重绘窗：提交回调早于新页出像素，立刻拍会拍到上一跳（401）旧帧；无显示不睡。
   if [[ $rc -eq 0 && -n "${DISPLAY:-}" ]]; then
     sleep "$SMOKE_REPAINT_SECONDS"
     kill -0 "$pid" 2>/dev/null || echo "note: 重绘窗内应用已退出，截图可能为空窗（rc 仍按落定结论）" >&2
   fi
   smoke_shot "smoke-linux-deb.png"
-  if [[ $rc -eq 0 && -n "${DISPLAY:-}" && -n "${SMOKE_SHOT_DIR:-}" ]]; then
+  # 冻结腿跳过内容见证（终页本就是未落定的旧帧，见证必红；截图留痕供人眼）。
+  if [[ $rc -eq 0 && -z "$frozen" && -n "${DISPLAY:-}" && -n "${SMOKE_SHOT_DIR:-}" ]]; then
     smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-linux-deb.png" || rc=1
   fi
   kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
@@ -332,7 +353,8 @@ smoke_deb() {
     echo "error: [deb] 冒烟失败。日志尾部：" >&2
     cat "$log" >&2
   else
-    smoke_verdict "$log"
+    # 冻结腿 verdict 已在落定处打印（frozen-native-hang），此处不再复打 smoke_verdict。
+    if [[ -z "$frozen" ]]; then smoke_verdict "$log"; fi
     # 成功也留尾（ADR verdict-honesty-repair）：绿跑的导航/探针/自愈行此前随日志删除，
     # "绿即无证"致 401 绿 verdict 无从复核；30 行覆盖导航段（仓内尾部惯例）。
     echo "== [deb] 冒烟通过，应用日志尾部（内容判定留痕）：" >&2

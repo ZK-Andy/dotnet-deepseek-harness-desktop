@@ -232,6 +232,7 @@ public sealed partial class DesktopBootstrap
         // 监视器的 reload 会打到已死的旧端口、甚至覆写刚恢复的导航。
         _webUrl = url;
         AuthorizeIpcOriginFor(app.WindowAccessor, url);
+        navCallbacks.AuthorizeOrigin(url);
         // 免导航（ADR adopt-skip-navigate-on-self-reload）：周期内有到达即视为页内自刷
         // （市场 doRestart 轮询到新 boot 即 location.reload；谓词只比时间戳，同源靠前提假设），
         // 再 NavigateAsync 即第二跳——只做收养登记（上文 _webUrl + origin 授权），跳过实际导航。
@@ -330,6 +331,7 @@ public sealed partial class DesktopBootstrap
         // 第二跳必须等第一跳真正提交（NavigateAsync 连发会被 WebKitGTK 合并成一次导航）。
         Uri landing = url.AuthorityRoot;
         AuthorizeIpcOriginFor(app.WindowAccessor, landing);
+        app.App.Services.GetRequiredService<RynNavigationCallbacks>().AuthorizeOrigin(landing);
         if (!await TryEvalFirstHopAsync(app, landing, ct).ConfigureAwait(false))
         {
             // eval 未发出（桥不可用/超时）：回退原生调用，旧链形状不变。

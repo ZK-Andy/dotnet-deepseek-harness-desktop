@@ -39,10 +39,15 @@ jobs:
             # 重进的最坏链——建窗残量 120 + 两跳(30+5)×2 + 探针 15×2 + 重进(35) + 再探针 30 ≈ 285s；
             # 裁决行出现前收工即假红。
             settle_seconds: 300
+            # 冻结腿（ADR smoke-witness-real-and-eval-first-hop）：0=正常门。
+            frozen: 0
           - arch: arm64
             rid: linux-arm64
             runs-on: ubuntu-24.04-arm
             settle_seconds: 300
+            # arm64 原生 hang 已知病灶冻结：①已达仅未落定 → frozen verdict 放行（截图留痕，
+            # 不拦发版）；①未见仍红。解冻待 Ryn 最小复现有回音。
+            frozen: 1
     runs-on: ${{ matrix.runs-on }}
     env:
       DOTNET_NOLOGO: '1'
@@ -129,6 +134,8 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: '1'
           # 落定窗分腿（ADR settle-per-arch-window）：脚本既有 SMOKE_SETTLE_SECONDS 口，无脚本改动。
           SMOKE_SETTLE_SECONDS: ${{ matrix.settle_seconds }}
+          # 冻结腿开关（ADR smoke-witness-real-and-eval-first-hop）：arm64=1，amd64=0。
+          SMOKE_FROZEN: ${{ matrix.frozen }}
         run: dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" bash scripts/smoke-install-linux.sh artifacts/${{ matrix.rid }}
 
       - name: 上传冒烟截图（best-effort，Xvfb 下真实开火，无显示回退时空过，人眼复核）

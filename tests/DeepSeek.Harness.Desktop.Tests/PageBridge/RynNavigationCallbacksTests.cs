@@ -212,4 +212,60 @@ public class RynNavigationCallbacksTests
 
         Assert.Empty(notified);
     }
+
+    /// <summary>已授权 origin 的用户发起导航 → Allow（宿主编排的页内跳转，如 eval 首跳；
+    /// ADR smoke-witness-real-and-eval-first-hop）：目标是自家后端，不交系统浏览器。</summary>
+    [Theory]
+    [InlineData("http://127.0.0.1:37933/", "http://127.0.0.1:37933")]
+    [InlineData("http://127.0.0.1:37933/?token=abc", "http://127.0.0.1:37933/")]
+    public void Navigating_AuthorizedOrigin_AllowsWithoutOpener(string url, string authorized)
+    {
+        var opened = new List<string>();
+        var handler = new RynNavigationCallbacks(
+            opener: u => { opened.Add(u); return true; },
+            log: null,
+            currentOrigin: "ryn://app");
+        handler.AuthorizeOrigin(new Uri(authorized));
+
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating(url));
+
+        Assert.Equal(NavigationDecision.Allow, decision);
+        Assert.Empty(opened);
+    }
+
+    /// <summary>集外外站 → 仍 Block（已授权集不削弱外部拦截）。</summary>
+    [Fact]
+    public void Navigating_AuthorizedSetPresent_OtherExternalStillBlocks()
+    {
+        var opened = new List<string>();
+        var handler = new RynNavigationCallbacks(
+            opener: u => { opened.Add(u); return true; },
+            log: null,
+            currentOrigin: "ryn://app");
+        handler.AuthorizeOrigin(new Uri("http://127.0.0.1:37933"));
+
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
+
+        Assert.Equal(NavigationDecision.Block, decision);
+        Assert.Single(opened);
+    }
+
+    /// <summary>非法登记输入静默忽略（null/相对 URI/非环回绝对 URI 均不入集）。</summary>
+    [Fact]
+    public void AuthorizeOrigin_InvalidInput_Ignored()
+    {
+        var opened = new List<string>();
+        var handler = new RynNavigationCallbacks(
+            opener: u => { opened.Add(u); return true; },
+            log: null,
+            currentOrigin: "ryn://app");
+        handler.AuthorizeOrigin(null);
+        handler.AuthorizeOrigin(new Uri("not-a-uri", UriKind.RelativeOrAbsolute));
+        handler.AuthorizeOrigin(new Uri("https://x.example/"));
+
+        NavigationDecision decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
+
+        Assert.Equal(NavigationDecision.Block, decision);
+        Assert.Single(opened);
+    }
 }
