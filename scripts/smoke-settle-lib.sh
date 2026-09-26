@@ -22,22 +22,37 @@ nav_lines() {
   { [[ -n "${OUT:-}" ]] && grep -hE "$NAV_RE" "$OUT" 2>/dev/null; [[ -n "${LOG:-}" && -f "$LOG" ]] && grep -hE "$NAV_RE" "$LOG" 2>/dev/null; true; } | sort -u
 }
 nav_count() { nav_lines | grep -c . || true; }
+# ①之后到达计数（ADR settle-gate-and-probe-retry）：Linux WebKit 只报最终提交 URL，
+# token 查询串永不出现——占位到达多在①之前，唯 hop1+hop2 落在①后。以 $OUT 文件序为准；
+# $OUT 无①即 0（回退 token 路径）。pipefail 下裸 grep 恒收口（nav_lines 注释同理）。
+nav_count_after_ready() {
+  local m=0
+  if [[ -n "${OUT:-}" && -f "${OUT:-}" ]]; then
+    m=$(grep -m1 -nE "$FULL_RE" "$OUT" 2>/dev/null | cut -d: -f1 || true)
+    m=${m:-0}
+    if [[ "$m" -gt 0 ]]; then
+      tail -n +"$((m + 1))" "$OUT" 2>/dev/null | grep -cE "$NAV_RE" || true
+      return 0
+    fi
+  fi
+  echo 0
+}
 # 命中判定读完全部输入再退（不用 -q：-q 命中即关管道，上游 sort 收 SIGPIPE，
 # pipefail 下同样误报；>/dev/null 等价静默且无此风险）。
 nav_token_seen() { nav_lines | grep -E "$NAV_TOKEN_RE" >/dev/null; }
 
 # 落定等待：①后等导航提交。$1=pid（可空：空即只查一次，进程已死不再等）。
-# 落定（≥2 到达且含 token 第二跳）即 0，否则 1。读调用方 SETTLE_WAIT 全局。
+# 落定（≥2 到达且含 token 第二跳，或①之后到达 ≥2 次）即 0，否则 1。读调用方 SETTLE_WAIT 全局。
 wait_settled() {
   local pid="${1:-}" i n
   for i in $(seq 1 "$SETTLE_WAIT"); do
     n="$(nav_count)"
-    if [[ "$n" -ge 2 ]] && nav_token_seen; then
-      echo "note: 导航已落定（到达 ${n} 次，含 token 第二跳，用时 ${i}s）" >&2
+    if [[ "$n" -ge 2 ]] && { nav_token_seen || [[ "$(nav_count_after_ready)" -ge 2 ]]; }; then
+      echo "note: 导航已落定（到达 ${n} 次，含 token 第二跳或①后双到达，用时 ${i}s）" >&2
       return 0
     fi
     if [[ -z "$pid" ]]; then
-      echo "error: 进程已退出且导航未落定（到达 ${n} 次，无 token 第二跳）" >&2
+      echo "error: 进程已退出且导航未落定（到达 ${n} 次，无 token 第二跳且①后不足 2 次）" >&2
       return 1
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
@@ -46,7 +61,7 @@ wait_settled() {
     fi
     sleep 1
   done
-  echo "error: 落定超时（${SETTLE_WAIT}s 内未见 token 第二跳；到达 $(nav_count) 次）" >&2
+  echo "error: 落定超时（${SETTLE_WAIT}s 内未见 token 第二跳且①后到达不足 2 次；到达 $(nav_count) 次）" >&2
   return 1
 }
 

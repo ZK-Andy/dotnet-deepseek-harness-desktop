@@ -37,30 +37,43 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    /// <summary>探当前页可见文本采样（400 字截断）；超时/异常返回 null（未知），调用方按放行处理。</summary>
+    /// <summary>探当前页可见文本采样（400 字截断）；有限重试后仍超时/异常返回 null（未知），
+    /// 调用方按放行处理（ADR settle-gate-and-probe-retry：偶发 renderer 繁忙一次采样赌运气，
+    /// 成功即返，耗尽才 Unknown；快机器零变化）。</summary>
     private async Task<string?> ProbeVisibleTextAsync(AppSetup app, CancellationToken ct)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(_timeouts.AuthProbeTimeoutSeconds));
-        try
+        for (int attempt = 1; ; attempt++)
         {
-            // 经 AsTask 统一（ValueTask 无 WaitAsync；R1 S5 本地包装已删）。
-            return await app.WindowAccessor.Current.EvaluateJavaScriptAsync(PageBridge.WebAuthProbe.Script).AsTask().WaitAsync(cts.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            // 应用退出：取消必须上抛（R2 B1），不吞。
-            throw;
-        }
-        catch (OperationCanceledException)
-        {
-            HostLog.Write($"[nav] 鉴权探针超时（{_timeouts.AuthProbeTimeoutSeconds}s），跳过自愈检查");
-            return null;
-        }
-        catch (Exception ex)
-        {
-            HostLog.Write($"[nav] 鉴权探针失败（跳过自愈检查）：{ex.Message}");
-            return null;
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_timeouts.AuthProbeTimeoutSeconds));
+            try
+            {
+                // 经 AsTask 统一（ValueTask 无 WaitAsync；R1 S5 本地包装已删）。
+                return await app.WindowAccessor.Current.EvaluateJavaScriptAsync(PageBridge.WebAuthProbe.Script).AsTask().WaitAsync(cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // 应用退出：取消必须上抛（R2 B1），不吞。
+                throw;
+            }
+            catch (OperationCanceledException) when (attempt >= _timeouts.AuthProbeAttempts)
+            {
+                HostLog.Write($"[nav] 鉴权探针超时（{_timeouts.AuthProbeTimeoutSeconds}s×{attempt}次），跳过自愈检查");
+                return null;
+            }
+            catch (OperationCanceledException)
+            {
+                HostLog.Write($"[nav] 鉴权探针超时（{_timeouts.AuthProbeTimeoutSeconds}s），第{attempt + 1}次重试");
+            }
+            catch (Exception ex) when (attempt >= _timeouts.AuthProbeAttempts)
+            {
+                HostLog.Write($"[nav] 鉴权探针失败（跳过自愈检查）：{ex.Message}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                HostLog.Write($"[nav] 鉴权探针失败，第{attempt + 1}次重试：{ex.Message}");
+            }
         }
     }
 }

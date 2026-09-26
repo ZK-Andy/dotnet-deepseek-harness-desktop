@@ -10,7 +10,7 @@
 # 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
 # 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
 # 落定语义（ADR smoke-settle-content-verdict）：①只是 dsh 就绪行，verdict 与截图
-# 必须等导航落定——`[nav] 导航已到达` 去重 ≥2 次且含 `?token=` 第二跳。落定超时或
+# 必须等导航落定——`[nav] 导航已到达` 去重 ≥2 次且含 `?token=` 第二跳，或①之后到达 ≥2 次（Linux 只报最终 URL）。落定超时或
 # 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
 #     CI 经 xvfb-run 启动（ADR smoke-linux-xvfb-fullchain）：虚拟 DISPLAY 下窗口可创建，
 #     引导后台任务存活——deb 腿全链信号可达，落定 verdict + 截图真实开火；Xvfb 起不来
@@ -151,8 +151,9 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   printf '#!/bin/sh\nprintf "PNG" > "$1"\n' >"$tdir/fakebin/scrot"; chmod +x "$tdir/fakebin/scrot"
   PATH="$tdir/fakebin:/usr/bin:/bin" DISPLAY=:99 SMOKE_SHOT_DIR="$tdir/shots" smoke_shot "s.png" >/dev/null 2>&1 \
     && [[ -s "$tdir/shots/s.png" ]] && tpass "shot-fires" || tfail "shot-fires"
-  # 主回归：坏 import（存在但落空文件、零退出）不得遮掉可用 scrot（注释空包事故钉死）
-  printf '#!/bin/sh\n: > "$1"\n' >"$tdir/fakebin/import"; chmod +x "$tdir/fakebin/import"
+  # 主回归：坏 import（存在但落空文件、零退出）不得遮掉可用 scrot（注释空包事故钉死）。
+  # fake 须按真 import 语义取末参为输出（取 $1 会把 "-window" 当输出，杂散文件曾落工作区根——自测实证钉死此坑）。
+  printf '#!/bin/sh\nfor a in "$@"; do last="$a"; done\n: > "$last"\n' >"$tdir/fakebin/import"; chmod +x "$tdir/fakebin/import"
   rm -f "$tdir/shots/s2.png"
   PATH="$tdir/fakebin:/usr/bin:/bin" DISPLAY=:99 SMOKE_SHOT_DIR="$tdir/shots" smoke_shot "s2.png" >/dev/null 2>&1 \
     && [[ "$(cat "$tdir/shots/s2.png")" == "PNG" ]] && tpass "shot-fallback" || tfail "shot-fallback"
@@ -173,6 +174,17 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   log="$tdir/w5"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-exit-settled" || tfail "wait_url-exit-settled"
+  # 落定①后计数（ADR settle-gate-and-probe-retry）：①前双到达不算落定；①后双到达即落定（Linux 只报最终 URL）
+  # 注意：此前 wait_url 用例把 OUT/LOG 指走，此处显式复位回自测夹具（settle-ok 先例同理）。
+  OUT="$tdir/out"; LOG="$tdir/host.log"
+  printf '[nav] 导航已到达：ryn://app/index.html\n[nav] 导航已到达：http://127.0.0.1:1/\n[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-preready-should-fail" || tpass "settle-preready-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：ryn://app/index.html\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-postready" || tfail "settle-postready"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   rm -rf "$tdir"
   [[ $fail -eq 0 ]] && echo "self-test: PASS" || echo "self-test: FAIL"
   return $fail

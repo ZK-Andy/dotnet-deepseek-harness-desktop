@@ -61,6 +61,10 @@ public sealed record RuntimeTimeouts
     /// <summary>鉴权自愈的可见文本探针超时（秒）：超时按未知跳过自愈，绝不拖死启动（病 renderer 超时 30s 实证）。</summary>
     public int AuthProbeTimeoutSeconds { get; init; } = 15;
 
+    /// <summary>鉴权探针总尝试次数（含初次）：偶发 renderer 繁忙一次采样赌运气，耗尽回未知放行
+    /// （ADR settle-gate-and-probe-retry；默认 2 即初次 + 1 次重试；≤1 按单次，与既有键同哲学无钳制）。</summary>
+    public int AuthProbeAttempts { get; init; } = 2;
+
     /// <summary>进入主界面前等主窗口可用超时（秒）：原生建窗可能慢于 dsh 就位（CI 无 D-Bus 会话实证 30s+），
     /// 超时跳过本次导航并 loud 留痕（ADR bootstrap-window-ready-wait）。</summary>
     public int WindowReadyTimeoutSeconds { get; init; } = 120;
@@ -140,6 +144,7 @@ public sealed record RuntimeTimeouts
         options = options with { BootstrapSettleTimeoutSeconds = GetInt(section, nameof(BootstrapSettleTimeoutSeconds), options.BootstrapSettleTimeoutSeconds) };
         options = options with { NavCommitTimeoutSeconds = GetInt(section, nameof(NavCommitTimeoutSeconds), options.NavCommitTimeoutSeconds) };
         options = options with { AuthProbeTimeoutSeconds = GetInt(section, nameof(AuthProbeTimeoutSeconds), options.AuthProbeTimeoutSeconds) };
+        options = options with { AuthProbeAttempts = GetInt(section, nameof(AuthProbeAttempts), options.AuthProbeAttempts) };
         options = options with { WindowReadyTimeoutSeconds = GetInt(section, nameof(WindowReadyTimeoutSeconds), options.WindowReadyTimeoutSeconds) };
         options = options with { WindowReadyPollIntervalSeconds = GetInt(section, nameof(WindowReadyPollIntervalSeconds), options.WindowReadyPollIntervalSeconds) };
         options = options with { IpcServeTimeoutSeconds = GetInt(section, nameof(IpcServeTimeoutSeconds), options.IpcServeTimeoutSeconds) };
