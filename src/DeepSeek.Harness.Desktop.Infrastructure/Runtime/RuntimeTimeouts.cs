@@ -69,11 +69,6 @@ public sealed record RuntimeTimeouts
     /// （ADR settle-gate-and-probe-retry；默认 2 即初次 + 1 次重试；≤1 按单次，与既有键同哲学无钳制）。</summary>
     public int AuthProbeAttempts { get; init; } = 2;
 
-    /// <summary>终页非健康时的 cookie 落盘宽限重载延迟（秒）：macOS WKWebView 下 token→303→cookie 链
-    /// 可能在 303 跟进时 cookie 尚未落盘（终页 401），宽限后无 token 重载裸 origin 一次做纯 cookie 检验
-    /// （ADR macos-cookie-grace-reload；默认 8s；仅 macOS 域内执行，其余平台零行为变更）。</summary>
-    public int AuthGraceReloadDelaySeconds { get; init; } = 8;
-
     /// <summary>进入主界面前等主窗口可用超时（秒）：原生建窗可能慢于 dsh 就位（CI 无 D-Bus 会话实证 30s+），
     /// 超时跳过本次导航并 loud 留痕（ADR bootstrap-window-ready-wait）。</summary>
     public int WindowReadyTimeoutSeconds { get; init; } = 120;
@@ -155,7 +150,6 @@ public sealed record RuntimeTimeouts
         options = options with { NavCallTimeoutSeconds = GetInt(section, nameof(NavCallTimeoutSeconds), options.NavCallTimeoutSeconds) };
         options = options with { AuthProbeTimeoutSeconds = GetInt(section, nameof(AuthProbeTimeoutSeconds), options.AuthProbeTimeoutSeconds) };
         options = options with { AuthProbeAttempts = GetInt(section, nameof(AuthProbeAttempts), options.AuthProbeAttempts) };
-        options = options with { AuthGraceReloadDelaySeconds = GetInt(section, nameof(AuthGraceReloadDelaySeconds), options.AuthGraceReloadDelaySeconds) };
         options = options with { WindowReadyTimeoutSeconds = GetInt(section, nameof(WindowReadyTimeoutSeconds), options.WindowReadyTimeoutSeconds) };
         options = options with { WindowReadyPollIntervalSeconds = GetInt(section, nameof(WindowReadyPollIntervalSeconds), options.WindowReadyPollIntervalSeconds) };
         options = options with { IpcServeTimeoutSeconds = GetInt(section, nameof(IpcServeTimeoutSeconds), options.IpcServeTimeoutSeconds) };

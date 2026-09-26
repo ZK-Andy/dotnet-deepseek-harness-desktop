@@ -15,9 +15,9 @@ public sealed partial class DesktopBootstrap
 {
     private AppSetup BuildApp(Preflight preflight, RuntimeSetup runtime, UpdateSetup update)
     {
-        // 运行时就位 URL 的消费点（值流）：StartRuntime 产出、此处落位为壳侧导航靶点初值；
-        // 引导完成/崩溃恢复导航会再刷新该字段（见下方导航原语与监督器 navigate）。
-        _webUrl = runtime.WebUrl?.Value;
+        // 导航靶点初值：壳 origin（dsh 就位即直载壳 URL；dsh 未起为 null，健康 reload 跳过）。
+        // token 只活在铸币链（StartRuntime/收养/落定重铸），永不进导航靶点。
+        _webUrl = runtime.WebUrl is not null ? DshShellForward.ShellRoot : null;
 
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 IsReady）
         string iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
@@ -25,12 +25,17 @@ public sealed partial class DesktopBootstrap
         _tray.ConfigureIcon(iconPath, trayAvailable);
 
         _app = RynApplication.CreateBuilder()
+            // 壳 scheme 注册（initial navigation 之前；Ryn 保留 `ryn`，此处用自有 `dsh-app`）
+            .ConfigureCustomScheme(DshShellForward.ShellScheme, PageBridge.DshSchemeBridge.Handler(_shellForward))
             .ConfigureOptions(opts =>
             {
-                if (runtime.WebUrl is { } webUrl)
+                // IPC 桥接白名单显式登记壳 origin（Ryn 默认只认 ryn://app；自举显式更稳，不依赖隐式追加）。
+                opts.AllowedOrigins.Add(DshShellForward.ShellOrigin);
+                if (runtime.WebUrl is not null)
                 {
-                    // dsh web UI（loopback；完整运行时随应用内置后仍是此路径）
-                    opts.Url = webUrl.Value;
+                    // 壳 origin 直载（对齐上游 dsh-app://app）：窗口永远只进壳 URL（铸币已在 StartRuntime 落定），
+                    // token/cookie 永不进页面。
+                    opts.Url = DshShellForward.ShellRoot;
                 }
                 else
                 {
@@ -56,7 +61,7 @@ public sealed partial class DesktopBootstrap
                 // WebView 调试器默认关闭（正式打包无调试窗口）；开发期设 DSH_DEVTOOLS=1 开启。
                 opts.DevTools = Environment.GetEnvironmentVariable("DSH_DEVTOOLS") == "1";
             })
-            .ConfigureServices(services => RegisterServices(services, preflight, runtime, update))
+            .ConfigureServices(services => RegisterServices(services, preflight, update))
             .Build();
 
         _windowAccessor = _app.Services.GetRequiredService<CurrentWindowAccessor>();
@@ -64,10 +69,11 @@ public sealed partial class DesktopBootstrap
         return new AppSetup(_app, _windowAccessor);
     }
 
-    private void RegisterServices(IServiceCollection services, Preflight preflight, RuntimeSetup runtime, UpdateSetup update)
+    private void RegisterServices(IServiceCollection services, Preflight preflight, UpdateSetup update)
     {
         services.AddRynCommands();
         // 宿主导航回调（Ryn 0.32.0 Ryn.Callbacks）：在导航边界统一拦截外部链接（ADR ryn-navigation-callbacks）。
+        // 当前页面 origin 即壳 origin（页面永驻壳内；dsh 绝对链接由转发层改写回壳，外链照走系统浏览器）。
         services.AddRynCallbacks();
         services.AddRynNavigationCallbacks();
         // 覆盖源生成的 handler 无参注册：导航回调依赖（openExternal 打开器 / 日志 /
@@ -75,7 +81,7 @@ public sealed partial class DesktopBootstrap
         services.AddSingleton(sp => new RynNavigationCallbacks(
             opener: null,
             log: HostLog.Write,
-            currentOrigin: runtime.WebUrl?.Authority,
+            currentOrigin: DshShellForward.ShellOrigin,
             // 外部链接打开失败 → 推事件给页面，companion 渲染 toast（R2 N2）。EmitEvent 走
             // deferred IRynWebView（窗口就绪后转发），在导航回调触发时页面必然已加载。
             notifyLinkFail: url => sp.GetRequiredService<IRynWebView>().EmitEvent(
@@ -224,26 +230,27 @@ public sealed partial class DesktopBootstrap
         return ValueTask.CompletedTask;
     }
 
-    /// <summary>收养后导航：页内已自刷即免导航，只做收养登记。</summary>
+    /// <summary>收养后导航：epoch 可能已换（新 secret/端口）→ 先重铸（覆盖式，~10ms），再定导航。
+    /// 页内已自刷即免导航，只做收养登记（_webUrl 恒为壳根）。</summary>
     private ValueTask NavigateAfterAdoptAsync(AppSetup app, RynNavigationCallbacks navCallbacks, Uri url)
     {
-        // webUrl 同步刷新——健康监视器（有界恢复）靠它作为 reload 靶点；若崩溃重启用新端口
-        // （ADR child-process-reaping-port-drift 的端口漂移）而 webUrl 仍指向旧 URL，
-        // 监视器的 reload 会打到已死的旧端口、甚至覆写刚恢复的导航。
-        _webUrl = url;
-        AuthorizeIpcOriginFor(app.WindowAccessor, url);
-        navCallbacks.AuthorizeOrigin(url);
+        // webUrl 恒壳根（导航靶点与健康 reload 靶点）；收养登记只刷新它，dsh 旧 URL 不再进导航。
+        // 页面永驻壳内：无需逐跳授权（Ryn 非 http origin 拒绝运行时授权，桥接白名单已在 BuildApp 装配）；
+        // dsh 自指 3xx 由转发层内部跟完，页内绝对 dsh 链接走导航回调外部策略（fail-closed），外链照走系统浏览器。
+        _webUrl = DshShellForward.ShellRoot;
+        // 同步编排沿用既有形态：重铸内部超时兜底，无 ct 位（收养回调无取消语义）；失败 loud，导航照发
+        // （转发 401/502 → 探针/恢复面按错误页处理）。
+        _ = _shellForward.MintAsync(DshWebUrl.From(url), HostLog.Write, CancellationToken.None).GetAwaiter().GetResult();
         // 免导航（ADR adopt-skip-navigate-on-self-reload）：周期内有到达即视为页内自刷
         // （市场 doRestart 轮询到新 boot 即 location.reload；谓词只比时间戳，同源靠前提假设），
-        // 再 NavigateAsync 即第二跳——只做收养登记（上文 _webUrl + origin 授权），跳过实际导航。
-        // 无到达时走既有导航。
+        // 再导航即多余——只做收养登记，跳过实际导航。无到达时走壳单跳。
         if (AdoptNavigateGate.ShouldSkipAdoptNavigate(navCallbacks.LastNavigatedAtUtc, _lastRecoveryShownAtUtc))
         {
             HostLog.Write($"[nav] 收养时恢复周期内已有页面到达（视为页内自刷，{url.GetLeftPart(UriPartial.Authority)}），跳过壳侧导航");
             return ValueTask.CompletedTask;
         }
 
-        return app.WindowAccessor.Current.NavigateAsync(url);
+        return app.WindowAccessor.Current.NavigateAsync(DshShellForward.ShellRoot);
     }
 
     private void SetupHealthMonitor(AppSetup app, SupervisorSetup supervisor)
@@ -309,14 +316,14 @@ public sealed partial class DesktopBootstrap
         });
     }
 
-    /// <summary>引导完成后的壳侧导航收尾（ADR bootstrap-cross-scheme-cookie-401）：记录 webUrl 后
-    /// WebKitGTK 两跳导航进主界面，由引导服务在 dsh 就位时回调。</summary>
+    /// <summary>引导完成后的壳侧导航收尾：窗口进壳 origin 单跳直达（铸币已在 StartRuntime 落定，
+    /// 同一 epoch 内不再重铸）。由引导服务在 dsh 就位时回调。</summary>
     /// <param name="app">Ryn 应用装配产出（窗口访问器与回调服务来源）。</param>
-    /// <param name="url">dsh 就位端点。</param>
+    /// <param name="url">dsh 就位端点（仅供落定重铸与日志；导航一律走壳 URL）。</param>
     /// <param name="ct">引导任务取消令牌。</param>
     private async Task EnterMainUiAsync(AppSetup app, DshWebUrl url, CancellationToken ct)
     {
-        _webUrl = url.Value;
+        _webUrl = DshShellForward.ShellRoot;
         // 窗口可能尚未建好（原生建窗慢于 dsh 就位时，首个 Current 即抛，ADR bootstrap-window-ready-wait）：
         // 有界等可用，超时 loud 跳过本次导航（dsh 已就绪，重启即进）。
         if (!await WaitForWindowAsync(app, ct).ConfigureAwait(false))
@@ -324,34 +331,10 @@ public sealed partial class DesktopBootstrap
             HostLog.Write($"[nav] 等窗口可用超时（{_timeouts.WindowReadyTimeoutSeconds}s），跳过本次进入主界面导航");
             return;
         }
-        // WebKitGTK 两跳导航：从自定义 scheme 占位页（ryn://app）发起的跨 scheme 导航链上，
-        // dsh 的 SameSite=Strict 会话 cookie 不随 303 回环重定向发送（沙箱实锤 2026-09-14：
-        // mint 命中 → 随后 GET / 无 cookie 401）。先落裸 origin http 页脱离 ryn:// 链路
-        // （该跳无 token 必得 401，瞬时无害），再从 http 页发起同站导航——Strict cookie 正常随行。
-        // 第二跳必须等第一跳真正提交（NavigateAsync 连发会被 WebKitGTK 合并成一次导航）。
-        Uri landing = url.AuthorityRoot;
-        AuthorizeIpcOriginFor(app.WindowAccessor, landing);
-        app.App.Services.GetRequiredService<RynNavigationCallbacks>().AuthorizeOrigin(landing);
-        if (!await TryEvalFirstHopAsync(app, landing, ct).ConfigureAwait(false))
-        {
-            // eval 未发出（桥不可用/超时）：回退原生调用，旧链形状不变。
-            await NavigateAndAwaitCommitAsync(app, landing, ct).ConfigureAwait(false);
-        }
-        // 第二跳同样等提交（R2 S2）：否则探针采到旧落地误触发重进；提交等待有界（NavCommitTimeoutSeconds）。
-        await NavigateAndAwaitCommitAsync(app, url.Value, ct);
+        // 壳单跳直达：同站内无 token、无 cookie 链（IPC 桥接白名单已在 BuildApp 经 AllowedOrigins 装配；
+        // Ryn 非 http origin 拒绝运行时授权，此处不再逐跳授权）。
+        // 第二跳等提交的旧语义退役（单跳无合并问题）；提交等待仍有界（NavCommitTimeoutSeconds）。
+        await NavigateAndAwaitCommitAsync(app, DshShellForward.ShellRoot, ct);
         await SettleWebSessionAsync(app, url, ct);
-    }
-
-    /// <summary>导航前授权 <paramref name="url"/> 的 origin 可 IPC（Ryn 0.38 受信 origin 集合，ADR
-    /// ryn-pr91-trusted-origin）：端口漂移/引导后首次进入 dsh 时页面 origin 不在初始受信集里，
-    /// 未授权则页面命令通道被拒（token 有效也拒）。幂等，重复授权无害；授权在导航前生效，
-    /// 「bridge 随下一次导航安装」。窗口未就绪时异常照抛（fail loud，调用面均已在窗口就绪后）。</summary>
-    /// <param name="accessor">当前窗口访问器。</param>
-    /// <param name="url">待授权 URL。</param>
-    private void AuthorizeIpcOriginFor(CurrentWindowAccessor accessor, Uri url)
-    {
-        string origin = url.GetLeftPart(UriPartial.Authority);
-        accessor.Current.AuthorizeIpcOrigin(origin);
-        HostLog.Write($"[nav] 已授权 IPC origin：{origin}");
     }
 }

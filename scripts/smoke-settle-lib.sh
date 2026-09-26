@@ -59,17 +59,16 @@ nav_count_after_ready() {
 nav_token_seen() { nav_lines | grep -E "$NAV_TOKEN_RE" >/dev/null; }
 
 # 落定等待：①后等导航提交，再（显示腿）等应用终页裁决。$1=pid（可空：空即只查一次，进程已死不再等）。
-# 到达门（≥2 到达且含 token 第二跳，或①之后到达 ≥2 次）满足后：
+# 到达门（≥1 到达且含 token 第二跳，或①之后到达 ≥1 次）：单跳世界（壳 origin 直达）的精确信号——
+# ①之前只有占位提交，①之后除本次导航无他者；token 路径保留（dsh 直连形态回归即用）。
 #   auth 裁决 → 立即 1（终页确认是鉴权页，机器可判的坏页门）；
-#   其余（healthy/unknown/缺行）一律 0：外部 origin（dsh 的 http 页）上 Ryn 桥把 eval 回包
-#   POST 到页面 origin（桥 `_ipcBase` 默认空串），打不到宿主 ⇒ 该页 DOM 探针恒超时，
-#   与预算无关；内容见证改由截图承担（`smoke_capture_witness`）。
+#   其余（healthy/unknown/缺行）一律 0：内容真伪由截图见证裁（`smoke_capture_witness`）。
 # 读调用方 SETTLE_WAIT 全局。
 wait_settled() {
   local pid="${1:-}" i n arrived=0 state=""
   for i in $(seq 1 "$SETTLE_WAIT"); do
     n="$(nav_count)"
-    if [[ "$n" -ge 2 ]] && { nav_token_seen || [[ "$(nav_count_after_ready)" -ge 2 ]]; }; then
+    if [[ "$n" -ge 1 ]] && { nav_token_seen || [[ "$(nav_count_after_ready)" -ge 1 ]]; }; then
       arrived=1
       state="$(page_verdict_state)"
       # 裁决 auth 即终页确认是鉴权页，任何腿都判 FAIL（ADR verdict-honesty-repair 的机器可判门）。
@@ -98,7 +97,7 @@ wait_settled() {
     fi
     sleep 1
   done
-  echo "error: 落定超时（${SETTLE_WAIT}s 内未见 token 第二跳且①后到达不足 2 次；到达 $(nav_count) 次）" >&2
+  echo "error: 落定超时（${SETTLE_WAIT}s 内未见 token 第二跳且①后到达不足 1 次；到达 $(nav_count) 次）" >&2
   return 1
 }
 

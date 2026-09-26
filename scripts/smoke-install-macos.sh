@@ -9,7 +9,7 @@
 # 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
 # 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
 # 落定语义（ADR smoke-settle-content-verdict）：①只是 dsh 就绪行，verdict 与截图
-# 必须等导航落定——`[nav] 导航已到达` 去重 ≥2 次且含 `?token=` 第二跳，或①之后到达 ≥2 次（Linux 只报最终 URL）。落定超时或
+# 必须等导航落定——`[nav] 导航已到达` 去重 ≥1 次且含 `?token=` 第二跳，或①之后到达 ≥1 次（单跳世界：壳直达；token 路径保留）。落定超时或
 # 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
 # mac runner 有 WindowServer 会话，①应命中；若 WKWebView/WindowServer 在 runner
 # 会话受限使壳提前退出（①前），②为保底判定位（已记录边界，同 Linux CI）。
@@ -123,6 +123,11 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   sleep 30 & live=$!
   SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-timeout-should-fail" || tpass "settle-timeout-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：dsh-app://app/\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-single-shell" || tfail "settle-single-shell"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  : >"$OUT"; : >"$LOG"
   SETTLE_WAIT=90 wait_settled "" >/dev/null 2>&1 && tfail "settle-deadpid-should-fail" || tpass "settle-deadpid-fails"
   heartbeat "60" "$HOME_DIR" 2>&1 | grep -q "等待中（60s）" && tpass "heartbeat" || tfail "heartbeat"
   # 回退门（R2 B1 回归锁）：①已见不得翻回；纯②才翻回；双无不翻
@@ -199,8 +204,7 @@ hdiutil detach "$MNT"
 echo "== 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s）"
 set +e
 # 无人值守跳过可选插件（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
-# 诊断复演（M/R 二选一，用完即删）：dsh 认证链托管复演，全程 loud，默认关闭，CI 显式开。
-env DSH_DESKTOP_DSH_HOME="$HOME_DIR" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip DSH_DESKTOP_DIAG_HTTP_REPLAY=1 \
+env DSH_DESKTOP_DSH_HOME="$HOME_DIR" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
   "$INSTALLED/Contents/MacOS/$APP_NAME" >"$OUT" 2>&1 &
 SMOKE_PID=$!
 rc=1

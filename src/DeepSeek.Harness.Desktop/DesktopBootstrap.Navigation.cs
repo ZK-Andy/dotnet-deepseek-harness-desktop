@@ -64,42 +64,8 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    /// <summary>首跳 eval 优先导航（ADR smoke-witness-real-and-eval-first-hop）：renderer 经页面内
-    /// <c>location.href</c> 发起，绕过 saucer <c>set_url</c> 同步段在 arm64 的 hang；eval 未发出则回退
-    /// 原生（<c>false</c>）。提交等待与原生同窗同语义，第二跳与 cookie 链不受影响。</summary>
-    /// <param name="app">Ryn 应用装配产出（导航回调与窗口访问器来源）。</param>
-    /// <param name="landing">裸 origin 落点（第一跳靶点）。</param>
-    /// <param name="ct">引导任务取消令牌。</param>
-    /// <returns>true = eval 已发出（含提交等待）；false = 未发出，调用方走原生。</returns>
-    private async Task<bool> TryEvalFirstHopAsync(AppSetup app, Uri landing, CancellationToken ct)
-    {
-        RynNavigationCallbacks callbacks =
-            app.App.Services.GetRequiredService<RynNavigationCallbacks>();
-        TaskCompletionSource arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        callbacks.SetOnNavigated(() => arrived.TrySetResult());
-        try
-        {
-            bool issued = await PagePump.TryNavigateViaEvalAsync(
-                (script, token) => app.WindowAccessor.Current.EvaluateJavaScriptAsync(script, token),
-                landing,
-                _timeouts.NavCallTimeoutSeconds,
-                ct).ConfigureAwait(false);
-            if (!issued)
-            {
-                return false;
-            }
-
-            await WaitNavCommitAsync(arrived.Task, "首跳 eval 导航", ct).ConfigureAwait(false);
-            return true;
-        }
-        finally
-        {
-            callbacks.SetOnNavigated(static () => { });
-        }
-    }
-
     /// <summary>导航提交等待（有界；超时 loud 后按已提交继续）。<paramref name="hop"/> 记路名，
-    /// 诊断时可分清原生/ eval 哪条路走的。</summary>
+    /// 诊断时可分清哪条路走的。</summary>
     /// <param name="arrivedTask">提交信号任务。</param>
     /// <param name="hop">路名（日志前缀）。</param>
     /// <param name="ct">引导任务取消令牌。</param>

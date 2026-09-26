@@ -82,7 +82,9 @@ public sealed class RynNavigationCallbacks
 
     /// <summary>登记宿主授权的 origin（与原生 <c>AuthorizeIpcOrigin</c> 同点调用）：
     /// 用户发起且目标为集内 origin 的导航放行；集外仍按外部策略。仅绝对环回 URI 入集
-    /// （不变量自持，不依赖调用点纪律），其余输入静默忽略。</summary>
+    /// （不变量自持，不依赖调用点纪律），其余输入静默忽略。
+    /// 当前壳转发模型下无产品调用方（页面永驻壳内，集恒空即 fail-closed 走外部策略）；
+    /// 未来若有 dsh 直连导航点，前置调用本方法登记后再导航。</summary>
     /// <param name="origin">dsh 端点 URI（如裸 origin 根）。</param>
     public void AuthorizeOrigin(Uri? origin)
     {

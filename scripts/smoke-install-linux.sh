@@ -10,7 +10,7 @@
 # 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
 # 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
 # 落定语义（ADR smoke-settle-content-verdict + page-verdict-gate）：①只是 dsh 就绪行，verdict 与截图
-# 必须等导航落定——`[nav] 导航已到达` 去重 ≥2 次且含 `?token=` 第二跳，或①之后到达 ≥2 次（Linux 只报最终 URL）。落定超时或
+# 必须等导航落定——`[nav] 导航已到达` 去重 ≥1 次且含 `?token=` 第二跳，或①之后到达 ≥1 次（单跳世界：壳直达；token 路径保留）。落定超时或
 # 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
 #     deb 腿（有显示）还要等应用自己的终页裁决行 `[nav] 页面裁决=healthy` 才算落定：
 #     auth / unknown / 裁决未出现（探针未回）皆 FAIL——绿必须等于"同源且非鉴权页"，
@@ -199,9 +199,13 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   log="$tdir/w3"; : >"$log"
   SMOKE_WAIT=2 wait_url "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-nosignal-should-fail" || tpass "wait_url-nosignal-fails"
-  log="$tdir/w4"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n' >"$log"
+  log="$tdir/w4"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$log"
   sleep 30 & live=$!
   SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-nosettle-should-fail" || tpass "wait_url-nosettle-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  log="$tdir/w4b"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：dsh-app://app/\n' >"$log"
+  sleep 30 & live=$!
+  SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-single-shell-settles" || tfail "wait_url-single-shell-settles"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   log="$tdir/w5"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-exit-settled" || tfail "wait_url-exit-settled"
@@ -306,8 +310,7 @@ smoke_deb() {
   echo "== [deb] 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s；DISPLAY=${DISPLAY:-<无>}）"
   set +e
   # 无人值守跳过可选插件（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
-  # 诊断复演（M/R 二选一，用完即删）：同 mac 腿，Linux 参考迹一并留痕。
-  env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip DSH_DESKTOP_DIAG_HTTP_REPLAY=1 \
+  env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
     timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
   pid=$!
   # 动态作用域：wait_url→wait_settled 读得到；钉在本次调用内，不外泄给后续腿（R2 S3）。

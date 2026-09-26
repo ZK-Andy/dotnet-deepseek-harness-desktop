@@ -30,6 +30,10 @@ public sealed partial class DesktopBootstrap
     private CurrentWindowAccessor _windowAccessor = null!;
     private Uri? _webUrl;
     private HarnessRuntimeHost _host = null!;
+    // 壳转发器（应用单例 wiring：构造即备好 HttpClient，无 I/O；铸币/转发由编排方法调用）。
+    // 长命共享态留字段（同 _tray 类别）；DI 注册不可行——scheme handler 闭包需在 DI 建成前捕获实例
+    // （Ryn builder 链先于 Build，属装配时序约束），故字段直持。
+    private readonly DshShellForward _shellForward = new();
     private Core.ExitPipeline _exit = null!;
     // 本次恢复周期起点（恢复屏展示时刻，由 showRecovery 写入、收养 navigate 读出：
     // 周期内有导航到达即页内已自刷，跳过壳侧导航。跨异步回调的延迟接线态，留字段）。
@@ -255,6 +259,14 @@ public sealed partial class DesktopBootstrap
             {
                 HostLog.Write($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', host.Host.StderrTail.TakeLast(8))}");
             }
+        }
+
+        if (webUrl is not null)
+        {
+            // 壳铸币（对齐上游 authenticateWebHost）：窗口/导航一律走壳 origin，先铸后载；
+            // 失败 loud，窗口照开（转发 401/502 → 探针/恢复面按错误页处理，不挡启动）。
+            // 同步编排沿用本方法既有 GetAwaiter 形态；上限由转发器内部超时兜底。
+            _ = _shellForward.MintAsync(webUrl.Value, HostLog.Write, CancellationToken.None).GetAwaiter().GetResult();
         }
 
         return new RuntimeSetup(webUrl);

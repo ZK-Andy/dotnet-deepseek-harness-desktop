@@ -75,6 +75,26 @@ public class WebAuthRecoveryTests
         Assert.Equal(WebAuthRecovery.PageVerdict.Auth, Classify(Sample(Origin, text), Origin));
     }
 
+    /// <summary>鉴权标记不限 origin：壳 opaque origin 页（null）上的 401 文本同样判 auth
+    /// （壳转发模型下探针采样 origin 恒为 null；正常 UI 永不含该串）。</summary>
+    [Theory]
+    [InlineData("null")]
+    [InlineData("dsh-app://app")]
+    [InlineData("http://127.0.0.1:9")]
+    public void AuthText_AnyOrigin_IsAuth(string origin)
+    {
+        Assert.Equal(WebAuthRecovery.PageVerdict.Auth, Classify(Sample(origin, Auth), "dsh-app://app"));
+    }
+
+    /// <summary>无标记非同源文本恒 unknown（旧 ForeignOrigin 语义保留；marker 口径变更只影响含标记样本）。</summary>
+    [Theory]
+    [InlineData("null")]
+    [InlineData("ryn://app")]
+    public void UnmarkedForeignText_IsUnknown(string origin)
+    {
+        Assert.Equal(WebAuthRecovery.PageVerdict.Unknown, Classify(Sample(origin, "DeepSeek Harness"), "dsh-app://app"));
+    }
+
     /// <summary>大小写敏感：上游固定小写串，大写变体不误伤。</summary>
     [Fact]
     public void WrongCaseMarker_IsHealthy()

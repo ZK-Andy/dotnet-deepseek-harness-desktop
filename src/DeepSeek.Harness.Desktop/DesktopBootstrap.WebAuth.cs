@@ -8,49 +8,27 @@ namespace DeepSeek.Harness.Desktop;
 public sealed partial class DesktopBootstrap
 {
     /// <summary>
-    /// 网页会话落定自愈（ADR webauth-token-reentry + page-verdict-gate + macos-cookie-grace-reload）：
-    /// 第二跳提交后，token→303→cookie 链可能在 WebView 未落定（终页为 dsh 401 文本）。裁决为鉴权页则有界重进
-    /// token URL 一次，再坏只 fail loud（不挡启动、不循环）。探针超时/异常按未知放过启动；
-    /// macOS 域内终态非健康时再加一次有界 grace 重载（cookie 落盘宽限后无 token 重载裸 origin 做纯 cookie 检验）；
-    /// 冒烟显示腿（deb）只认 <c>页面裁决=healthy</c>（unknown/auth 皆红），未置位腿（mac/win）仍按到达落定、auth 仍红。
+    /// 网页会话落定（壳转发模型）：壳 URL 提交后探一次终页。鉴权页（转发链断/cookie 失效）则重铸
+    /// 并重载壳页一次，再坏只 fail loud（不挡启动、不循环）。探针超时/异常按未知放过启动；
+    /// 未知由冒烟见证门判定（与 Linux 同语义），启动不为此等待。
     /// </summary>
     private async Task SettleWebSessionAsync(AppSetup app, DshWebUrl url, CancellationToken ct)
     {
-        string expectedOrigin = url.Authority;
+        string expectedOrigin = DshShellForward.ShellOrigin;
         string? sample = await ProbePageSampleAsync(app, ct).ConfigureAwait(false);
         Core.WebAuthRecovery.PageVerdictDetail detail = Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin);
         if (detail.Verdict != Core.WebAuthRecovery.PageVerdict.Auth)
         {
             LogPageVerdict(detail, expectedOrigin, string.Empty);
-        }
-        else
-        {
-            HostLog.Write("[nav] 检测到鉴权页，重进 token URL（第 1 次）");
-            await NavigateAndAwaitCommitAsync(app, url.Value, ct).ConfigureAwait(false);
-            sample = await ProbePageSampleAsync(app, ct).ConfigureAwait(false);
-            detail = Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin);
-            LogPageVerdict(detail, expectedOrigin, "，重进后");
-        }
-
-        if (detail.Verdict == Core.WebAuthRecovery.PageVerdict.Healthy)
-        {
             return;
         }
 
-        if (!OperatingSystem.IsMacOS())
-        {
-            return;
-        }
-
-        // macOS grace 重载（ADR macos-cookie-grace-reload，有界 1 次）：303 跟进与 cookie 落盘竞速时首轮
-        // 终页可能是 401；宽限后无 token 重载裸 origin——cookie 若已落盘即 200 UI，否则仍 401，
-        // 纯 cookie 检验，不重铸（铸币只在 token 跳发生）。退出取消照常上抛。
-        HostLog.Write($"[nav] 终页非健康（{detail.Verdict}），grace {_timeouts.AuthGraceReloadDelaySeconds}s 后无 token 重载一次");
-        await Task.Delay(TimeSpan.FromSeconds(_timeouts.AuthGraceReloadDelaySeconds), ct).ConfigureAwait(false);
-        await NavigateAndAwaitCommitAsync(app, url.AuthorityRoot, ct).ConfigureAwait(false);
+        HostLog.Write("[nav] 终页鉴权，重铸并重载壳页面（第 1 次）");
+        await _shellForward.MintAsync(url, HostLog.Write, ct).ConfigureAwait(false);
+        await NavigateAndAwaitCommitAsync(app, DshShellForward.ShellRoot, ct).ConfigureAwait(false);
         sample = await ProbePageSampleAsync(app, ct).ConfigureAwait(false);
         detail = Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin);
-        LogPageVerdict(detail, expectedOrigin, "，grace 重载后");
+        LogPageVerdict(detail, expectedOrigin, "，重铸后");
     }
 
     /// <summary>

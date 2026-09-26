@@ -1,8 +1,8 @@
 namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
-/// dsh 网页终页裁决（ADR webauth-token-reentry + page-verdict-gate）：把探针采样判成
-/// <c>healthy</c>／<c>auth</c>／<c>unknown</c> 三态——壳侧自愈据此决定是否重进 token URL，
+/// dsh 网页终页裁决（ADR webauth-token-reentry + page-verdict-gate + shell-mint-and-forward）：
+/// 把探针采样判成 <c>healthy</c>／<c>auth</c>／<c>unknown</c> 三态——壳侧自愈据此决定是否重铸重载，
 /// 冒烟门禁据此决定 CI 绿红（绿 = 同源且非鉴权页，不是"到达过"）。
 /// 纯函数可单测：编排在组合根，判定只此一处。
 /// </summary>
@@ -26,13 +26,13 @@ public static class WebAuthRecovery
     /// <summary>不可判断裁决 token。</summary>
     public const string VerdictUnknown = "unknown";
 
-    /// <summary>终页三态：健康 / 鉴权页 / 未知（探针失败、非同源、或文本为空）。</summary>
+    /// <summary>终页三态：健康 / 鉴权页 / 未知（探针失败、非同源无标记文本、或文本为空）。</summary>
     public enum PageVerdict
     {
         /// <summary>同源、可见文本非空且不含鉴权标记。</summary>
         Healthy,
 
-        /// <summary>同源且可见文本命中鉴权标记。</summary>
+        /// <summary>可见文本命中鉴权标记（不限 origin：壳 opaque origin 页亦可判；正常 UI 永不含该串）。</summary>
         Auth,
 
         /// <summary>不可判：探针超时/失败、origin 与期望不符、或可见文本为空。</summary>
@@ -63,16 +63,18 @@ public static class WebAuthRecovery
             return new PageVerdictDetail(PageVerdict.Unknown, HasSample: false, string.Empty, 0);
         }
 
-        // 非同源即不可判：占位页（ryn://app）、引导页、错误页都不该被当成"进了 dsh UI"。
+        // 非同源且无标记即不可判：占位页（ryn://app）、引导页、错误页都不该被当成"进了 dsh UI"。
+        // 鉴权标记不限 origin：壳 opaque origin 页（location.origin 为 null）上的 401 文本同样可判，
+        // 正常 DSH UI 永不含该串（见 AuthRequiredMarker 注释），误伤面不变。
         bool sameOrigin = string.Equals(origin, expectedOrigin, StringComparison.OrdinalIgnoreCase);
         PageVerdict verdict;
-        if (!sameOrigin)
-        {
-            verdict = PageVerdict.Unknown;
-        }
-        else if (visibleText.Contains(AuthRequiredMarker, StringComparison.Ordinal))
+        if (visibleText.Contains(AuthRequiredMarker, StringComparison.Ordinal))
         {
             verdict = PageVerdict.Auth;
+        }
+        else if (!sameOrigin)
+        {
+            verdict = PageVerdict.Unknown;
         }
         else
         {

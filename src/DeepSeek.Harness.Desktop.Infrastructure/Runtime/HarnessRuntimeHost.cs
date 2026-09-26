@@ -142,13 +142,6 @@ public sealed partial class HarnessRuntimeHost : IDisposable
             {
                 HarvestLineageResidue("启动成功后收敛");
             }
-
-            if (DshAuthReplayDiag.Enabled && _log is not null)
-            {
-                // 诊断分支（macOS 401 墙 M/R 二选一，用完即删）：托管复演同一 URL 的铸币链，
-                // 全程 loud，失败不阻断（ReplayAsync 永不抛）；默认关闭零行为变更。
-                await DshAuthReplayDiag.ReplayAsync(url, _log, ct).ConfigureAwait(false);
-            }
         }
 
         return url;
