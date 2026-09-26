@@ -17,6 +17,11 @@ public sealed partial class DesktopBootstrap
         string? sample = await ProbeVisibleTextAsync(app, ct).ConfigureAwait(false);
         if (Core.WebAuthRecovery.Evaluate(sample, 0) != Core.WebAuthRecovery.Disposition.ReenterToken)
         {
+            // 内容留痕（ADR verdict-honesty-repair）：好页与未知皆 loud——只记长度不记内容，
+            // 防会话文本落盘；人眼判终页时以此行 + 截图为准。
+            HostLog.Write(sample is null
+                ? "[nav] 页面探针未知（超时/失败耗尽），按未知放行"
+                : $"[nav] 页面内容正常（可见文本 {sample.Length} 字），免自愈");
             return;
         }
 

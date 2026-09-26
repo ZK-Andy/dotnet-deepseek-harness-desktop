@@ -367,22 +367,7 @@ public sealed partial class DesktopBootstrap
         try
         {
             HostLog.Write($"[nav] 发起导航：{target.GetLeftPart(UriPartial.Authority)}");
-            try
-            {
-                // 调用有界（ADR navigate-call-timeout）：超时 loud 后沿"按已提交继续"走提交等待与探针；
-                // 悬空原生调用 fire-and-forget 可接受（探针先例），应用退出取消照常上抛。
-                await app.WindowAccessor.Current.NavigateAsync(target).AsTask()
-                    .WaitAsync(TimeSpan.FromSeconds(_timeouts.NavCallTimeoutSeconds), ct).ConfigureAwait(false);
-                HostLog.Write($"[nav] 导航调用已返回：{target.GetLeftPart(UriPartial.Authority)}");
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (TimeoutException)
-            {
-                HostLog.Write($"[nav] 导航调用超时（{_timeouts.NavCallTimeoutSeconds}s），按已提交继续");
-            }
+            await NavigateWithTimeoutAsync(app.WindowAccessor, target, _timeouts.NavCallTimeoutSeconds, ct).ConfigureAwait(false);
             try
             {
                 await arrived.Task.WaitAsync(TimeSpan.FromSeconds(_timeouts.NavCommitTimeoutSeconds), ct);

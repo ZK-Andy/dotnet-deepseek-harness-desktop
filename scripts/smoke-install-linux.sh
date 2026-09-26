@@ -185,6 +185,11 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-postready" || tfail "settle-postready"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  # GiveUp 进门（ADR verdict-honesty-repair）：到达再多、自愈已放弃即失败
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 鉴权页自愈失败（已重进）：页面仍要求认证\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-giveup-should-fail" || tpass "settle-giveup-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   rm -rf "$tdir"
   [[ $fail -eq 0 ]] && echo "self-test: PASS" || echo "self-test: FAIL"
   return $fail
@@ -228,6 +233,10 @@ smoke_deb() {
     cat "$log" >&2
   else
     smoke_verdict "$log"
+    # 成功也留尾（ADR verdict-honesty-repair）：绿跑的导航/探针/自愈行此前随日志删除，
+    # "绿即无证"致 401 绿 verdict 无从复核；30 行覆盖导航段（仓内尾部惯例）。
+    echo "== [deb] 冒烟通过，应用日志尾部（内容判定留痕）：" >&2
+    tail -30 "$log" >&2 || true
   fi
   rm -rf "$home" "$log"
   [[ $rc -eq 0 ]]

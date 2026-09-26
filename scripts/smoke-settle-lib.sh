@@ -49,6 +49,12 @@ wait_settled() {
     n="$(nav_count)"
     if [[ "$n" -ge 2 ]] && { nav_token_seen || [[ "$(nav_count_after_ready)" -ge 2 ]]; }; then
       echo "note: 导航已落定（到达 ${n} 次，含 token 第二跳或①后双到达，用时 ${i}s）" >&2
+      # 确认坏页机器可判（ADR verdict-honesty-repair）：P0 自愈已放弃即终页为鉴权页，
+      # 落定也判 FAIL，不再只靠人眼。
+      if log_has '鉴权页自愈失败'; then
+        echo "error: 落定但鉴权自愈已放弃（终页为鉴权页），按失败计" >&2
+        return 1
+      fi
       return 0
     fi
     if [[ -z "$pid" ]]; then
