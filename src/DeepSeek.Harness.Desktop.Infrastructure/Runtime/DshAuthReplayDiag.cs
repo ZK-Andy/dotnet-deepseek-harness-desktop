@@ -1,5 +1,3 @@
-using System.Net.Sockets;
-
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 /// <summary>诊断分支（dsh 认证链 HTTP 级复演）：macOS 401 墙 M/R 二选一实验，用完即删。
@@ -14,7 +12,7 @@ internal static class DshAuthReplayDiag
     /// <summary>开启复演的环境变量名（CI 冒烟脚本注入；默认关闭）。</summary>
     internal const string EnableEnv = "DSH_DESKTOP_DIAG_HTTP_REPLAY";
 
-    private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan s_stepTimeout = TimeSpan.FromSeconds(10);
 
     /// <summary>复演是否开启。</summary>
     internal static bool Enabled =>
@@ -40,7 +38,7 @@ internal static class DshAuthReplayDiag
         {
             using var client = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false })
             {
-                Timeout = StepTimeout,
+                Timeout = s_stepTimeout,
             };
             StepResult bare = await GetAsync(client, origin + "/", null, ct).ConfigureAwait(false);
             log($"[diag] replay: 裸 / → {bare.Status}（{bare.Bytes}B；{origin} 可达性）");
