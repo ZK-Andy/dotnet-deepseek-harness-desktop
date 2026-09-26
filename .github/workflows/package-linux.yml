@@ -116,8 +116,12 @@ jobs:
         env:
           SMOKE_SHOT_DIR: ${{ github.workspace }}/smoke-shots
           # CI 逃生舱（ADR webkit-sandbox-userns-fallback）：runner 无特权 userns，bwrap 沙箱必 core；
-          # 产品侧条件降级只认 sysctl 阳性（runner 上文件缺失，保持沙箱），故 CI 显式禁用。
+          # 产品侧条件降级在 runner 上同样命中（sysctl 阳性，日志有禁用行），CI 显式设与产品行为一致。
           WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
+          # 软件渲染实验（Xvfb 无 DRI3 加速，DRI3 warning 后窗口在 dsh 就位前消失；纯 CI 取证，不动产品）：
+          # 关 WebKit 合成 + 强制 Mesa 软渲染，看窗口能否存活到第二跳。
+          WEBKIT_DISABLE_COMPOSITING_MODE: '1'
+          LIBGL_ALWAYS_SOFTWARE: '1'
         run: xvfb-run -a -s "-screen 0 1280x1024x24" bash scripts/smoke-install-linux.sh artifacts/${{ matrix.rid }}
 
       - name: 上传冒烟截图（best-effort，Xvfb 下真实开火，无显示回退时空过，人眼复核）
