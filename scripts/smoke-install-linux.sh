@@ -9,9 +9,14 @@
 #   ②`[bootstrap] 引导开始：` = 安装链保底（装包→依赖齐→运行时检测→首启引导已启动）。
 # 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
 # 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
-# 落定语义（ADR smoke-settle-content-verdict）：①只是 dsh 就绪行，verdict 与截图
+# 落定语义（ADR smoke-settle-content-verdict + page-verdict-gate）：①只是 dsh 就绪行，verdict 与截图
 # 必须等导航落定——`[nav] 导航已到达` 去重 ≥2 次且含 `?token=` 第二跳，或①之后到达 ≥2 次（Linux 只报最终 URL）。落定超时或
 # 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
+#     deb 腿（有显示）还要等应用自己的终页裁决行 `[nav] 页面裁决=healthy` 才算落定：
+#     auth / unknown / 裁决未出现（探针未回）皆 FAIL——绿必须等于"同源且非鉴权页"，
+#     到达过的 401 页（v0.5.7 实跑：verdict 绿配 401 图）不再能冒充通过；截图在裁决之后
+#     再等一个有界重绘窗（SMOKE_REPAINT_SECONDS，默认 3s）才拍，避免拍到上一跳的旧像素。
+#     mac/win 腿本批未置位（下批开门）；rpm 容器腿无 X，①不可达 ⇒ 恒②安装链，落定/裁决门不适用（置位腿之外的落定仍只认到达，auth 除外）。
 #     CI 经 xvfb-run 启动（ADR smoke-linux-xvfb-fullchain）：虚拟 DISPLAY 下窗口可创建，
 #     引导后台任务存活——deb 腿全链信号可达，落定 verdict + 截图真实开火；Xvfb 起不来
 #     或无显示直跑仍回退②安装链（回退门语义不变）。rpm 容器腿无 X，恒②。
@@ -40,8 +45,14 @@ APP_BIN="/usr/bin/deepseek-harness-desktop"
 # 单步上限 + 120s 余量 = 720s。重试轮不计入——冒烟只等首轮落定，超时按②收工。
 # 引导步数或 StepTimeoutMinutes 变化时必须同批重算。SMOKE_WAIT_SECONDS 可覆写。
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
-# 落定窗：①出现后等导航提交（commit 延迟毫秒级，90s 只防 runner 卡顿）。
+# 落定窗：①出现后等导航提交，再等应用终页裁决。预算须覆盖含自愈重进的最坏链
+# （建窗 120 残量 + 2×(导航调用 30 + 提交 5) + 探针 15×2 + 重进 35 + 再探针 30 ≈ 285s，
+# ADR page-verdict-gate），故 ci 矩阵按架构给值（SMOKE_SETTLE_SECONDS；见 package-linux.yml）。
 SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
+# 裁决后重绘窗（秒）：WebKit 提交回调早于新页出像素，裁决一过立刻拍易拍到上一跳旧帧
+# （ADR page-verdict-gate）；无显示时 smoke_shot 本就早退，不睡。非数字按默认。
+SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
+[[ "$SMOKE_REPAINT_SECONDS" =~ ^[0-9]+$ ]] || SMOKE_REPAINT_SECONDS=3
 APP_TIMEOUT=$((SMOKE_WAIT + 20))
 FULL_RE='\[host\] dsh web ='
 BOOT_RE='\[bootstrap\] 引导开始：'
@@ -174,6 +185,18 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   log="$tdir/w5"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-exit-settled" || tfail "wait_url-exit-settled"
+  # wait_url × 裁决门（deb 腿的真实组合，ADR page-verdict-gate）：①+到达+healthy → 0；到达齐但缺裁决 → 1
+  log="$tdir/w6"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$log"
+  sleep 30 & live=$!
+  PAGE_VERDICT_REQUIRED=1
+  SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-verdict-healthy" || tfail "wait_url-verdict-healthy"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  log="$tdir/w7"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
+  sleep 30 & live=$!
+  PAGE_VERDICT_REQUIRED=1
+  SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-verdict-missing-should-fail" || tpass "wait_url-verdict-missing-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  PAGE_VERDICT_REQUIRED=0
   # 落定①后计数（ADR settle-gate-and-probe-retry）：①前双到达不算落定；①后双到达即落定（Linux 只报最终 URL）
   # 注意：此前 wait_url 用例把 OUT/LOG 指走，此处显式复位回自测夹具（settle-ok 先例同理）。
   OUT="$tdir/out"; LOG="$tdir/host.log"
@@ -185,11 +208,49 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-postready" || tfail "settle-postready"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # GiveUp 进门（ADR verdict-honesty-repair）：到达再多、自愈已放弃即失败
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 鉴权页自愈失败（已重进）：页面仍要求认证\n' >"$OUT"; : >"$LOG"
+  # 裁决 auth 进门（ADR page-verdict-gate）：到达再多、终页裁决 auth 即失败（不置位也拦，容器腿同门）
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，请重开 dsh 打印的 URL；启动继续）\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-giveup-should-fail" || tpass "settle-giveup-fails"
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-auth-should-fail" || tpass "settle-auth-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  # 显示腿裁决门（PAGE_VERDICT_REQUIRED=1）：arrivals + healthy → 0
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  PAGE_VERDICT_REQUIRED=1
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-healthy" || tfail "settle-verdict-healthy"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  # 同门：arrivals + unknown → 1（到达过不算绿）
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=unknown（探针无采样，期望 origin=http://127.0.0.1:1）\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  PAGE_VERDICT_REQUIRED=1
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-verdict-unknown-should-fail" || tpass "settle-verdict-unknown-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  # 同门：arrivals 齐但裁决行始终不出现（探针未回）→ 1
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  PAGE_VERDICT_REQUIRED=1
+  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-verdict-missing-should-fail" || tpass "settle-verdict-missing-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  # LOG 兜底（宿主腿形态，R2 S5）：OUT 无裁决行、裁决只在 host.log → 仍读得到且 auth 判红
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$OUT"
+  printf '[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n' >"$LOG"
+  sleep 30 & live=$!
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-log-fallback-auth-should-fail" || tpass "settle-log-fallback-auth-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  : >"$LOG"
+  # 只认最后一条：healthy 之后又坏成 auth（页面塌陷）→ 1，旧 healthy 不得冒充绿
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  PAGE_VERDICT_REQUIRED=1
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-verdict-relapse-should-fail" || tpass "settle-verdict-relapse-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  # 只认最后一条：auth 之后重试恢复 healthy → 0（终页确实是 UI）
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  PAGE_VERDICT_REQUIRED=1
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-recovery" || tfail "settle-verdict-recovery"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  PAGE_VERDICT_REQUIRED=0
   rm -rf "$tdir"
   [[ $fail -eq 0 ]] && echo "self-test: PASS" || echo "self-test: FAIL"
   return $fail
@@ -222,7 +283,14 @@ smoke_deb() {
   env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
     timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
   pid=$!
+  # 动态作用域：wait_url→wait_settled 读得到；钉在本次调用内，不外泄给后续腿（R2 S3）。
+  local PAGE_VERDICT_REQUIRED=1
   wait_url "$log" "$pid" "$home"; rc=$?
+  # 裁决已过再等有界重绘窗：提交回调早于新页出像素，立刻拍会拍到上一跳（401）旧帧；无显示不睡。
+  if [[ $rc -eq 0 && -n "${DISPLAY:-}" ]]; then
+    sleep "$SMOKE_REPAINT_SECONDS"
+    kill -0 "$pid" 2>/dev/null || echo "note: 重绘窗内应用已退出，截图可能为空窗（rc 仍按落定结论）" >&2
+  fi
   smoke_shot "smoke-linux-deb.png"
   kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
   set -e

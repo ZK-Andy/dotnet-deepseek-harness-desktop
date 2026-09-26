@@ -12,7 +12,7 @@ dispatch `36229265859`/`36230153044` 两连证（排除渲染后定稿）：loop
 
 ## Decision
 
-- 产品：`EnterMainUiAsync` 入口先有界等窗口可用（新 `WaitForWindowAsync`，对标 `ProbeVisibleTextAsync` 取消语义：应用退出 OCE 上抛，超时回 false）：就绪即进，超时 loud 日志跳过本次导航、不抛。只捕 `InvalidOperationException`（Ryn 两处"无窗口/未运行"同此型），其余异常照抛。
+- 产品：`EnterMainUiAsync` 入口先有界等窗口可用（新 `WaitForWindowAsync`，对标 `ProbePageSampleAsync` 取消语义：应用退出 OCE 上抛，超时回 false）：就绪即进，超时 loud 日志跳过本次导航、不抛。只捕 `InvalidOperationException`（Ryn 两处"无窗口/未运行"同此型），其余异常照抛。
 - 新超时进配置模型 `WindowReadyTimeoutSeconds`（默认 120s，从回调起算：CI 实证回调时窗未建、建好不晚于启动后约 122s（回调约在启动后 30s），120s 窗覆盖该区间并留余量；超时仍 loud 保底）+ 轮询节拍 `WindowReadyPollIntervalSeconds`（默认 1s，同类节拍键先例）。
 - CI：冒烟步骤包 `dbus-run-session --`（还原文会话总线，加速原生初始化；托盘失败同愈可期）+ apt 加 `dbus`（幂等）。与产品等待双轨互补：CI 还原快路径，产品兜慢机器。
 - 伴随信号备忘（非阻塞，不动手）：`dsh 版本探测失败 No such file`（横幅任务早于 prefix 暴露的探针竞态，日志行而已）；截图 274B 空包（FAIL 跑 kill 后无窗可拍，best-effort 本色）。

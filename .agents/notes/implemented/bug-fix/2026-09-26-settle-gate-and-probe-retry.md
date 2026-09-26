@@ -15,7 +15,7 @@ Related: 证据由 [`bootstrap-window-ready-wait`](../bug-fix/2026-09-26-bootstr
 ## Decision
 
 - 落定门改平台无关口径（`smoke-settle-lib.sh`）：token 到达行（既有 mac 路径，保留）或 ①之后到达 ≥2 次（新 Linux 路径：占位到达多在 ①之前，唯 hop1+hop2 落在 ①后；以 $OUT 文件序为准）。超时/退出 FAIL 语义不变。
-- 探针有限重试（产品）：`ProbeVisibleTextAsync` 内超时/失败重试，总尝试 `AuthProbeAttempts`（默认 2，即初次 + 1 次重试，每次 `AuthProbeTimeoutSeconds`）；成功即返，耗尽回 null（Unknown 放行语义不变）；应用退出 OCE 照常上抛。快机器零变化（首探即中），只给偶发繁忙一次机会。
+- 探针有限重试（产品）：`ProbePageSampleAsync` 内超时/失败重试，总尝试 `AuthProbeAttempts`（默认 2，即初次 + 1 次重试，每次 `AuthProbeTimeoutSeconds`）；成功即返，耗尽回 null（Unknown 放行语义不变）；应用退出 OCE 照常上抛。快机器零变化（首探即中），只给偶发繁忙一次机会。
 - 新尝试次数进配置模型（可调参数禁硬编码纪律）；截图持续人眼复核（已开火）。
 
 ## Alternatives considered

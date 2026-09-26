@@ -9,6 +9,23 @@
 
 NAV_RE='\[nav\] 导航已到达'
 NAV_TOKEN_RE='\?token='
+# 终页裁决（ADR page-verdict-gate）：应用在落定期写下唯一的裁决行；显示腿的"绿"必须由 healthy 背书。
+PAGE_LINE_RE='\[nav\] 页面裁决=(healthy|auth|unknown)'
+
+# 最后一条页面裁决（healthy/auth/unknown）；无则空串。取"最后一条"而非"曾经命中"：
+# 每进程今日至多一条裁决行，但落定/重试形态一旦增多，旧 healthy 不得冒充绿（防御性取尾）。
+# 读写约定：$OUT 优先、$LOG 兜底（两文件同流镜像且 HostLog 先写 stdout，置位腿单文件即精确，
+# 宿主腿兜底不失序）。
+page_verdict_state() {
+  local last=""
+  if [[ -n "${OUT:-}" && -f "${OUT:-}" ]]; then
+    last="$(grep -hoE "$PAGE_LINE_RE" "$OUT" 2>/dev/null | tail -n 1 || true)"
+  fi
+  if [[ -z "$last" && -n "${LOG:-}" && -f "${LOG:-}" ]]; then
+    last="$(grep -hoE "$PAGE_LINE_RE" "$LOG" 2>/dev/null | tail -n 1 || true)"
+  fi
+  printf '%s' "${last##*=}"
+}
 
 # 双源日志探活：stdout 或 host.log 任一命中 $1（调用方定义 OUT/LOG 全局）。
 log_has() { # $1=正则
@@ -41,32 +58,61 @@ nav_count_after_ready() {
 # pipefail 下同样误报；>/dev/null 等价静默且无此风险）。
 nav_token_seen() { nav_lines | grep -E "$NAV_TOKEN_RE" >/dev/null; }
 
-# 落定等待：①后等导航提交。$1=pid（可空：空即只查一次，进程已死不再等）。
-# 落定（≥2 到达且含 token 第二跳，或①之后到达 ≥2 次）即 0，否则 1。读调用方 SETTLE_WAIT 全局。
+# 落定等待：①后等导航提交，再（显示腿）等应用终页裁决。$1=pid（可空：空即只查一次，进程已死不再等）。
+# 到达门（≥2 到达且含 token 第二跳，或①之后到达 ≥2 次）满足后：
+#   auth 裁决 → 立即 1（终页确认是鉴权页）；
+#   PAGE_VERDICT_REQUIRED=1（有显示的腿）→ 还要 `页面裁决=healthy` 才 0，unknown 或未出现皆 1；
+#   未置位的腿（本批 mac/win）维持"到达即落定"——裁决行与 unknown 不拦，auth 仍拦。
+# 读调用方 SETTLE_WAIT / PAGE_VERDICT_REQUIRED 全局。
 wait_settled() {
-  local pid="${1:-}" i n
+  local pid="${1:-}" i n arrived=0 state=""
   for i in $(seq 1 "$SETTLE_WAIT"); do
     n="$(nav_count)"
     if [[ "$n" -ge 2 ]] && { nav_token_seen || [[ "$(nav_count_after_ready)" -ge 2 ]]; }; then
-      echo "note: 导航已落定（到达 ${n} 次，含 token 第二跳或①后双到达，用时 ${i}s）" >&2
-      # 确认坏页机器可判（ADR verdict-honesty-repair）：P0 自愈已放弃即终页为鉴权页，
-      # 落定也判 FAIL，不再只靠人眼。
-      if log_has '鉴权页自愈失败'; then
-        echo "error: 落定但鉴权自愈已放弃（终页为鉴权页），按失败计" >&2
+      arrived=1
+      state="$(page_verdict_state)"
+      # 裁决 auth 即终页确认是鉴权页，任何腿都判 FAIL（ADR verdict-honesty-repair 的机器可判门）。
+      if [[ "$state" == "auth" ]]; then
+        echo "error: 落定但页面裁决=auth（终页为鉴权页），按失败计" >&2
         return 1
       fi
-      return 0
+      if [[ "${PAGE_VERDICT_REQUIRED:-0}" == "1" ]]; then
+        if [[ "$state" == "healthy" ]]; then
+          echo "note: 导航已落定且页面裁决=healthy（到达 ${n} 次，用时 ${i}s）" >&2
+          return 0
+        fi
+        if [[ "$state" == "unknown" ]]; then
+          echo "error: 落定但页面裁决=unknown（探针失败或页面非同源），按失败计" >&2
+          return 1
+        fi
+        # 无裁决行：探针（15s×2）尚在进行，继续等到预算耗尽。
+      else
+        echo "note: 导航已落定（到达 ${n} 次，含 token 第二跳或①后双到达，用时 ${i}s）" >&2
+        return 0
+      fi
     fi
     if [[ -z "$pid" ]]; then
-      echo "error: 进程已退出且导航未落定（到达 ${n} 次，无 token 第二跳且①后不足 2 次）" >&2
+      if [[ "$arrived" -eq 1 ]]; then
+        echo "error: 进程已退出且未见页面裁决（到达 ${n} 次）" >&2
+      else
+        echo "error: 进程已退出且导航未落定（到达 ${n} 次，无 token 第二跳且①后不足 2 次）" >&2
+      fi
       return 1
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
-      echo "error: 落定期进程退出且导航未落定（到达 ${n} 次）" >&2
+      if [[ "$arrived" -eq 1 ]]; then
+        echo "error: 落定期进程退出且未见页面裁决（到达 ${n} 次）" >&2
+      else
+        echo "error: 落定期进程退出且导航未落定（到达 ${n} 次）" >&2
+      fi
       return 1
     fi
     sleep 1
   done
+  if [[ "$arrived" -eq 1 && "${PAGE_VERDICT_REQUIRED:-0}" == "1" ]]; then
+    echo "error: 落定后 ${SETTLE_WAIT}s 内未见页面裁决行（探针未回；按失败计）" >&2
+    return 1
+  fi
   echo "error: 落定超时（${SETTLE_WAIT}s 内未见 token 第二跳且①后到达不足 2 次；到达 $(nav_count) 次）" >&2
   return 1
 }

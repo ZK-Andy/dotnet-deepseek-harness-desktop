@@ -35,9 +35,10 @@ jobs:
           - arch: amd64
             rid: linux-x64
             runs-on: ubuntu-latest
-            # 落定窗秒数（ADR settle-per-arch-window）：arm64 原生建窗 100s+，hop1 发起晚，
-            # 90s 窗没等到提交就收工；arm64 放宽到 300s，amd64 保持 90s（失败反馈快）。
-            settle_seconds: 90
+            # 落定窗秒数（ADR settle-per-arch-window + page-verdict-gate）：窗口须覆盖含自愈
+            # 重进的最坏链——建窗残量 120 + 两跳(30+5)×2 + 探针 15×2 + 重进(35) + 再探针 30 ≈ 285s；
+            # 裁决行出现前收工即假红。
+            settle_seconds: 300
           - arch: arm64
             rid: linux-arm64
             runs-on: ubuntu-24.04-arm

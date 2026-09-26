@@ -12,8 +12,8 @@ mac-arm64 落定后截图仍是 auth 文本：token 第二跳真实提交过（6
 
 ## Decision
 
-- Core 新纯策略 `WebAuthRecovery`（`AuthRequiredMarker = "authentication required"` + `MaxReentries = 1`）：可见文本命中标记且重进未用完 → 重进，否则放行/放弃。标记耦合上游固定英文串，注释写明来源与误伤面（正常 DSH UI 不含该串）。
-- `EnterMainUiAsync` 第二跳提交后探可见文本（400 字截断只读探针）：命中则有界重进 token URL 一次（复 present 同一 token URL——401 页自带"重开 URL"指引即此语义；不是猜新 token，per-process token 不可猜；复用证据：host 会话 curl 同一 token 两次 303【探索性，n=2，未留 artifact】），再坏只 fail loud（`[nav] 鉴权页自愈失败`）不挡启动、不循环。
+- Core 新纯策略 `WebAuthRecovery`（`AuthRequiredMarker = "authentication required"` + 终页三态 `Classify`）：同源 + 文本非空 + 不含标记 → `healthy`；命中标记 → `auth`（触发重进）；其余（探针失败/非同源/空文本）→ `unknown`。标记耦合上游固定英文串，注释写明来源与误伤面（正常 DSH UI 不含该串）。
+- `EnterMainUiAsync` 第二跳提交后探采样（origin + 400 字可见文本，只读探针）：裁决 `auth` 则有界重进 token URL 一次（复 present 同一 token URL——401 页自带"重开 URL"指引即此语义；不是猜新 token，per-process token 不可猜；复用证据：host 会话 curl 同一 token 两次 303【探索性，n=2，未留 artifact】），再坏只 fail loud（`[nav] 页面裁决=auth`）不挡启动、不循环。
 - 探针 15s 超时（`AuthProbeTimeoutSeconds`，x64 病 renderer 超时 30s 的前车之鉴）：超时/异常按 Unknown 跳过自愈，绝不拖死启动。
 - 导航调用前后加诊断行（发起/返回）：x64 腿疑似 `NavigateAsync` 挂起（hop2 未发出），下次实跑直接定位卡点，零行为变更。
 
@@ -31,5 +31,5 @@ mac-arm64 落定后截图仍是 auth 文本：token 第二跳真实提交过（6
 
 ## Testing
 
-- `WebAuthRecoveryTests` 文本×次数矩阵（null/空/正常/auth × 0/1/2）。
+- `WebAuthRecoveryTests` 同源×文本矩阵（同源/非同源/空文本/标记大小写）——终页三态由 Classify 单一判读点覆盖，重进次数无计数常量可测。
 - 接线薄层沿既有先例不单测；真验证在 CI mac 冒烟截图。
