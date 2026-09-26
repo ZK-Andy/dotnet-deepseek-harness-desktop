@@ -115,6 +115,9 @@ jobs:
         shell: bash
         env:
           SMOKE_SHOT_DIR: ${{ github.workspace }}/smoke-shots
+          # CI 逃生舱（ADR webkit-sandbox-userns-fallback）：runner 无特权 userns，bwrap 沙箱必 core；
+          # 产品侧条件降级只认 sysctl 阳性（runner 上文件缺失，保持沙箱），故 CI 显式禁用。
+          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
         run: xvfb-run -a -s "-screen 0 1280x1024x24" bash scripts/smoke-install-linux.sh artifacts/${{ matrix.rid }}
 
       - name: 上传冒烟截图（best-effort，Xvfb 下真实开火，无显示回退时空过，人眼复核）

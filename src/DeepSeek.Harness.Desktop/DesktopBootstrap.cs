@@ -51,6 +51,9 @@ public sealed partial class DesktopBootstrap
     /// <summary>组合根入口：按原 <c>Program.Main</c> 语句序执行全部编排并返回进程退出码。</summary>
     public int Run()
     {
+        // WebKit 沙箱 userns 降级（ADR webkit-sandbox-userns-fallback）：必须先于一切 WebView 创建，
+        // renderer 进程继承本进程 env；判定在 Core 纯策略，此处仅编排。
+        ApplyWebkitSandboxFallback();
         Preflight preflight = ResolveRuntimeAndDev();
         if (!AcquireSingleInstance(preflight))
         {
