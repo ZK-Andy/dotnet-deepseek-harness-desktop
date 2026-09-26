@@ -330,7 +330,11 @@ public sealed partial class DesktopBootstrap
         // 第二跳必须等第一跳真正提交（NavigateAsync 连发会被 WebKitGTK 合并成一次导航）。
         Uri landing = url.AuthorityRoot;
         AuthorizeIpcOriginFor(app.WindowAccessor, landing);
-        await NavigateAndAwaitCommitAsync(app, landing, ct);
+        if (!await TryEvalFirstHopAsync(app, landing, ct).ConfigureAwait(false))
+        {
+            // eval 未发出（桥不可用/超时）：回退原生调用，旧链形状不变。
+            await NavigateAndAwaitCommitAsync(app, landing, ct).ConfigureAwait(false);
+        }
         // 第二跳同样等提交（R2 S2）：否则探针采到旧落地误触发重进；提交等待有界（NavCommitTimeoutSeconds）。
         await NavigateAndAwaitCommitAsync(app, url.Value, ct);
         await SettleWebSessionAsync(app, url, ct);
@@ -347,39 +351,5 @@ public sealed partial class DesktopBootstrap
         string origin = url.GetLeftPart(UriPartial.Authority);
         accessor.Current.AuthorizeIpcOrigin(origin);
         HostLog.Write($"[nav] 已授权 IPC origin：{origin}");
-    }
-
-    /// <summary>导航并等待其真正提交（<see cref="RynNavigationCallbacks"/> 的
-    /// 「导航已到达」信号，先订阅后导航避免错过）。提交信号用于隔开两跳导航——
-    /// <c>NavigateAsync</c> 连发会被 WebKitGTK 合并，前一跳尚未发出即被后一跳覆盖。
-    /// 等待超时按「已提交」降级继续（信号只是隔跳手段，缺位时不比单跳直导更差）；
-    /// 调用本身亦有界（ADR navigate-call-timeout：arm64 实证原生调用可挂起，无界等即永卡）；
-    /// 取消（应用退出）照常传播。</summary>
-    /// <param name="app">Ryn 应用装配产出（导航回调服务来源）。</param>
-    /// <param name="target">导航靶点。</param>
-    /// <param name="ct">引导任务取消令牌。</param>
-    private async Task NavigateAndAwaitCommitAsync(AppSetup app, Uri target, CancellationToken ct)
-    {
-        RynNavigationCallbacks callbacks =
-            app.App.Services.GetRequiredService<RynNavigationCallbacks>();
-        TaskCompletionSource arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        callbacks.SetOnNavigated(() => arrived.TrySetResult());
-        try
-        {
-            HostLog.Write($"[nav] 发起导航：{target.GetLeftPart(UriPartial.Authority)}");
-            await NavigateWithTimeoutAsync(app.WindowAccessor, target, _timeouts.NavCallTimeoutSeconds, ct).ConfigureAwait(false);
-            try
-            {
-                await arrived.Task.WaitAsync(TimeSpan.FromSeconds(_timeouts.NavCommitTimeoutSeconds), ct);
-            }
-            catch (TimeoutException)
-            {
-                HostLog.Write($"[nav] 等待导航提交信号超时（{_timeouts.NavCommitTimeoutSeconds}s），按已提交继续");
-            }
-        }
-        finally
-        {
-            callbacks.SetOnNavigated(static () => { });
-        }
     }
 }

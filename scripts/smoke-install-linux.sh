@@ -72,11 +72,11 @@ source "$LIB"
 
 # 截图内容见证（ADR page-verdict-gate）：外部 origin 上 DOM 探针回不来，故内容真伪由**截图本身**判——
 # 近空白（401 墙：实测 mean≈1.00/sd≈0.04）与深色引导页（mean≈0.14）判失败，真 UI（mean≈0.81/sd≈0.13）通过。
-# 阈值取自 CI 实测四图；无 convert 时跳过（记 note，不拦冒烟）。
+# 阈值取自 CI 实测四图；无 convert 即 fail loud（调用点已限定显示腿，见 ADR smoke-witness-real-and-eval-first-hop）。
 smoke_capture_witness() { # $1=截图路径；0=内容像 UI
   local shot="$1" stats mean sd
   [[ -s "$shot" ]] || { echo "error: 截图缺失，内容见证不通过：$shot" >&2; return 1; }
-  command -v convert >/dev/null 2>&1 || { echo "note: 无 convert，跳过截图内容见证" >&2; return 0; }
+  command -v convert >/dev/null 2>&1 || { echo "error: 无 convert，截图内容见证无法执行（显示腿须装 imagemagick）" >&2; return 1; }
   stats="$(convert "$shot" -crop 1200x800+0+0 +repage -colorspace Gray -format '%[fx:mean] %[fx:standard_deviation]' info: 2>/dev/null || true)"
   mean="${stats%% *}"; sd="${stats##* }"
   if [[ -z "$mean" || -z "$sd" || "$mean" == "$stats" ]]; then

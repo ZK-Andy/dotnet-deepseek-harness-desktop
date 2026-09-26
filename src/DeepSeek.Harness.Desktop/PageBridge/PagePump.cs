@@ -80,6 +80,51 @@ internal static class PagePump
         HostLog.Write("[bootstrap] 进度推送重试耗尽（页面始终未就绪）");
     }
 
+    /// <summary>首跳 eval 导航脚本家（ADR smoke-witness-real-and-eval-first-hop）：页面内经
+    /// <c>location.href</c> 发起顶层导航，绕过 saucer <c>set_url</c> 同步段在 arm64 runner 的 hang；
+    /// 同步返回布尔供宿主判"已发出"（桥回报 JSON 形态经 <see cref="RynProbeValue"/> 解）。</summary>
+    /// <param name="target">导航靶点。</param>
+    /// <returns>同步返回布尔的 JS（<c>true</c> = 已发起）。</returns>
+    internal static string EvalNavigateScript(Uri target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        string urlJson = JsonSerializer.Serialize(target.ToString());
+        return "(function(){try{location.href=" + urlJson + ";return true;}catch(e){return false;}})();";
+    }
+
+    /// <summary>经页面内 eval 发起导航（renderer 发起，arm64 原生 hang 绕行）。eval 缝以委托注入以便单测；
+    /// 发不出/超时/异常一律 <c>false</c>（调用方回退原生导航），应用退出取消照常上抛（R2 B1）。
+    /// 超时复用导航调用窗，不新增可调参数。</summary>
+    /// <param name="evaluate">页面求值委托（宿主接 <c>CurrentWindowAccessor.Current.EvaluateJavaScriptAsync</c>）。</param>
+    /// <param name="target">导航靶点。</param>
+    /// <param name="timeoutSeconds">发出等待秒数（调用方传导航调用窗）。</param>
+    /// <param name="ct">引导任务取消令牌。</param>
+    /// <returns>true = eval 已发出且页内已发起导航；false = 未发出，调用方回退原生。</returns>
+    internal static async Task<bool> TryNavigateViaEvalAsync(
+        Func<string, CancellationToken, ValueTask<string>> evaluate, Uri target, int timeoutSeconds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(evaluate);
+        ArgumentNullException.ThrowIfNull(target);
+        ct.ThrowIfCancellationRequested();
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+            string? raw = await evaluate(EvalNavigateScript(target), cts.Token).AsTask().WaitAsync(cts.Token).ConfigureAwait(false);
+            return string.Equals(RynProbeValue.Decode(raw), "true", StringComparison.Ordinal);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 应用退出：取消必须上抛（R2 B1），不吞。
+            throw;
+        }
+        catch (Exception ex)
+        {
+            HostLog.Write($"[nav] 首跳 eval 导航未发出（回退原生）：{ex.Message}");
+            return false;
+        }
+    }
+
     /// <summary>构建 <c>dsh-desktop-preinstall</c> CustomEvent 注入脚本（detail 为帧对象 JSON）。</summary>
     internal static string PreinstallEventScript(PreinstallFrame frame)
     {
