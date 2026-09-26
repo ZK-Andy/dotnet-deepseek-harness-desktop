@@ -55,8 +55,8 @@ jobs:
         with:
           node-version: '24'
 
-      - name: 安装 rpmbuild 与冒烟显示栈（xvfb + 截图）
-        run: sudo apt-get update && sudo apt-get install -y rpm xvfb scrot
+      - name: 安装 rpmbuild 与冒烟显示栈（xvfb + 截图 + 会话总线）
+        run: sudo apt-get update && sudo apt-get install -y rpm xvfb scrot dbus
 
       - name: 校验 tag 与输入版本一致（如为 Release）
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -122,7 +122,7 @@ jobs:
           # 关 WebKit 合成 + 强制 Mesa 软渲染，看窗口能否存活到第二跳。
           WEBKIT_DISABLE_COMPOSITING_MODE: '1'
           LIBGL_ALWAYS_SOFTWARE: '1'
-        run: xvfb-run -a -s "-screen 0 1280x1024x24" bash scripts/smoke-install-linux.sh artifacts/${{ matrix.rid }}
+        run: dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" bash scripts/smoke-install-linux.sh artifacts/${{ matrix.rid }}
 
       - name: 上传冒烟截图（best-effort，Xvfb 下真实开火，无显示回退时空过，人眼复核）
         if: always()

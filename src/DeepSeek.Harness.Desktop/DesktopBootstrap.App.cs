@@ -316,6 +316,13 @@ public sealed partial class DesktopBootstrap
     private async Task EnterMainUiAsync(AppSetup app, DshWebUrl url, CancellationToken ct)
     {
         _webUrl = url.Value;
+        // 窗口可能尚未建好（原生建窗慢于 dsh 就位时，首个 Current 即抛，ADR bootstrap-window-ready-wait）：
+        // 有界等可用，超时 loud 跳过本次导航（dsh 已就绪，重启即进）。
+        if (!await WaitForWindowAsync(app, ct).ConfigureAwait(false))
+        {
+            HostLog.Write($"[nav] 等窗口可用超时（{_timeouts.WindowReadyTimeoutSeconds}s），跳过本次进入主界面导航");
+            return;
+        }
         // WebKitGTK 两跳导航：从自定义 scheme 占位页（ryn://app）发起的跨 scheme 导航链上，
         // dsh 的 SameSite=Strict 会话 cookie 不随 303 回环重定向发送（沙箱实锤 2026-09-14：
         // mint 命中 → 随后 GET / 无 cookie 401）。先落裸 origin http 页脱离 ryn:// 链路

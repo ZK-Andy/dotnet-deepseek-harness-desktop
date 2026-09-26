@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 /// 缺节/坏 JSON/逐键覆盖/类型不符回退与 UpdateOptions 同哲学。</summary>
 public class RuntimeTimeoutsTests
 {
-    /// <summary>验证全部 24 项默认值与收归前字面量一致：任一漂移即行为变更，测试先红。</summary>
+    /// <summary>验证全部 26 项默认值与收归前字面量一致：任一漂移即行为变更，测试先红。</summary>
     [Fact]
     public void Defaults_MatchPreMigrationLiterals()
     {
@@ -27,6 +27,9 @@ public class RuntimeTimeoutsTests
         Assert.Equal(10, o.HealthInitialDelaySeconds);
         Assert.Equal(120, o.BootstrapSettleTimeoutSeconds);
         Assert.Equal(5, o.NavCommitTimeoutSeconds);
+        Assert.Equal(15, o.AuthProbeTimeoutSeconds);
+        Assert.Equal(120, o.WindowReadyTimeoutSeconds);
+        Assert.Equal(1, o.WindowReadyPollIntervalSeconds);
         Assert.Equal(5, o.IpcServeTimeoutSeconds);
         Assert.Equal(1, o.IpcAcceptRetryDelaySeconds);
         Assert.Equal(8, o.VersionProbeTimeoutSeconds);
@@ -75,7 +78,7 @@ public class RuntimeTimeoutsTests
             "SupervisorJoinTimeoutSeconds":12,"SupervisorRestartTimeoutSeconds":62,
             "SupervisorRecoveredRetryDelaySeconds":13,"SupervisorFailedRetryDelaySeconds":14,
             "HealthInitialDelaySeconds":15,"BootstrapSettleTimeoutSeconds":16,"NavCommitTimeoutSeconds":17,
-            "AuthProbeTimeoutSeconds":25,
+            "AuthProbeTimeoutSeconds":25,"WindowReadyTimeoutSeconds":26,"WindowReadyPollIntervalSeconds":27,
             "IpcServeTimeoutSeconds":18,"IpcAcceptRetryDelaySeconds":19,
             "VersionProbeTimeoutSeconds":20,"BannerMaxAttempts":21,"BannerRetryDelaySeconds":22,
             "PushMaxAttempts":23,"PushRetryDelayMilliseconds":24}}
@@ -98,6 +101,8 @@ public class RuntimeTimeoutsTests
         Assert.Equal(16, o.BootstrapSettleTimeoutSeconds);
         Assert.Equal(17, o.NavCommitTimeoutSeconds);
         Assert.Equal(25, o.AuthProbeTimeoutSeconds);
+        Assert.Equal(26, o.WindowReadyTimeoutSeconds);
+        Assert.Equal(27, o.WindowReadyPollIntervalSeconds);
         Assert.Equal(18, o.IpcServeTimeoutSeconds);
         Assert.Equal(19, o.IpcAcceptRetryDelaySeconds);
         Assert.Equal(20, o.VersionProbeTimeoutSeconds);
