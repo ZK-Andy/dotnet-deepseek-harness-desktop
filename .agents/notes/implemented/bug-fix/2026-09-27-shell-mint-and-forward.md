@@ -49,3 +49,4 @@ mac 401 墙的根因链已闭环，但方向错了：复演证明服务端链完
 - R1/R2 修法已合入：外链 302 即停（cookie 不出壳）、体读取进 try（SSE 30s 上限转 502）、Location 脱敏、token 段解析、跟进目标 dsh 形（单测逮住壳形跟进 bug）、响应头最小集延期（TODO 下批）。
 - 三脚本 `--self-test` 全绿（mac 中央裁剪 witness 不动；lib 门规则变更随附单跳用例 + deadpid 夹具隔离修复）。
 - dispatch `package-macos` + `package-linux`：到达 + verdict + 见证 mean/sd + 真 UI 像素四件套。
+- 诊断增强（2026-09-27，验证批 `36274187187` 终像素是引导页、handler 层零日志）：`DshSchemeBridge.Handler` 入口/回包各一 loud 行（方法/path/头数/体字节/状态，壳 URL 不带 token、只记量不记值）+ `ForwardAsync` 入口/终态/未铸币 loud（cookie 只记有无）；单测钉死：转发入口终态行 + 未铸币行 + 新增 `DshSchemeBridgeTests`（桩传输零 socket，零泄漏断言）；`dotnet test` 820/820（162 + 183 + 475，基线 812 待下次 CI 跟值）。一次 dispatch 定是 handler 没被调还是回包有问题。

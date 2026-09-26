@@ -68,16 +68,18 @@ public class DshShellForwardTests
         Assert.Contains("/chat/?x=1", Encoding.ASCII.GetString(result.Body), StringComparison.Ordinal);
     }
 
-    /// <summary>未铸币即转发：502 小体，不抛（降级面按错误页处理）。</summary>
+    /// <summary>未铸币即转发：502 小体，不抛（降级面按错误页处理）；loud 一行定音。</summary>
     [Fact]
     public async Task Forward_WithoutMint_Returns502WithoutThrowing()
     {
         var forward = new DshShellForward();
+        var lines = new List<string>();
 
         DshShellForward.ForwardResult result =
-            await forward.ForwardAsync("GET", new Uri("dsh-app://app/"), null, null, _ => { });
+            await forward.ForwardAsync("GET", new Uri("dsh-app://app/"), null, null, lines.Add);
 
         Assert.Equal(502, result.Status);
+        Assert.Contains(lines, l => l.Contains("未铸币"));
     }
 
     /// <summary>POST 体透传：/echo 原样回体（流式以外的方法/体面）。</summary>
@@ -163,6 +165,27 @@ public class DshShellForwardTests
         Assert.False(minted);
         Assert.DoesNotContain(lines, l => l.Contains("LEAKTOKEN"));
         Assert.Contains(lines, l => l.Contains("***"));
+    }
+
+    /// <summary>转发 loud 行：入口记方法/path/头体量，终态记状态/类型/字节数（handler 未被调 vs 回包问题的定音判据）；值零泄漏。</summary>
+    [Fact]
+    public async Task Forward_AfterMint_EmitsEntryAndExitLoudLines()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var server = new DshMimicResponder(port, cts.Token);
+        var forward = new DshShellForward();
+        var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
+        Assert.True(await forward.MintAsync(url, _ => { }, cts.Token));
+        var lines = new List<string>();
+
+        DshShellForward.ForwardResult result = await forward.ForwardAsync(
+            "GET", new Uri("dsh-app://app/chat/?x=1"), null, null, lines.Add);
+
+        Assert.Equal(200, result.Status);
+        Assert.Contains(lines, l => l.Contains("[shell] 转发：GET /chat/?x=1"));
+        Assert.Contains(lines, l => l.Contains("[shell] 转发放回：200") && l.Contains("/chat/?x=1"));
+        Assert.DoesNotContain(lines, l => l.Contains(GoodToken) || l.Contains(CookieValue));
     }
 
     /// <summary>抛固定异常文本的桩传输（脱敏单测用）。</summary>

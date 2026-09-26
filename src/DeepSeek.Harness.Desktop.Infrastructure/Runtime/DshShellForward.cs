@@ -137,9 +137,11 @@ public sealed class DshShellForward
         if (string.IsNullOrEmpty(authority))
         {
             // 未铸币即转发：dsh 未起或铸币失败——502 小体（现有恢复/降级面按错误处理，不抛）。
+            log($"[shell] 转发未铸币即调用：502（{method} {shellUrl.PathAndQuery}；dsh 未起或铸币失败）");
             return new ForwardResult(502, "text/plain; charset=utf-8", "shell forward: not minted"u8.ToArray());
         }
 
+        log($"[shell] 转发：{method} {shellUrl.PathAndQuery}（头{headers?.Count ?? 0}个，体{body?.Length ?? 0}字节；cookie={(string.IsNullOrEmpty(cookie) ? "无" : "有")}）");
         string target = authority + shellUrl.PathAndQuery;
         string currentMethod = method;
         byte[]? currentBody = body;
@@ -149,6 +151,7 @@ public sealed class DshShellForward
                 await SendOnceAsync(currentMethod, target, currentBody, headers, cookie).ConfigureAwait(false);
             if (status is < 300 or >= 400)
             {
+                log($"[shell] 转发放回：{status} {contentType} {bytes.Length}字节（{method} {shellUrl.PathAndQuery}）");
                 return new ForwardResult(status, contentType, bytes);
             }
 
