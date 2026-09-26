@@ -3,6 +3,7 @@
 Status: implemented
 
 Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
+Review: FULL/2026-09-27#2/R1=ok R2=ok R3=ok
 
 Related: 前序 `bug-fix/2026-09-14-bootstrap-cross-scheme-cookie-401`（两跳）+ `bug-fix/2026-09-26-webauth-token-reentry`（P0 自愈）+ `testing/2026-09-26-page-verdict-gate` + `bug-fix/2026-09-27-macos-cookie-grace-reload-and-witness-gate`（grace 未治愈，H2）+ `testing/2026-09-27-auth-replay-diagnostic-and-mac-ci-hygiene`（复演 M/R）+ 上游 `apps/desktop/src/web-document.ts`（`authenticateWebHost`/`forwardWebRequest`）+ Ryn `RynCustomScheme`/`ConfigureCustomScheme`。
 
@@ -14,6 +15,10 @@ mac 401 墙的根因链已闭环，但方向错了：复演证明服务端链完
 
 - 新增 `Infrastructure/Runtime/DshShellForward.cs`（边界层，壳 origin 常量家）：`MintAsync`（托管复演第 2 步转正：token 跳 `redirect: manual`，取首个 cookie 名值）、`ForwardAsync`（透传 method/path/query/body，删页面自带 Cookie/Host 后贴壳 cookie——Origin 原样透传，dsh 门不用 Origin 且值为壳常量无秘密；`Accept-Encoding` 强制 identity）、`set-cookie` 扣下不回页面。
 - 窗口改 load 壳 origin（`dsh-app://app/`，与上游同名；Ryn `ConfigureCustomScheme` 在 `BuildApp` 装配，initial navigation 之前）。
+- 铸币点三处（StartRuntime/EnterMainUiAsync/收养）：bootstrap 路径 dsh 在 StartRuntime 之后才就位，
+  StartRuntime 的 mint 够不着——EnterMainUiAsync 必须无条件重铸（覆盖式，每次全量 HTTP），否则转发 502 白页
+  （dispatch `36273205175` arm64 实证：壳到达 4 次、探针采占位页、见证 mean=1.0 纯白）。
+  凭"同一 epoch 免重铸"省一次 mint 是错的：epoch 起点以调用点为准，不以省为准。
 - 导航两跳退役为单跳（壳 URL 一次直达）；P0 自愈 + grace 重载退役（含 `AuthGraceReloadDelaySeconds` 配置键、appsettings、单测同步删）；复演诊断类 + 钩子 + 烟脚本 env 按欠账删除。
 - 探针/裁决口径跟转：`expectedOrigin` 改壳 origin（`SameSite` 在托管请求里不存在，手工贴 cookie；401 判据保留，dsh 真挂仍 fail loud）。
 - 鉴权标记不限 origin（Core）：壳页 `location.origin` 为 opaque `null`，标记命中即 auth（正常 UI 永不含该串）；无标记非同源仍 unknown。

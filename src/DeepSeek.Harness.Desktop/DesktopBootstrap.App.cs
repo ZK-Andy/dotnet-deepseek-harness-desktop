@@ -33,8 +33,8 @@ public sealed partial class DesktopBootstrap
                 opts.AllowedOrigins.Add(DshShellForward.ShellOrigin);
                 if (runtime.WebUrl is not null)
                 {
-                    // 壳 origin 直载（对齐上游 dsh-app://app）：窗口永远只进壳 URL（铸币已在 StartRuntime 落定），
-                    // token/cookie 永不进页面。
+                    // 壳 origin 直载（对齐上游 dsh-app://app）：窗口永远只进壳 URL，
+                    // token/cookie 永不进页面（铸币在各 epoch 起点落定，见 EnterMainUiAsync/收养）。
                     opts.Url = DshShellForward.ShellRoot;
                 }
                 else
@@ -230,7 +230,7 @@ public sealed partial class DesktopBootstrap
         return ValueTask.CompletedTask;
     }
 
-    /// <summary>收养后导航：epoch 可能已换（新 secret/端口）→ 先重铸（覆盖式，~10ms），再定导航。
+    /// <summary>收养后导航：epoch 可能已换（新 secret/端口）→ 先重铸（覆盖式，每次全量 HTTP），再定导航。
     /// 页内已自刷即免导航，只做收养登记（_webUrl 恒为壳根）。</summary>
     private ValueTask NavigateAfterAdoptAsync(AppSetup app, RynNavigationCallbacks navCallbacks, Uri url)
     {
@@ -316,8 +316,8 @@ public sealed partial class DesktopBootstrap
         });
     }
 
-    /// <summary>引导完成后的壳侧导航收尾：窗口进壳 origin 单跳直达（铸币已在 StartRuntime 落定，
-    /// 同一 epoch 内不再重铸）。由引导服务在 dsh 就位时回调。</summary>
+    /// <summary>引导完成后的壳侧导航收尾：窗口进壳 origin 单跳直达；导航前必先铸币（本方法是 bootstrap 路径的
+    /// epoch 起点，覆盖式重铸）。由引导服务在 dsh 就位时回调。</summary>
     /// <param name="app">Ryn 应用装配产出（窗口访问器与回调服务来源）。</param>
     /// <param name="url">dsh 就位端点（仅供落定重铸与日志；导航一律走壳 URL）。</param>
     /// <param name="ct">引导任务取消令牌。</param>
@@ -331,6 +331,10 @@ public sealed partial class DesktopBootstrap
             HostLog.Write($"[nav] 等窗口可用超时（{_timeouts.WindowReadyTimeoutSeconds}s），跳过本次进入主界面导航");
             return;
         }
+        // 壳铸币（bootstrap 路径 dsh 在 StartRuntime 之后才就位，此处是 epoch 起点；覆盖式重铸，
+        // MintAsync 无 epoch 跟踪，每次全量 HTTP。无 mint 即导航 → 转发 502 白页
+        // （dispatch 36273205175 arm64 实证），故导航前必铸）。
+        _ = await _shellForward.MintAsync(url, HostLog.Write, ct).ConfigureAwait(false);
         // 壳单跳直达：同站内无 token、无 cookie 链（IPC 桥接白名单已在 BuildApp 经 AllowedOrigins 装配；
         // Ryn 非 http origin 拒绝运行时授权，此处不再逐跳授权）。
         // 第二跳等提交的旧语义退役（单跳无合并问题）；提交等待仍有界（NavCommitTimeoutSeconds）。
