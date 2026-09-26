@@ -12,9 +12,10 @@
 # 落定语义（ADR smoke-settle-content-verdict）：①只是 dsh 就绪行，verdict 与截图
 # 必须等导航落定——`[nav] 导航已到达` 去重 ≥2 次且含 `?token=` 第二跳。落定超时或
 # 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
-#     CI 的无显示环境壳必然在窗口创建（Ryn Run）即退出（GTK 需 display，已记录边界），
-#     引导是后台任务会随之夭折——全链信号在 CI 不可达，②为 CI 判定位；①在真桌面/
-#     有显示环境命中。引导下载/安装全链的验证在实机验收转交（批次一沙箱 E2E 已通）。
+#     CI 经 xvfb-run 启动（ADR smoke-linux-xvfb-fullchain）：虚拟 DISPLAY 下窗口可创建，
+#     引导后台任务存活——deb 腿全链信号可达，落定 verdict + 截图真实开火；Xvfb 起不来
+#     或无显示直跑仍回退②安装链（回退门语义不变）。rpm 容器腿无 X，恒②。
+#     引导下载/安装全链的验证在实机验收转交（批次一沙箱 E2E 已通）。
 # 直击事故类：v0.2.x「rpm 实机装不上」、libadwaita 缺依赖崩溃（2026-08-29 冒烟暴露，
 # deb/rpm 已补显式声明）+ online-first「引导断链、dsh 起不来」。
 #
@@ -62,7 +63,8 @@ smoke_verdict() { # $1=日志
 }
 
 # 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
-# CI 无显示时 $DISPLAY 为空即跳过（Xvfb 全链是下批事项，不在本批）。
+# CI 经 xvfb-run 启动（ADR smoke-linux-xvfb-fullchain）时 $DISPLAY 存在即真实开火；
+# 无显示（本地直跑/rpm 容器）仍跳过。
 smoke_shot() { # $1=文件名
   [[ -n "${SMOKE_SHOT_DIR:-}" && -n "${DISPLAY:-}" ]] || return 0
   mkdir -p "$SMOKE_SHOT_DIR" 2>/dev/null || return 0
@@ -168,7 +170,7 @@ smoke_deb() {
   }
   tail -3 "$apt_log" >&2 || true
   rm -f "$apt_log"
-  echo "== [deb] 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s）"
+  echo "== [deb] 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s；DISPLAY=${DISPLAY:-<无>}）"
   set +e
   # 无人值守跳过可选插件（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
   env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
