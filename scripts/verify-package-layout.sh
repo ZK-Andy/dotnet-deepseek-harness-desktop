@@ -58,4 +58,28 @@ if [[ ${#errors[@]} -gt 0 ]]; then
   for e in "${errors[@]}"; do echo "  ✗ $e" >&2; done
   exit 1
 fi
+
+# ③Windows 安装器内容断言（仅当 target 为 Inno staging 根即含主 exe 时生效；
+#   Linux/mac 腿 target 无 .exe，主 exe 名不同，天然跳过）。
+#   背景：PayloadSmoke 跑在 publish 直出目录上，Inno [Files] 漏配（如 runtimes/
+#   未进包）探针照绿、产物照缺；此处断 staging 即断安装器（ADR windows-packaging-parity）。
+if [[ -f "$TARGET/DeepSeek.Harness.Desktop.exe" ]]; then
+  [[ -f "$TARGET/DeepSeek.Harness.Desktop.dll" ]] \
+    || errors+=("Windows staging 缺壳托管程序集: DeepSeek.Harness.Desktop.dll")
+  for native in WebView2Loader.dll saucer.dll saucer-bindings.dll saucer-bindings-desktop.dll; do
+    if [[ ! -f "$TARGET/$native" && ! -f "$TARGET/runtimes/win-x64/native/$native" && ! -f "$TARGET/runtimes/win-arm64/native/$native" ]]; then
+      errors+=("Windows staging 缺原生库: $native（根与 runtimes/win-*/native 均无）")
+    fi
+  done
+  if [[ ! -d "$TARGET/runtimes/win-x64/native" && ! -d "$TARGET/runtimes/win-arm64/native" ]]; then
+    errors+=("Windows staging 缺 runtimes/win-*/native（Ryn NativeLibraryResolver 唯一探测源）")
+  fi
+  [[ -d "$TARGET/wwwroot" ]] || errors+=("Windows staging 缺 wwwroot（首屏壳页面）")
+  if [[ ${#errors[@]} -gt 0 ]]; then
+    echo "error: Windows 安装器内容断言失败（${#errors[@]} 项）：" >&2
+    for e in "${errors[@]}"; do echo "  ✗ $e" >&2; done
+    exit 1
+  fi
+  echo "  ok: Windows 安装器内容（exe/dll/原生库/runtimes/wwwroot）"
+fi
 echo "== 布局断言通过：${TARGET}（无闭包残留、插件资源供给）"

@@ -66,6 +66,9 @@ jobs:
       - name: 打 Windows 包（安装器 exe，文件名含 windows 标识；不再产独立 zip）
         shell: bash
         run: bash scripts/package-windows.sh artifacts/publish-win-x64
+      - name: 安装器内容断言（staging 即安装器唯一内容源，防 Inno [Files] 漏配）
+        shell: bash
+        run: bash scripts/verify-package-layout.sh --target artifacts/win-x64/stage/DeepSeek.Harness.Desktop
       - name: 安装 WebView2 Evergreen（运行态实验，ADR smoke-runner-deepening）
         shell: bash
         env:
@@ -82,6 +85,8 @@ jobs:
           "$EXE" /silent /install
           echo "== WebView2 版本留痕（证据位；fail loud 由安装器退出码承担） =="
           powershell -NoProfile -Command "Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' | Select-Object Name | Format-Table -HideTableHeaders | Out-String -Width 200"
+          echo "== WebView2 注册表探针（对标 Ryn DoctorCommand CheckWebView2：HKCU/HKLM × pv 非空非 0.0.0.0） =="
+          powershell -NoProfile -Command '$paths = @('"'"'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'"'"', '"'"'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'"'"', '"'"'HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'"'"'); $found = $false; foreach ($p in $paths) { try { $v = (Get-ItemProperty -Path $p -Name '"'"'pv'"'"' -ErrorAction Stop).pv; if ($v -and $v -ne '"'"'0.0.0.0'"'"') { Write-Output "WebView2 pv=$v ($p)"; $found = $true } } catch {} }; if (-not $found) { Write-Output '"'"'::warning::WebView2 注册表探针未命中（安装器退出码为 0 但 pv 缺失，冒烟仍继续）'"'"' }'
       - name: 安装冒烟（静默安装→启动→等 dsh web URL 行或引导启动行）
         shell: bash
         env:

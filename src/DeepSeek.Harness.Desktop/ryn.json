@@ -1,5 +1,9 @@
 {
   "identifier": "io.github.ZK-Andy.dotnet-deepseek-harness-desktop",
+  "bundle": {
+    "manufacturer": "ZK-Andy",
+    "icon": "../../assets/icon.ico"
+  },
   "capabilities": {
     "app": true,
     "desktop": true

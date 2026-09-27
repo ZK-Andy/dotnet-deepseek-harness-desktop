@@ -108,6 +108,18 @@ create_installer_exe() {
     out_dir="$(dirname "$installer")"
   fi
   local iss_base="$(basename "$installer" .exe)"
+  # 稳定 AppId（对标 Ryn BundleCommand 确定性 UpgradeCode + MajorUpgrade 语义）：
+  # Inno 靠 AppId 识别同一产品的升级覆盖，无它则重装并存/残留。此 GUID 由
+  # bundle identifier 派生一次后写死，永不再变（改则断升级链）。
+  local app_id="{{4d5c1f64-5ad2-5028-9790-58da43a81685}}"
+  # 许可证随包（对标 hairyf bundle.licenseFile）：仓库根 LICENSE（MIT）。
+  local license_win=""
+  if [[ -f "$ROOT/LICENSE" ]]; then
+    if command -v cygpath >/dev/null 2>&1; then license_win="$(cygpath -w "$ROOT/LICENSE")"; else license_win="$ROOT/LICENSE"; fi
+  else
+    echo "error: 缺许可证文件 LICENSE（安装器须随包）" >&2
+    return 1
+  fi
   local iscc=""
   for p in "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "/c/Program Files/Inno Setup 6/ISCC.exe" "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" "C:\\Program Files\\Inno Setup 6\\ISCC.exe"; do
     if [[ -f "$p" ]]; then iscc="$p"; break; fi
@@ -120,17 +132,27 @@ create_installer_exe() {
   fi
   echo "== Inno Setup: $iscc"
   iss_file="$(mktemp --suffix=.iss 2>/dev/null || mktemp -t iss).iss"
-  # icon 若存在转 ico（若缺则跳过）
+  # icon：提交物优先（assets/icon.ico），缺则由 icon.png 现转、转不出即 fail loud。
+  # 对标 Ryn Assets/ryn-icon.ico + 默认图标兜底：静默无图标安装器不可接受。
   local icon_line=""
-  if [[ -f "$ROOT/assets/icon.png" ]]; then
-    if command -v magick >/dev/null 2>&1 && [[ ! -f "$ROOT/assets/icon.ico" ]]; then
-      magick "$ROOT/assets/icon.png" -define icon:auto-resize=16,32,48,64,128,256 "$ROOT/assets/icon.ico" 2>/dev/null || true
+  if [[ -f "$ROOT/assets/icon.ico" ]]; then
+    local icon_win
+    if command -v cygpath >/dev/null 2>&1; then icon_win="$(cygpath -w "$ROOT/assets/icon.ico")"; else icon_win="$ROOT/assets/icon.ico"; fi
+    icon_line="SetupIconFile=$icon_win"
+  elif [[ -f "$ROOT/assets/icon.png" ]]; then
+    if command -v magick >/dev/null 2>&1; then
+      magick "$ROOT/assets/icon.png" -define icon:auto-resize=16,32,48,64,128,256 "$ROOT/assets/icon.ico" \
+        || { echo "error: icon.png 转 ico 失败" >&2; return 1; }
+      local icon_win2
+      if command -v cygpath >/dev/null 2>&1; then icon_win2="$(cygpath -w "$ROOT/assets/icon.ico")"; else icon_win2="$ROOT/assets/icon.ico"; fi
+      icon_line="SetupIconFile=$icon_win2"
+    else
+      echo "error: 缺 assets/icon.ico 且无 magick 可由 icon.png 现转（安装器图标不可静默缺失）" >&2
+      return 1
     fi
-    if [[ -f "$ROOT/assets/icon.ico" ]]; then
-      local icon_win
-      if command -v cygpath >/dev/null 2>&1; then icon_win="$(cygpath -w "$ROOT/assets/icon.ico")"; else icon_win="$ROOT/assets/icon.ico"; fi
-      icon_line="SetupIconFile=$icon_win"
-    fi
+  else
+    echo "error: 缺安装器图标（assets/icon.ico 与 assets/icon.png 均不存在）" >&2
+    return 1
   fi
   # 语言包条件化：runner 的 Inno 安装形态不定，缺 ChineseSimplified.isl 时编译
   # 不得因此失败（英文兜底）
@@ -142,6 +164,7 @@ create_installer_exe() {
   fi
   cat > "$iss_file" <<ISS_EOF
 [Setup]
+AppId=$app_id
 AppName=DeepSeek Harness Desktop
 AppVersion=$VERSION
 AppPublisher=ZK-Andy
@@ -155,6 +178,7 @@ SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
+LicenseFile=$license_win
 $icon_line
 UninstallDisplayIcon={app}\\DeepSeek.Harness.Desktop.exe
 DisableProgramGroupPage=yes
@@ -175,8 +199,45 @@ Name: "{group}\\DeepSeek Harness Desktop"; Filename: "{app}\\DeepSeek.Harness.De
 Name: "{group}\\{cm:UninstallProgram,DeepSeek Harness Desktop}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\\DeepSeek Harness Desktop"; Filename: "{app}\\DeepSeek.Harness.Desktop.exe"; Tasks: desktopicon
 
+; dsh:// 深度链接协议（对标 DSH 官方 electron-builder protocols + hairyf
+; deep-link schemes=["dsh"]）：per-user 注册，与 PrivilegesRequired=lowest 一致。
+[Registry]
+Root: HKCU; Subkey: "Software\\Classes\\dsh"; ValueType: string; ValueName: ""; ValueData: "URL:dsh Protocol"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\\Classes\\dsh"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\\Classes\\dsh\\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\\DeepSeek.Harness.Desktop.exe,0"
+Root: HKCU; Subkey: "Software\\Classes\\dsh\\shell\\open\\command"; ValueType: string; ValueName: ""; ValueData: """{app}\\DeepSeek.Harness.Desktop.exe"" ""%1"""
+
 [Run]
 Filename: "{app}\\DeepSeek.Harness.Desktop.exe"; Description: "{cm:LaunchProgram,DeepSeek Harness Desktop}"; Flags: nowait postinstall skipifsilent
+
+; WebView2 缺失提示（对标 hairyf downloadBootstrapper 策略 + Ryn DoctorCommand
+; CheckWebView2 注册表探针）：不捆 212MB 离线运行时，缺时提示用户去微软拉
+; Evergreen；安装本身继续（per-user 探针先行，machine-wide 需提权则跳过）。
+[Code]
+function IsWebView2Available(): Boolean;
+var
+  Ver: String;
+begin
+  Result := False;
+  if RegQueryStringValue(HKCU, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Ver) then
+    if (Ver <> '') and (Ver <> '0.0.0.0') then Result := True;
+  if not Result then
+    if RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Ver) then
+      if (Ver <> '') and (Ver <> '0.0.0.0') then Result := True;
+  if not Result then
+    if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Ver) then
+      if (Ver <> '') and (Ver <> '0.0.0.0') then Result := True;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    if not IsWebView2Available() then
+      MsgBox('未检测到 Microsoft Edge WebView2 运行时。' + #13#10 +
+             'DeepSeek Harness Desktop 需要它渲染窗口，请前往微软官网安装 ' +
+             'Evergreen Standalone Installer 后再启动。',
+             mbInformation, MB_OK);
+end;
 ISS_EOF
   if command -v cygpath >/dev/null 2>&1; then iss_file_win="$(cygpath -w "$iss_file")"; else iss_file_win="$iss_file"; fi
   # MSYS2_ARG_CONV_EXCL：防 /Q 被当 POSIX 路径转换（本轮实锤的恒失败根因）
