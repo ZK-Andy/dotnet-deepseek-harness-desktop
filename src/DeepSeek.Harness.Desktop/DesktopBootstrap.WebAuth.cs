@@ -8,13 +8,13 @@ namespace DeepSeek.Harness.Desktop;
 public sealed partial class DesktopBootstrap
 {
     /// <summary>
-    /// 网页会话落定（壳转发模型）：壳 URL 提交后探一次终页。鉴权页（转发链断/cookie 失效）则重铸
-    /// 并重载壳页一次，再坏只 fail loud（不挡启动、不循环）。探针超时/异常按未知放过启动；
+    /// 网页会话落定（代理转发模型）：代理 URL 提交后探一次终页。鉴权页（代理链断/cookie 失效）则重铸
+    /// 并重载代理页一次，再坏只 fail loud（不挡启动、不循环）。探针超时/异常按未知放过启动；
     /// 未知由冒烟见证门判定（与 Linux 同语义），启动不为此等待。
     /// </summary>
     private async Task SettleWebSessionAsync(AppSetup app, DshWebUrl url, CancellationToken ct)
     {
-        string expectedOrigin = DshShellForward.ShellOrigin;
+        string expectedOrigin = _proxy?.Origin ?? string.Empty;
         string? sample = await ProbePageSampleAsync(app, ct).ConfigureAwait(false);
         Core.WebAuthRecovery.PageVerdictDetail detail = Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin);
         if (detail.Verdict != Core.WebAuthRecovery.PageVerdict.Auth)
@@ -23,9 +23,15 @@ public sealed partial class DesktopBootstrap
             return;
         }
 
-        HostLog.Write("[nav] 终页鉴权，重铸并重载壳页面（第 1 次）");
+        HostLog.Write("[nav] 终页鉴权，重铸并重载代理页面（第 1 次）");
         await _shellForward.MintAsync(url, HostLog.Write, ct).ConfigureAwait(false);
-        await NavigateAndAwaitCommitAsync(app, DshShellForward.ShellRoot, ct).ConfigureAwait(false);
+        if (_proxy is null)
+        {
+            HostLog.Write("[nav] 重载无代理源（回环绑定失败），跳过本次重载");
+            return;
+        }
+
+        await NavigateAndAwaitCommitAsync(app, _proxy.Url, ct).ConfigureAwait(false);
         sample = await ProbePageSampleAsync(app, ct).ConfigureAwait(false);
         detail = Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin);
         LogPageVerdict(detail, expectedOrigin, "，重铸后");

@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Core;
 
@@ -30,13 +31,17 @@ public sealed partial class DesktopBootstrap
     private CurrentWindowAccessor _windowAccessor = null!;
     private Uri? _webUrl;
     private HarnessRuntimeHost _host = null!;
-    // 壳转发器（应用单例 wiring：构造即备好 HttpClient，无 I/O；铸币/转发由编排方法调用）。
-    // 长命共享态留字段（同 _tray 类别）；DI 注册不可行——scheme handler 闭包需在 DI 建成前捕获实例
-    // （Ryn builder 链先于 Build，属装配时序约束），故字段直持。
+    // 壳转发器（应用单例 wiring：构造即备好 HttpClient，无 I/O；铸币由编排方法调用，
+    // 转发执行面在回环代理。长命共享态留字段（同 _tray 类别）；DI 注册不可行——代理与
+    // Ryn builder 链的装配时序约束（代理源 URL 须在 Build 前落定），故字段直持。
     private readonly DshShellForward _shellForward = new();
+    // 回环代理源（应用单例：Run 早于 BuildApp 启动绑定，端口 OS 分配；窗口/探针/守卫口径家）。
+    // 绑定失败为 null（loopback 不可用时降级 wwwroot，不挡启动）；释放随 Run 收尾。
+    private DshLoopbackProxy? _proxy;
+    private CancellationTokenSource? _proxyCts;
     private Core.ExitPipeline _exit = null!;
     // 本次恢复周期起点（恢复屏展示时刻，由 showRecovery 写入、收养 navigate 读出：
-    // 周期内有导航到达即页内已自刷，跳过壳侧导航。跨异步回调的延迟接线态，留字段）。
+    // 周期内有导航到达即页内已自刷，跳过代理侧导航。跨异步回调的延迟接线态，留字段）。
     private DateTimeOffset _lastRecoveryShownAtUtc;
 
     // —— 启动编排阶段产出（ADR composition-root-value-flow-pipeline 批次 2）——
@@ -71,6 +76,7 @@ public sealed partial class DesktopBootstrap
             InstallCompanionBeforeSpawn(preflight, host);
             RuntimeSetup runtime = StartRuntime(preflight, host);
             UpdateSetup update = InitCloseGateAndUpdateStack(preflight, runtime);
+            StartProxy();
             AppSetup app = BuildApp(preflight, runtime, update);
             RunBootstrapIfNeeded(preflight, app);
             ShowTray(app);
@@ -85,6 +91,27 @@ public sealed partial class DesktopBootstrap
             // 原 `using var host` / `using var supervisorCts` 作用域到 Main 末尾；这里在 Run 末尾等价释放。
             _host?.Dispose();
             _supervisorCtsRef?.Dispose();
+            _proxyCts?.Cancel();
+            _proxyCts?.Dispose();
+            _proxy?.Dispose();
+        }
+    }
+
+    /// <summary>启动回环代理源（ADR loopback-forward-proxy）：绑定失败 loud 后降级
+    /// （窗口走 wwwroot，行为与 dsh 未起一致，不挡启动）。</summary>
+    private void StartProxy()
+    {
+        CancellationTokenSource cts = new();
+        _proxyCts = cts;
+        try
+        {
+            _proxy = new DshLoopbackProxy(_shellForward, HostLog.Write);
+            _ = _proxy.RunAsync(cts.Token);
+        }
+        catch (Exception ex) when (ex is SocketException or IOException or ObjectDisposedException or ArgumentException)
+        {
+            HostLog.Write($"[shell] 代理源绑定失败（降级 wwwroot）：{ex.GetType().Name} {ex.Message}");
+            _proxy = null;
         }
     }
 

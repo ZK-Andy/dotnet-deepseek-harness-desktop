@@ -203,9 +203,9 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   sleep 30 & live=$!
   SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-nosettle-should-fail" || tpass "wait_url-nosettle-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  log="$tdir/w4b"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：dsh-app://app/\n' >"$log"
+  log="$tdir/w4b"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 代理源就绪：http://localhost:9/（回环独占）\n[nav] 导航已到达：http://localhost:9/\n' >"$log"
   sleep 30 & live=$!
-  SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-single-shell-settles" || tfail "wait_url-single-shell-settles"
+  SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-single-proxy-settles" || tfail "wait_url-single-proxy-settles"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   log="$tdir/w5"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-exit-settled" || tfail "wait_url-exit-settled"

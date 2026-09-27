@@ -123,9 +123,9 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   sleep 30 & live=$!
   SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-timeout-should-fail" || tpass "settle-timeout-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：dsh-app://app/\n' >"$OUT"; : >"$LOG"
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 代理源就绪：http://localhost:9/（回环独占）\n[nav] 导航已到达：http://localhost:9/\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-single-shell" || tfail "settle-single-shell"
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-single-proxy" || tfail "settle-single-proxy"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   : >"$OUT"; : >"$LOG"
   SETTLE_WAIT=90 wait_settled "" >/dev/null 2>&1 && tfail "settle-deadpid-should-fail" || tpass "settle-deadpid-fails"

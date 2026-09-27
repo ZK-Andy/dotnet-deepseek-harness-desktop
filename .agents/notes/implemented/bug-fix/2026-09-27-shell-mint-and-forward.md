@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> 传输面 superseded（2026-09-27）：自有 scheme 转发被 `architecture/2026-09-27-loopback-forward-proxy` 替代（SSE 必缓冲致 dsh 无法启动，dispatch `36275191770` arm64 实证）；铸币模型/脱敏纪律保留，见新 ADR。
+
 Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
 Review: FULL/2026-09-27#2/R1=ok R2=ok R3=ok
 

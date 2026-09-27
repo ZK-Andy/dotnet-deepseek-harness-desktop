@@ -15,9 +15,9 @@ public sealed partial class DesktopBootstrap
 {
     private AppSetup BuildApp(Preflight preflight, RuntimeSetup runtime, UpdateSetup update)
     {
-        // 导航靶点初值：壳 origin（dsh 就位即直载壳 URL；dsh 未起为 null，健康 reload 跳过）。
+        // 导航靶点初值：代理源（dsh 就位即直载代理 URL；dsh 未起/代理未起为 null，健康 reload 跳过）。
         // token 只活在铸币链（StartRuntime/收养/落定重铸），永不进导航靶点。
-        _webUrl = runtime.WebUrl is not null ? DshShellForward.ShellRoot : null;
+        _webUrl = runtime.WebUrl is not null ? _proxy?.Url : null;
 
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 IsReady）
         string iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
@@ -25,17 +25,21 @@ public sealed partial class DesktopBootstrap
         _tray.ConfigureIcon(iconPath, trayAvailable);
 
         _app = RynApplication.CreateBuilder()
-            // 壳 scheme 注册（initial navigation 之前；Ryn 保留 `ryn`，此处用自有 `dsh-app`）
-            .ConfigureCustomScheme(DshShellForward.ShellScheme, PageBridge.DshSchemeBridge.Handler(_shellForward))
             .ConfigureOptions(opts =>
             {
-                // IPC 桥接白名单显式登记壳 origin（Ryn 默认只认 ryn://app；自举显式更稳，不依赖隐式追加）。
-                opts.AllowedOrigins.Add(DshShellForward.ShellOrigin);
-                if (runtime.WebUrl is not null)
+                // IPC 桥接白名单显式登记代理源（Ryn 默认只认 ryn://app；Ryn dev-server 分支会自动
+                // 追加代理源 + IPC 服地址，此处显式更稳，不依赖隐式追加）。
+                if (_proxy is not null)
                 {
-                    // 壳 origin 直载（对齐上游 dsh-app://app）：窗口永远只进壳 URL，
-                    // token/cookie 永不进页面（铸币在各 epoch 起点落定，见 EnterMainUiAsync/收养）。
-                    opts.Url = DshShellForward.ShellRoot;
+                    opts.AllowedOrigins.Add(_proxy.Origin);
+                }
+
+                if (runtime.WebUrl is not null && _proxy is not null)
+                {
+                    // 代理源直载（ADR loopback-forward-proxy）：窗口永远只进代理 URL，
+                    // token/cookie 永不进页面（铸币在各 epoch 起点落定，见 EnterMainUiAsync/收养；
+                    // Ryn 对 http loopback 页自动起 IPC 服并注绝对 _ipcBase，见 RynWindow.LoadContent）。
+                    opts.Url = _proxy.Url;
                 }
                 else
                 {
@@ -73,7 +77,7 @@ public sealed partial class DesktopBootstrap
     {
         services.AddRynCommands();
         // 宿主导航回调（Ryn 0.32.0 Ryn.Callbacks）：在导航边界统一拦截外部链接（ADR ryn-navigation-callbacks）。
-        // 当前页面 origin 即壳 origin（页面永驻壳内；dsh 绝对链接由转发层改写回壳，外链照走系统浏览器）。
+        // 当前页面 origin 即代理源（页面永驻代理内；dsh 自指 3xx 由代理内部跟完，外链照走系统浏览器）。
         services.AddRynCallbacks();
         services.AddRynNavigationCallbacks();
         // 覆盖源生成的 handler 无参注册：导航回调依赖（openExternal 打开器 / 日志 /
@@ -81,7 +85,7 @@ public sealed partial class DesktopBootstrap
         services.AddSingleton(sp => new RynNavigationCallbacks(
             opener: null,
             log: HostLog.Write,
-            currentOrigin: DshShellForward.ShellOrigin,
+            currentOrigin: _proxy?.Origin,
             // 外部链接打开失败 → 推事件给页面，companion 渲染 toast（R2 N2）。EmitEvent 走
             // deferred IRynWebView（窗口就绪后转发），在导航回调触发时页面必然已加载。
             notifyLinkFail: url => sp.GetRequiredService<IRynWebView>().EmitEvent(
@@ -231,13 +235,13 @@ public sealed partial class DesktopBootstrap
     }
 
     /// <summary>收养后导航：epoch 可能已换（新 secret/端口）→ 先重铸（覆盖式，每次全量 HTTP），再定导航。
-    /// 页内已自刷即免导航，只做收养登记（_webUrl 恒为壳根）。</summary>
+    /// 页内已自刷即免导航，只做收养登记（_webUrl 恒为代理根）。</summary>
     private ValueTask NavigateAfterAdoptAsync(AppSetup app, RynNavigationCallbacks navCallbacks, Uri url)
     {
-        // webUrl 恒壳根（导航靶点与健康 reload 靶点）；收养登记只刷新它，dsh 旧 URL 不再进导航。
-        // 页面永驻壳内：无需逐跳授权（Ryn 非 http origin 拒绝运行时授权，桥接白名单已在 BuildApp 装配）；
-        // dsh 自指 3xx 由转发层内部跟完，页内绝对 dsh 链接走导航回调外部策略（fail-closed），外链照走系统浏览器。
-        _webUrl = DshShellForward.ShellRoot;
+        // webUrl 恒代理根（导航靶点与健康 reload 靶点）；收养登记只刷新它，dsh 旧 URL 不再进导航。
+        // 页面永驻代理内：Ryn dev-server 分支已自动信任代理源，无需逐跳授权；
+        // dsh 自指 3xx 由代理内部跟完，页内绝对 dsh 链接走导航回调外部策略（fail-closed），外链照走系统浏览器。
+        _webUrl = _proxy?.Url;
         // 同步编排沿用既有形态：重铸内部超时兜底，无 ct 位（收养回调无取消语义）；失败 loud，导航照发
         // （转发 401/502 → 探针/恢复面按错误页处理）。
         _ = _shellForward.MintAsync(DshWebUrl.From(url), HostLog.Write, CancellationToken.None).GetAwaiter().GetResult();
@@ -246,11 +250,17 @@ public sealed partial class DesktopBootstrap
         // 再导航即多余——只做收养登记，跳过实际导航。无到达时走壳单跳。
         if (AdoptNavigateGate.ShouldSkipAdoptNavigate(navCallbacks.LastNavigatedAtUtc, _lastRecoveryShownAtUtc))
         {
-            HostLog.Write($"[nav] 收养时恢复周期内已有页面到达（视为页内自刷，{url.GetLeftPart(UriPartial.Authority)}），跳过壳侧导航");
+            HostLog.Write($"[nav] 收养时恢复周期内已有页面到达（视为页内自刷，{url.GetLeftPart(UriPartial.Authority)}），跳过代理侧导航");
             return ValueTask.CompletedTask;
         }
 
-        return app.WindowAccessor.Current.NavigateAsync(DshShellForward.ShellRoot);
+        if (_proxy is null)
+        {
+            HostLog.Write("[nav] 收养导航无代理源（回环绑定失败），跳过本次导航");
+            return ValueTask.CompletedTask;
+        }
+
+        return app.WindowAccessor.Current.NavigateAsync(_proxy.Url);
     }
 
     private void SetupHealthMonitor(AppSetup app, SupervisorSetup supervisor)
@@ -316,14 +326,20 @@ public sealed partial class DesktopBootstrap
         });
     }
 
-    /// <summary>引导完成后的壳侧导航收尾：窗口进壳 origin 单跳直达；导航前必先铸币（本方法是 bootstrap 路径的
+    /// <summary>引导完成后的代理侧导航收尾：窗口进代理源单跳直达；导航前必先铸币（本方法是 bootstrap 路径的
     /// epoch 起点，覆盖式重铸）。由引导服务在 dsh 就位时回调。</summary>
     /// <param name="app">Ryn 应用装配产出（窗口访问器与回调服务来源）。</param>
-    /// <param name="url">dsh 就位端点（仅供落定重铸与日志；导航一律走壳 URL）。</param>
+    /// <param name="url">dsh 就位端点（仅供落定重铸与日志；导航一律走代理 URL）。</param>
     /// <param name="ct">引导任务取消令牌。</param>
     private async Task EnterMainUiAsync(AppSetup app, DshWebUrl url, CancellationToken ct)
     {
-        _webUrl = DshShellForward.ShellRoot;
+        if (_proxy is null)
+        {
+            HostLog.Write("[nav] 进入主界面无代理源（回环绑定失败），本次不导航（dsh 已就绪，重启即进）");
+            return;
+        }
+
+        _webUrl = _proxy.Url;
         // 窗口可能尚未建好（原生建窗慢于 dsh 就位时，首个 Current 即抛，ADR bootstrap-window-ready-wait）：
         // 有界等可用，超时 loud 跳过本次导航（dsh 已就绪，重启即进）。
         if (!await WaitForWindowAsync(app, ct).ConfigureAwait(false))
@@ -332,13 +348,12 @@ public sealed partial class DesktopBootstrap
             return;
         }
         // 壳铸币（bootstrap 路径 dsh 在 StartRuntime 之后才就位，此处是 epoch 起点；覆盖式重铸，
-        // MintAsync 无 epoch 跟踪，每次全量 HTTP。无 mint 即导航 → 转发 502 白页
+        // MintAsync 无 epoch 跟踪，每次全量 HTTP。无 mint 即导航 → 代理 502 白页
         // （dispatch 36273205175 arm64 实证），故导航前必铸）。
         _ = await _shellForward.MintAsync(url, HostLog.Write, ct).ConfigureAwait(false);
-        // 壳单跳直达：同站内无 token、无 cookie 链（IPC 桥接白名单已在 BuildApp 经 AllowedOrigins 装配；
-        // Ryn 非 http origin 拒绝运行时授权，此处不再逐跳授权）。
-        // 第二跳等提交的旧语义退役（单跳无合并问题）；提交等待仍有界（NavCommitTimeoutSeconds）。
-        await NavigateAndAwaitCommitAsync(app, DshShellForward.ShellRoot, ct);
+        // 代理单跳直达：同站内无 token、无 cookie 链（Ryn dev-server 分支已自动信任代理源，
+        // 无需逐跳授权）。第二跳等提交的旧语义退役（单跳无合并问题）；提交等待仍有界（NavCommitTimeoutSeconds）。
+        await NavigateAndAwaitCommitAsync(app, _proxy.Url, ct);
         await SettleWebSessionAsync(app, url, ct);
     }
 }
