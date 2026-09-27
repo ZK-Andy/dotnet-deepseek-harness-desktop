@@ -95,6 +95,34 @@ public class DshLoopbackProxyTests
         await runCts.CancelAsync();
     }
 
+    /// <summary>源头改写回归：页 Origin 到场（浏览器 POST 恒带）时改写为 dsh 自源，
+    /// 否则网关 403（dispatch 实证；缺改写即红）。</summary>
+    [Fact]
+    public async Task Proxy_OriginRemappedToDshAuthority()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stub = new StubDshHandler();
+        var forward = new DshShellForward(stub);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, stub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+        using var page = new HttpClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(proxy.Url, "rpc"))
+        {
+            Content = new StringContent("{\"m\":1}", Encoding.UTF8, "application/json"),
+        };
+        request.Headers.TryAddWithoutValidation("Origin", proxy.Origin);
+        using HttpResponseMessage response = await page.SendAsync(request, cts.Token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("http://127.0.0.1:9", stub.LastOrigin);
+        await runCts.CancelAsync();
+    }
+
     /// <summary>外链 303 即停 502：跟进守卫只跟 dsh 自指，不贴 cookie 去第三方。</summary>
     [Fact]
     public async Task Proxy_ExternalRedirect_StopsWith502()
@@ -222,6 +250,8 @@ public class DshLoopbackProxyTests
 
         public string? LastCookie { get; private set; }
 
+        public string? LastOrigin { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             string path = (request.RequestUri?.AbsolutePath ?? "/").TrimEnd('/');
@@ -234,6 +264,11 @@ public class DshLoopbackProxyTests
             if (request.Headers.TryGetValues("Cookie", out IEnumerable<string>? cookies))
             {
                 LastCookie = string.Join(";", cookies);
+            }
+
+            if (request.Headers.TryGetValues("Origin", out IEnumerable<string>? origins))
+            {
+                LastOrigin = string.Join(",", origins);
             }
 
             if (query.Contains("token=" + GoodToken, StringComparison.Ordinal))
@@ -262,6 +297,12 @@ public class DshLoopbackProxyTests
 
             if (path == "/rpc")
             {
+                // 网关源鉴权摹拟：Origin 到场但非 dsh 自源即 403（dispatch 实证；缺省 Origin 按 curl 放行）。
+                if (LastOrigin is not null && !LastOrigin.Equals("http://127.0.0.1:9", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.Forbidden);
+                }
+
                 LastContentType = request.Content?.Headers.ContentType?.ToString();
                 string echo = request.Content is null
                     ? string.Empty

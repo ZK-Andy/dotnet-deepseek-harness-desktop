@@ -85,7 +85,8 @@ public class DshShellForwardTests
     }
 
     /// <summary>请求构造两级落头：Host/Cookie/Accept-Encoding 剔除（cookie 由壳值覆盖），
-    /// Content-Type 落 Content 头，业务头透传（代理与旧转发的共享契约钉死）。</summary>
+    /// Content-Type 落 Content 头，业务头透传，Origin/Referer 改写为 dsh 自源
+    /// （页源代理 URL 触发网关 403，dispatch 实证）。</summary>
     [Fact]
     public void BuildForwardRequest_AppliesHeaderPolicy()
     {
@@ -95,6 +96,8 @@ public class DshShellForwardTests
             ["Host"] = "page.example",
             ["Cookie"] = "page-cookie=1",
             ["Accept-Encoding"] = "gzip",
+            ["Origin"] = "http://localhost:9",
+            ["Referer"] = "http://localhost:9/chat",
             ["X-Probe"] = "1",
         };
 
@@ -106,6 +109,8 @@ public class DshShellForwardTests
         Assert.False(request.Headers.Contains("Accept-Encoding"));
         Assert.Equal(["shell-cookie=2"], request.Headers.GetValues("Cookie"));
         Assert.Equal("application/json", request.Content?.Headers.ContentType?.MediaType);
+        Assert.Equal(["http://127.0.0.1:9"], request.Headers.GetValues("Origin"));
+        Assert.Equal(["http://127.0.0.1:9/rpc"], request.Headers.GetValues("Referer"));
     }
 
     /// <summary>跟进目标解析纯函数：dsh 自指（相对/绝对）回 dsh 形 URL，外链/非法回 null。</summary>

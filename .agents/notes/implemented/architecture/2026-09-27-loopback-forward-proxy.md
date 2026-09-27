@@ -17,8 +17,8 @@ Related: 前序 `bug-fix/2026-09-27-shell-mint-and-forward`（传输面被本篇
 
 ## Decision
 
-- 新增 `Infrastructure/Runtime/DshLoopbackProxy.cs`（边界层回环转发代理）：`TcpListener` 纯 loopback、端口 OS 分配（`0`，`Run` 早于 `BuildApp` 绑定，日志 loud 实际源）；逐请求向 dsh authority 转发（路由/cookie 沿用 `DshShellForward` 铸币态，新增内部 `TryGetRoute`）；303 内部跟完（沿用 `ResolveFollowTarget`）；`Set-Cookie` 永不回页面；POST 的 `Content-Type` 等 content 头保真（两级 `TryAdd`：请求头不成则落 `Content.Headers`）；SSE/未知长度流式直通（头透传 + 体 `CopyToAsync`，`HttpClient.Timeout` 无限 + 页断联取消）；`Upgrade`/WS 请求 loud 502（dsh 客户端当前只用 fetch/SSE，无需求不做）。
-- 窗口 URL 改 `http://localhost:{port}/`：Ryn 走 dev-server 分支（`RynWindow.LoadContent`：IPC-only 服 + `SetAllowedOrigins([devOrigin, ipcBase])` + `SetIpcBaseOverride` + CORS 信任代理源）——IPC/eval/invoke/探针全活，零上游改动。
+- 新增 `Infrastructure/Runtime/DshLoopbackProxy.cs`（边界层回环转发代理）：`TcpListener` 纯 loopback、端口 OS 分配（`0`，`Run` 早于 `BuildApp` 绑定，日志 loud 实际源）；逐请求向 dsh authority 转发（路由/cookie 沿用 `DshShellForward` 铸币态，新增内部 `TryGetRoute`）；303 内部跟完（沿用 `ResolveFollowTarget`）；`Set-Cookie` 永不回页面；POST 的 `Content-Type` 等 content 头保真（两级 `TryAdd`：请求头不成则落 `Content.Headers`）；SSE/未知长度流式直通（头透传 + 体 `CopyToAsync`，`HttpClient.Timeout` 无限 + 页断联取消）；`Upgrade`/WS 请求 loud 502（dsh 客户端当前只用 fetch/SSE，无需求不做）；源头改写为 dsh 自源（`Origin`/`Referer`，标准反代语义；页源代理 URL 触发 dsh 网关 403，dispatch `36294149610` 实证）；畸形请求判别式 loud 502（超限/分块/绝对目标，预连接静默关）。
+- 窗口 URL 改 `http://localhost:{port}/`：dsh 就位时初始 URL 即代理源，Ryn 走 dev-server 分支（`RynWindow.LoadContent`：IPC-only 服 + `SetAllowedOrigins([devOrigin, ipcBase])` + `SetIpcBaseOverride` + CORS 信任代理源）——IPC/eval/invoke/探针全活，零上游改动。**冷机注意**：dsh 未就位时窗口先开 wwwroot 占位（`Url` 非 loopback-http），该次不进 dev-server 分支；dsh 就位后导航代理页的 Ryn IPC 仍走相对源（上游公开面无补救入口，已立上游 issue 跟踪）——探针 unknown 由见证门承担（`bee3e49` 口径），不拦绿。
 - 自有 scheme 退役：`DshSchemeBridge` + `ConfigureCustomScheme` + `ShellScheme/ShellOrigin/ShellRoot` 删除（R1 死代码）；探针 `expectedOrigin`、导航守卫允许集、冒烟脚本期望 origin 全部跟转代理源（动态端口，运行时派生；冒烟用 host.log 的代理源行定位）。
 - dsh 未起仍 wwwroot 降级（语义不变）；`MintAsync`/铸币三点/脱敏纪律原样保留；`ForwardAsync` 随桥退役（行为测试迁移至代理级，`Mint`/`ResolveFollowTarget` 测试保留）。
 
@@ -38,9 +38,11 @@ Related: 前序 `bug-fix/2026-09-27-shell-mint-and-forward`（传输面被本篇
 
 ## Testing
 
-- 代理单测（回环真 socket + 桩 dsh）：SSE 首块渐进到达（后块延迟释放前即收到首块）、POST `Content-Type` 保真、cookie 附带、303 跟进、未铸币 502、`Upgrade` 502；旧桥/`ForwardAsync` 测试随退役删除。
-- `dotnet build` 0 警告；`dotnet test` 全绿；FULL 三审收口；mac 双腿 dispatch 验证（到达 + verdict + 见证 + 真 UI 像素）。
+- 代理单测（回环真 socket + 桩 dsh）：SSE 首块渐进到达（后块延迟释放前即收到首块）、POST `Content-Type` 保真、cookie 附带、源头改写回归（页 Origin 到场改 dsh 自源，否则桩网关 403）、303 跟进、未铸币 502、`Upgrade`/分块畸形 502、请求构造直测；旧桥/`ForwardAsync` 测试随退役删除。
+- 冒烟落定门收紧（`nav_count_after_ready` 只认 localhost/127 壳到达）：占位到达不再算落定（dispatch `36294149610` 4 次占位即落定实证）；重绘窗 3→15s（dsh 冷启动约 10s，裁决后白页实证）；mac 失败文案去"①缺失"特指。
+- `dotnet build` 0 警告；`dotnet test` 全绿；FULL 三审收口（R2 五条全收口 + 本轮 LIGHT 跟进）；mac 双腿 dispatch 再验证。
 
 ## Deferred
 
 - WS 透传：dsh 客户端传输面经本地源码验真（fetch POST RPC + `EventSource` SSE + 可选 worker-local `openStream`），无原生 WebSocket 需求；出现需求再立项。
+- 冷机 Ryn IPC：窗口先开 wwwroot 占位时不进 dev-server 分支，dsh 就位后导航代理页的 eval/invoke 仍走相对源（公开面无补救，`AuthorizeIpcOrigin` 无服即 NRE）；已提上游 `Yupmoh/Ryn#102`（custom-scheme/导航 loopback 页配 IPC 服），合入前探针 unknown 由见证门承担。

@@ -207,6 +207,10 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   sleep 30 & live=$!
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-single-proxy-settles" || tfail "wait_url-single-proxy-settles"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  log="$tdir/w4c"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：ryn://app/index.html\n' >"$log"
+  sleep 30 & live=$!
+  SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-placeholder-should-not-settle" || tpass "wait_url-placeholder-not-settled"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   log="$tdir/w5"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-exit-settled" || tfail "wait_url-exit-settled"
   # wait_url × 落定（ADR page-verdict-gate 新语义）：①+到达+healthy → 0；到达齐缺裁决 → 亦 0（内容见证在截图）

@@ -39,8 +39,10 @@ nav_lines() {
   { [[ -n "${OUT:-}" ]] && grep -hE "$NAV_RE" "$OUT" 2>/dev/null; [[ -n "${LOG:-}" && -f "$LOG" ]] && grep -hE "$NAV_RE" "$LOG" 2>/dev/null; true; } | sort -u
 }
 nav_count() { nav_lines | grep -c . || true; }
-# ①之后到达计数（ADR settle-gate-and-probe-retry）：Linux WebKit 只报最终提交 URL，
-# token 查询串永不出现——占位到达多在①之前，唯 hop1+hop2 落在①后。以 $OUT 文件序为准；
+# ①之后壳到达计数（ADR loopback-forward-proxy）：只认代理源 localhost / dsh 直连 127
+# 二者之一——占位页（ryn://app）在①之后也可能到达（健康 reload/恢复导航），直接数到达会把
+# 占位当落定（mac dispatch 36294149610 实证：4 次占位到达即落定，见证拍到白页而 UI 稍后才到）。
+# token 第二跳保留为独立 OR（dsh 直连形态回归即用）。以 $OUT 文件序为准；
 # $OUT 无①即 0（回退 token 路径）。pipefail 下裸 grep 恒收口（nav_lines 注释同理）。
 nav_count_after_ready() {
   local m=0
@@ -48,7 +50,7 @@ nav_count_after_ready() {
     m=$(grep -m1 -nE "$FULL_RE" "$OUT" 2>/dev/null | cut -d: -f1 || true)
     m=${m:-0}
     if [[ "$m" -gt 0 ]]; then
-      tail -n +"$((m + 1))" "$OUT" 2>/dev/null | grep -cE "$NAV_RE" || true
+      tail -n +"$((m + 1))" "$OUT" 2>/dev/null | grep -E "$NAV_RE" | grep -cE "localhost|127\.0\.0\.1" || true
       return 0
     fi
   fi
@@ -59,8 +61,8 @@ nav_count_after_ready() {
 nav_token_seen() { nav_lines | grep -E "$NAV_TOKEN_RE" >/dev/null; }
 
 # 落定等待：①后等导航提交，再（显示腿）等应用终页裁决。$1=pid（可空：空即只查一次，进程已死不再等）。
-# 到达门（≥1 到达且含 token 第二跳，或①之后到达 ≥1 次）：单跳世界（壳 origin 直达）的精确信号——
-# ①之前只有占位提交，①之后除本次导航无他者；token 路径保留（dsh 直连形态回归即用）。
+# 到达门（≥1 到达且含 token 第二跳，或①之后壳到达 ≥1 次）：代理源直达的精确信号——
+# 占位到达不计（①前后都可能出现）；token 路径保留（dsh 直连形态回归即用）。
 #   auth 裁决 → 立即 1（终页确认是鉴权页，机器可判的坏页门）；
 #   其余（healthy/unknown/缺行）一律 0：内容真伪由截图见证裁（`smoke_capture_witness`）。
 # 读调用方 SETTLE_WAIT 全局。
@@ -83,7 +85,7 @@ wait_settled() {
       if [[ "$arrived" -eq 1 ]]; then
         echo "error: 进程已退出且未见页面裁决（到达 ${n} 次）" >&2
       else
-        echo "error: 进程已退出且导航未落定（到达 ${n} 次，无 token 第二跳且①后不足 2 次）" >&2
+        echo "error: 进程已退出且导航未落定（到达 ${n} 次，无 token 第二跳且①后无壳到达）" >&2
       fi
       return 1
     fi
@@ -97,7 +99,7 @@ wait_settled() {
     fi
     sleep 1
   done
-  echo "error: 落定超时（${SETTLE_WAIT}s 内未见 token 第二跳且①后到达不足 1 次；到达 $(nav_count) 次）" >&2
+  echo "error: 落定超时（${SETTLE_WAIT}s 内未见 token 第二跳且①后无壳到达；到达 $(nav_count) 次）" >&2
   return 1
 }
 

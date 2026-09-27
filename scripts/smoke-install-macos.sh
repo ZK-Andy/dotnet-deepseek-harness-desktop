@@ -46,9 +46,11 @@ SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
 SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
 # 截图前等应用侧 verdict 行静默：探针 + grace 重载 + 再探针全程可超 100s，取 150s 有界（只定截图时机，不判门）。
 VERDICT_WAIT="${SMOKE_VERDICT_SECONDS:-150}"
-# 裁决后重绘窗（秒）：提交回调早于新页出像素，立刻拍易拍到上一跳旧帧（Linux 同款）；非数字按默认。
-SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
-[[ "$SMOKE_REPAINT_SECONDS" =~ ^[0-9]+$ ]] || SMOKE_REPAINT_SECONDS=3
+# 裁决后重绘窗（秒）：提交回调早于新页出像素，立刻拍易拍到上一跳旧帧（Linux 同款）；
+# dsh 客户端冷启动（5MB bundle 解析 + RPC + 首绘）在 mac 约 10s（dispatch 36294149610 实证：
+# 裁决后 +10s 白页、稍后 fail 截图已是全 UI）。非数字按默认。
+SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-15}"
+[[ "$SMOKE_REPAINT_SECONDS" =~ ^[0-9]+$ ]] || SMOKE_REPAINT_SECONDS=15
 FULL_RE='\[host\] dsh web ='
 BOOT_RE='\[bootstrap\] 引导开始：'
 PASS_RE="$FULL_RE|$BOOT_RE"
@@ -126,6 +128,10 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 代理源就绪：http://localhost:9/（回环独占）\n[nav] 导航已到达：http://localhost:9/\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-single-proxy" || tfail "settle-single-proxy"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：ryn://app/index.html\n[nav] 导航已到达：ryn://app/index.html\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-placeholder-should-not-settle" || tpass "settle-placeholder-not-settled"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   : >"$OUT"; : >"$LOG"
   SETTLE_WAIT=90 wait_settled "" >/dev/null 2>&1 && tfail "settle-deadpid-should-fail" || tpass "settle-deadpid-fails"
@@ -296,7 +302,7 @@ if timeout_fallback; then
 fi
 set -e
 if [[ $rc -ne 0 ]]; then
-  echo "error: [mac] 冒烟失败——${SMOKE_WAIT}s 内未出现 dsh web URL 或引导启动行。stdout 尾部：" >&2
+  echo "error: [mac] 冒烟失败（rc=${rc}：落定/见证任一环节红，见上文 error 行；非特指①缺失）" >&2
   tail -30 "$OUT" >&2 || true
   if [[ -f "$LOG" ]]; then
     echo "--- host.log 尾部 ---" >&2

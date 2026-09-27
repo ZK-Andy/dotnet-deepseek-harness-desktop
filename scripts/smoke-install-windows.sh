@@ -10,7 +10,7 @@
 # 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
 # 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
 # 落定语义（ADR smoke-settle-content-verdict）：①只是 dsh 就绪行，verdict 与截图
-# 必须等导航落定——`[nav] 导航已到达` 去重 ≥1 次且含 `?token=` 第二跳，或①之后到达 ≥1 次（单跳世界：壳直达；token 路径保留）。落定超时或
+# 必须等导航落定——`[nav] 导航已到达` 去重 ≥1 次且含 `?token=` 第二跳，或①之后壳到达 ≥1 次（代理源 localhost/dsh 直连 127；占位到达不算，ADR loopback-forward-proxy）。落定超时或
 # 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
 # 实测边界（2026-08-29 首跑）：Windows runner 的壳同样在窗口创建（Ryn Run）即
 # 退出——WebView2 初始化的原生依赖在 runner 环境不可用，全链信号不可达，冒烟

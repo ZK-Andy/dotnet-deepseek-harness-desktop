@@ -117,9 +117,10 @@ public sealed class DshShellForward
         return !string.IsNullOrEmpty(authority);
     }
 
-    /// <summary>构造外发转发请求：黑名单头剔除 + 壳 cookie 附带 + 体与 content 头保真。
-    /// 两级落头：请求头不成落 <c>Content.Headers</c>（`Content-Type` 等随体语义头；
-    /// dsh JSON RPC 无类型体即拒收，ADR loopback-forward-proxy）。成帧头归传输层。</summary>
+    /// <summary>构造外发转发请求：黑名单头剔除 + 壳 cookie 附带 + 体与 content 头保真
+    /// + 源头改写（标准反代语义）。两级落头：请求头不成落 <c>Content.Headers</c>
+    /// （`Content-Type` 等随体语义头；dsh JSON RPC 无类型体即拒收，ADR loopback-forward-proxy）。
+    /// 成帧头归传输层。</summary>
     /// <param name="method">请求方法。</param>
     /// <param name="target">dsh 完整目标 URL（authority + 原样 path/query）。</param>
     /// <param name="body">请求体（可空）。</param>
@@ -145,6 +146,14 @@ public sealed class DshShellForward
                     continue;
                 }
 
+                if (name.Equals("origin", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("referer", StringComparison.OrdinalIgnoreCase))
+                {
+                    // 源头不透传：页源是代理源，dsh 网关按自源鉴权（外源即 403，dispatch 实证），
+                    // 下方统一改写为 dsh 自源（与 dsh 直出形态一致）。
+                    continue;
+                }
+
                 if (request.Headers.TryAddWithoutValidation(name, value))
                 {
                     continue;
@@ -155,6 +164,11 @@ public sealed class DshShellForward
                 request.Content?.Headers.TryAddWithoutValidation(name, value);
             }
         }
+
+        // 源头改写为 dsh 自源（标准反代语义；页源代理 URL 在此无意义且触发网关 403）。
+        string authority = new Uri(target).GetLeftPart(UriPartial.Authority);
+        request.Headers.TryAddWithoutValidation("Origin", authority);
+        request.Headers.TryAddWithoutValidation("Referer", target);
 
         if (!string.IsNullOrEmpty(cookie))
         {
