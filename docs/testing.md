@@ -34,7 +34,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-handoff-structure.py` | HANDOFF 滚动窗/状态区 | `python3 scripts/verify-handoff-structure.py` |
 | `verify-governance.py` | Issue/PR 模板治理字段 + 工作流/composite action 的 run: 禁插值事件载荷/env 回读 | `python3 scripts/verify-governance.py` |
 | `verify-skill-format.py` | 技能格式（frontmatter/目录束/内链/结构，`.agents/skills/*/SKILL.md`） | `python3 scripts/verify-skill-format.py` |
-| `verify-review-brief.py` | 评审简报形状 + 评审对象冻结（`--enforce`；简报是 gitignore 本地文档） | `python3 scripts/verify-review-brief.py --enforce` |
+| `verify-review-brief.py` | 评审简报形状 + 评审对象冻结 + 轮次纪律（轮次上限、标题↔文件名互校、处置段与条目、验轮 `base` 须为上一轮冻结 tree 且增量非空）（`--enforce`；简报是 gitignore 本地文档） | `python3 scripts/verify-review-brief.py --enforce` |
 | `change-scope.sh` | `push` 前最小证据（`merge-base` diff） | `scripts/change-scope.sh` |
 
 每道判据只有一份实现，可以在多档执行（`hooks` 只做快检查，`CI` 拥有穷尽矩阵）：

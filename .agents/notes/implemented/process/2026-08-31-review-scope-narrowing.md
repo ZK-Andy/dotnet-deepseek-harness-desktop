@@ -80,11 +80,14 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 # R<N> 评审简报（<路名>）
 
 ## Scope
-- base: <git ref>  head: <git ref>（评审对象 = `git diff <base>..<head>`）
+- base: <git ref>  head: <git ref>（首轮：base = 批基提交，评审对象 = `git diff <base>..<head>`；验轮（文件名带 `-r<K>`，K≥2）：base = 上一轮评审对象的 tree，评审对象 = `git diff <base> --cached`）
 - 需深审面（精读，逐行判读）：<文件清单——真正承载本路语义判断的文件>
 - 陪跑文件（机器门禁已盖，扫读确认即可）：<其余变更文件；无则写"无">
 - 门禁自证（主会话实跑，exit 随行）：<脚本短名>:<exit>，…（如 `dotnet-format:0，dotnet-test:0，code-health:0`）
 - diff 面相邻件（一层以内，按需引用）：<清单或"无">
+
+## 上一轮结论的处置（验轮 K≥2 必写；首轮整段省略）
+- <上一轮每条 Blocker/Suggestion 的处置：采纳/驳回/部分采纳 + 理由 + 现在时落点>
 
 ## Directed checks（≤5 条）
 - [ ] <检查项 1：要验证什么 + 证据位置>
@@ -104,6 +107,7 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 - `Directed checks` 必须 1–5 条、每条可证伪（含验证对象与证据位置），不得为空。
 - `Explicitly out of scope` 必须至少 1 条（没有不做清单 = 简报未收窄，等同无界任务）。
 - `Report contract` 固定（Blocker/Suggestion 契约）。
+- **轮次机械化**（ADR [2026-09-28-review-round-convergence](../../implemented/process/2026-09-28-review-round-convergence.md)）：轮次由文件名 `-r<K>` 后缀取值（无后缀 = 首轮）。**因轮次是自声明，脚本另设两条互校**——标题行声明的「第 N 轮」须与后缀一致（正文提及不算）；带 `## 上一轮结论的处置` 段即须 `K≥2`（处置段本身即验轮声明；缺此互校则去掉后缀即静默降级为首轮）。`K≥2` 时另加四条——①该段须按**行首二级标题**认**且段内有条目**（纯子串引用与空段都不算）；②`base:` 必须是 tree 对象（`git cat-file -t <base>` = `tree`，即上一轮冻结时 `git write-tree` 的快照）；③`<base>..index` 增量非空（清零 = 没有待验修复）；④增量不可判定（`git diff --cached --quiet` 退出码非 0/1）亦判红。`K≥4` 属违规，除非简报带非空「轮次授权：」行（**须行首**、可带 `-` 前缀；仅用户显式授权可写）。
 - 简报须在启动评审代理前写好并存为 `<repo>/.review-briefs/R<N>-<topic>.md`（gitignore），脚本读它校验。
 
 #### 4.2 三路默认收窄（简报的「不做」基线，可按 diff 调整）
@@ -111,6 +115,7 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 - **R1（dsh-find-simplifications）**：默认不做全仓简化候选扫描；只评估本 diff **新增/改动面**是否引入可简化的新构造（新增 internal 方法、重复、过度设计）。
 - **R2（dsh-code-review）**：默认不追 diff 面之外的调用方全图；只验证 diff 触及的接口双侧（改动方法调用方 + 实现方）+ 留评审项（D001–D003/R1/R3/IPC）在本 diff 面的命中。
 - **R3（dsh-archive-agent-notes）**：默认不全量 83 篇 supersession 审计；只核对本 diff 新增 ADR 的格式/口径/与**直接相关** note 的 supersession 关系 + 本 diff 若含归档动作才做对应审计。
+- **验轮（K≥2，三路同基线）**：只核「上一轮结论的处置」逐条闭合 + 判读增量 diff（`git diff <上一轮 tree> --cached`）；**不做复扫、不找新问题**——复扫在无界的在审面上必然产出新条目，是轮次发散的来源；验轮报出的新问题转下批或挂账，只有「修复引入的新缺陷」计入本轮 Blocker。
 
 > 本文档早期版本「到限未收口即中断，返回已有部分结论」与「中断即未审计」铁律冲突，已废除（2026-09-03）；`feature-flow.md` 步骤 5 已同步。
 
@@ -131,6 +136,6 @@ Review: FULL/2026-09-03/R1=ok R2=ok R3=ok
 - 触发枚举可能漏 case。缓解：保留"用户显式指定"兜底 + 门禁（D004/D005/A 系）仍机器兜底结构面。
 - 简报量化参考（视野 ≤200、检查项 ≤5）为经验默认，可能需调。缓解：主会话按 diff 规模调整简报宽度，不必动机制。
 
-**Testing**：流程契约，机械校验用 `scripts/verify-review-brief.py`（简报模板/字段/面收窄/门禁自证，`--self-test` 8 夹具）与 `scripts/verify-review-tier.py`（档位判定，`--self-test` 夹具，计数以 [review-tier-escape-proofing](2026-09-03-review-tier-escape-proofing.md) 为准）；门禁验证用 `verify-adr-format.py`（校验本 ADR 通过）与 `verify-md-links.py`（校验 `feature-flow.md` 指向本 ADR 的相对链接可解析）。`feature-flow.md` 步骤 5 已同步改写为指向本 ADR 的触发枚举 + 面收窄 + 轻审判据 + 有界并行（上限两路、禁止三路同时并行）+ 简报定界（§4，启动评审前跑 `verify-review-brief.py --enforce`）。
+**Testing**：流程契约，机械校验用 `scripts/verify-review-brief.py`（简报模板/字段/面收窄/门禁自证/轮次纪律（上限、处置段与条目、标题↔文件名互校、验轮 `base` 须为 tree 且增量非空），`--self-test` 15 夹具）与 `scripts/verify-review-tier.py`（档位判定，`--self-test` 夹具，计数以 [review-tier-escape-proofing](2026-09-03-review-tier-escape-proofing.md) 为准）；门禁验证用 `verify-adr-format.py`（校验本 ADR 通过）与 `verify-md-links.py`（校验 `feature-flow.md` 指向本 ADR 的相对链接可解析）。`feature-flow.md` 步骤 5 已同步改写为指向本 ADR 的触发枚举 + 面收窄 + 轻审判据 + 有界并行（上限两路、禁止三路同时并行）+ 简报定界（§4，启动评审前跑 `verify-review-brief.py --enforce`）。
 
 ---
