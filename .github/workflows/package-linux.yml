@@ -67,9 +67,11 @@ jobs:
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
           input="$INPUT_VERSION"
-          # tag 触发时输入留空或与 tag 一致均视为合法；不一致则以 tag 为准
+          # tag 触发时输入留空或与 tag 一致均视为合法；不一致即发布正确性错误，必须停
+          # （不得降级为 ::warning:: 继续走 tag：手工 dispatch 填错版本会被静默吞掉）。
           if [[ -n "$input" && "$input" != "$tag" && "$input" != "v$tag" ]]; then
-            echo "::warning::inputs.version($input) 与 tag v$tag 不一致，将以 tag 为准"
+            echo "::error::inputs.version($input) 与 tag v$tag 不一致；版本只能来自 tag（清空输入或填写 v$tag）" >&2
+            exit 1
           fi
           echo "Release tag 版本: $tag"
 
@@ -103,15 +105,29 @@ jobs:
       - name: 打 Linux 安装包（deb + rpm，参照 pilot-harness electron-builder 的 linux 产物）
         run: bash scripts/package-linux.sh artifacts/publish-${{ matrix.rid }}
 
-      - name: 校验产物（deb control / rpm Requires，参照 pilot 的 bundle verification）
+      - name: 包内容布局断言（staging 即安装包唯一内容源，与 win/mac 腿同款判据）
         shell: bash
         run: |
           set -euo pipefail
-          echo "== deb control =="; dpkg-deb -I "artifacts/${{ matrix.rid }}/"*.deb 2>&1 | head -40 || true
-          echo "== rpm Requires（应仅含 libwebkitgtk-6.0.so.4，无 aarch64/musl/perl）=="; rpm -qp --requires artifacts/${{ matrix.rid }}/*.rpm 2>&1 | head -60 || true
-          echo "== 产物清单 =="; ls -lh artifacts/${{ matrix.rid }}/*.deb artifacts/${{ matrix.rid }}/*.rpm 2>&1 | head -40 || true
+          bash scripts/verify-package-layout.sh \
+            --target "artifacts/${{ matrix.rid }}/stage/deepseek-harness-desktop-$VERSION/usr/lib/deepseek-harness-desktop"
+
+      - name: 包可解析断言 + 打包取证（deb control / rpm Requires 留痕，人眼复核）
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 真断言：产物必须能被各自的包工具解析（`|| true` 会把这一步变成永不失败的门）。
+          # 不带管道——`| head` 下生产者收 SIGPIPE(141)，pipefail 会把留痕行变成红。
+          dpkg-deb -I artifacts/${{ matrix.rid }}/*.deb > /dev/null
+          rpm -qp --requires artifacts/${{ matrix.rid }}/*.rpm > /dev/null
+          # 留痕（不判门）：rpm Requires 应仅含 libwebkitgtk-6.0.so.4 与 libadwaita-1.so.0、
+          # 无 aarch64/musl/perl 假依赖——该不变量无机械断言，偏差靠这里的人眼复核。
+          echo "== deb control =="; dpkg-deb -I artifacts/${{ matrix.rid }}/*.deb 2>&1 | head -40 || true
+          echo "== rpm Requires =="; rpm -qp --requires artifacts/${{ matrix.rid }}/*.rpm 2>&1 | head -60 || true
+          echo "== 产物清单 =="; ls -lh artifacts/${{ matrix.rid }}/*.deb artifacts/${{ matrix.rid }}/*.rpm
 
       - name: 安装冒烟（装包→首启引导→等 dsh web URL 行，Xvfb 虚拟显示下跑全链）
+        id: smoke
         shell: bash
         env:
           SMOKE_SHOT_DIR: ${{ github.workspace }}/smoke-shots
@@ -126,13 +142,16 @@ jobs:
           SMOKE_LOG_DIR: ${{ github.workspace }}/smoke-logs
         run: dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" bash scripts/smoke-install-linux.sh artifacts/${{ matrix.rid }}
 
+      # 证据缺失分档：冒烟**跑过且失败**（含停滞/超时红）时证据缺失 = 尸检材料丢了，判 error；
+      # 其余情形（冒烟绿、或被前置步失败跳过而未跑）判 warn——跳过时真因在别处，不该再添一条
+      # 无证据的红来掩埋它。warn 恒定的上传步等于永不失败的门。
       - name: 上传冒烟截图（best-effort，Xvfb 下真实开火，无显示回退时空过，人眼复核）
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-shot-linux-${{ matrix.arch }}
           path: ${{ github.workspace }}/smoke-shots/
-          if-no-files-found: warn
+          if-no-files-found: ${{ steps.smoke.outcome == 'failure' && 'error' || 'warn' }}
           retention-days: 7
 
       - name: 上传冒烟日志（W2：stdout 全量 + host.log，超时/停滞尸检用）
@@ -141,7 +160,7 @@ jobs:
         with:
           name: smoke-log-linux-${{ matrix.arch }}
           path: ${{ github.workspace }}/smoke-logs/
-          if-no-files-found: warn
+          if-no-files-found: ${{ steps.smoke.outcome == 'failure' && 'error' || 'warn' }}
           retention-days: 7
 
       - name: 上传预览/发布产物（7 天，与 pilot-harness pilot-harness-* 一致）

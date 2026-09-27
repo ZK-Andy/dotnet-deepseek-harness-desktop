@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""本地 governance 自检（与 CI governance.yml 同逻辑的快检）
+"""治理自检：Issue/PR 模板治理字段 + 工作流 `run:` 禁插值事件载荷。
+
+CI `.github/workflows/governance.yml` 的「治理门禁」步与本地 `pre-commit` 都跑本脚本
+——同一条判据只有一份实现，不再有第二套内联校验。
 
 检查面：
 1. Issue/PR 模板治理字段。

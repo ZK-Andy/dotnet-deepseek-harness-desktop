@@ -93,7 +93,10 @@ jobs:
           PY
           echo "== 下载结果 =="; find release-assets -type f | sort
 
-      - name: 生成合并 SHA256SUMS
+      # 这一串是**准备**不是校验门：同一批字节在本 run 内先算后列，`release-preflight.sh`
+      # 的 `sha256sum -c` 复核的也是同一批字节（自指）。错包检测在下一步 preflight 的
+      # 资产矩阵 + 体积下限（相对命名模式判定）。
+      - name: 生成合并 SHA256SUMS（准备，非校验门）
         run: |
           set -euo pipefail
           (cd release-assets && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum | sed 's#  \./#  #') > release-assets/SHA256SUMS.txt

@@ -6,6 +6,7 @@
 
 * 框架：`xunit 2.9.3`，`dotnet test dotnet-deepseek-harness-desktop.slnx`；测试工程 `tests/DeepSeek.Harness.Desktop{.Core,.Infrastructure,}.Tests/`（三工程镜像三层）。
 * **覆盖率基线取 CI**：`scripts/test-baseline.json` 的 `coverage` 值与 README 同值徽章取自最近一次真正跑了 `build-test` 的作业 cobertura 的 `line-rate`（`ci.yml` 按路径过滤，只在 code 面命中时跑该作业——纯文档批次沿用上一次的值）；`coverage summary` 步把每个测试工程各产出的 cobertura 按 `(assembly, 源路径, 行号)` 取并集后打印 `coverage-summary: covered=<c> valid=<v> line-rate=<rate>`（合并规则与脚本自测见 [`scripts/coverage-summary.py`](../scripts/coverage-summary.py) 与 [ADR](../.agents/notes/implemented/testing/2026-09-14-coverage-baseline-multi-project-merge.md)）、`coverage-cobertura` artifact 存 7 天；复现为 `gh run download <id> -n coverage-cobertura` 后 `python3 scripts/coverage-summary.py --results <dir>`，或 `gh run view <id> --log | grep coverage-summary`。本机复现用 `-c Debug --collect:"XPlat Code Coverage"`（同口径；CI 另带 `--no-build --results-directory TestResults`）：本机与基线可差数行——2026-09-12 本机实测高 4 行，差在 `Infrastructure/Runtime/HostLog.cs` 的落盘失败 `catch` 是否被覆盖（本机 `HOME` 不可写；该因果定性属【推断 · 未证】，见 ADR），不是覆盖增益；`-c Release` 的序列点集合与 Debug 不同口径，不与基线可比。见 [ADR](../.agents/notes/implemented/testing/2026-09-12-coverage-baseline-from-ci-cobertura.md)。
+* **覆盖率是带容差的门**：`coverage summary` 步带 `--baseline scripts/test-baseline.json --tolerance-pp 0.5`——实测 `line-rate` 低于基线超过 0.5 个百分点即 exit 3 判红，并打出 `baseline`/`floor`/`measured` 三值便于判读；**比对只在 `test with coverage` 步成功时进行**，测试红了只复算不判门（半量 TestResults 会把「测试失败」误诊成「覆盖率下滑」）。容差不是松弛而是判据精度：逐轮覆盖率有微小漂移（同上「可差数行」），精确比对会把 CI 变成随机红；**真实下滑超过容差时，要么补测试，要么按「跟值」流程在同一变更里更新 `scripts/test-baseline.json` 与 README 双语徽章**（三者同值由 `verify-readme-badges.py` 强制）。基线文件缺失或形状不符即 exit 4 fail loud，绝不读成「无下限、通过」。
 * 覆盖面（按域分组，逐类细节见各文件头 `<summary>`）：
   * **壳与运行时**：`HarnessUrlParserTests`（`dsh web:` 行解析）、`HarnessRuntimeHostTests`（端口分配/记忆/占位回退/生命周期门/取消契约）、`RuntimeVersionGateTests`（版本底线判定 + 底线横幅）、`DesktopProfileBootstrapTests`/`SharedHomeContractTests`（desktop profile 自举与共享 home 契约）、`RunMarkerTests`（非受控退出标记与横幅）、`PathLinkGuardTests`（profile/锁路径拒符号链接判定）、`DesktopBannerTests`（横幅工厂幂等/堆叠/转义）。
   * **监督与观测**：`PageHealthMonitorTests`（页面健康探针）、`HostLogAndDiagnosticsTests`（HostLog 出口脱敏集成）、`SecretMaskerTests`（凭据形状遮罩纯函数）、`DiagnosticsTests`（诊断包导出）、`RecoveryPageTests`（恢复页脚本构建）。
@@ -32,9 +33,29 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-readme-badges.py` | README 双语 `tests`/`coverage` 徽章 == `scripts/test-baseline.json` | `python3 scripts/verify-readme-badges.py` |
 | `verify-handoff-structure.py` | HANDOFF 滚动窗/状态区 | `python3 scripts/verify-handoff-structure.py` |
 | `verify-governance.py` | Issue/PR 模板治理字段 + 工作流 run: 禁插值事件载荷/env 回读 | `python3 scripts/verify-governance.py` |
+| `verify-skill-format.py` | 技能格式（frontmatter/目录束/内链/结构，`.agents/skills/*/SKILL.md`） | `python3 scripts/verify-skill-format.py` |
+| `verify-review-brief.py` | 评审简报形状 + 评审对象冻结（`--enforce`；简报是 gitignore 本地文档） | `python3 scripts/verify-review-brief.py --enforce` |
 | `change-scope.sh` | `push` 前最小证据（`merge-base` diff） | `scripts/change-scope.sh` |
 
-`CI` (`ci.yml`)：`docs` job 无条件跑七文档门禁；`build-test` job 三平台矩阵（ubuntu/windows/macos，`fail-fast: false`；ADR cross-process-filelock-semantics），只在 code 面命中时跑：format 门禁与 `test with coverage`（每测试工程一个 cobertura，`coverage summary` 步合并打印基线值，`upload-artifact 7d`）仅 ubuntu 腿，windows/macos 腿跑清扫/资产锁两测试类全量。`hooks` 只做快检查，`CI` 拥有穷尽矩阵。
+每道判据只有一份实现，可以在多档执行（`hooks` 只做快检查，`CI` 拥有穷尽矩阵）：
+
+| 门 | `ci.yml` docs job | `pre-commit` | `pre-push` |
+|---|---|---|---|
+| `verify-adr-format.py` | ✓ | ✓（`.agents/notes/**` 有暂存变更时） | ✓ |
+| `verify-cookbook.py` | ✓ | ✓ | — |
+| `verify-doc-budgets.py` | ✓ | ✓ | ✓ |
+| `verify-md-links.py` | ✓ | ✓ | ✓ |
+| `verify-readme-badges.py` | ✓ | ✓（`--staged`） | — |
+| `verify-handoff-structure.py` | ✓ | ✓（本地文档存在即校验） | — |
+| `verify-governance.py` | ✓（`governance.yml` 的「治理门禁」步同源调它） | ✓ | — |
+| `verify-skill-format.py` | ✓ | — | — |
+| `verify-review-brief.py` | —（简报不入库，CI 看不见） | ✓（`.review-briefs/` 有在审简报时） | — |
+| `verify-code-health.py` / `verify-code-conventions.py` | ✓（`--enforce`） | ✓ | — |
+| `verify-review-tier.py` | ✓（`--since`） | ✓（`--staged`） | ✓（`--since origin/main`） |
+| `verify-ui-copy.py` | ✓（`--self-test` + 全量） | — | — |
+| `change-scope.sh` | — | — | ✓（取证型，非判据：`\|\| true` 只打印范围） |
+
+`CI` (`ci.yml`)：`docs` job 无条件跑上表全部门禁；`build-test` job 三平台矩阵（ubuntu/windows/macos，`fail-fast: false`；ADR cross-process-filelock-semantics），只在 code 面命中时跑——code 面含 `src/**`、`tests/**`、`scripts/**`、`*.slnx`、`.editorconfig`、`Directory.*.props`、`global.json` 与 `ci.yml` 自身（结构级构建输入都能翻转 build/format 结论，漏判即整条 format 门禁跳过）。format 门禁与 `test with coverage`（每测试工程一个 cobertura，`coverage summary` 步合并后**比对基线**，`upload-artifact 7d`）仅 ubuntu 腿，windows/macos 腿跑清扫/资产锁两测试类全量。
 
 ## 冒烟与集成
 

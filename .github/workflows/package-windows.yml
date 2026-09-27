@@ -75,7 +75,10 @@ jobs:
           path: ~/AppData/Local/npm-cache
           key: npm-cache-windows-x64
           restore-keys: npm-cache-windows-
-      - name: 安装 WebView2 Evergreen（运行态实验，ADR smoke-runner-deepening）
+      # 安装 WebView2 Evergreen（运行态实验，ADR smoke-runner-deepening）——下载失败仍 fail loud。
+      # 尾两段探针只留痕，不判门：注册表探针恒 exit 0，版本与命中与否由人眼复核，安装成败由
+      # 安装器退出码承担。
+      - name: 安装 WebView2 Evergreen + 版本/注册表探针留痕（探针不判门）
         shell: bash
         env:
           # Git Bash 会把 /silent /install 当 POSIX 路径转换（cookbook [脚本]；
@@ -89,24 +92,28 @@ jobs:
           done
           [[ -f "$EXE" ]] || { echo "::error::Evergreen 下载失败（3 次重试）"; exit 1; }
           "$EXE" /silent /install
-          echo "== WebView2 版本留痕（证据位；fail loud 由安装器退出码承担） =="
+          echo "== WebView2 版本留痕（证据位） =="
           powershell -NoProfile -Command "Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' | Select-Object Name | Format-Table -HideTableHeaders | Out-String -Width 200"
           echo "== WebView2 注册表探针（对标 Ryn DoctorCommand CheckWebView2：HKCU/HKLM × pv 非空非 0.0.0.0） =="
           powershell -NoProfile -Command '$paths = @('"'"'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'"'"', '"'"'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'"'"', '"'"'HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'"'"'); $found = $false; foreach ($p in $paths) { try { $v = (Get-ItemProperty -Path $p -Name '"'"'pv'"'"' -ErrorAction Stop).pv; if ($v -and $v -ne '"'"'0.0.0.0'"'"') { Write-Output "WebView2 pv=$v ($p)"; $found = $true } } catch {} }; if (-not $found) { Write-Output '"'"'::warning::WebView2 注册表探针未命中（安装器退出码为 0 但 pv 缺失，冒烟仍继续）'"'"' }; $error.Clear(); exit 0'
       - name: 安装冒烟（静默安装→启动→等 dsh web URL 行或引导启动行）
+        id: smoke
         shell: bash
         env:
           SMOKE_SHOT_DIR: ${{ github.workspace }}/smoke-shots
           # W2 落盘：冒烟日志（stdout 全量 + host.log）进稳定目录，CI 传 artifact。
           SMOKE_LOG_DIR: ${{ github.workspace }}/smoke-logs
         run: bash scripts/smoke-install-windows.sh "$(ls artifacts/win-x64/*-setup.exe | head -1)"
+      # 证据缺失分档（与 package-linux 同款）：冒烟跑过且失败时判 error，其余（冒烟绿、或
+      # 被前置步失败跳过）判 warn——warn 恒定的上传步等于永不失败的门。本腿绿＝含「安装链
+      # 兜底 PASS」（无桌面会话时截图本就静默跳过），故这条分档尤其不能对绿跑要证据。
       - name: 上传冒烟截图（best-effort，人眼复核）
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-shot-windows-x64
           path: ${{ github.workspace }}/smoke-shots/
-          if-no-files-found: warn
+          if-no-files-found: ${{ steps.smoke.outcome == 'failure' && 'error' || 'warn' }}
           retention-days: 7
       - name: 上传冒烟日志（W2：stdout 全量 + host.log，超时/停滞尸检用）
         if: always()
@@ -114,7 +121,7 @@ jobs:
         with:
           name: smoke-log-windows-x64
           path: ${{ github.workspace }}/smoke-logs/
-          if-no-files-found: warn
+          if-no-files-found: ${{ steps.smoke.outcome == 'failure' && 'error' || 'warn' }}
           retention-days: 7
       - name: 上传
         uses: actions/upload-artifact@v4

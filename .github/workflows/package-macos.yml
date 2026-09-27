@@ -89,18 +89,21 @@ jobs:
       - name: 安装截图见证工具（截图内容判定：convert，中央裁剪口径）
         run: brew install imagemagick
       - name: 安装冒烟（挂载→拷入 /Applications→启动→等 dsh web URL 行或引导启动行）
+        id: smoke
         env:
           SMOKE_SHOT_DIR: ${{ github.workspace }}/smoke-shots
           # W2 落盘：冒烟日志（stdout 全量 + host.log）进稳定目录，CI 传 artifact。
           SMOKE_LOG_DIR: ${{ github.workspace }}/smoke-logs
         run: bash scripts/smoke-install-macos.sh "$(ls artifacts/${{ matrix.rid }}/*.dmg | head -1)"
+      # 证据缺失分档（与 package-linux 同款）：冒烟跑过且失败时判 error，其余（冒烟绿、或
+      # 被前置步失败跳过）判 warn——warn 恒定的上传步等于永不失败的门。
       - name: 上传冒烟截图（best-effort，人眼复核）
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-shot-macos-${{ matrix.arch }}
           path: ${{ github.workspace }}/smoke-shots/
-          if-no-files-found: warn
+          if-no-files-found: ${{ steps.smoke.outcome == 'failure' && 'error' || 'warn' }}
           retention-days: 7
       - name: 上传冒烟日志（W2：stdout 全量 + host.log，超时/停滞尸检用）
         if: always()
@@ -108,7 +111,7 @@ jobs:
         with:
           name: smoke-log-macos-${{ matrix.arch }}
           path: ${{ github.workspace }}/smoke-logs/
-          if-no-files-found: warn
+          if-no-files-found: ${{ steps.smoke.outcome == 'failure' && 'error' || 'warn' }}
           retention-days: 7
       - name: 上传
         uses: actions/upload-artifact@v4
