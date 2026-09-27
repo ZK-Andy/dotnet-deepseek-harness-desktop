@@ -59,4 +59,4 @@ CI 的 Linux 冒烟门上有两处「为让红变绿」而生的机制，其依�
 - `python3 scripts/verify-governance.py` → 0（workflows 改动后 `run:` 禁插值规则仍绿）。
 - `bash -n scripts/smoke-install-linux.sh` → 0。
 - 全仓可执行面 grep `settle_seconds` / `SMOKE_MAX_SETTLE_SECONDS` / `SMOKE_FROZEN` / `smoke_frozen_pass` 零命中（仅本笔记与其 supersede 对象的历史正文提及）。
-- **待补（本批 done 判据）**：`package-linux.yml` 一次 `workflow_dispatch` 实跑——解冻后 arm64 腿须在无豁免条件下真过（判读：无 `frozen-native-hang`、有 `行为落定`、verdict=`full-chain`）。按 feature-flow 步骤 3，`.github/workflows/**` 变更必须 dispatch 实跑验证，本笔记在实跑通过后补记结论。
+- **实跑验证（本批 done 判据，已通过）**：`package-linux.yml` dispatch run `36332961407`（commit `095b459`）——**两腿全绿、无豁免**。arm64 腿：`行为落定（①+铸币303+客户端存活，用时 3s）` → `截图内容见证通过（mean=0.805255 sd=0.138811）` → `SMOKE_VERDICT=full-chain`；amd64 腿同形（2s、mean=0.79997）。日志中 `SMOKE_FROZEN` 一行皆无、无 `frozen-native-hang`、无 `导航调用超时`，窗口打印为 `落定90s` —— 冻结与夹紧两处机制均已不在链上。按 feature-flow 步骤 3，`.github/workflows/**` 变更的 dispatch 实跑由此满足。
