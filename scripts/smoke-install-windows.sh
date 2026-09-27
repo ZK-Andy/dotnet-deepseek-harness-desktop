@@ -51,7 +51,6 @@ SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
 SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
 FULL_RE='\[host\] dsh web ='
 BOOT_RE='\[bootstrap\] 引导开始：'
-PASS_RE="$FULL_RE|$BOOT_RE"
 
 # 落定等待共享库（NAV 正则 + log_has/nav/wait_settled/heartbeat/timeout_fallback）。
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -156,7 +155,8 @@ echo "== 安装（静默，DIR=${WIN_DIR}）"
 # 无任何输出，用户终止——卡在哪一步只能靠 /LOG 回答）；超时即 dump 日志尾部 +
 # 进程表 fail loud，绝不静默挂死。
 WIN_LOG="$(cygpath -w "$HOME_DIR/install.log" 2>/dev/null || echo "$HOME_DIR/install.log")"
-INSTALL_WAIT="${INSTALL_WAIT_SECONDS:-300}"
+# 固定 300s 预算，非可覆写旋钮：本脚本只认 SMOKE_WAIT_SECONDS / SMOKE_SETTLE_SECONDS。
+INSTALL_WAIT=300
 # 预建日志：排除「路径不可写/未创建」变量——Inno 正常初始化必然立即写日志，
 # 超时后日志仍空 = 安装器从未进入 Inno 初始化（执行前阻塞，如对话框/扫描）
 : > "$HOME_DIR/install.log"
@@ -206,9 +206,6 @@ rc=1
 boot_seen=0
 SECONDS=0
 LOG="$HOME_DIR/logs/host.log"
-log_has() { # $1=正则：stdout 或 host.log 任一命中
-  grep -qE "$1" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$1" "$LOG"; }
-}
 stalled=0
 progress_watchdog_reset
 for _ in $(seq 1 "$SMOKE_WAIT"); do

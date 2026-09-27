@@ -14,11 +14,10 @@
 # 的机器信号）。导航到达只作诊断回显，不判门（holder 自 reload 不产生到达回调；
 # token 第二跳已随转发模型退役）。verdict 只取 auth 硬拦（401 真坏页），healthy/
 # unknown/缺行一律交存活 + 见证判定。落定超时或落定期进程退出即 FAIL。
-#     deb 腿（有显示）还要等应用自己的终页裁决行 `[nav] 页面裁决=healthy` 才算落定：
-#     auth / unknown / 裁决未出现（探针未回）皆 FAIL——绿必须等于"同源且非鉴权页"，
-#     到达过的 401 页（v0.5.7 实跑：verdict 绿配 401 图）不再能冒充通过；截图在裁决之后
-#     再等一个有界重绘窗（SMOKE_REPAINT_SECONDS，默认 3s）才拍，避免拍到上一跳的旧像素。
-#     mac/win 腿本批未置位（下批开门）；rpm 容器腿无 X，①不可达 ⇒ 恒②安装链，落定/裁决门不适用（置位腿之外的落定仍只认到达，auth 除外）。
+#     deb 腿（有显示）在此之上只加截图时机与见证：落定后再等一个有界重绘窗
+#     （SMOKE_REPAINT_SECONDS，默认 3s）才拍，避免拍到上一跳的旧像素；见证判红（近空白/
+#     深色页）后仅客户端存活可兜底，两者俱缺才 FAIL（见 smoke_deb）。
+#     win 腿未置位（mac 腿已开门：同阈值见证 + 客户端存活兜底）；rpm 容器腿的落定/裁决门不适用。
 #     CI 经 xvfb-run 启动（ADR smoke-linux-xvfb-fullchain）：虚拟 DISPLAY 下窗口可创建，
 #     引导后台任务存活——deb 腿全链信号可达，落定 verdict + 截图真实开火；Xvfb 起不来
 #     或无显示直跑仍回退②安装链（回退门语义不变）。rpm 容器腿无 X，恒②。
@@ -56,7 +55,6 @@ SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
 APP_TIMEOUT=$((SMOKE_WAIT + 20))
 FULL_RE='\[host\] dsh web ='
 BOOT_RE='\[bootstrap\] 引导开始：'
-PASS_RE="$FULL_RE|$BOOT_RE"
 
 # 落定等待共享库（NAV 正则 + log_has/nav/wait_settled/heartbeat/timeout_fallback）。
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -398,7 +396,6 @@ smoke_rpm_container() {
     -e SMOKE_APP_BIN="$APP_BIN" \
     -e SMOKE_WAIT="$SMOKE_WAIT" \
     -e SMOKE_SETTLE_SECONDS="${SMOKE_SETTLE_SECONDS:-90}" \
-    -e PASS_RE="$PASS_RE" \
     -e FULL_RE="$FULL_RE" \
     -e BOOT_RE="$BOOT_RE" \
     -e APP_TIMEOUT="$APP_TIMEOUT" \

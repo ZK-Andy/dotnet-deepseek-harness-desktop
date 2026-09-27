@@ -54,7 +54,6 @@ SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
 [[ "$SMOKE_REPAINT_SECONDS" =~ ^[0-9]+$ ]] || SMOKE_REPAINT_SECONDS=3
 FULL_RE='\[host\] dsh web ='
 BOOT_RE='\[bootstrap\] 引导开始：'
-PASS_RE="$FULL_RE|$BOOT_RE"
 
 # 落定等待共享库（NAV 正则 + log_has/nav/wait_settled/heartbeat/timeout_fallback）。
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -230,7 +229,6 @@ HOME_DIR="$(mktemp -d)"
 OUT="$(mktemp)"
 INSTALLED="/Applications/$APP_BUNDLE"
 SMOKE_PID=""
-mkdir -p "$(dirname "$MNT")"
 
 cleanup() {
   [[ -n "$SMOKE_PID" ]] && kill "$SMOKE_PID" 2>/dev/null || true
@@ -259,9 +257,6 @@ boot_seen=0
 stalled=0
 SECONDS=0
 LOG="$HOME_DIR/logs/host.log"
-log_has() { # $1=正则：stdout 或 host.log 任一命中
-  grep -qE "$1" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$1" "$LOG"; }
-}
 progress_watchdog_reset
 for _ in $(seq 1 "$SMOKE_WAIT"); do
   if log_has "$FULL_RE"; then

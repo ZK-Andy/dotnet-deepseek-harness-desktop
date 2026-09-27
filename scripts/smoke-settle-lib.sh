@@ -157,7 +157,6 @@ progress_markers() { # $1=文件：标记行数（缺失即 0）
   [[ -f "${1:-}" ]] || { echo 0; return 0; }
   grep -cE "$MARKER_RE" "$1" 2>/dev/null || true
 }
-# 或双无 → 1。读调用方 rc/FULL_RE/BOOT_RE 全局与 log_has。
 # 超时回退门（R2 B1 回归锁）：未见①但见② → 0（按安装链收工）；①已见（落定失败）
 # 或双无 → 1。读调用方 rc/FULL_RE/BOOT_RE 全局与 log_has。
 timeout_fallback() {
