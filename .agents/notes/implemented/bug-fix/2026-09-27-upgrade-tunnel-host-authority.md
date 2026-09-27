@@ -4,6 +4,10 @@ Status: implemented
 
 Review: LIGHT/2026-09-27/R2=ok
 
+Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
+
+FULL 三审处置（本轮留痕批）：R1 2 Blocker（ADR 重复 bullet、失效的「体积不变」）+ R3 3 Blocker（「三行留痕齐」被零字节路径证伪、cookbook 悬空解法指针、缺 FULL 证据行）+ R2 0 Blocker——全修；建议收 12 条（含 `IsPrintableAscii` 折叠为 BCL 调用、`n == 0` 补留痕与用例、半行标注、快照/n 强度标注、父篇手术清单同步、cookbook 补 ADR 链接），拒 3 条（合并 `reject` 判门、抽握手助手、退役条目迁出 cookbook——理由见各自处置），转待办 2 条。修复轮 R2 复审 0 Blocker、5 项处置逐条确认成立，其 4 条建议亦收（零字节分支用例、折叠边界 4 例、n=1 标确定性、三步留痕加限定）。
+
 R2 处置：首轮 1 Blocker（页源 `Referer` 透传）+ 5 Suggestion 全收——Blocker 的 403 机制经补探测**证伪**（`Referer` 不在 dsh 门上），但"页源源值零透传"不变量确不成立，按对齐普通转发面改写；修复轮复审 0 Blocker、6 条处置逐条确认成立，另 2 条文档面 Suggestion（证据标注强度、黑名单口径措辞）亦收。
 
 Related: 前序 [`architecture/2026-09-27-loopback-forward-proxy`](../architecture/2026-09-27-loopback-forward-proxy.md)（本隧道面与其页源 Origin 改写同源；本篇更正其手术清单缺项）+ [`bug-fix/2026-09-27-upgrade-tunnel-watcher-exemption`](2026-09-27-upgrade-tunnel-watcher-exemption.md)（同一条 `remote.mux` 线的上一轮；其"隧道存活回归泵两端自然收敛"在该轮未真达成，因隧道从未过门）
@@ -24,7 +28,7 @@ Related: 前序 [`architecture/2026-09-27-loopback-forward-proxy`](../architectu
   | `Host`/`Origin` 对 + `Referer` 取页源 / 自源 / 外源三种 | 全 `401 unauthorized`（门**不判** `Referer`） |
 
   即 dsh 网关**先判 Host/Origin 门（两者都须是 dsh 自己的 authority/源），再谈 cookie 认证**；`Referer` 不在该门上。
-- **因果（【推断 · 未证直接观测】）**：隧道被该门 403、因而从未升到 101 → 代理把 403 原样泵给页面 → 客户端退避重连 = 上述 331 次建/收的来源。代理不记升级面的上游响应行（"已建"在读到响应前落盘），故这一环没有直接抓取证据；旁证是时延（同秒）、关闭方（恒 dsh）与原形态探测结果三者一致。
+- **因果（【推断 · 未证直接观测】）**：隧道被该门 403、因而从未升到 101 → 代理把 403 原样泵给页面 → 客户端退避重连 = 上述 331 次建/收的来源。本窗口内代理不记升级面的上游响应行（"已建"在读到响应前落盘），故这一环没有直接抓取证据（该缺口已由本轮 Decision 的首块留痕补上）；旁证是时延（同秒）、关闭方（恒 dsh）与原形态探测结果三者一致。
 - 影响面：所有经代理的 WS 升级（当前即 `remote.mux`）到不了 101，dsh 客户端 remote 流通道不可用。这是 v0.5.7 新开的传输面自身的缺口，与鉴权/铸币无关（同期普通转发请求全 200）。
 
 ## Decision
@@ -32,24 +36,28 @@ Related: 前序 [`architecture/2026-09-27-loopback-forward-proxy`](../architectu
 - `BuildUpgradeHead` 写 `Host: <dsh authority>`（由路由 `Uri.Authority` 派生），与 `Origin`（`Uri` 的 authority 左部）**同源派生**。手术清单由此变为：`Host`→dsh authority + `Origin`/`Referer`→dsh 自源 + 贴 cookie + `sec-fetch-site: same-origin`，其余头原样。
 - `Referer` 与普通转发面同法处理（`DshShellForward` 构造请求时 `Origin`→authority、`Referer`→dsh 形目标）：页源值丢弃、改写为 dsh 自源 + 原目标路径。该头**不在** dsh 的门上（见探测表末行），改写只为"页源源值零透传"这条两个面共用的不变量——隧道面此前漏了它。
 - 页源 `Host`/`Origin`/`Referer` 三值零透传；其余头（`Sec-WebSocket-*` 等）仍原样透传。两传输面只在**源值改写**这一条上对齐，黑名单口径并不相同：隧道面额外丢 `sec-fetch-site`（重写为 `same-origin`），也不丢 `accept-encoding`（WS 握手不带该头；普通面丢它是为避免 gzip 字节直送页面）。
-- 测试桩 `StubWebSocketServer` 按真实 dsh 判门：过门才回 101，缺 `Host`/`Origin` 非自源即回 `403 forbidden`（体 9 字节）+ 关连接——桩不再对 Host 失明（这正是本缺口逃过上一轮测试的原因）；首部按 `CRLFCRLF` 收满再判（单次 `ReadAsync` 遇 TCP 分段会假红）。
+- 上游→页方向改「首块解首行后**原样前送**」：首块一到即 loud 一行 `代理升级上游响应：<首行>`（非可打印 ASCII 或超 160 字节只报字节数，不落原始字节），随后 `CopyToAsync` 直泵，字节透明不变。**无计时器**——首读的阻塞语义与泵首读等同（上游不发即等到任一端关闭）。至此升级面首读到应答即三步留痕齐：已建 / 上游响应（首行、半行或「零字节即关」）/ 已收（先关方）；首读自身故障（RST 等 `IOException`）时中间行缺位，异常名由「已收」携带。
+- 测试桩 `StubWebSocketServer` 按真实 dsh 判门：过门才回 101，缺 `Host`/`Origin` 非自源即回 `403 forbidden`（体 9 字节）+ 关连接——桩不再对 Host 失明（这正是本缺口逃过上一轮测试的原因）；首部按 `CRLFCRLF` 收满再判（单次 `ReadAsync` 遇 TCP 分段会假红）；另有 `reject: true` 模式无条件 403，供上游拒答留痕面断言。
 
 ## Alternatives considered
 
 - **`Host` 透传页源值**：落败——页源是代理源（`localhost:<proxy port>`），dsh 按同门 403（探测表「`Host` 页源值 + `Origin` 自源」行）。
 - **只补 `Host`、`Origin` 沿用页源**：落败——探测表「`Host` 对 + `Origin` 页源」行 403；两个值必须同源于 dsh authority。
 - **只修 `Host`，`Referer` 维持透传**（本轮 R2 评审提出的分界）：落败——`Referer` 不上门（三种取值实测均只到 401），透传不会引发 403，但两个传输面会给出不同形态的源，且"页源源值零透传"这条不变量在升级面上破例；改写成本一行，取一致。
-- **升级面改用 `HttpClient` 或自行解析上游响应头**：落败——升级后是裸字节流，`HttpClient` 不承接 101 长连接；解析响应头会把"字节透明"的泵改成有状态转发，风险大于收益。上游响应留痕另计（见 Deferred）。
+- **升级面改用 `HttpClient` 或解析完整响应头后再泵**：落败——升级后是裸字节流，`HttpClient` 不承接 101 长连接；解析**完整**响应头既要把字节透明改成有状态转发（读完头才决定怎么泵），又对同一上游多等一次读；本仓先例 `ShellProxyFraming` 收满 `CRLFCRLF` 全头虽无计时器，但那是请求解析面、不是长寿命隧道。取折中：只解**首块里的首行**，字节原样前送（见 Decision 首块留痕条）。
+- **升级面只在收尾行里带上游状态**：落败——收尾时上游已关，状态行没读出来就永远读不到；且"建了即收"现场缺的正是"上游到底答了什么"。
 - **不写 Host，靠连接目标隐含**：落败——HTTP/1.1 头不会自动出现（原注释的假设本身就错）；普通面无此问题只因 `HttpClient` 代劳，不能援引。
 
 ## Consequences
 
-- 收益：`remote.mux` 可达 101 并与连接同寿；两传输面对源头的处理归一（`Host`/`Origin`/`Referer` 同源于 dsh authority），信任面不变——仍只贴 authority 值 + cookie。
-- 代价：两行头，无新增状态、计时器或线程；`DshLoopbackTunnel` 体积不变。
-- 剩余缺口（Deferred）：升级面仍不记上游响应行，"已建"仍早于响应落盘——同类问题下次仍要靠同形探测或抓包定位，日志自身说不了"谁拒的、什么状态"。
+- 收益：`remote.mux` 可达 101 并与连接同寿；两传输面对源头的处理归一（`Host`/`Origin`/`Referer` 同源于 dsh authority），信任面不变——仍只贴 authority 值 + cookie；升级面**首读到应答即三步留痕齐**，上游拒答（403/401）、零字节即关与协议异常（非状态行首块）当场可读，同类排障不再只能靠同形探测或抓包。
+- 代价：两行头 + 首块一次读一次写（等价于泵的首读，无新增状态、计时器或线程；首块缓冲上限 8 KiB，超出部分照常直泵）。
 
 ## Testing
 
-- `Proxy_UpgradeTunnelsWithHeaderSurgery` 增设断言：桩收到 `Host: 127.0.0.1:<stub port>` 与 `Referer: http://127.0.0.1:<stub port>/api/remote.mux`，且页源的 `Host: x` / `Referer: http://localhost:12345/page` 均不透传；桩补判门后，`Proxy_UpgradeTunnel_SurvivesClientFrames` 一并获得门覆盖。
-- 旧码复演：仅回退 `DshLoopbackTunnel.cs`、保留新测试 → 两例即红（159ms，首字节为 403 而非 101）；新码 Infrastructure 套件全绿。
+- `Proxy_UpgradeTunnelsWithHeaderSurgery` 增设断言：桩收到 `Host: 127.0.0.1:<stub port>` 与 `Referer: http://127.0.0.1:<stub port>/api/remote.mux`，且页源的 `Host: x` / `Referer: http://localhost:12345/page` 均不透传；另断言 101 留痕行；桩补判门后，`Proxy_UpgradeTunnel_SurvivesClientFrames` 一并获得门覆盖。
+- 新增 `Proxy_UpgradeTunnel_LogsUpstreamReject`（桩 `reject: true`）：页收到原样 `HTTP/1.1 403`，日志含 `上游响应：HTTP/1.1 403 Forbidden` + 收尾 `先关方=dsh`。
+- 测试面顺带修一处并发缺陷：泵仍在写日志时对 `lines` 直接 `Assert.Contains` 会抛 `InvalidOperationException`（新用例复现，既有隧道用例同隐患）——四处断言点改取 `ToArray()` 快照（取快照即不再枚举活动列表）；隧道三例连跑 4 次全绿（n=4，命令 `dotnet test --filter FullyQualifiedName~UpgradeTunnel`）。
+- 新增 `Proxy_UpgradeTunnel_LogsUpstreamSilentClose`（桩 `silentClose: true`：读完首部即关、一字不回）钉「零字节即关」留痕 + 收尾 `先关方=dsh`；直测三例：`TunnelStatusLine_ReadsFirstLine`（Theory：完整状态行 / 403 首行 / 半行）、`TunnelStatusLine_NonPrintableReportsBytesOnly`（二进制与超长块只报字节数）、`TunnelStatusLine_Boundaries`（可打印闭端 `0x7E` vs 越界 `0x7F`、160/161 分界、空首行、满 8 KiB 块）。
+- 旧码复演（本批）：只把泵接线换回 `up.CopyToAsync(page, ct)`、**保留 Host 手术与桩判门** → 两例红（`Proxy_UpgradeTunnelsWithHeaderSurgery` 的 101 留痕断言、`Proxy_UpgradeTunnel_LogsUpstreamReject` 的 403 留痕断言；`…SurvivesClientFrames` 只钉存活故不受影响）——**确定性回退复演**（非统计测量，n=1 次）；新码三例全绿。（上一轮「仅回退整文件 → 两例红」的复演记录属 Host 手术面，见本文件上一条 Review 批。）
 - 实机复验（2026-09-27 22:21，装机重启，v0.5.8）：`host.log` 自重启起 `remote.mux` **只建 1 次、0 次收**（22:21:36 建，存活至本行记录时）；修前该窗口是每 5–10 秒一对（38 分钟 331 建 / 329 收），客户端退避重连循环停止——即"因果"段推断的预测（过门即长存）成立。

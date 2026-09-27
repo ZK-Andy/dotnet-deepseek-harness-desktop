@@ -8,6 +8,12 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// 路由经构造注入。</summary>
 internal sealed class DshLoopbackTunnel
 {
+    // 上游首块探读上限：状态行与其后的握手头都在一两个读里到齐；超出部分照常直泵。
+    private const int UpstreamFirstBlockBytes = 8192;
+
+    // 状态行留痕上限：超过即当非状态行处理（只报字节数，不把长块/二进制写进日志）。
+    private const int MaxStatusLineBytes = 160;
+
     private readonly DshShellForward _forward;
     private readonly Action<string> _log;
 
@@ -62,8 +68,9 @@ internal sealed class DshLoopbackTunnel
                     await up.WriteAsync(req.Body, ct).ConfigureAwait(false);
                 }
 
-                _log($"[shell] 代理升级隧道已建（{req.Method} {ShellProxyFraming.PagePath(req.Target)} Upgrade={upgrade}；任一端关闭即收）");
-                await PumpTunnelAsync(page, up, $"{req.Method} {ShellProxyFraming.PagePath(req.Target)} Upgrade={upgrade}", ct).ConfigureAwait(false);
+                string label = $"{req.Method} {ShellProxyFraming.PagePath(req.Target)} Upgrade={upgrade}";
+                _log($"[shell] 代理升级隧道已建（{label}；任一端关闭即收）");
+                await PumpTunnelAsync(page, up, label, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is IOException or OperationCanceledException)
             {
@@ -116,7 +123,7 @@ internal sealed class DshLoopbackTunnel
     private async Task PumpTunnelAsync(NetworkStream page, NetworkStream up, string label, CancellationToken ct)
     {
         Task toUpstream = page.CopyToAsync(up, ct);
-        Task toPage = up.CopyToAsync(page, ct);
+        Task toPage = RelayUpstreamAsync(up, page, label, ct);
         Task first = await Task.WhenAny(toUpstream, toPage).ConfigureAwait(false);
         string closer = ct.IsCancellationRequested ? "宿主取消"
             : ReferenceEquals(first, toUpstream) ? "页" : "dsh";
@@ -132,5 +139,40 @@ internal sealed class DshLoopbackTunnel
         {
             // 对端已关：隧道使命结束（loud 已留）。
         }
+    }
+
+    /// <summary>上游→页方向：首块解出响应首行 loud 留痕后**原样前送**，其余字节透明直泵——
+    /// 「建了即收」这类故障从此能直接读到是谁、以什么状态拒的（升级面此前只有建立/收尾两行）。
+    /// 无计时器：首读的阻塞语义与 <c>CopyToAsync</c> 首读等同（上游不发即等到任一端关闭）。</summary>
+    private async Task RelayUpstreamAsync(NetworkStream up, NetworkStream page, string label, CancellationToken ct)
+    {
+        byte[] first = new byte[UpstreamFirstBlockBytes];
+        int n = await up.ReadAsync(first.AsMemory(0, first.Length), ct).ConfigureAwait(false);
+        if (n == 0)
+        {
+            // TCP 层直接关、不给应答字节：这也是「建了即收」的一种形态，同样要能读到。
+            _log($"[shell] 代理升级上游响应：零字节即关（{label}）");
+            return;
+        }
+
+        _log($"[shell] 代理升级上游响应：{StatusLineOf(first.AsSpan(0, n))}（{label}）");
+        await page.WriteAsync(first.AsMemory(0, n), ct).ConfigureAwait(false);
+        await up.CopyToAsync(page, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>首块的可读摘要：CRLF 前的首行（≤<see cref="MaxStatusLineBytes"/> 字节且全可打印 ASCII）；
+    /// 首块内找不到 CRLF 即标注「半行」（首读被 TCP 切分或非 CRLF 行尾，不冒充完整状态行）；
+    /// 非可打印（可能是二进制上游）只报字节数，不把原始字节写进日志。</summary>
+    internal static string StatusLineOf(ReadOnlySpan<byte> first)
+    {
+        int end = first.IndexOf("\r\n"u8);
+        ReadOnlySpan<byte> line = end >= 0 ? first[..end] : first;
+        if (line.Length == 0 || line.Length > MaxStatusLineBytes
+            || line.ContainsAnyExceptInRange((byte)0x20, (byte)0x7E))
+        {
+            return $"非可打印首块（{first.Length} 字节）";
+        }
+
+        return end >= 0 ? Encoding.ASCII.GetString(line) : Encoding.ASCII.GetString(line) + "（半行）";
     }
 }

@@ -277,7 +277,46 @@ public class DshLoopbackProxyTests
         Assert.Contains($"Referer: http://127.0.0.1:{wsStub.Port}/api/remote.mux", wsStub.LastHead!, StringComparison.Ordinal);
         Assert.DoesNotContain("localhost:12345", wsStub.LastHead!, StringComparison.Ordinal);
         Assert.True(await wsStub.HandshakeOkAsync(cts.Token));
-        Assert.Contains(lines, l => l.Contains("升级隧道已建"));
+        // 泵仍在写日志：断言前取快照（并发枚举 List 会 InvalidOperationException）。
+        string[] surgeryLines = lines.ToArray();
+        Assert.Contains(surgeryLines, l => l.Contains("升级隧道已建"));
+        // 上游响应留痕：101 也记一行，「建了即收」时能直接读到上游以什么状态答的。
+        Assert.Contains(surgeryLines, l => l.Contains("代理升级上游响应：HTTP/1.1 101"));
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>上游拒答面：dsh 回 403 时页拿到原样 403，且日志有「上游响应：HTTP/1.1 403」+ 收尾先关方=dsh——
+    /// 2026-09-27 排障时该面全无留痕（只有建立/收尾两行，拒因不可见），此处钉住。</summary>
+    [Fact]
+    public async Task Proxy_UpgradeTunnel_LogsUpstreamReject()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var wsStub = new StubWebSocketServer(reject: true);
+        var httpStub = new StubDshHandler();
+        var forward = new DshShellForward(httpStub);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+
+        using var socket = new TcpClient();
+        await socket.ConnectAsync(IPAddress.Loopback, proxy.Url.Port, cts.Token);
+        using NetworkStream stream = socket.GetStream();
+        byte[] head = Encoding.ASCII.GetBytes(
+            "GET /api/remote.mux HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+        await stream.WriteAsync(head, cts.Token);
+        string responseHead = await ReadHttpHeadAsync(stream, cts.Token);
+
+        Assert.StartsWith("HTTP/1.1 403", responseHead, StringComparison.Ordinal);
+        string[] rejectLines = lines.ToArray();
+        Assert.Contains(rejectLines, l => l.Contains("代理升级上游响应：HTTP/1.1 403 Forbidden"));
+        // 收尾 loud：上游先关（dsh 侧）——与「建了即收」现场同形；页读到 403 早于收尾行落盘，等落盘。
+        Assert.True(
+            await WaitForLogAsync(lines, l => l.Contains("隧道已收") && l.Contains("先关方=dsh")),
+            "应收尾留痕「先关方=dsh」");
         await runCts.CancelAsync();
     }
 
@@ -326,22 +365,97 @@ public class DshLoopbackProxyTests
         await stream.WriteAsync(pattern, cts.Token);
         byte[] echo = await ReadExactAsync(stream, pattern.Length, cts.Token);
         Assert.Equal(pattern, echo);
-        Assert.Contains(lines, l => l.Contains("升级隧道已建"));
+        Assert.Contains(lines.ToArray(), l => l.Contains("升级隧道已建"));
 
-        // 收尾 loud：应用退出即记“先关方=宿主取消”（轮询等落盘，不超过 5s）。
+        // 收尾 loud：应用退出即记“先关方=宿主取消”（泵仍在写日志，故取快照比对）。
         await runCts.CancelAsync();
-        bool closed = false;
-        for (int i = 0; i < 50 && !closed; i++)
+        Assert.True(await WaitForLogAsync(lines, l => l.Contains("隧道已收")), "应收尾留痕");
+        Assert.Contains(lines.ToArray(), l => l.Contains("隧道已收") && l.Contains("宿主取消"));
+    }
+
+    /// <summary>等日志行落盘（泵仍在写，故每次取快照比对）；超时返回 false，由断言侧给人读理由。</summary>
+    private static async Task<bool> WaitForLogAsync(List<string> lines, Func<string, bool> match, int millis = 5000)
+    {
+        for (int waited = 0; waited < millis; waited += 100)
         {
-            closed = lines.ToArray().Any(l => l.Contains("隧道已收"));
-            if (!closed)
+            if (lines.ToArray().Any(match))
             {
-                await Task.Delay(100, CancellationToken.None);
+                return true;
             }
+
+            await Task.Delay(100, CancellationToken.None);
         }
 
-        Assert.True(closed);
-        Assert.Contains(lines.ToArray(), l => l.Contains("隧道已收") && l.Contains("宿主取消"));
+        return lines.ToArray().Any(match);
+    }
+
+    /// <summary>上游接上就关、一个字节也不给（TCP 层 RST/FIN 型拒绝）：留痕须记「零字节即关」，
+    /// 否则该形态又回到「已建/已收」两行盲区。</summary>
+    [Fact]
+    public async Task Proxy_UpgradeTunnel_LogsUpstreamSilentClose()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var wsStub = new StubWebSocketServer(silentClose: true);
+        var httpStub = new StubDshHandler();
+        var forward = new DshShellForward(httpStub);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+
+        using var socket = new TcpClient();
+        await socket.ConnectAsync(IPAddress.Loopback, proxy.Url.Port, cts.Token);
+        using NetworkStream stream = socket.GetStream();
+        byte[] head = Encoding.ASCII.GetBytes(
+            "GET /api/remote.mux HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+        await stream.WriteAsync(head, cts.Token);
+
+        Assert.True(await WaitForLogAsync(lines, l => l.Contains("代理升级上游响应：零字节即关")), "应留痕「零字节即关」");
+        Assert.True(
+            await WaitForLogAsync(lines, l => l.Contains("隧道已收") && l.Contains("先关方=dsh")),
+            "应收尾留痕「先关方=dsh」");
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>首块摘要直测：完整状态行取 CRLF 前首行；CRLF 未到齐标「半行」；超长/二进制只报字节数。</summary>
+    /// <param name="raw">上游首块原文。</param>
+    /// <param name="expected">期望摘要。</param>
+    [Theory]
+    [InlineData("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n", "HTTP/1.1 101 Switching Protocols")]
+    [InlineData("HTTP/1.1 403 Forbidden\r\nContent-Length: 9\r\n\r\nforbidden", "HTTP/1.1 403 Forbidden")]
+    [InlineData("HTTP/1.1 403 Forb", "HTTP/1.1 403 Forb（半行）")]
+    public void TunnelStatusLine_ReadsFirstLine(string raw, string expected)
+    {
+        Assert.Equal(expected, DshLoopbackTunnel.StatusLineOf(Encoding.ASCII.GetBytes(raw)));
+    }
+
+    /// <summary>边界钉死：可打印闭端 0x7E / 越界 0x7F、160 与 161 分界、空首行（CRLF 起）、满 8 KiB 块。</summary>
+    [Fact]
+    public void TunnelStatusLine_Boundaries()
+    {
+        Assert.Equal("~", DshLoopbackTunnel.StatusLineOf("~\r\n"u8));
+        Assert.Equal("非可打印首块（2 字节）", DshLoopbackTunnel.StatusLineOf([0x7E, 0x7F]));
+        string line160 = new('A', 160);
+        Assert.Equal(line160, DshLoopbackTunnel.StatusLineOf(Encoding.ASCII.GetBytes(line160 + "\r\n")));
+        string line161 = new('A', 161);
+        Assert.Equal(
+            $"非可打印首块（{line161.Length + 2} 字节）",
+            DshLoopbackTunnel.StatusLineOf(Encoding.ASCII.GetBytes(line161 + "\r\n")));
+        Assert.Equal("非可打印首块（8 字节）", DshLoopbackTunnel.StatusLineOf("\r\nX: y\r\n"u8));
+        Assert.Equal("非可打印首块（8192 字节）", DshLoopbackTunnel.StatusLineOf(new byte[8192]));
+    }
+
+    /// <summary>非状态行首块（二进制/超长）只报字节数，不把原始字节写进日志。</summary>
+    [Fact]
+    public void TunnelStatusLine_NonPrintableReportsBytesOnly()
+    {
+        byte[] binary = [0x00, 0x01, 0x02, 0xFF];
+        Assert.Equal($"非可打印首块（{binary.Length} 字节）", DshLoopbackTunnel.StatusLineOf(binary));
+        byte[] longLine = Encoding.ASCII.GetBytes(new string('A', 200));
+        Assert.Equal($"非可打印首块（{longLine.Length} 字节）", DshLoopbackTunnel.StatusLineOf(longLine));
     }
 
     private static async Task<string> ReadHttpHeadAsync(NetworkStream stream, CancellationToken ct)
@@ -518,14 +632,25 @@ public class DshLoopbackProxyTests
         private readonly CancellationTokenSource _cts = new();
         private readonly TaskCompletionSource _handshakeOk =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly bool _reject;
+        private readonly bool _silentClose;
 
         public int Port { get; }
 
         /// <summary>最后一次握手首部原文（判门/断言素材）。</summary>
         public string? LastHead { get; private set; }
 
-        public StubWebSocketServer()
+        // 判门/拒答共用的 403 应答（体 9 字节，与 dsh 实测同形）。
+        private static readonly byte[] s_forbidden = Encoding.ASCII.GetBytes(
+            "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n" +
+            "Content-Length: 9\r\n\r\nforbidden");
+
+        /// <param name="reject">true = 无条件 403（模拟 dsh 拒答，验上游响应留痕面）。</param>
+        /// <param name="silentClose">true = 读完握手首部即关、一个字节都不回（零字节即关形态）。</param>
+        public StubWebSocketServer(bool reject = false, bool silentClose = false)
         {
+            _reject = reject;
+            _silentClose = silentClose;
             _listener = new TcpListener(IPAddress.Loopback, 0);
             _listener.Start();
             Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -554,6 +679,17 @@ public class DshLoopbackProxyTests
                 // 首部按 CRLFCRLF 收满：单次 ReadAsync 遇 TCP 分段会把完整首部误判成缺头（判门假红）。
                 string head = await ReadHttpHeadAsync(stream, ct).ConfigureAwait(false);
                 LastHead = head;
+                if (_silentClose)
+                {
+                    return;
+                }
+
+                if (_reject)
+                {
+                    await stream.WriteAsync(s_forbidden, ct).ConfigureAwait(false);
+                    return;
+                }
+
                 bool ok = head.Contains("Host: 127.0.0.1:" + Port, StringComparison.OrdinalIgnoreCase)
                     && head.Contains("Origin: http://127.0.0.1:" + Port, StringComparison.Ordinal)
                     && head.Contains("Cookie: " + CookieName + "=", StringComparison.Ordinal)
@@ -563,10 +699,7 @@ public class DshLoopbackProxyTests
                 {
                     // 对齐 dsh 网关实证：Host/Origin 门不过即 403 forbidden（体 9 字节）+ 关连接；
                     // 代理把该响应原样泵给页面，客户端退避重连（ADR upgrade-tunnel-host-authority）。
-                    byte[] forbid = Encoding.ASCII.GetBytes(
-                        "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n" +
-                        "Content-Length: 9\r\n\r\nforbidden");
-                    await stream.WriteAsync(forbid, ct).ConfigureAwait(false);
+                    await stream.WriteAsync(s_forbidden, ct).ConfigureAwait(false);
                     return;
                 }
 

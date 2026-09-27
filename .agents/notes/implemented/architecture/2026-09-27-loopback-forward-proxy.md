@@ -18,7 +18,7 @@ Related: 前序 `bug-fix/2026-09-27-shell-mint-and-forward`（传输面被本篇
 
 ## Decision
 
-- 新增 `Infrastructure/Runtime/DshLoopbackProxy.cs`（边界层回环转发代理）：`TcpListener` 纯 loopback、端口 OS 分配（`0`，`Run` 早于 `BuildApp` 绑定，日志 loud 实际源）；逐请求向 dsh authority 转发（路由/cookie 沿用 `DshShellForward` 铸币态，新增内部 `TryGetRoute`）；303 内部跟完（沿用 `ResolveFollowTarget`）；`Set-Cookie` 永不回页面；POST 的 `Content-Type` 等 content 头保真（两级 `TryAdd`：请求头不成则落 `Content.Headers`）；SSE/未知长度流式直通（头透传 + 体 `CopyToAsync`，`HttpClient.Timeout` 无限 + 页断联取消）；`Upgrade` 经裸 TCP 隧道直泵（对齐上游 `onBeforeSendHeaders` 手术：`Origin`→dsh 自源 + 贴 cookie + `sec-fetch-site: same-origin`；寿命与连接绑定，无计时器）；源头改写为 dsh 自源（`Origin`/`Referer`，标准反代语义；页源代理 URL 触发 dsh 网关 403，dispatch `36294149610` 实证）；畸形请求判别式 loud 502（超限/分块/绝对目标，预连接静默关）。
+- 新增 `Infrastructure/Runtime/DshLoopbackProxy.cs`（边界层回环转发代理）：`TcpListener` 纯 loopback、端口 OS 分配（`0`，`Run` 早于 `BuildApp` 绑定，日志 loud 实际源）；逐请求向 dsh authority 转发（路由/cookie 沿用 `DshShellForward` 铸币态，新增内部 `TryGetRoute`）；303 内部跟完（沿用 `ResolveFollowTarget`）；`Set-Cookie` 永不回页面；POST 的 `Content-Type` 等 content 头保真（两级 `TryAdd`：请求头不成则落 `Content.Headers`）；SSE/未知长度流式直通（头透传 + 体 `CopyToAsync`，`HttpClient.Timeout` 无限 + 页断联取消）；`Upgrade` 经裸 TCP 隧道直泵（对齐上游 `onBeforeSendHeaders` 手术：`Host`→dsh authority、`Origin`/`Referer`→dsh 自源 + 贴 cookie + `sec-fetch-site: same-origin`，页源三值零透传；上游首块解状态行 loud 留痕后原样前送；寿命与连接绑定，无计时器——清单与拒因留痕见 [upgrade-tunnel-host-authority](../bug-fix/2026-09-27-upgrade-tunnel-host-authority.md)）；源头改写为 dsh 自源（`Origin`/`Referer`，标准反代语义；页源代理 URL 触发 dsh 网关 403，dispatch `36294149610` 实证）；畸形请求判别式 loud 502（超限/分块/绝对目标，预连接静默关）。
 - 代理本地端点（无需铸币，对齐上游 `serveWebDocument` 的本地文档面）：`/__shell_ready`（已铸币 200，未铸币长轮询等铸币门——无计时器，中止即页断联/退出）；`/__shell_guide/*`（wwwroot 磁盘页，GET/HEAD，越界 403/缺失 404/他法 405，MIME 对齐上游子集）；未铸币的 `/` 与 `/index.html`（英文极简 holder，自 `fetch` 就绪后自 `reload`，无计时器；中文指南一链之隔，词典零负担）。
 - 窗口 URL 恒为代理源（含 dsh 未就绪时；仅代理绑定失败回退 wwwroot）：Ryn dev-server 分支在窗口创建时接管 IPC（`_ipcBase` 绝对化 + CORS 信任），不依赖 dsh 时序——冷机探针同样有效；`EnterMainUiAsync` 只做铸币（holder 自 reload，启动链零 host 导航，绕开 saucer `set_url` 原生挂家族）。
 - 自有 scheme 退役：`DshSchemeBridge` + `ConfigureCustomScheme` + `ShellScheme/ShellOrigin/ShellRoot` 删除（R1 死代码）；探针 `expectedOrigin`、导航守卫允许集、冒烟脚本期望 origin 全部跟转代理源（动态端口，运行时派生；冒烟用 host.log 的代理源行定位）。
@@ -35,7 +35,7 @@ Related: 前序 `bug-fix/2026-09-27-shell-mint-and-forward`（传输面被本篇
 ## Consequences
 
 - 代价：自研最小 HTTP/1.1 解析转发（成帧/本地/隧道三类拆分，各 ≤400 行；请求体只认 `Content-Length`，chunked 请求 loud 502）；loopback 信任面（token/cookie 不出本机，与既有模型一致）；SSE 空闲不断（页断联即 cancel，`EventSource` 自重连）。
-- 收益：流/RPC/WS/eval/invoke 全活（WS 为裸 TCP 隧道 + 头手术）；mint/303/脱敏纪律沿用；三平台同构；诊断 loud 行保留（入口/终态）；响应头最小集仍按需（沿用前序 TODO）。
+- 收益：流/RPC/WS/eval/invoke 全活（WS 为裸 TCP 隧道 + 头手术）；mint/303/脱敏纪律沿用；三平台同构；诊断 loud 行保留（入口/终态/升级面三步）；响应头最小集仍按需（沿用前序 TODO）。
 
 ## Testing
 
