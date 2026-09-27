@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文断言「`package-windows.yml` 仍用 `actions/cache` 缓存 npm 下载缓存」的文件名已失效：三份 `package-*.yml` 已合并为 `package.yml`，该 cache 步现位于其 `build-windows` job。正文不动。
+
 Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
 
 三审结论：R3 报 1 Blocker——归档层页头自称受 `verify-cookbook.py` 契约约束，而该脚本缺省只校验主档，归档层实际无门禁覆盖（「自称有契约、无人校验」）。已同批收口：脚本缺省改为校验 cookbook 家庭（主档 + 归档层，存在即校验；显式路径优先），自测加三项家庭选择夹具，并反向验证（往归档层植入违约条目 → 门禁 exit=1），故归档层搭既有 pre-commit/CI 调用点即被覆盖。R1/R2 0 Blocker。采纳——指针由打包节末改置页头且去掉逐条枚举（枚举只留归档页头一处）、`AGENTS.md` 字数预算表加行、`docs/testing.md` 两行口径同批修正；拒绝——直接删条目（判别细节要留）与迁到未提交的 `.plan/`（指针会成悬空）。

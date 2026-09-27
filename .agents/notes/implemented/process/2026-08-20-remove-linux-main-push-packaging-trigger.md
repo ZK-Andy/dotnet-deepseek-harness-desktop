@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文「一致性：`package-linux/macos/windows.yml` 三者现均为 `tags v*` + 手动」的文件名已失效：三者合并为 `package.yml`（包仍在 tag 与手动时触发，tag 径经 `release.yml` 调用本 workflow；无 `branches: [main]` 自动触发，本笔记的不变量成立）。正文不动。
+
 ## Problem
 
 `package-linux.yml` 是三个打包 workflow 里唯一在 `push` 上触发 `branches: [main]` 的（mac/win 仅 `tags v*` + 手动）。因此**每次 commit 推到 main 都自动跑一次 Linux deb/rpm 全量打包**——每次要重下 ~421M dsh 闭包 + `dotnet publish` + 打 deb/rpm，非常浪费 runner 时间；普通提交本应只由 `ci.yml` 做 build/test/coverage。

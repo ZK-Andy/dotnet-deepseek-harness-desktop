@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文「Windows Evergreen 实验（硬步骤）」的落点已换家：三份 `package-*.yml` 合并为 `package.yml`，该步仍在 windows 腿冒烟之前（`build-windows` job）。正文不动。
+
 Review: FULL/2026-09-25/R1=ok R2=ok R3=ok
 
 ## Problem

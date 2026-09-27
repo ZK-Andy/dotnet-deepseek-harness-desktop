@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文「CI `package-linux.yml`」的落点已换家：合并为 `package.yml` 的 `build-linux` job（apt 装 `xvfb`/`scrot`、冒烟经 `xvfb-run` 运行均不变）。正文不动。
+
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 
 Related: 兑现 [`smoke-runner-deepening`](2026-09-25-smoke-runner-deepening.md) 的"Linux Xvfb 全链下批事项"；[`smoke-settle-content-verdict`](2026-09-26-smoke-settle-content-verdict.md) 的落定等待在 Linux 腿的生效前提。

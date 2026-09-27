@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文 Related 里「macOS 单 runner 交叉编取舍实录于 `package-macos.yml` 注释」这条指针失效：三份 `package-*.yml` 已合并为单一 `package.yml`，那段取舍注释现位于其 `build-macos` job 头部。正文不动。
+
 ## Problem
 
 csproj 声明 `PublishAot=true`，而三条打包流水线（linux/macos/windows）无一例外显式 `-p:PublishAot=false`——发布产物自 v0.1.x 起始终是 JIT。配置与事实长期矛盾：源码大量注释以「AOT 下反射不可用（IL2026/IL3050）」为设计理由，误导维护者把「必须源生成 JSON」当成硬约束，并以为发运产物是 AOT。

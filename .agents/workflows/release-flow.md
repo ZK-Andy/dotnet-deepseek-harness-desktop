@@ -3,10 +3,11 @@
 > tag 触发的全链路；历史踩坑沉淀于此（v0.1.17~v0.2.1）。
 
 1. **版本基线**：csproj `<Version>` 单一来源 bump + `chore(release)` 提交。
-2. **打 tag**：annotated `vX.Y.Z` 推送 origin——触发三平台 package-*.yml + release.yml。
-3. **盯四流水线**：package-linux / package-macos / package-windows 全绿 → 统一 Release。
+2. **打 tag**：annotated `vX.Y.Z` 推送 origin——触发 `release.yml`（它把三平台打包作为 reusable workflow 调用，与发布作业同一 run）。
+3. **盯一条流水线**：`release.yml` 的包腿（linux/macos/windows 三 job，共五腿）全绿 → 同 run 内 `needs:` 放行发布作业 → 统一 Release。包腿红即发布作业不启动。
    - 打包时长预期：无闭包组装，各平台 job 以 dotnet publish + 安装器打包为主。
-   - 验证链已自动化：布局断言（无闭包残留 + 插件 tgz）在各平台 job、三平台安装冒烟（smoke-install-{linux,windows,macos}.sh）双信号判定（dsh web URL 全链 / 引导启动安装链——Linux CI 无显示壳在窗口创建即退出属已记录边界，win/mac 有桌面会话应达全链）、release preflight 总检位在 release.yml——任一红先修再发，不要人工绕过。
+   - 验证链已自动化：布局断言（无闭包残留 + 插件 tgz）在各平台 job、三平台安装冒烟（smoke-install-{linux,windows,macos}.sh）双信号判定（dsh web URL 全链 / 引导启动安装链——Linux CI 无显示壳在窗口创建即退出属已记录边界，win/mac 有桌面会话应达全链）、release preflight 总检位在发布作业——任一红先修再发，不要人工绕过。
+   - **发布失败恢复**：在该 tag 的 run 上「Re-run failed jobs」——包腿产物仍在同一 run（7 天留存）内，发布作业可原地重跑；不要另开 tag（同名 tag 重打不会让已装客户端重新自更新，宁跳版本号）。
 4. **Release 核验**：
    - 标记 = Latest、非 prerelease/draft
    - 资产 8 项齐整：deb×2 + rpm×2 + dmg×2 + setup.exe + SHA256SUMS.txt（无 zip）

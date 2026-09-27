@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文「三平台 `package-*.yml` 移除各自 `publish-release` 作业」的文件名已失效：三份合并为 `package.yml`（分工不变——只出包 + 上传 7 天 Artifacts，发布由 `release.yml` 在 tag 时聚合；本批另把聚合改为同 run 的 `needs:`）。正文不动。
+
 ## Problem
 
 Release 由三个独立打包 workflow（`package-linux/macos/windows.yml`）各自的 `publish-release` 作业拼装，每个都用 `softprops/action-gh-release` 且都开 `generate_release_notes: true`——三个作业并行各自生成一次正文，叠加导致 `v0.1.16` 的 body 是同一行 "Full Changelog" **重复 3 遍**；且无任何结构化说明，release「简陋」。

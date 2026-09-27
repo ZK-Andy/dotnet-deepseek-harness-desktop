@@ -1,0 +1,46 @@
+name: package-setup
+description: 打包腿的共用前置——setup-dotnet（+ 可选 setup-node）与打包版本解析。
+
+# 三条打包腿（linux/macos/windows）共用这两件事：装工具链、解析并落 `VERSION`。
+# 版本解析走 `scripts/package-version.sh`（唯一家，含 `--self-test`，执行点在 ci.yml 的 docs job）。
+# 各平台特有步骤（apt/brew 装显示栈、各平台 publish 与打包、冒烟与证据上传）留在各 job。
+#
+# **不含 checkout**：本地 action 的 `action.yml` 在该 step 自己开跑时从工作区读取（job 准备
+# 阶段对 `./` 自仓 action 显式跳过），故 `actions/checkout` 必须是调用方更早的一个 step——
+# 放进本 action 内会让各腿死在 `Can't find 'action.yml'`（详见 ADR ci-package-workflow-unification
+# 的 Alternatives）。
+inputs:
+  version:
+    description: '包版本（workflow_call/workflow_dispatch 输入；留空则按 tag→csproj 回退）'
+    required: false
+    default: ''
+  setup-node:
+    description: "是否装配 node（Linux 冒烟腿需要；字符串 'true'/'false'，composite 输入无 boolean 类型）"
+    required: false
+    default: 'false'
+  node-version:
+    description: 'node 版本（setup-node 为 true 时生效）'
+    required: false
+    default: '24'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+    - if: ${{ inputs.setup-node == 'true' }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+    # 载荷经 step 级 env 传入，不在 run: 里插值 ${{ }}（治理门禁 verify-governance.py）。
+    # 版本一致性判据（tag 权威）的唯一实现在脚本里，本步只做「调用 + 落 GITHUB_ENV」。
+    - name: 解析打包版本（单一来源 scripts/package-version.sh）
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        V="$(bash scripts/package-version.sh)"
+        echo "VERSION=$V" >> "$GITHUB_ENV"
+        echo "打包版本: $V"

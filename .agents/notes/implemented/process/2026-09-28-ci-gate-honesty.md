@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 本笔记所述三份 `package-{linux,macos,windows}.yml` 已随「CI 打包三流合一」合并为单一 `package.yml`（共用件在 `.github/actions/package-setup`）；其中 tag/输入版本一致性判据移入 `scripts/package-version.sh`（带 `--self-test`，覆盖 tag 门全部分支与参数缺值诊断），本笔记「残余验证缺口」那条的**判据面**随之关闭（判据已搬出 tag-only 的 `if:` 外壳，成为 `ci.yml` 每次实跑的机器断言）；tag ref 上的整合证据仍待下一次真 tag（见 unification 的残余缺口①）；「遗留缺口②」的 `github.event.inputs.self_sign` 同批接正为主题面的 `inputs.self_sign && '1' || '0'`（该旋钮此前恒不生效）。见 [ci-package-workflow-unification](2026-09-28-ci-package-workflow-unification.md)。正文不动。
+
 Review: FULL/2026-09-28/R1=ok R2=ok R3=ok
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）

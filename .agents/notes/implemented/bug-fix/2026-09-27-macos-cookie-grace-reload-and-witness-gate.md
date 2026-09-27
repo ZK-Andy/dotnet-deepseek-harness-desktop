@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文「`package-macos.yml` 加 `brew install imagemagick`（见证执行面）」的落点已换家：合并为 `package.yml` 的 `build-macos` job。正文不动。
+
 Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
 
 Related: 前序 `bug-fix/2026-09-14-bootstrap-cross-scheme-cookie-401`（两跳）+ `bug-fix/2026-09-26-webauth-token-reentry`（P0 自愈）+ `testing/2026-09-26-page-verdict-gate`（裁决门）+ `testing/2026-09-26-smoke-witness-real-and-eval-first-hop`（见证变实）+ 诊断 dispatch run `36259835977` + 首版 tag run `36215776049`/重发 run `36221929541`（mac 四张截图）。

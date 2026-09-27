@@ -17,7 +17,7 @@
 # 实测边界（2026-08-29 首跑）：Windows runner 的壳同样在窗口创建（Ryn Run）即
 # 退出——WebView2 初始化的原生依赖在 runner 环境不可用，全链信号不可达，冒烟
 # 停在②安装链位；「装得上、起得来」的启动段覆盖由此完成。
-# 运行态实验（ADR smoke-runner-deepening）：package-windows.yml 在冒烟前装
+# 运行态实验（ADR smoke-runner-deepening）：package.yml 的 windows 腿在冒烟前装
 # WebView2 Evergreen，若此后 ① 命中则运行态自动进 CI——verdict 行即结论。
 #
 # 信号源 = <DSH_HOME>/logs/host.log（HostLog 双写 stdout 与该文件）+ 启动器 stdout

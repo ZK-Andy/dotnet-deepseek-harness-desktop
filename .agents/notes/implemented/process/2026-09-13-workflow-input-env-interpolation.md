@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文里 `package-windows.yml` 的 publish 步（含显式 `shell: bash` 及其理由）落点已换家：三份 `package-*.yml` 合并为 `package.yml` 的 `build-windows` job；本笔记的 env 通道纪律不变。正文不动。
+
 Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）

@@ -72,7 +72,7 @@ python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.js
 python3 scripts/verify-md-links.py       # 相对链接/锚点（skills/、archived/、.plan/ 排除）
 python3 scripts/verify-readme-badges.py  # README 双语 tests/coverage 徽章 == scripts/test-baseline.json
 python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/待办文件与预算/冷归档卷；存在即校验）
-python3 scripts/verify-governance.py     # Issue/PR 模板治理字段 + 工作流 run: 禁插值事件载荷/env 回读
+python3 scripts/verify-governance.py     # Issue/PR 模板治理字段 + 工作流/composite action 的 run: 禁插值事件载荷/env 回读
 python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（report 默认；--enforce 才 fail）
 python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）
 python3 scripts/verify-ui-copy.py    # UI 文案单一词典（UiCopy.cs 为唯一家；四条不变量：消费文件零 CJK 字面量 + index.html 登记 + EN 字典↔`*En` 常量全等 + client.js zh/en 键集相等）

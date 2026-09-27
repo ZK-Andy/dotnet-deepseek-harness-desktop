@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文「落定窗预算（`package-linux.yml`）」两条失效面：**文件名**已删（三份 `package-*.yml` 合并为 `package.yml` 的 `build-linux` job），**数值**已由另一批退役（落定窗现为三平台单值 90s，见 [settle-window-and-arm64-freeze-retirement](../testing/2026-09-28-settle-window-and-arm64-freeze-retirement.md)）。正文不动。
+
 Review: FULL/2026-09-26#2/R1=ok R2=ok R3=ok
 
 Related: 直接起因是 dispatch run `36240692140`（`ec515cc`）的 artifact 复核——amd64 job 绿、上传截图却是 `dsh web authentication required; reopen the URL printed by dsh web.`；对照 run `36233266978`（`3c03fc4`）截图是真大厅 UI 而 job 红。两跑差的是落定门：旧门要求 token 第二跳（Linux 永不出现）故恒超时，截图拍得晚；新门改认「①后双到达」后抢在第二跳提交回调上立即开火，拍到的是第一跳裸 origin 的 401 旧像素。落定门与截图时序互为镜像的两个假象。

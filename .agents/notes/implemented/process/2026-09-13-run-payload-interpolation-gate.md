@@ -36,7 +36,7 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Testing
 
-`python3 scripts/verify-governance.py --self-test`：4 断言（step 级 `env:` 豁免不误报、`run:` 直插载荷/env 回读各报一、`with:` 块不误报、`event_name`/`ref` 非载荷不误报）。活扫描：全工作流绿（`ci.yml` 收口后）。
+`python3 scripts/verify-governance.py --self-test`：6 断言（step 级 `env:` 豁免不误报、`run:` 直插载荷/env 回读各报一、`with:` 块不误报、`event_name`/`ref` 非载荷不误报、composite 的 `run:` 违规判红、composite 的 `env:` 通道形态不误报）。活扫描：全工作流绿（`ci.yml` 收口后）。
 
 ## Related
 

@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文里 `package-macos.yml` / `package-windows.yml` 的 runner 与矩阵陈述已换家：三份 `package-*.yml` 合并为 `package.yml`，mac 仍为 `macos-latest` 单 runner 双 rid 矩阵、win 仍为 `windows-latest`。正文不动。
+
 ## Problem
 
 `mac x64` 与 `Windows` 两档只能由 `CI`（`package-macos.yml` / `package-windows.yml` 的 `macos-latest`/`windows-latest` runner）出包，项目本地没有 `Intel macOS (x64)` 真机，也没有 `Windows` 真机/可重复的手测环境，无法做「真机针对性测试」。此前 `HANDOFF`/`README` 把该项列为 `🟡 已实现但未针对性测试`，实则被当成我们的内部待办，但我们自己客观上无法完成。

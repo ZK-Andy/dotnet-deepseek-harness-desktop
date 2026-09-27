@@ -69,14 +69,14 @@
 * Feed：`releases.atom` 最新稳定 tag + `expanded_assets/<tag>` 抓资产 href（绕 api 限流）；`ReleaseMeta.Pick` 按 RID 后缀挑资产。下载 `.part` 原子改名 + SHA256SUMS 强校验（**release 未附校验文件或 HTTP 非 2xx 时 fail loud 拒装**）→ `<DSH_HOME>/updates/`。
 * 安装：Linux pkexec 脚本（等本进程退出→dpkg/rpm→runuser 降权拉起新版）；Windows Inno `/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`；macOS v1 报错引导手动。
 * UI：伴生插件注册 `sidebar.footer.action`（侧栏底部设置入口上方动作行）；**仅 ready 渲染**圆形下载钮，hover 展开版本文字，点击即装+重启；installing 转圈禁点。伴生插件另注册单一 `settings.section`「桌面设置」页（order 50，市场之后；ADR `implemented/bug-fix/2026-08-24-companion-settings-consolidation`）：更新块（当前版本 + 手动检查按钮 + 完整状态行，error 显宿主传回原因，无自更新栈降级为页内不可用提示）+ 诊断导出块 + 开机自启开关三块合一页。状态经宿主 CustomEvent `dsh-desktop-update` 推送，初值走 `ryn.invoke('desktop.update.getState')`；状态帧含 `current`（当前版本）与 error 态 `message` 字段。伴生插件客户端文案已接入 dsh client i18n（`@deepseek-ai/dsh-client-locale` 的 `zh`/`en` 字典），随 dsh 语言切换中⇄英（ADR `implemented/feature/2026-08-28-companion-client-i18n`）。
-* 参数：appsettings.json `Update` 节（Repository/超时/目录）；当前版本 = csproj `<Version>`（发布 CI 以 `-p:Version=` 覆盖，输入留空回退 csproj、空值 fail loud）。**dev 运行时不装载自更新栈**（除非 `DSH_DESKTOP_UPDATE_FORCE=1` 显式开启）。
+* 参数：appsettings.json `Update` 节（Repository/超时/目录）；当前版本 = csproj `<Version>`（发布 CI 以 `-p:Version=` 覆盖；版本来源优先级与 fail loud 判据的唯一实现见 [`scripts/package-version.sh`](../scripts/package-version.sh)）。**dev 运行时不装载自更新栈**（除非 `DSH_DESKTOP_UPDATE_FORCE=1` 显式开启）。
 
 ## 打包
 
 * 依赖全局 dsh（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）：安装器**不捆绑运行时闭包**，只带壳（publish 全量，实测 ~26-36MB 压缩后）+ 安装器自带插件资源 `resources/plugins/dsh-desktop-companion.tgz`（`scripts/build-companion-tgz.sh` 打包时从仓库源码现打并校验）；运行时 = 用户 PATH 上的全局 dsh（无则首启引导 `npm install -g @alpha` 装，见「运行时定位与启动」）。
 * `scripts/package-linux.sh`：`dotnet publish -r linux-x64|linux-arm64`（arm64 自 Ryn.Interop 0.30.4 供给 linux-arm64 native 起恢复发布，2026-08-25）→ `staging` 现打 companion tgz 进 `resources/plugins`、拦 `resources/runtime` 闭包残留（fail loud）→ `deb (Depends: libwebkitgtk-6.0-4, libadwaita-1-0, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4()(64bit), libadwaita-1.so.0()(64bit), BuildArch x86_64/aarch64)`。
 * `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → 单一安装产物：mac `dmg`（`hdiutil`，含 `.app`）/ win `exe` 安装器（`Inno Setup`/`NSIS`/`7z SFX`，`…-setup.exe`），文件名含 `…_macos-*/…_windows-*` 标识，签名占位（`codesign`/`signtool` 待证书）。**不单独产出便携 zip**（对齐 pilot-harness 每平台单产物的思路）。
-* 安装器资源一律 **exe 目录相对**（`AppContext.BaseDirectory/resources/plugins`，Linux `usr/lib/<app>` / mac `Contents/MacOS` / win 安装根三平台同构）；`verify-package-layout.sh` 断言无闭包残留 + 插件 tgz 名称/体积关；`CI`：`package-linux/macos/windows.yml` 只出包 + 上传 `7 天 Artifacts`；统 **`release.yml`**（`tag v*`）聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`（单一 owner，不再并行重复）。
+* 安装器资源一律 **exe 目录相对**（`AppContext.BaseDirectory/resources/plugins`，Linux `usr/lib/<app>` / mac `Contents/MacOS` / win 安装根三平台同构）；`verify-package-layout.sh` 断言无闭包残留 + 插件 tgz 名称/体积关；`CI`：三平台打包与发布走 [`.github/workflows/package.yml`](../.github/workflows/package.yml)（三条腿出包 + 上传 `7 天 Artifacts`）与 [`.github/workflows/release.yml`](../.github/workflows/release.yml)（`tag v*` 同一 run 内聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`）。流水线形态与执行点见 [testing.md](testing.md)。
 
 ## 配置与扩展
 

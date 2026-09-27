@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# 显式声明 token 权限（不依赖仓库默认设置）：contents 读代码与历史（档位门禁要 base..HEAD），
+# pull-requests 读是 `changes` 作业的 dorny/paths-filter 在 PR 事件下列变更文件所需。
+permissions:
+  contents: read
+  pull-requests: read
+
 # 同 ref 新推自动取消在跑的旧一轮，省 CI 分钟
 concurrency:
   group: ci-${{ github.ref }}
@@ -64,6 +70,10 @@ jobs:
         run: |
           python3 scripts/verify-ui-copy.py --self-test
           python3 scripts/verify-ui-copy.py
+      # 打包版本解析与 tag 一致性判据（唯一家）：三条打包腿只在真 tag 上才会走到
+      # 「输入与 tag 不一致」那条分支，故此处的自测是它唯一的机械执行点。
+      - name: 打包版本解析自测（tag/输入一致性判据）
+        run: bash scripts/package-version.sh --self-test
       - name: 架构尺寸健康闸（R4/R1 先拆再上硬门槛）
         run: |
           python3 scripts/verify-code-health.py --enforce

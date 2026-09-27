@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""治理自检：Issue/PR 模板治理字段 + 工作流 `run:` 禁插值事件载荷。
+"""治理自检：Issue/PR 模板治理字段 + 工作流/composite action 的 `run:` 禁插值事件载荷。
 
 CI `.github/workflows/governance.yml` 的「治理门禁」步与本地 `pre-commit` 都跑本脚本
 ——同一条判据只有一份实现，不再有第二套内联校验。
 
 检查面：
 1. Issue/PR 模板治理字段。
-2. 工作流 `run:` 块内禁插值事件载荷（`github.event.*`）及其派生（`${{ env.* }}`）——
+2. `run:` 块内禁插值事件载荷（`github.event.*`）及其派生（`${{ env.* }}`）——
    事件载荷一律经 step 级 `env:` 传入脚本（先例 ADR process/2026-09-13-workflow-input-env-interpolation）。
+   扫描面 = `.github/workflows/*.yml` **与** `.github/actions/**/action.y*ml`（composite 的
+   `runs.steps` 与 job 的 `steps` 同属可执行脚本体，判据同一份；两种 action 文件名后缀与
+   任意嵌套层级都收，避免新增 action 静默落在门外）。
 """
 import pathlib, re, sys
 root = pathlib.Path(__file__).resolve().parents[1]
@@ -46,11 +49,17 @@ BANNED_CTX = re.compile(r"\b(github\.event\b|env\.)")
 
 
 def _walk_steps(node):
-    """递归收集 job 下所有 step（dict）；只沿 jobs/steps 已知键行走，避免误入 strategy/with 嵌套。"""
+    """递归收集 job / composite action 下所有 step（dict）。
+
+    只沿已知键行走，避免误入 strategy/with 嵌套：job 走 `jobs`→`steps`，
+    composite action 走 `runs`→`steps`。
+    """
     if isinstance(node, dict):
         if "jobs" in node:
             for job in node["jobs"].values():
                 yield from _walk_steps(job)
+        elif "runs" in node and isinstance(node["runs"], dict):
+            yield from _walk_steps(node["runs"])
         elif "steps" in node and isinstance(node["steps"], list):
             yield from node["steps"]
     elif isinstance(node, list):
@@ -78,7 +87,9 @@ def check_workflow_run_interpolation(text):
 
 
 if "--self-test" not in sys.argv:
-    for p in sorted((root / ".github/workflows").glob("*.yml")):
+    scan_targets = sorted((root / ".github/workflows").glob("*.yml")) + \
+        sorted((root / ".github/actions").glob("**/action.y*ml"))
+    for p in scan_targets:
         for step, expr in check_workflow_run_interpolation(p.read_text()):
             print(f"FAIL {p}: run: 内插值事件载荷/env 上下文（step「{step}」）：{expr}")
             ok = False
@@ -123,6 +134,24 @@ jobs:
     assert check_workflow_run_interpolation(
         "jobs:\n  a:\n    steps:\n      - run: echo \"${{ github.event_name }} ${{ github.ref }}\"\n"
     ) == [], "非载荷上下文被误报"
+    composite = """
+runs:
+  using: composite
+  steps:
+    - name: bad
+      run: echo "${{ github.event.inputs.version }}"
+"""
+    assert len(check_workflow_run_interpolation(composite)) == 1, "composite action 的 run: 未被扫描"
+    composite_ok = """
+runs:
+  using: composite
+  steps:
+    - name: ok
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+      run: echo "$INPUT_VERSION"
+"""
+    assert check_workflow_run_interpolation(composite_ok) == [], "composite 的合法形态被误报"
     print("self-test OK")
 
 

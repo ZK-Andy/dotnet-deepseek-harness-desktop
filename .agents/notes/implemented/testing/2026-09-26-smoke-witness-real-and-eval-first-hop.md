@@ -3,6 +3,7 @@
 Status: implemented
 
 Erratum: 2026-09-28 — 撤回其冻结面：`frozen` 矩阵键、`SMOKE_FROZEN` 开关、`SMOKE_VERDICT=frozen-native-hang` 放行、以及正文提到的「落定窗 120s 上限」均已退役（落定窗现为三平台单值 90s）；解冻条件「待 Ryn 最小复现有回音」同时作废——该 issue 已按错误模型由本仓关闭认错，且转向后 arm64 三次 run 均无豁免通过（见 [settle-window-and-arm64-freeze-retirement](2026-09-28-settle-window-and-arm64-freeze-retirement.md)）。保留 eval 首跳与见证门的历史论证，正文不动。
+Erratum: 2026-09-28 — 正文里 `package-linux.yml` 的落点已换家：三份 `package-*.yml` 合并为 `package.yml` 的 `build-linux` job（显示栈仍装 `imagemagick`，见证门判据不变）。正文不动。
 Review: FULL/2026-09-26#3/R1=ok R2=ok R3=ok
 Review: FULL/2026-09-26#4/R1=ok R2=ok R3=ok
 

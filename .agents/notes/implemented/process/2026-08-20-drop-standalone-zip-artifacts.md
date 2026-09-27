@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文「收尾」一节的落点已换家：三份 `package-*.yml` 合并为 `package.yml`（`upload-artifact` 的产物面与 `release.yml` 的 Release `files` 仍不含 zip）。正文不动。
+
 ## Problem
 
 Windows 打包（12.7 分）第二大热点是「打 Windows 包」（~363s）。根因之一是**对 ~1.5GB 的 `resources/runtime` 闭包做两次满负荷压缩**：先 `zip -r`（deflate）产便携 zip，再 Inno Setup `Compression=lzma` + `SolidCompression=yes` 对同一闭包产安装器 `-setup.exe`。macOS 同样同时产 `zip`（`zip -r` .app）与 `dmg`（`hdiutil UDZO`），也是两份压缩。独立 zip 是历史遗留的「便携/兜底」产物，维护成本（三平台 `create_zip` 回退链、`unzip` 校验）与耗时都高。

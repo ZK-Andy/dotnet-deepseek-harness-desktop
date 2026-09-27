@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文所述接线落点已换家：`package-windows.yml`/`package-macos.yml` 合并为 `package.yml`，探针步仍在各平台 `dotnet publish` 之后、打包脚本之前（`build-macos`/`build-windows` job）。正文不动。
+
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
 Review: FULL/2026-09-13/R1=ok R2=ok R3=ok

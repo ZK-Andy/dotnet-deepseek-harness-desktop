@@ -5,9 +5,12 @@ name: release
 # 并行写正文，导致 body 重复 N 次）的重复与竞争。
 # tag 命名保持 v0.1.x；后缀含 rc/beta/alpha（如 v1.2.0-rc.1、v1.2.0rc1）的 tag 标 prerelease。
 #
-# 竞态防护：本 workflow 与三个 package workflow 因同一 tag 并行触发，先「等待三平台产物就绪」
-# （按 workflow_run.head_sha 关联到本次 tag 构建轮询），避免产物未上传就下载空包。
-# 亦支持 workflow_dispatch 手动触发（三平台产物已备时）。
+# 三平台包由 `package.yml`（workflow_call）在同一 run 内产出，发布作业以 `needs:` 等它——
+# 发布作业的放行门就是这条依赖：包腿（含安装冒烟）任一失败都不启动发布，
+# 故没有「轮询 artifact 存在性」与「失败逃逸检查」这一层，产物也不必经 API 跨 run 下载。
+#
+# 手动 dispatch：分支 ref 只出包不发布（发布作业的 `if` 只认 tag）；tag ref 走完整发布。
+# 发布失败后的恢复路径 = 在该 tag 的 run 上「Re-run failed jobs」（产物仍在同一 run 内，7 天留存）。
 
 on:
   push:
@@ -15,83 +18,40 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  package:
+    uses: ./.github/workflows/package.yml
+    with:
+      # 版本由 package-version.sh 从 ref 解析（tag ref 取 tag；分支 ref 回退 csproj <Version>）。
+      # 公开发布一律不自签（自签仅内部/开发验证用，对终端用户 Gatekeeper/SmartScreen 无效）。
+      version: ''
+      self_sign: false
+
   release:
+    needs: package
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # 全量历史 + tags，供 release-notes.sh 生成 compare 与分类
           persist-credentials: false
 
-      - name: 等待三平台产物就绪（本 tag 构建）
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -uo pipefail
-          repo="$GITHUB_REPOSITORY"
-          sha="$GITHUB_SHA"
-          jq_filter="[.artifacts[]|select(.expired==false and (.workflow_run.head_sha==\"$sha\"))|.name]|join(\" \")"
-          runs_jq="[.workflow_runs[]|select(.path|test(\"package-(linux|macos|windows)\"))|\"\(.path) \(.conclusion // \"running\")\"]|join(\"; \")"
-          # 失败快速逃逸：产物判定只认「存在性」，平台 job 失败时产物永不出现，旧逻辑会把失败
-          # 当「还没好」空转满 25m 才报笼统超时（v0.3.12 首发实证）。任一平台 run 已失败即终止。
-          check_failed_runs() {
-            local status
-            status="$(gh api "repos/$repo/actions/runs?head_sha=$sha&per_page=30" --jq "$runs_jq" 2>/dev/null || true)"
-            if grep -qE '(failure|cancelled|startup_failure|timed_out)' <<< "$status"; then
-              echo "error: 平台构建失败——[$status]；先修平台构建再重发（勿人工绕过）" >&2
-              exit 1
-            fi
-          }
-          check_failed_runs
-          for i in $(seq 1 150); do
-            resp="$(gh api "repos/$repo/actions/artifacts?per_page=100" --jq "$jq_filter" 2>/dev/null || true)"
-            ok=1
-            # 六资产必须逐一就绪——v0.4.0 首发实锤：linux- 宽松通配在 amd64 就绪即放行，
-            # 而 arm64 leg 在慢 runner 上载较晚被漏 → preflight 缺 linux-arm64/aarch64（release 失败）。
-            # 改逐名精确判定；tag 构建产物恒为列表最新（首 100 内），无需分页。
-            for want in linux-amd64-packages linux-arm64-packages macos-arm64-packages macos-x64-packages windows-x64-packages; do
-              [[ " $resp " == *" $want "* ]] || ok=0
-            done
-            if [[ "$ok" == 1 ]]; then echo "三平台产物就绪: $resp"; exit 0; fi
-            check_failed_runs
-            echo "等待三平台产物（$((i*10))s / ~25m）：$resp"
-            sleep 10
-          done
-          echo "error: 等待三平台产物超时" >&2; exit 1
-
-      - name: 下载三平台产物（跨 run，经 API）
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          repo="$GITHUB_REPOSITORY"; sha="$GITHUB_SHA"
-          mkdir -p release-assets
-          # download-artifact@v4 只能拉当前 run 的产物；三平台产物在其它 workflow run，
-          # 故经 API 按 workflow_run.head_sha（= 本次 tag 构建）跨 run 逐一拉取解压。
-          jq_urls="[.artifacts[]|select(.expired==false and (.workflow_run.head_sha==\"$sha\") and (.name|test(\"-packages$\")))|{name,url:.archive_download_url}]"
-          gh api "repos/$repo/actions/artifacts?per_page=100" --jq "$jq_urls" > /tmp/arts.json
-          GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
-          import json, subprocess, os
-          arts = json.load(open('/tmp/arts.json'))
-          if not arts:
-              raise SystemExit('error: 未找到本次 tag 构建的产物')
-          for a in arts:
-              print(f'下载 {a["name"]}')
-              subprocess.run(['curl', '-sSL', '-H', f'Authorization: Bearer {os.environ["GH_TOKEN"]}',
-                              '-H', 'Accept: application/vnd.github+json',
-                              '-o', '/tmp/artifact.zip', a['url']], check=True)
-              subprocess.run(['unzip', '-oq', '/tmp/artifact.zip', '-d', 'release-assets'], check=True)
-          os.remove('/tmp/artifact.zip')
-          print(f'共下载 {len(arts)} 个产物')
-          PY
-          echo "== 下载结果 =="; find release-assets -type f | sort
+      - name: 下载三平台产物（同 run，经 download-artifact）
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-packages'
+          # 三个 artifact 压平进同一目录：资产名矩阵由 release-preflight.sh 断言，不进子目录
+          merge-multiple: true
+          path: release-assets
 
       # 这一串是**准备**不是校验门：同一批字节在本 run 内先算后列，`release-preflight.sh`
       # 的 `sha256sum -c` 复核的也是同一批字节（自指）。错包检测在下一步 preflight 的

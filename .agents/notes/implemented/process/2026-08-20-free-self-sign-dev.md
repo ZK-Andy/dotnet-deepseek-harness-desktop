@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 正文「CI 接缝」一节的落点与可用性两处已变：`package-macos.yml`/`package-windows.yml` 合并为 `package.yml`（`self_sign` 仍是 boolean 输入），且该旋钮在此前形态下**恒不生效**（作业 env 取 `github.event.inputs.self_sign` 得 `true`/`false`，而脚本的门是 `SELF_SIGN=1`），现映射为 `inputs.self_sign && '1' || '0'` 才真正可用。正文不动。
+
 ## Problem
 
 代码签名（macOS Developer ID + 公证、Windows Authenticode）需要付费证书，而本项目**没有配置任何签名凭据**（`codesign`/`signtool` 证书均未配），发布包长期处于未签名状态。开发/内部测试阶段想要"消除本机告警"、验证签名链路，但没有免费且受公开信任的路径；此前 `package-macos.sh`/`package-windows.sh` 仅有 `签名占位` 注释，无任何签名代码。
