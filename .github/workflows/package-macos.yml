@@ -91,6 +91,8 @@ jobs:
       - name: 安装冒烟（挂载→拷入 /Applications→启动→等 dsh web URL 行或引导启动行）
         env:
           SMOKE_SHOT_DIR: ${{ github.workspace }}/smoke-shots
+          # W2 落盘：冒烟日志（stdout 全量 + host.log）进稳定目录，CI 传 artifact。
+          SMOKE_LOG_DIR: ${{ github.workspace }}/smoke-logs
         run: bash scripts/smoke-install-macos.sh "$(ls artifacts/${{ matrix.rid }}/*.dmg | head -1)"
       - name: 上传冒烟截图（best-effort，人眼复核）
         if: always()
@@ -98,6 +100,14 @@ jobs:
         with:
           name: smoke-shot-macos-${{ matrix.arch }}
           path: ${{ github.workspace }}/smoke-shots/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: 上传冒烟日志（W2：stdout 全量 + host.log，超时/停滞尸检用）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-log-macos-${{ matrix.arch }}
+          path: ${{ github.workspace }}/smoke-logs/
           if-no-files-found: warn
           retention-days: 7
       - name: 上传

@@ -170,6 +170,8 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   progress_watchdog_tick 0 "$tdir/wd-home" && tpass "watchdog-first-alive" || tfail "watchdog-first-alive"
   progress_watchdog_tick $((_WD_STALL_SECONDS - 1)) "$tdir/wd-home" && tpass "watchdog-under-window" || tfail "watchdog-under-window"
   progress_watchdog_tick "$_WD_STALL_SECONDS" "$tdir/wd-home" && tfail "watchdog-stall-should-trip" || tpass "watchdog-stall-trips"
+  printf '[09:45:10 info] Ryn.Core.RynApplication: noise\n[update] Checking\n[health] alive\n' >>"$OUT"
+  progress_watchdog_tick $((_WD_STALL_SECONDS + 100)) "$tdir/wd-home" && tfail "watchdog-misc-should-not-reset" || tpass "watchdog-misc-no-reset"
   echo '[bootstrap] test-progress' >>"$OUT"
   progress_watchdog_tick $((_WD_STALL_SECONDS + 300)) "$tdir/wd-home" && tpass "watchdog-growth-resets" || tfail "watchdog-growth-resets"
   OUT="$o_out"; LOG="$o_log"
@@ -379,5 +381,12 @@ if [[ $rc -ne 0 ]]; then
     tail -30 "$LOG" >&2 || true
   fi
   smoke_shot "smoke-macos-fail.png"
+fi
+# 日志落盘（W2）：调用方经 SMOKE_LOG_DIR 注入稳定目录（与 SMOKE_SHOT_DIR 同模式），
+# CI 传 artifact——host.log 只在文件里全，step 日志只有尾巴。
+if [[ -n "${SMOKE_LOG_DIR:-}" ]]; then
+  mkdir -p "$SMOKE_LOG_DIR" 2>/dev/null || true
+  cp "$OUT" "$SMOKE_LOG_DIR/smoke-macos-stdout.log" 2>/dev/null || true
+  { [[ -f "${LOG:-}" && "${LOG:-}" != "$OUT" ]]; } && cp "$LOG" "$SMOKE_LOG_DIR/smoke-macos-host.log" 2>/dev/null || true
 fi
 exit $rc

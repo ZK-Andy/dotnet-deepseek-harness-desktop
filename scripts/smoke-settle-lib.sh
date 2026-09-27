@@ -147,10 +147,12 @@ progress_watchdog_tick() { # $1=已耗秒 $2=dsh-home：0=活（或慢），1=�
   return 0
 }
 
-# 进展标记（内容感知）行正则：我方六前缀的行（OUT 素行 + host.log 时间戳前缀行均命中）。
+# 进展标记（内容感知）行正则：只认决策与阶段信号（OUT 素行 + host.log 时间戳前缀行均命中）。
 # 体积 Byte 再多也不算进展——Ryn info/Edge 代理日志等杂项字节曾把计时器反复清零
-# （run 36310235841 实证），只有自家信号行才复位。
-MARKER_RE='(\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]{8}\] )?\[(bootstrap|host|shell|nav|update|health)\]'
+# （run 36310235841 实证），只有自家信号行才复位。注意 health/update 不在集合内：
+# 页面健康 alive 与更新检查是周期性/一次性杂项，会给计时器续命（run 36316562950 实证），
+# 它们的缺席与否不代表引导进展。
+MARKER_RE='(\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]{8}\] )?\[(bootstrap|host|shell|nav)\]'
 progress_markers() { # $1=文件：标记行数（缺失即 0）
   [[ -f "${1:-}" ]] || { echo 0; return 0; }
   grep -cE "$MARKER_RE" "$1" 2>/dev/null || true

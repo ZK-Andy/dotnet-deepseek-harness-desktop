@@ -194,6 +194,8 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   progress_watchdog_tick 0 "$tdir/wd-home" && tpass "watchdog-first-alive" || tfail "watchdog-first-alive"
   progress_watchdog_tick $((_WD_STALL_SECONDS - 1)) "$tdir/wd-home" && tpass "watchdog-under-window" || tfail "watchdog-under-window"
   progress_watchdog_tick "$_WD_STALL_SECONDS" "$tdir/wd-home" && tfail "watchdog-stall-should-trip" || tpass "watchdog-stall-trips"
+  printf '[09:45:10 info] Ryn.Core.RynApplication: noise\n[update] Checking\n[health] alive\n' >>"$OUT"
+  progress_watchdog_tick $((_WD_STALL_SECONDS + 100)) "$tdir/wd-home" && tfail "watchdog-misc-should-not-reset" || tpass "watchdog-misc-no-reset"
   echo '[bootstrap] test-progress' >>"$OUT"
   progress_watchdog_tick $((_WD_STALL_SECONDS + 300)) "$tdir/wd-home" && tpass "watchdog-growth-resets" || tfail "watchdog-growth-resets"
   OUT="$o_out"; LOG="$o_log"
@@ -391,20 +393,36 @@ smoke_deb() {
     echo "== [deb] 冒烟通过，应用日志尾部（内容判定留痕）：" >&2
     tail -30 "$log" >&2 || true
   fi
+  # 日志落盘（W2）：调用方经 SMOKE_LOG_DIR 注入稳定目录（与 SMOKE_SHOT_DIR 同模式），
+  # CI 传 artifact——host.log 只在文件里全，step 日志只有尾巴。落盘先于清扫。
+  if [[ -n "${SMOKE_LOG_DIR:-}" ]]; then
+    mkdir -p "$SMOKE_LOG_DIR" 2>/dev/null || true
+    cp "$log" "$SMOKE_LOG_DIR/smoke-linux-deb.log" 2>/dev/null || true
+    [[ -f "$home/logs/host.log" ]] && cp "$home/logs/host.log" "$SMOKE_LOG_DIR/smoke-linux-deb-host.log" 2>/dev/null || true
+  fi
   rm -rf "$home" "$log"
   [[ $rc -eq 0 ]]
 }
 
 smoke_rpm_container() {
-  local rpm_path="$1" base
+  local rpm_path="$1" base rpm_log_host="" rpm_log_tmp=""
   base="$(basename "$rpm_path")"
   echo "== [rpm] fedora 容器安装冒烟: $base"
+  # W2 落盘：SMOKE_LOG_DIR 置时挂进容器供 INNER trap 落日志；未置则挂一次性 tmp（跑后清掉）。
+  if [[ -n "${SMOKE_LOG_DIR:-}" ]]; then
+    rpm_log_host="$SMOKE_LOG_DIR"
+  else
+    rpm_log_tmp="$(mktemp -d)"
+    rpm_log_host="$rpm_log_tmp"
+  fi
+  mkdir -p "$rpm_log_host" 2>/dev/null || true
   # 容器内 root + 无 display：判定走双信号（见文件头），引导启动行先于窗口创建输出。
   # heredoc 用引号界定符：宿主变量经 docker -e 显式注入，容器侧 $ 一律保持字面——
   # 未加引号版本曾被宿主 set -u 撞上容器变量（$log 未定义）直接炸掉 rpm 路径（CI 实证）。
   docker run --rm -i \
     -v "$PKG_DIR:/pkg:ro" \
     -v "$LIB:/smoke-lib.sh:ro" \
+    -v "$rpm_log_host:/smokelogs:rw" \
     -e SMOKE_PKG_NAME="$base" \
     -e SMOKE_APP_BIN="$APP_BIN" \
     -e SMOKE_WAIT="$SMOKE_WAIT" \
@@ -429,12 +447,16 @@ if ! dnf install -y --setopt=install_weak_deps=False "/pkg/$SMOKE_PKG_NAME" >"$l
   exit 1
 fi
 home=$(mktemp -d)
+# W2 落盘：EXIT 时把容器内日志拷到挂载目录（宿主 SMOKE_LOG_DIR 或一次性 tmp，见函数头）。
+# $log 在 trap 前已定义；$home 可能未建（dnf 失败早退），用 :- 守 set -u。
+trap '[[ -d /smokelogs ]] && { cp "$log" /smokelogs/smoke-linux-rpm.log 2>/dev/null || true; [[ -f "${home:-}/logs/host.log" ]] && cp "${home:-}/logs/host.log" /smokelogs/smoke-linux-rpm-host.log 2>/dev/null || true; } || true' EXIT
 # 无人值守跳过可选插件（同上，容器内同样无人点选）。
 timeout "$APP_TIMEOUT" env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
   "$SMOKE_APP_BIN" >"$log" 2>&1 &
 pid=$!
 OUT="$log"; LOG="$log"
 boot_seen=0; start="$SECONDS"
+progress_watchdog_reset
 rc=1
 # 与宿主侧 wait_url 同款语义：②命中后继续等①至超时/退出，①命中后等行为落定（ADR shell-settle-behavior-gate）
 for _ in $(seq 1 "$SMOKE_WAIT"); do
@@ -467,6 +489,13 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
     break
   fi
   elapsed=$((SECONDS - start)); [[ $((elapsed % 60)) -eq 0 ]] && heartbeat "$elapsed" "$home"
+  if ! progress_watchdog_tick "$elapsed" "$home"; then
+    echo "error: 冒烟停滞（${_WD_STALL_SECONDS}s 内进展标记/dsh-home 零增长、无新信号），提前收工" >&2
+    echo "--- 到达/铸币行（停滞时判定信号，去重）---" >&2
+    echo_nav_lines >&2; echo_mint_lines >&2
+    tail -30 "$log" >&2
+    exit 1
+  fi
   sleep 1
 done
 if grep -qE "$FULL_RE" "$log"; then grep -m1 -E "$FULL_RE" "$log"; if wait_settled "$pid"; then echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"; kill $pid 2>/dev/null; exit 0; fi; tail -30 "$log" >&2; kill $pid 2>/dev/null; exit 1; fi
@@ -476,6 +505,10 @@ tail -30 "$log" >&2
 kill $pid 2>/dev/null
 exit 1
 INNER
+  # 函数退出状态必须是 docker 的（调用方 `|| rc_total=1` 靠它判红），清扫不许覆盖。
+  docker_rc=$?
+  if [[ -n "$rpm_log_tmp" ]]; then rm -rf "$rpm_log_tmp" || true; fi
+  return "$docker_rc"
 }
 
 found=0
