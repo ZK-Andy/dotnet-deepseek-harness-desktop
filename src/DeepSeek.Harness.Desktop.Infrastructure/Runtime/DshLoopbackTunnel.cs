@@ -63,7 +63,7 @@ internal sealed class DshLoopbackTunnel
                 }
 
                 _log($"[shell] 代理升级隧道已建（{req.Method} {ShellProxyFraming.PagePath(req.Target)} Upgrade={upgrade}；任一端关闭即收）");
-                await PumpTunnelAsync(page, up, ct).ConfigureAwait(false);
+                await PumpTunnelAsync(page, up, $"{req.Method} {ShellProxyFraming.PagePath(req.Target)} Upgrade={upgrade}", ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is IOException or OperationCanceledException)
             {
@@ -102,19 +102,27 @@ internal sealed class DshLoopbackTunnel
         return head.ToString();
     }
 
-    /// <summary>双向直泵至任一端关闭（两任务皆被观察；关闭后对端随 socket 释放中断，无计时器）。</summary>
-    private static async Task PumpTunnelAsync(NetworkStream page, NetworkStream up, CancellationToken ct)
+    /// <summary>双向直泵至任一端关闭（两任务皆被观察；关闭后对端随 socket 释放中断，无计时器）。
+    /// 收尾 loud 一行：先结束的方向即先关方（页/dsh/宿主取消），排障不再靠数建立行猜
+    /// （Reconnecting 常亮实证：建立行刷屏、关闭零行）。取消与 EOF 同判据，先关方启发式。</summary>
+    private async Task PumpTunnelAsync(NetworkStream page, NetworkStream up, string label, CancellationToken ct)
     {
         Task toUpstream = page.CopyToAsync(up, ct);
         Task toPage = up.CopyToAsync(page, ct);
-        await Task.WhenAny(toUpstream, toPage).ConfigureAwait(false);
+        Task first = await Task.WhenAny(toUpstream, toPage).ConfigureAwait(false);
+        string closer = ct.IsCancellationRequested ? "宿主取消"
+            : ReferenceEquals(first, toUpstream) ? "页" : "dsh";
+        string fault = first.Exception?.InnerExceptions.Count > 0
+            ? $"（{first.Exception.InnerExceptions[0].GetType().Name}）"
+            : string.Empty;
+        _log($"[shell] 代理升级隧道已收（先关方={closer}{fault}；{label}）");
         try
         {
             await Task.WhenAll(toUpstream, toPage).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException)
         {
-            // 对端已关：隧道使命结束。
+            // 对端已关：隧道使命结束（loud 已留）。
         }
     }
 }

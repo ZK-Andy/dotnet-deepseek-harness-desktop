@@ -274,6 +274,105 @@ public class DshLoopbackProxyTests
         await runCts.CancelAsync();
     }
 
+    /// <summary>升级隧道不被页断联监视误杀：升级后页侧帧是合法流量，哨兵不得偷字节、
+    /// 不得取消隧道（Reconnecting 常亮根因：首帧即被偷 + 泵掐断，客户端循环重连）。
+    /// 另断言收尾 loud：应用退出即“先关方=宿主取消”。</summary>
+    [Fact]
+    public async Task Proxy_UpgradeTunnel_SurvivesClientFrames()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var wsStub = new StubWebSocketServer();
+        var httpStub = new StubDshHandler();
+        var forward = new DshShellForward(httpStub);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+
+        using var socket = new TcpClient();
+        await socket.ConnectAsync(IPAddress.Loopback, proxy.Url.Port, cts.Token);
+        using NetworkStream stream = socket.GetStream();
+        byte[] head = Encoding.ASCII.GetBytes(
+            "GET /api/remote.mux HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+        await stream.WriteAsync(head, cts.Token);
+        string responseHead = await ReadHttpHeadAsync(stream, cts.Token);
+        Assert.StartsWith("HTTP/1.1 101", responseHead, StringComparison.Ordinal);
+
+        // 首帧 + 静置：旧代码哨兵在此偷走首字节并取消隧道（500ms 内必发）。
+        // 首帧回显先排空（回显环弹回一切上行字节），再做 8K 完整性断言。
+        byte[] frame = [0x81, 0x85, 0x37, 0xFA, 0x21, 0x3D, 0x7F, 0x9F, 0x4D, 0x51, 0x58];
+        await stream.WriteAsync(frame, cts.Token);
+        byte[] frameEcho = await ReadExactAsync(stream, frame.Length, cts.Token);
+        Assert.Equal(frame, frameEcho);
+        await Task.Delay(500, cts.Token);
+
+        // 8K 模式走回显环：字节必须一字不差回来（旧代码隧道已死，读超时即红）。
+        byte[] pattern = new byte[8192];
+        for (int i = 0; i < pattern.Length; i++)
+        {
+            pattern[i] = (byte)(i % 251);
+        }
+
+        await stream.WriteAsync(pattern, cts.Token);
+        byte[] echo = await ReadExactAsync(stream, pattern.Length, cts.Token);
+        Assert.Equal(pattern, echo);
+        Assert.Contains(lines, l => l.Contains("升级隧道已建"));
+
+        // 收尾 loud：应用退出即记“先关方=宿主取消”（轮询等落盘，不超过 5s）。
+        await runCts.CancelAsync();
+        bool closed = false;
+        for (int i = 0; i < 50 && !closed; i++)
+        {
+            closed = lines.ToArray().Any(l => l.Contains("隧道已收"));
+            if (!closed)
+            {
+                await Task.Delay(100, CancellationToken.None);
+            }
+        }
+
+        Assert.True(closed);
+        Assert.Contains(lines.ToArray(), l => l.Contains("隧道已收") && l.Contains("宿主取消"));
+    }
+
+    private static async Task<string> ReadHttpHeadAsync(NetworkStream stream, CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        byte[] buf = new byte[256];
+        while (!sb.ToString().Contains("\r\n\r\n", StringComparison.Ordinal))
+        {
+            int n = await stream.ReadAsync(buf.AsMemory(0, buf.Length), ct).ConfigureAwait(false);
+            if (n == 0)
+            {
+                throw new IOException("eof before head end");
+            }
+
+            sb.Append(Encoding.ASCII.GetString(buf, 0, n));
+        }
+
+        return sb.ToString();
+    }
+
+    private static async Task<byte[]> ReadExactAsync(NetworkStream stream, int count, CancellationToken ct)
+    {
+        byte[] buf = new byte[count];
+        int off = 0;
+        while (off < count)
+        {
+            int n = await stream.ReadAsync(buf.AsMemory(off, count - off), ct).ConfigureAwait(false);
+            if (n == 0)
+            {
+                throw new IOException("eof before full read");
+            }
+
+            off += n;
+        }
+
+        return buf;
+    }
+
     /// <summary>holder 面：未铸币的 `/` 回 holder 页（含就绪轮询与指南链）；铸币后 `/` 走 dsh（桩 200）。</summary>
     [Fact]
     public async Task Proxy_Holder_ServedOnlyWhenUnminted()
@@ -455,7 +554,18 @@ public class DshLoopbackProxyTests
                     "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
                     "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n");
                 await stream.WriteAsync(accept, ct).ConfigureAwait(false);
-                await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+                // 回显环：升级后页侧帧原样弹回，供“隧道存活 + 字节完整”断言；对端关闭即返。
+                byte[] echo = new byte[8192];
+                while (true)
+                {
+                    int n = await stream.ReadAsync(echo.AsMemory(0, echo.Length), ct).ConfigureAwait(false);
+                    if (n == 0)
+                    {
+                        return;
+                    }
+
+                    await stream.WriteAsync(echo.AsMemory(0, n), ct).ConfigureAwait(false);
+                }
             }
             catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException or IOException)
             {

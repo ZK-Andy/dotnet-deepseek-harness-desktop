@@ -120,7 +120,13 @@ public sealed class DshLoopbackProxy : IDisposable
 
             ShellProxyFraming.PageRequest req = parsed.Request.Value;
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            _ = WatchPageCloseAsync(client, linked);
+            // 页断联监视只对普通请求布哨：升级连接（websocket）后续字节全是合法帧，
+            // 哨兵偷字节即 corrupt 帧流又误杀隧道（Reconnecting 常亮实证）。升级隧道的存活
+            // 由泵两端的 EOF/异常自然收敛，应用退出仍经 linked 走宿主取消。
+            if (!IsUpgrade(req))
+            {
+                _ = WatchPageCloseAsync(client, linked);
+            }
             try
             {
                 await RelayAsync(stream, req, linked.Token).ConfigureAwait(false);
@@ -137,6 +143,10 @@ public sealed class DshLoopbackProxy : IDisposable
         }
     }
 
+    /// <summary>升级请求判定（与 <c>RelayAsync</c> 的隧道分支同判据）：含非空 Upgrade 头即升级连接。</summary>
+    private static bool IsUpgrade(ShellProxyFraming.PageRequest req) =>
+        req.Headers.TryGetValue("Upgrade", out string? upgrade) && !string.IsNullOrWhiteSpace(upgrade);
+
     private static string PageRefusal(ShellProxyFraming.PageParseOutcome outcome) => outcome switch
     {
         ShellProxyFraming.PageParseOutcome.TooLarge => "request too large",
@@ -145,7 +155,8 @@ public sealed class DshLoopbackProxy : IDisposable
         _ => "bad request",
     };
 
-    /// <summary>页断联监视：本代理一律 close 定界，页侧不再有合法字节；读到字节/EOF/异常即判页已走，
+    /// <summary>页断联监视：仅普通请求布哨（升级连接豁免，见分发处）。本代理一律 close 定界，
+    /// 页侧不再有合法字节；读到字节/EOF/异常即判页已走，
     /// 取消在途 dsh 请求（Timeout 无限下的泄漏上界；见 ADR）。异常全吞（连接收尾即使命结束）。</summary>
     private static async Task WatchPageCloseAsync(TcpClient client, CancellationTokenSource linked)
     {
