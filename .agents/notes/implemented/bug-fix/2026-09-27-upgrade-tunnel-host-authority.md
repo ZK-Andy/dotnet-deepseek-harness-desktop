@@ -52,4 +52,4 @@ Related: 前序 [`architecture/2026-09-27-loopback-forward-proxy`](../architectu
 
 - `Proxy_UpgradeTunnelsWithHeaderSurgery` 增设断言：桩收到 `Host: 127.0.0.1:<stub port>` 与 `Referer: http://127.0.0.1:<stub port>/api/remote.mux`，且页源的 `Host: x` / `Referer: http://localhost:12345/page` 均不透传；桩补判门后，`Proxy_UpgradeTunnel_SurvivesClientFrames` 一并获得门覆盖。
 - 旧码复演：仅回退 `DshLoopbackTunnel.cs`、保留新测试 → 两例即红（159ms，首字节为 403 而非 101）；新码 Infrastructure 套件全绿。
-- 实机复验（用户侧）：装 0.5.8 后 `host.log` 应无同秒建/收对，见发版交接清单。
+- 实机复验（2026-09-27 22:21，装机重启，v0.5.8）：`host.log` 自重启起 `remote.mux` **只建 1 次、0 次收**（22:21:36 建，存活至本行记录时）；修前该窗口是每 5–10 秒一对（38 分钟 331 建 / 329 收），客户端退避重连循环停止——即"因果"段推断的预测（过门即长存）成立。
