@@ -6,4 +6,11 @@
     <NoWarn>$(NoWarn);EnableGenerateDocumentationFile</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- 与 src/测试工程同源的编码规范强制（见 docs/coding-standards.md）：本工程在 slnx 内、
+         受 CI 的 dotnet format warn 级校验覆盖，D001/D002（Async 尾缀/async void）同档适用。 -->
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
+    <PackageReference Include="StyleCop.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
+
 </Project>

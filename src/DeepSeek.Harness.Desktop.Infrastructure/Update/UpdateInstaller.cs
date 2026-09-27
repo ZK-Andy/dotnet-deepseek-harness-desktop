@@ -142,7 +142,7 @@ public static class UpdateInstaller
         // 经 HTTPS 直达仓库）：本进程与 ready 记录均在用户空间，任何落盘哈希都可被同权限改写，
         // 唯有 release 侧值不可——root 侧复验对照它（TOCTOU 防线，见 BuildLinuxScript remarks）
         string installCmd = InstallCommandFor(assetPath);
-        string logPath = Path.Combine(workDir, "install.log");
+        string logPath = Path.Combine(workDir, StalePackagePruner.InstallLogFile);
         // pkexec 会重置环境：显式透传 GUI 会话变量（否则拉起的新版窗口起不来）、开发隔离
         // 变量（否则重启后的实例丢掉 DSH_HOME 隔离）、.NET 运行时定位（DOTNET_ROOT 缺失时
         // apphost 报 ".NET location: Not found"——实机教训）与 XDG 基目录族（用户自定义过

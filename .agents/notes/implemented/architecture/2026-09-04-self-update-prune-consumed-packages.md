@@ -41,7 +41,7 @@ Review: FULL/2026-09-04/R1=ok R2=ok R3=ok
 
 ## Consequences
 
-- **行为**：Linux 自更新装包成功后 updates 目录不再残留刚装包（install.log/ready.json 除外）；启动对账删「版本 < 当前」包与 .download.lock/install.sh 残留，当前版本与 ready 指向包保留。
+- **行为**：Linux 自更新装包成功后 updates 目录不再残留刚装包（ready.json 除外）；启动对账删「版本 < 当前」包与 .download.lock/install.sh 残留，当前版本与 ready 指向包保留；同一次对账还把超限的 install.log 滚为上一代（只改名、不截断不删除）——见 ADR [install-log-bounded-rotation](../bug-fix/2026-09-27-install-log-bounded-rotation.md)。
 - **边界**：`StalePackagePruner.Run` 整体收拢 IO/授权异常记日志（fail loud），清扫是增强、绝不打其所在组合根启动路径（评审 R2 Blocker 修正确认）。
 - **风险残留**：删除动作无回滚（包已进系统或已弃，无版本回滚路径引用）；跨实例下载锁竞争窗口在单实例仲裁下不可达（残余理论窗口，记留）。
 - **测试**：`StalePackagePrunerTests`（TryExtractVersion/SelectStale 纯判据 + Run 目录行为）+ `UpdateInstallerTests`（脚本删包成功守卫）；`dotnet test` 493/493、format/code-health/conventions/adr-format 全绿。

@@ -160,7 +160,7 @@ public class DesktopTrayCommandRouterTests
         return (router, calls);
     }
 
-    private static ValueTask<string> Route(DesktopTrayCommandRouter router, string json)
+    private static ValueTask<string> RouteAsync(DesktopTrayCommandRouter router, string json)
     {
         return router.RouteAsync(
             DesktopTrayCommandRouter.CommandName,
@@ -176,7 +176,7 @@ public class DesktopTrayCommandRouterTests
         var gate = new CloseGate();
         (DesktopTrayCommandRouter? router, List<string>? calls) = MakeRouter(gate);
 
-        string frame = await Route(router, """{"event":"tray.menuItemClicked","data":"quit"}""");
+        string frame = await RouteAsync(router, """{"event":"tray.menuItemClicked","data":"quit"}""");
 
         Assert.Equal(new[] { "close:released" }, calls);
         Assert.False(gate.ShouldCancelClose);
@@ -189,7 +189,7 @@ public class DesktopTrayCommandRouterTests
     {
         (DesktopTrayCommandRouter? router, List<string>? calls) = MakeRouter(new CloseGate());
 
-        await Route(router, """{"event":"tray.clicked"}""");
+        await RouteAsync(router, """{"event":"tray.clicked"}""");
 
         Assert.Equal(new[] { "show" }, calls);
     }
@@ -202,7 +202,7 @@ public class DesktopTrayCommandRouterTests
         var logs = new List<string>();
         (DesktopTrayCommandRouter? router, List<string> _) = MakeRouter(new CloseGate(), logs: logs);
 
-        await Route(router, """{"event":"tray.clicked"}""");
+        await RouteAsync(router, """{"event":"tray.clicked"}""");
 
         Assert.Contains(logs, l => l.Contains("显示主窗"));
     }
@@ -213,7 +213,7 @@ public class DesktopTrayCommandRouterTests
     {
         (DesktopTrayCommandRouter? router, List<string>? calls) = MakeRouter(new CloseGate());
 
-        string frame = await Route(router, """{"event":"tray.menuItemClicked","data":"check-update"}""");
+        string frame = await RouteAsync(router, """{"event":"tray.menuItemClicked","data":"check-update"}""");
 
         Assert.Empty(calls);
         Assert.Equal("{}", frame);
@@ -229,7 +229,7 @@ public class DesktopTrayCommandRouterTests
     {
         (DesktopTrayCommandRouter? router, List<string>? calls) = MakeRouter(new CloseGate());
 
-        string frame = await Route(router, body);
+        string frame = await RouteAsync(router, body);
 
         Assert.Empty(calls);
         Assert.Equal("null", frame);
@@ -244,7 +244,7 @@ public class DesktopTrayCommandRouterTests
         var logs = new List<string>();
         (DesktopTrayCommandRouter? router, List<string> _) = MakeRouter(new CloseGate(), logs: logs);
 
-        await Route(router, """{"event":"tray.menuItemClicked","data":"unknown-item"}""");
+        await RouteAsync(router, """{"event":"tray.menuItemClicked","data":"unknown-item"}""");
 
         Assert.Contains(logs, l => l.Contains("事件到达") && l.Contains("tray.menuItemClicked"));
     }
@@ -257,7 +257,7 @@ public class DesktopTrayCommandRouterTests
         var logs = new List<string>();
         (DesktopTrayCommandRouter? router, List<string> _) = MakeRouter(new CloseGate(), logs: logs);
 
-        await Route(router, """{"event":"tray.menuItemClicked","data":"bogus-item"}""");
+        await RouteAsync(router, """{"event":"tray.menuItemClicked","data":"bogus-item"}""");
 
         Assert.Contains(logs, l => l.Contains("事件到达"));
         Assert.Contains(logs, l => l.Contains("事件忽略") && l.Contains("bogus-item"));
@@ -271,7 +271,7 @@ public class DesktopTrayCommandRouterTests
         var logs = new List<string>();
         (DesktopTrayCommandRouter? router, List<string> _) = MakeRouter(new CloseGate(), logs: logs);
 
-        await Route(router, """{"event":"tray.menuItemClicked","data":"check-update"}""");
+        await RouteAsync(router, """{"event":"tray.menuItemClicked","data":"check-update"}""");
 
         Assert.Contains(logs, l => l.Contains("检查更新") && l.Contains("已受理"));
         Assert.Contains(logs, l => l.Contains("自更新栈未装载"));

@@ -19,6 +19,12 @@ Checks:
   3. Unknown / duplicate stage headings, or an entry with a stage that does not
      match its section, are flagged.
 
+With no path argument the gate checks the cookbook **family**: the main
+cookbook plus its frozen cold-archive layer (docs/cookbook-archive.md, ADR
+2026-09-27-cookbook-retired-entry-cold-archive — same entry format, found-only
+so a clone without that layer still passes). The archive layer thus rides the
+existing pre-commit / CI invocations instead of needing its own call site.
+
 Usage: python3 scripts/verify-cookbook.py [cookbook_path]
        python3 scripts/verify-cookbook.py --self-test   # offline fixture self-check
 Exit code 0 = pass, 1 = violations.
@@ -30,6 +36,7 @@ import sys
 from pathlib import Path
 
 DEFAULT_PATH = Path("docs/cookbook.md")
+ARCHIVE_PATH = Path("docs/cookbook-archive.md")
 
 # Closed stage set — kept in sync with root AGENTS.md / .agents/AGENTS.md and
 # the ADR. Adding or renaming a stage must update all three + this set.
@@ -189,6 +196,31 @@ def _self_test() -> int:
                 print(f"  ✗ {desc}: expected exit {expected}, got {actual} "
                       f"({' ; '.join(errors)})")
                 failed = 1
+    # 家庭选择（ADR 2026-09-27-cookbook-retired-entry-cold-archive）：显式路径只查该档；缺省查
+    # 主档 + 冷归档层（存在即校验），主档也缺时回退主档路径，让 _scan 报「未找到」而非静默 OK。
+    with tempfile.TemporaryDirectory() as family_td:
+        family_root = Path(family_td)
+        (family_root / "docs").mkdir()
+        (family_root / DEFAULT_PATH).write_text(ok_body, encoding="utf-8")
+        if _select_targets([], family_root) != [family_root / DEFAULT_PATH]:
+            print("  ✗ family selection: archive absent should check main only")
+            failed = 1
+        else:
+            print("  ok: family selection (archive absent) -> main only")
+
+        (family_root / ARCHIVE_PATH).write_text(ok_body, encoding="utf-8")
+        if _select_targets([], family_root) != [family_root / DEFAULT_PATH, family_root / ARCHIVE_PATH]:
+            print("  ✗ family selection: archive present should be checked too")
+            failed = 1
+        else:
+            print("  ok: family selection (archive present) -> main + archive")
+
+        if _select_targets(["only-this.md"], family_root) != [Path("only-this.md")]:
+            print("  ✗ family selection: explicit path must win")
+            failed = 1
+        else:
+            print("  ok: family selection (explicit path wins)")
+
     if failed == 0:
         print("== verify-cookbook self-test passed ==")
     else:
@@ -196,16 +228,31 @@ def _self_test() -> int:
     return failed
 
 
+def _select_targets(argv: list[str], root: Path = Path(".")) -> list[Path]:
+    """Return the files to validate: an explicit path argument wins (single file),
+    otherwise the cookbook family — main cookbook plus the cold-archive layer
+    (found-only: a clone without the archive still passes; a missing MAIN
+    cookbook falls back to its path so `_scan` reports it, not a silent OK).
+    """
+    if argv:
+        return [Path(argv[0])]
+    present = [p for p in (root / DEFAULT_PATH, root / ARCHIVE_PATH) if p.is_file()]
+    return present or [root / DEFAULT_PATH]
+
+
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--self-test":
         return _self_test()
 
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_PATH
-    checked, errors = _scan(path)
-    print(f"Checked {checked} cookbook entries")
-    if errors:
-        for e in errors:
-            print(f"FAIL: {e}")
+    failed = 0
+    for path in _select_targets(sys.argv[1:]):
+        checked, errors = _scan(path)
+        print(f"Checked {checked} cookbook entries ({path})")
+        if errors:
+            for e in errors:
+                print(f"FAIL: {e}")
+            failed = 1
+    if failed:
         return 1
     print("OK")
     return 0

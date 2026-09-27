@@ -6,7 +6,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// 坏 JSON/缺字段/非法形态一律静默忽略（增强能力，绝不报 IPC 错）。</summary>
 public class CompanionLocaleCommandRouterTests
 {
-    private static ValueTask<string> Route(CompanionLocaleCommandRouter router, string json) =>
+    private static ValueTask<string> RouteAsync(CompanionLocaleCommandRouter router, string json) =>
         router.RouteAsync(CompanionLocaleCommandRouter.CommandName,
             new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(json)), null!, CancellationToken.None);
 
@@ -19,7 +19,7 @@ public class CompanionLocaleCommandRouterTests
         ui.Changed += () => fired++;
         var router = new CompanionLocaleCommandRouter(ui);
 
-        Assert.Equal("{}", await Route(router, """{"locale":"en"}"""));
+        Assert.Equal("{}", await RouteAsync(router, """{"locale":"en"}"""));
 
         Assert.Equal("en", ui.Current);
         Assert.Equal(1, fired);
@@ -39,7 +39,7 @@ public class CompanionLocaleCommandRouterTests
         string before = ui.Current;
         var router = new CompanionLocaleCommandRouter(ui);
 
-        Assert.Equal("null", await Route(router, json));
+        Assert.Equal("null", await RouteAsync(router, json));
         Assert.Equal(before, ui.Current);
     }
 
@@ -53,7 +53,7 @@ public class CompanionLocaleCommandRouterTests
         ui.Changed += () => fired++;
         var router = new CompanionLocaleCommandRouter(ui);
 
-        await Route(router, """{"locale":"en"}""");
+        await RouteAsync(router, """{"locale":"en"}""");
 
         Assert.Equal(0, fired);
     }

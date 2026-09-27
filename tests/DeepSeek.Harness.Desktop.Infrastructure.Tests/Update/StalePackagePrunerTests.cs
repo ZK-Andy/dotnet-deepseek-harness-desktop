@@ -271,6 +271,207 @@ public class StalePackagePrunerTests
         }
     }
 
+    // —— RotateInstallLogIfNeeded / install.log 滚代 ——
+
+    /// <summary>验证超过上限的 install.log 被改名为上一代（内容一字不改），原路径让位给下次安装链。</summary>
+    [Fact]
+    public void RotateInstallLogIfNeeded_OverLimit_RotatesKeepingContent()
+    {
+        string dir = CreateTempUpdatesDir();
+        try
+        {
+            string logPath = Path.Combine(dir, StalePackagePruner.InstallLogFile);
+            File.WriteAllText(logPath, "0123456789");
+            var logs = new List<string>();
+
+            bool rotated = StalePackagePruner.RotateInstallLogIfNeeded(logPath, maxBytes: 8, logs.Add);
+
+            Assert.True(rotated);
+            Assert.False(File.Exists(logPath), "滚代后原路径应让位");
+            Assert.Equal(
+                "0123456789",
+                File.ReadAllText(Path.Combine(dir, StalePackagePruner.InstallLogRotatedFile)));
+            Assert.Contains(logs, l => l.Contains("滚为"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证未超限不动（上限内是正常诊断留痕，不是膨胀）；路径缺失同样零动作。</summary>
+    [Fact]
+    public void RotateInstallLogIfNeeded_UnderLimitOrMissing_NoOp()
+    {
+        string dir = CreateTempUpdatesDir();
+        try
+        {
+            string logPath = Path.Combine(dir, StalePackagePruner.InstallLogFile);
+            File.WriteAllText(logPath, "short");
+
+            Assert.False(StalePackagePruner.RotateInstallLogIfNeeded(logPath, maxBytes: 64));
+            Assert.True(File.Exists(logPath), "未超限不得动文件");
+            Assert.False(File.Exists(Path.Combine(dir, StalePackagePruner.InstallLogRotatedFile)));
+
+            Assert.False(
+                StalePackagePruner.RotateInstallLogIfNeeded(Path.Combine(dir, "absent.log"), maxBytes: 1));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证反复滚代只保一代（覆盖上一代）：目录日志量有界为「上限 + 一个实例增量」，
+    /// 不随滚代次数累积。</summary>
+    [Fact]
+    public void RotateInstallLogIfNeeded_RepeatedRotation_KeepsSingleGeneration()
+    {
+        string dir = CreateTempUpdatesDir();
+        try
+        {
+            string logPath = Path.Combine(dir, StalePackagePruner.InstallLogFile);
+            string rotated = Path.Combine(dir, StalePackagePruner.InstallLogRotatedFile);
+
+            File.WriteAllText(logPath, "generation-1");
+            Assert.True(StalePackagePruner.RotateInstallLogIfNeeded(logPath, maxBytes: 4));
+            Assert.Equal("generation-1", File.ReadAllText(rotated));
+
+            File.WriteAllText(logPath, "generation-2");
+            Assert.True(StalePackagePruner.RotateInstallLogIfNeeded(logPath, maxBytes: 4));
+
+            Assert.Equal("generation-2", File.ReadAllText(rotated));
+            Assert.Single(Directory.GetFiles(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证 install.log 为符号链接时拒绝滚代：链接与其目标原封不动（改名会动链接本身，
+    /// 与同目录下载锁同一拒链策略）。</summary>
+    [Fact]
+    public void RotateInstallLogIfNeeded_SymlinkedLog_Skips()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 符号链接行为按 Linux 断言
+        }
+
+        string dir = CreateTempUpdatesDir();
+        string outside = Path.Combine(Path.GetTempPath(), $"install-log-{Guid.NewGuid():N}");
+        var logs = new List<string>();
+        try
+        {
+            File.WriteAllText(outside, "victim");
+            string logPath = Path.Combine(dir, StalePackagePruner.InstallLogFile);
+            File.CreateSymbolicLink(logPath, outside);
+
+            Assert.False(StalePackagePruner.RotateInstallLogIfNeeded(logPath, maxBytes: 1, logs.Add));
+
+            Assert.Equal("victim", File.ReadAllText(outside));
+            Assert.True(File.Exists(logPath), "拒链时链接本身不得被动");
+            Assert.False(File.Exists(Path.Combine(dir, StalePackagePruner.InstallLogRotatedFile)));
+            Assert.Contains(logs, l => l.Contains("符号链接"));
+        }
+        finally
+        {
+            File.Delete(Path.Combine(dir, StalePackagePruner.InstallLogFile));
+            Directory.Delete(dir, recursive: true);
+            File.Delete(outside);
+        }
+    }
+
+    /// <summary>验证**悬空**符号链接同样被识别并留痕：root 脚本的 `[ -L ]` 守卫对悬空链也为真（会中止后续
+    /// 每次安装且零痕迹），此处拒链必须记一行。链接判定前置使该行为与 `File.Exists` 的平台语义无关
+    /// （.NET 10/Linux 实测 `File.Exists` 对悬空链返回 **true**，其他运行时/平台形态未必）。</summary>
+    [Fact]
+    public void RotateInstallLogIfNeeded_DanglingSymlink_SkipsAndLogs()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 符号链接行为按 Linux 断言
+        }
+
+        string dir = CreateTempUpdatesDir();
+        string absentTarget = Path.Combine(Path.GetTempPath(), $"absent-{Guid.NewGuid():N}");
+        var logs = new List<string>();
+        try
+        {
+            string logPath = Path.Combine(dir, StalePackagePruner.InstallLogFile);
+            File.CreateSymbolicLink(logPath, absentTarget);
+
+            Assert.False(StalePackagePruner.RotateInstallLogIfNeeded(logPath, maxBytes: 1, logs.Add));
+
+            Assert.True(File.Exists(logPath), "悬空链本身不得被动");
+            Assert.Contains(logs, l => l.Contains("符号链接"));
+        }
+        finally
+        {
+            File.Delete(Path.Combine(dir, StalePackagePruner.InstallLogFile));
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证 Run 对账接线：超限 install.log 按内建上限滚为上一代。</summary>
+    [Fact]
+    public void Run_OversizedInstallLog_RotatedToPreviousGeneration()
+    {
+        string dir = CreateTempUpdatesDir();
+        var logs = new List<string>();
+        try
+        {
+            string logPath = CreateOversizedInstallLog(dir);
+
+            StalePackagePruner.Run(dir, currentVersion: "0.4.4", logs.Add);
+
+            Assert.False(File.Exists(logPath), "超限 install.log 应被滚代");
+            Assert.True(File.Exists(Path.Combine(dir, StalePackagePruner.InstallLogRotatedFile)));
+            Assert.Contains(logs, l => l.Contains("滚为"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证他实例下载中（持锁）时整轮跳过也覆盖滚代——对账期一律不动 updates 目录任何文件。</summary>
+    [Fact]
+    public void Run_HeldDownloadLock_OversizedInstallLogNotRotated()
+    {
+        string dir = CreateTempUpdatesDir();
+        string logPath = CreateOversizedInstallLog(dir);
+        FileStream? held = null;
+        try
+        {
+            held = File.Open(
+                Path.Combine(dir, StalePackagePruner.DownloadLockFile),
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.None);
+
+            StalePackagePruner.Run(dir, currentVersion: "0.4.4");
+
+            Assert.True(File.Exists(logPath), "持锁期间 install.log 不得滚代");
+            Assert.False(File.Exists(Path.Combine(dir, StalePackagePruner.InstallLogRotatedFile)));
+        }
+        finally
+        {
+            held?.Dispose();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>造一个刚好越过内建上限的 install.log（稀疏文件，不落 5MiB 实体），返回其路径。</summary>
+    private static string CreateOversizedInstallLog(string dir)
+    {
+        string logPath = Path.Combine(dir, StalePackagePruner.InstallLogFile);
+        using FileStream fs = File.Create(logPath);
+        fs.SetLength(StalePackagePruner.InstallLogMaxBytes + 1);
+        return logPath;
+    }
+
     private static string CreateTempUpdatesDir()
     {
         string dir = Path.Combine(Path.GetTempPath(), $"updates-{Guid.NewGuid():N}");

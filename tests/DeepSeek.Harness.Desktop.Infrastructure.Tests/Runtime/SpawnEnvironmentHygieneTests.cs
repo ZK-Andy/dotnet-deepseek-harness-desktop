@@ -110,7 +110,7 @@ public class SpawnEnvironmentHygieneTests
     public async Task RunPluginAddAsync_StripsNoise() => await WithNoiseAsync(async () =>
     {
         ProcessStartInfo? captured = null;
-        Task<(int Exit, string Out, string Err)> Fake(ProcessStartInfo psi, CancellationToken ct)
+        Task<(int Exit, string Out, string Err)> FakeAsync(ProcessStartInfo psi, CancellationToken ct)
         {
             captured = psi;
             return Task.FromResult((0, "installed", string.Empty));
@@ -123,7 +123,7 @@ public class SpawnEnvironmentHygieneTests
             "dshmarket@latest",
             MarketInstallHelper.PluginSpecOrigin.Registry,
             _ => { },
-            Fake,
+            FakeAsync,
             CancellationToken.None);
 
         Assert.Equal(0, exit);

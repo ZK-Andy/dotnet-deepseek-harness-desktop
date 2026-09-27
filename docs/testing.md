@@ -26,8 +26,8 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | 脚本 | 作用 | 命令 |
 |---|---|---|
 | `verify-adr-format.py` | `ADR` 头/骨架/状态-目录一致 + 命名校验 | `python3 scripts/verify-adr-format.py` |
-| `verify-cookbook.py` | 踩坑记录格式/阶段标签封闭集 | `python3 scripts/verify-cookbook.py` |
-| `verify-doc-budgets.py` | 四份 durable 文档字数预算 | `python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json` |
+| `verify-cookbook.py` | 踩坑记录格式/阶段标签封闭集（缺省校验主档 + 冷归档层） | `python3 scripts/verify-cookbook.py` |
+| `verify-doc-budgets.py` | durable 文档字数预算（上限表见根 `AGENTS.md`，清单在 manifest） | `python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json` |
 | `verify-md-links.py` | 相对链接/锚点 | `python3 scripts/verify-md-links.py` |
 | `verify-readme-badges.py` | README 双语 `tests`/`coverage` 徽章 == `scripts/test-baseline.json` | `python3 scripts/verify-readme-badges.py` |
 | `verify-handoff-structure.py` | HANDOFF 滚动窗/状态区 | `python3 scripts/verify-handoff-structure.py` |

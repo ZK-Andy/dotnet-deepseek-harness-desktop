@@ -220,7 +220,7 @@ public class MarketInstallHelperTests
     }
 
     /// <summary>探针 fake：恒出 URL（staged 体检通过面）。</summary>
-    private static Task<Uri?> ProbeOk(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+    private static Task<Uri?> ProbeOkAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         => Task.FromResult<Uri?>(new Uri("http://127.0.0.1:40010"));
 
     /// <summary>验证安装市场时拼装的进程参数形状与 staging DSH_HOME（事务管线：变更加在 staging 副本），
@@ -242,7 +242,7 @@ public class MarketInstallHelperTests
         var logs = new List<string>();
         var args = new List<string>();
 
-        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
             capturedPsi = psi;
             args.Clear();
@@ -257,7 +257,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
-                "node", "/dsh/bin.js", home, logs.Add, RunFake, ProbeOk, CancellationToken.None);
+                "node", "/dsh/bin.js", home, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
 
             Assert.True(installed);
             Assert.NotNull(capturedPsi);
@@ -295,7 +295,7 @@ public class MarketInstallHelperTests
         int runs = 0;
         var logs = new List<string>();
 
-        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
             runs++;
             // 首次发现 minimumReleaseAge 政策拒绝；放宽后第二次应带 pnpm_config_minimum_release_age=0。
@@ -311,7 +311,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
-                "node", "/dsh/bin.js", home, logs.Add, RunFake, ProbeOk, CancellationToken.None);
+                "node", "/dsh/bin.js", home, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
 
             Assert.True(installed);
             Assert.Equal(2, runs);
@@ -341,7 +341,7 @@ public class MarketInstallHelperTests
         System.Diagnostics.ProcessStartInfo? capturedPsi = null;
         var args = new List<string>();
         var logs = new List<string>();
-        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
             capturedPsi = psi;
             args.Clear();
@@ -356,7 +356,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, ProbeOk, CancellationToken.None);
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
 
             Assert.True(installed);
             Assert.NotNull(capturedPsi);
@@ -396,7 +396,7 @@ public class MarketInstallHelperTests
 
         int runs = 0;
         var logs = new List<string>();
-        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
             runs++;
             return (0, "installed", string.Empty);
@@ -405,7 +405,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, ProbeOk, CancellationToken.None);
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
             Assert.False(installed);
             Assert.Equal(0, runs);
             Assert.Contains(logs, l => l.Contains("无需安装"));
@@ -432,7 +432,7 @@ public class MarketInstallHelperTests
         bool relaxSeen = false;
         int runs = 0;
         var logs = new List<string>();
-        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
             runs++;
             if (runs == 1)
@@ -447,7 +447,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, ProbeOk, CancellationToken.None);
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
             Assert.True(installed);
             Assert.Equal(2, runs);
             Assert.True(relaxSeen, "放宽重试应带 pnpm_config_minimum_release_age=0");
@@ -476,7 +476,7 @@ public class MarketInstallHelperTests
 
         System.Diagnostics.ProcessStartInfo? capturedPsi = null;
         var args = new List<string>();
-        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
             capturedPsi = psi;
             args.Clear();
@@ -491,7 +491,7 @@ public class MarketInstallHelperTests
         try
         {
             bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                null, null, home, installerPluginsDir, _ => { }, RunFake, ProbeOk, CancellationToken.None);
+                null, null, home, installerPluginsDir, _ => { }, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
 
             Assert.True(installed);
             Assert.NotNull(capturedPsi);
@@ -521,13 +521,13 @@ public class MarketInstallHelperTests
         File.WriteAllText(profilePkg, original);
         var logs = new List<string>();
 
-        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
             => (1, string.Empty, "boom");
 
         try
         {
             bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
-                "node", "/dsh/bin.js", home, logs.Add, RunFake, ProbeOk, CancellationToken.None);
+                "node", "/dsh/bin.js", home, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
             Assert.False(installed);
             // active 全程未被触碰，staging/journal 无残留
             Assert.Equal(original, File.ReadAllText(profilePkg));
@@ -553,15 +553,15 @@ public class MarketInstallHelperTests
         File.WriteAllText(profilePkg, original);
         var logs = new List<string>();
 
-        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
             => (0, "installed", string.Empty);
-        Task<Uri?> ProbeDead(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        Task<Uri?> ProbeDeadAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
             => Task.FromResult<Uri?>(null);
 
         try
         {
             bool installed = await MarketInstallHelper.EnsureMarketFromRegistryAsync(
-                "node", "/dsh/bin.js", home, logs.Add, RunFake, ProbeDead, CancellationToken.None);
+                "node", "/dsh/bin.js", home, logs.Add, RunFakeAsync, ProbeDeadAsync, CancellationToken.None);
             Assert.False(installed);
             Assert.Equal(original, File.ReadAllText(profilePkg));
             Assert.Empty(Directory.GetDirectories(home, ".tx-*"));
@@ -589,15 +589,15 @@ public class MarketInstallHelperTests
         File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
         var logs = new List<string>();
 
-        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
             => (0, "installed", string.Empty);
-        Task<Uri?> ProbeDead(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        Task<Uri?> ProbeDeadAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
             => Task.FromResult<Uri?>(null);
 
         try
         {
             bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, ProbeDead, CancellationToken.None);
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFakeAsync, ProbeDeadAsync, CancellationToken.None);
             Assert.False(installed);
             Assert.Equal(original, File.ReadAllText(profilePkg));
             Assert.Empty(Directory.GetDirectories(home, ".tx-*"));
@@ -625,13 +625,13 @@ public class MarketInstallHelperTests
         File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
         var logs = new List<string>();
 
-        async Task<(int Exit, string Out, string Err)> RunFake(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
             => (1, string.Empty, "boom");
 
         try
         {
             bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFake, ProbeOk, CancellationToken.None);
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
             Assert.False(installed);
             Assert.Equal(original, File.ReadAllText(profilePkg));
             Assert.Empty(Directory.GetDirectories(home, ".tx-*"));
