@@ -159,6 +159,34 @@ public static partial class RuntimeBootstrap
         }
     }
 
+    /// <summary>
+    /// npm 全局 bin 垫片直验（VerifyDsh 的 PATH 失败回退，Windows 复用预装 node 的 P1 形态）：
+    /// 垫片绝对路径直跑（Windows <c>dsh.cmd</c> / Unix <c>dsh</c>），文件存在性先行，不猜测执行；
+    /// 可跑则把 bin 目录补进进程 PATH（后续子进程可直解）并返回版本，否则返回 null。
+    /// </summary>
+    internal static async Task<string?> TryVerifyDshViaNpmBinShimAsync(
+        RuntimeBootstrapOptions options, NodeResult node, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
+    {
+        string? binDir = await ResolveNpmGlobalBinDirAsync(node, hooks, ct).ConfigureAwait(false);
+        string shim = Path.Combine(binDir ?? string.Empty, OperatingSystem.IsWindows() ? "dsh.cmd" : "dsh");
+        if (binDir is null || !File.Exists(shim))
+        {
+            return null;
+        }
+
+        (int shimExit, string? shimStdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
+            token => hooks.RunProcessAsync(shim, ["--version"], token)).ConfigureAwait(false);
+        string? shimVersion = RuntimeVersionGate.TryParseVersionOutput(shimStdout ?? string.Empty);
+        if (shimExit != 0 || shimVersion is null)
+        {
+            return null;
+        }
+
+        PrependPathToProcessEnv(binDir);
+        report(new BootstrapProgress(BootstrapStep.VerifyDsh, $"垫片直验通过并暴露到 PATH：{binDir}"));
+        return shimVersion;
+    }
+
     /// <summary>探测 PATH 上系统全局 node（取真实可执行路径）+ 其 npm-cli.js。全局 node 是那份唯一 dsh 的运行时，
     /// 桌面与终端共用（ADR simple-shell-single-global-dsh）。</summary>
     private static async Task<(string? NodePath, string? NpmCli)> ProbeLocalNodeAsync(Action<string> log, bool english, CancellationToken ct)

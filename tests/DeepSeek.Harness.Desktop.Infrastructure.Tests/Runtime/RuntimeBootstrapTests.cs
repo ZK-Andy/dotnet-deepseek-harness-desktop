@@ -277,6 +277,78 @@ public class RuntimeBootstrapTests
         Assert.Null(outcome.DshVersion);
     }
 
+    /// <summary>验证 PATH dsh 不可解析、但 npm 全局 bin 垫片存在且可跑时，VerifyDsh 经垫片绝对路径
+    /// 直验成功并把 bin 目录暴露到 PATH（Windows 复用预装 node 的 P1 根因：npm 装完 dsh 不在进程 PATH，
+    /// run 36221929554 首张截图 VerifyDsh 红）。垫片缺失时仍失败（见上一个用例）。</summary>
+    [Fact]
+    public async Task RunAsync_VerifyDsh_FallsBackToNpmBinShim_Succeeds()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "shim-" + Guid.NewGuid().ToString("N"));
+        string binDir = RuntimeBootstrap.NodeBinDir(root);
+        Directory.CreateDirectory(binDir);
+        string shim = Path.Combine(binDir, OperatingSystem.IsWindows() ? "dsh.cmd" : "dsh");
+        File.WriteAllText(shim, OperatingSystem.IsWindows() ? "@echo off\n" : "#!/bin/sh\n");
+        StringComparison pathCmp = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        string? oldPath = Environment.GetEnvironmentVariable("PATH");
+        try
+        {
+            var hooks = new RuntimeBootstrapHooks(
+                DownloadFileAsync: (url, dest, ct) => Task.CompletedTask,
+                FetchTextAsync: (url, ct) => Task.FromResult(string.Empty),
+                ExtractArchiveAsync: (archive, destDir, ct) => Task.CompletedTask,
+                RunProcessAsync: (exe, args, ct) =>
+                {
+                    string joined = string.Join(' ', args);
+                    if (joined.Contains("install", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult((0, string.Empty, string.Empty));
+                    }
+
+                    if (joined.Contains("config", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult((0, root + Environment.NewLine, string.Empty));
+                    }
+
+                    if (string.Equals(exe, "dsh", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult((1, string.Empty, "not found"));
+                    }
+
+                    if (string.Equals(exe, shim, pathCmp))
+                    {
+                        return Task.FromResult((0, "0.1.2-alpha.3" + Environment.NewLine, string.Empty));
+                    }
+
+                    return Task.FromResult((1, string.Empty, "unexpected"));
+                },
+                ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((Path.Combine("/fake", "node"), Path.Combine("/fake", "npm-cli.js"))));
+            var progress = new List<BootstrapProgress>();
+            BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), progress.Add, hooks, english: false, CancellationToken.None);
+            Assert.True(outcome.Success);
+            Assert.Equal("0.1.2-alpha.3", outcome.DshVersion);
+            Assert.Contains(progress, p => p.Message.Contains("垫片", StringComparison.Ordinal));
+            Assert.Contains(
+                (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator),
+                d => string.Equals(d, binDir, pathCmp));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", oldPath);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>验证 npm 全局安装带 --progress=true：CI 非 TTY 下安装进度进 host.log，
+    /// 冒烟侧可区分"慢"与"死"（run 36307412722 实证 --loglevel=error 下 720s 零行）。</summary>
+    [Fact]
+    public async Task RunAsync_NpmInstall_EmitsProgressFlag()
+    {
+        (RuntimeBootstrapHooks hooks, List<string> calls) = GlobalNodeHooks();
+        BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), _ => { }, hooks, english: false, CancellationToken.None);
+        Assert.True(outcome.Success);
+        Assert.Contains(calls, c => c.Contains("--progress=true", StringComparison.Ordinal));
+    }
+
     /// <summary>验证 english=true 时失败文案（npm 失败/权限指引）走英文分支——引导页错误框随宿主 UI 语言。</summary>
     [Fact]
     public async Task RunAsync_English_FailureCopyTakesEnglishBranch()

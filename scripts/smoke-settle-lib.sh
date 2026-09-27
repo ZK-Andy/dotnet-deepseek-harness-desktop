@@ -110,15 +110,40 @@ wait_settled() {
   return 1
 }
 
-# 心跳：$1=已耗秒 $2=dsh-home。整分触发，"慢"与"死"可区分
-# （体积停涨 + 进程存活 = 慢；体积停涨 + 无进展 = 死）。读调用方 OUT/LOG 全局。
+# 心跳：$1=已耗秒 $2=dsh-home。15s 一次，"慢"与"死"可区分
+# （体积停涨 + 进程存活 = 慢；体积停涨 + 无进展 = 死，见 progress_watchdog_tick）。
+# 读调用方 OUT/LOG 全局；缺项摘要让 CI 日志直接指出卡在哪一门。
 heartbeat() {
   local elapsed="$1" home="$2" out_kb=0 log_kb=0 home_kb=0
-  [[ $((elapsed % 60)) -eq 0 ]] || return 0
+  [[ $((elapsed % 15)) -eq 0 ]] || return 0
   out_kb=$(( $(wc -c <"${OUT:-/dev/null}" 2>/dev/null || echo 0) / 1024 ))
   if [[ -n "${LOG:-}" && -f "$LOG" ]]; then log_kb=$(( $(wc -c <"$LOG" 2>/dev/null || echo 0) / 1024 )); fi
   home_kb=$(du -sk "$home" 2>/dev/null | cut -f1 || echo 0)
-  echo "note: 等待中（${elapsed}s）：OUT ${out_kb}KB host.log ${log_kb}KB dsh-home ${home_kb}KB" >&2
+  echo "note: 等待中（${elapsed}s）：OUT ${out_kb}KB host.log ${log_kb}KB dsh-home ${home_kb}KB；缺：$(settle_missing)" >&2
+}
+
+# 无进展看门狗：OUT/host.log/dsh-home 三体积连续 _WD_STALL_SECONDS 秒零增长
+# → 1（停滞）；任一增长即复位计时 → 0。调用方等待循环每秒调一次，循环前先调
+# progress_watchdog_reset。npm 下载/日志滚动天然复位计时，只有真停滞才满窗——
+# heartbeat 注释里的"慢与死可区分"在此落地为判定，不再等满 SMOKE_WAIT。
+_WD_STALL_SECONDS=300
+progress_watchdog_reset() {
+  _WD_O=-1; _WD_L=-1; _WD_H=-1; _WD_T=0
+}
+progress_watchdog_tick() { # $1=已耗秒 $2=dsh-home：0=活（或慢），1=停滞满窗
+  local elapsed="${1:-0}" home="${2:-}" o=0 l=0 h=0 last_o=-1 last_l=-1 last_h=-1 last_t=0
+  o=$(wc -c <"${OUT:-/dev/null}" 2>/dev/null || echo 0)
+  if [[ -n "${LOG:-}" && -f "$LOG" ]]; then l=$(wc -c <"$LOG" 2>/dev/null || echo 0); fi
+  h=$(du -sk "$home" 2>/dev/null | cut -f1 || echo 0)
+  last_o="${_WD_O:--1}"; last_l="${_WD_L:--1}"; last_h="${_WD_H:--1}"; last_t="${_WD_T:-0}"
+  if [[ "$o" != "$last_o" || "$l" != "$last_l" || "$h" != "$last_h" ]]; then
+    _WD_O="$o"; _WD_L="$l"; _WD_H="$h"; _WD_T="$elapsed"
+    return 0
+  fi
+  if (( elapsed - last_t >= _WD_STALL_SECONDS )); then
+    return 1
+  fi
+  return 0
 }
 
 # 超时回退门（R2 B1 回归锁）：未见①但见② → 0（按安装链收工）；①已见（落定失败）

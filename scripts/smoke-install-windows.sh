@@ -115,6 +115,17 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   timeout_fallback >/dev/null 2>&1 && tpass "fallback-boot-flips" || tfail "fallback-boot-flips"
   : >"$OUT"; : >"$LOG"
   timeout_fallback >/dev/null 2>&1 && tfail "fallback-empty-should-not-flip" || tpass "fallback-empty-noflip"
+  # 看门狗（无进展提前收工）：首 tick 活；窗内静止活；满窗静止判死；任一增长复位
+  local o_out o_log
+  o_out="$OUT"; o_log="$LOG"
+  OUT="$tdir/wd-out"; LOG="$tdir/wd-log"; : >"$OUT"; : >"$LOG"; mkdir -p "$tdir/wd-home"
+  progress_watchdog_reset
+  progress_watchdog_tick 0 "$tdir/wd-home" && tpass "watchdog-first-alive" || tfail "watchdog-first-alive"
+  progress_watchdog_tick $((_WD_STALL_SECONDS - 1)) "$tdir/wd-home" && tpass "watchdog-under-window" || tfail "watchdog-under-window"
+  progress_watchdog_tick "$_WD_STALL_SECONDS" "$tdir/wd-home" && tfail "watchdog-stall-should-trip" || tpass "watchdog-stall-trips"
+  echo x >>"$OUT"
+  progress_watchdog_tick $((_WD_STALL_SECONDS + 300)) "$tdir/wd-home" && tpass "watchdog-growth-resets" || tfail "watchdog-growth-resets"
+  OUT="$o_out"; LOG="$o_log"
   rm -rf "$tdir"
   [[ $fail -eq 0 ]] && echo "self-test: PASS" || echo "self-test: FAIL"
   return $fail
@@ -196,6 +207,8 @@ LOG="$HOME_DIR/logs/host.log"
 log_has() { # $1=正则：stdout 或 host.log 任一命中
   grep -qE "$1" "$OUT" 2>/dev/null || { [[ -f "$LOG" ]] && grep -qE "$1" "$LOG"; }
 }
+stalled=0
+progress_watchdog_reset
 for _ in $(seq 1 "$SMOKE_WAIT"); do
   if log_has "$FULL_RE"; then
     grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
@@ -256,11 +269,27 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
     break
   fi
   heartbeat "$SECONDS" "$HOME_DIR"
+  if ! progress_watchdog_tick "$SECONDS" "$HOME_DIR"; then
+    echo "error: 冒烟停滞（${_WD_STALL_SECONDS}s 内 OUT/host.log/dsh-home 零增长、无新信号），提前收工" >&2
+    stalled=1
+    rc=1
+    smoke_shot "smoke-windows-fail.png"
+    echo "--- 到达/铸币行（停滞时判定信号，去重）---" >&2
+    echo_nav_lines
+    echo_mint_lines
+    echo "--- 壳输出尾部（停滞证据）---" >&2
+    tail -30 "$OUT" >&2 || true
+    if [[ -f "$LOG" ]]; then
+      echo "--- host.log 尾部 ---" >&2
+      tail -30 "$LOG" >&2 || true
+    fi
+    break
+  fi
   sleep 1
 done
 # 超时仍只有②：按安装链 PASS（等满窗语义），而非失败。回退门保证①已见时不翻回
-# （R2 B1：①已见 + 落定失败必须保持 FAIL）。
-if timeout_fallback; then
+# （R2 B1：①已见 + 落定失败必须保持 FAIL）。停滞跳出不翻回：零进展的②不是"慢"，是死。
+if [[ "$stalled" -eq 0 ]] && timeout_fallback; then
   echo "note: ${SMOKE_WAIT}s 内未见①，按②安装链收工" >&2
   rc=0
   smoke_verdict "$OUT" "$LOG"

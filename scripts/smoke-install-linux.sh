@@ -128,6 +128,7 @@ wait_url() { # $1=日志 $2=pid $3=dsh-home：①命中即落定等待；只有�
   # OUT/LOG 同指一文件：Linux 腿 stdout 即全量日志（含 [shell] 行为行），存活门须读得到；
   # 双读同文件经去重归一，无双计（strip_ts + sort -u，见 R6）。
   OUT="$log"; LOG="$log"
+  progress_watchdog_reset
   for _ in $(seq 1 "$SMOKE_WAIT"); do
     if grep -qE "$FULL_RE" "$log"; then
       grep -m1 -E "$FULL_RE" "$log"
@@ -145,6 +146,11 @@ wait_url() { # $1=日志 $2=pid $3=dsh-home：①命中即落定等待；只有�
       return 1
     fi
     heartbeat "$((SECONDS - start))" "$home"
+    if ! progress_watchdog_tick "$((SECONDS - start))" "$home"; then
+      echo "error: 冒烟停滞（${_WD_STALL_SECONDS}s 内日志与 dsh-home 零增长、无新信号），提前收工" >&2
+      tail -30 "$log" >&2 || true
+      return 1
+    fi
     sleep 1
   done
   if grep -qE "$FULL_RE" "$log"; then grep -m1 -E "$FULL_RE" "$log"; wait_settled "$pid"; return $?; fi
@@ -180,6 +186,17 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-arrival-only-should-fail" || tpass "settle-arrival-only-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   heartbeat "60" "$tdir/home" 2>&1 | grep -q "等待中（60s）" && tpass "heartbeat" || tfail "heartbeat"
+  # 看门狗（无进展提前收工）：首 tick 活；窗内静止活；满窗静止判死；任一增长复位
+  local o_out o_log
+  o_out="$OUT"; o_log="$LOG"
+  OUT="$tdir/wd-out"; LOG="$tdir/wd-log"; : >"$OUT"; : >"$LOG"; mkdir -p "$tdir/wd-home"
+  progress_watchdog_reset
+  progress_watchdog_tick 0 "$tdir/wd-home" && tpass "watchdog-first-alive" || tfail "watchdog-first-alive"
+  progress_watchdog_tick $((_WD_STALL_SECONDS - 1)) "$tdir/wd-home" && tpass "watchdog-under-window" || tfail "watchdog-under-window"
+  progress_watchdog_tick "$_WD_STALL_SECONDS" "$tdir/wd-home" && tfail "watchdog-stall-should-trip" || tpass "watchdog-stall-trips"
+  echo x >>"$OUT"
+  progress_watchdog_tick $((_WD_STALL_SECONDS + 300)) "$tdir/wd-home" && tpass "watchdog-growth-resets" || tfail "watchdog-growth-resets"
+  OUT="$o_out"; LOG="$o_log"
   # smoke_shot：无 DISPLAY 即静默跳过（不建目录不拦冒烟）；fake scrot 开火留痕且非空
   DISPLAY= SMOKE_SHOT_DIR="$tdir/shots" smoke_shot "no.png" >/dev/null 2>&1 \
     && [[ ! -e "$tdir/shots/no.png" ]] && tpass "shot-nodisplay" || tfail "shot-nodisplay"

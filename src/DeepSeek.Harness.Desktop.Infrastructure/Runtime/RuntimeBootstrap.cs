@@ -104,7 +104,7 @@ public static partial class RuntimeBootstrap
             // ③ 验证 PATH dsh --version 可解析（全局 dsh 落位）
             step = BootstrapStep.VerifyDsh;
             report(new BootstrapProgress(BootstrapStep.VerifyDsh, "验证 dsh 版本"));
-            string? version = await VerifyDshAsync(options, hooks, english, ct).ConfigureAwait(false);
+            string? version = await VerifyDshAsync(options, node, report, hooks, english, ct).ConfigureAwait(false);
             if (version is null)
             {
                 // 定位提示（R2#2 边界）：npm 全局前缀可能与 node bin 不一致（~/.npmrc 自定义 prefix /
@@ -332,6 +332,10 @@ public static partial class RuntimeBootstrap
             "-g",
             "--no-audit",
             "--no-fund",
+            // 进度条强制开启：CI 非 TTY 下 npm 默认静默，数分钟下载在 host.log 里零行，
+            // 冒烟侧无法区分"慢"与"死"（run 36307412722 实证 720s 耗尽）。进度行经
+            // PumpAsync（\r 刷新行已处理）以 `[bootstrap] npm&gt;` 前缀进 host.log。
+            "--progress=true",
             "--loglevel=error",
             options.DshSpec,
         };
@@ -340,13 +344,22 @@ public static partial class RuntimeBootstrap
             node.NodePath, args, token)).ConfigureAwait(false);
     }
 
-    /// <summary>验证 PATH 上全局 dsh 版本可解析（<c>dsh --version</c>）。</summary>
+    /// <summary>验证全局 dsh 版本可解析：先 PATH 裸名直解（<c>dsh --version</c>），
+    /// 失败回退 npm 全局 bin 垫片绝对路径直跑（Windows 复用预装 node 的 P1 形态：
+    /// npm 前缀 bin 未进进程 PATH 时裸名在 CreateProcess 下不可解析，而垫片文件真实存在；
+    /// 文件存在性先行，不猜测执行；垫片可跑则把 bin 目录补进 PATH，后续子进程可直解）。</summary>
     private static async Task<string?> VerifyDshAsync(
-        RuntimeBootstrapOptions options, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
+        RuntimeBootstrapOptions options, NodeResult node, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
     {
         (int exit, string? stdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
             token => hooks.RunProcessAsync("dsh", ["--version"], token)).ConfigureAwait(false);
-        return exit == 0 && RuntimeVersionGate.TryParseVersionOutput(stdout ?? string.Empty) is { } v ? v : null;
+        if (exit == 0 && RuntimeVersionGate.TryParseVersionOutput(stdout ?? string.Empty) is { } v)
+        {
+            return v;
+        }
+
+        report(new BootstrapProgress(BootstrapStep.VerifyDsh, "PATH 未命中 dsh，回退 npm 全局 bin 垫片直验"));
+        return await TryVerifyDshViaNpmBinShimAsync(options, node, report, hooks, english, ct).ConfigureAwait(false);
     }
 
     /// <summary>判定 npm/lockfile 是否因权限不足（需 sudo）失败。</summary>
