@@ -47,4 +47,14 @@ Review: LIGHT/2026-09-28/R2=ok
 
 - `bash -n` × 4 文件；三腿离线自测 `--self-test` 全绿（linux 37／macos 31／windows 15 断言，0 fail）。
 - 静态取证：`log_has()` 定义数 = 1；`PASS_RE`、`INSTALL_WAIT_SECONDS` 全仓零命中。
-- 三平台 dispatch 实跑在批次外确认（结果回写 HANDOFF 待办；受影响面仅上述容器 env 与 mac/win 的 `log_has` 分支）。
+- 三平台 dispatch 实跑（本批 done 判据，已通过）：`package-{linux,macos,windows}.yml` 在同一 commit `dcf6561` 上分别 dispatch，三道工作流全 success、四腿各有真实落定与 verdict：
+
+  | 腿 | 落定 | verdict | 备注 |
+  |---|---|---|---|
+  | linux amd64 | 3s | `full-chain` | 截图见证通过（mean=0.803061） |
+  | linux arm64 | 2s | `full-chain` | 截图见证通过（mean=0.798776） |
+  | macos x64 | 3s | `full-chain` | 页面裁决=healthy |
+  | macos arm64 | 4s | `full-chain` | 见证不通过 → 客户端存活兜底判过（设计行为） |
+  | windows | 1s | `full-chain` | 先见②（`已见②`）后等① |
+
+  三道 run 的日志中 `frozen` 零命中——A-1 退役的豁免机制在实跑面确已不存在。受影响面（mac/win 的 `log_has` 由库版提供、rpm 容器腿少一个 env）均未见异常。
