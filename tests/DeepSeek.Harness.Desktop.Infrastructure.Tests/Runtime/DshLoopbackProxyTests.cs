@@ -242,8 +242,9 @@ public class DshLoopbackProxyTests
         await runCts.CancelAsync();
     }
 
-    /// <summary>升级隧道成功面：裸 TCP 直泵 + 握手手术（Origin→dsh 自源 + 贴 cookie + same-origin），
-    /// 对标上游 `onBeforeSendHeaders`（dsh 远程通道 `remote.mux` 即此）。</summary>
+    /// <summary>升级隧道成功面：裸 TCP 直泵 + 握手手术（`Host`→dsh authority + `Origin`→dsh 自源 +
+    /// 贴 cookie + same-origin），对标上游 `onBeforeSendHeaders`（dsh 远程通道 `remote.mux` 即此）。
+    /// 桩按 dsh 判门：缺 Host 即 403（旧码在此红）。</summary>
     [Fact]
     public async Task Proxy_UpgradeTunnelsWithHeaderSurgery()
     {
@@ -262,13 +263,19 @@ public class DshLoopbackProxyTests
         await socket.ConnectAsync(IPAddress.Loopback, proxy.Url.Port, cts.Token);
         using NetworkStream stream = socket.GetStream();
         byte[] head = Encoding.ASCII.GetBytes(
-            "GET /api/remote.mux HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+            "GET /api/remote.mux HTTP/1.1\r\nHost: x\r\nReferer: http://localhost:12345/page\r\n" +
+            "Upgrade: websocket\r\nConnection: Upgrade\r\n" +
             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
         await stream.WriteAsync(head, cts.Token);
         byte[] buf = new byte[12];
         int read = await stream.ReadAsync(buf.AsMemory(0, 12), cts.Token);
 
         Assert.StartsWith("HTTP/1.1 101", Encoding.ASCII.GetString(buf, 0, read), StringComparison.Ordinal);
+        // 页源 Host/Referer 不透传，权威值由代理写死（裸 TCP 重放没有 HttpClient 的自动 Host）。
+        Assert.Contains($"Host: 127.0.0.1:{wsStub.Port}", wsStub.LastHead!, StringComparison.Ordinal);
+        Assert.DoesNotContain("Host: x", wsStub.LastHead!, StringComparison.Ordinal);
+        Assert.Contains($"Referer: http://127.0.0.1:{wsStub.Port}/api/remote.mux", wsStub.LastHead!, StringComparison.Ordinal);
+        Assert.DoesNotContain("localhost:12345", wsStub.LastHead!, StringComparison.Ordinal);
         Assert.True(await wsStub.HandshakeOkAsync(cts.Token));
         Assert.Contains(lines, l => l.Contains("升级隧道已建"));
         await runCts.CancelAsync();
@@ -500,8 +507,11 @@ public class DshLoopbackProxyTests
         }
     }
 
-    /// <summary>桩 WebSocket 服务端（裸 TCP）：断言握手手术（Origin→authority + 贴 cookie +
-    /// same-origin），回 101。双向泵体由对称 `CopyToAsync` 承担，握手即契约面。</summary>
+    /// <summary>桩 WebSocket 服务端（裸 TCP）：按真实 dsh 网关判门（`Host` 必须是本 authority、
+    /// `Origin` 必须是自源——缺 Host 即 403 forbidden），并断言握手手术（贴 cookie + same-origin），
+    /// 过门回 101。判门保真只覆盖 `Host`/`Origin`（真实 dsh 对缺 cookie 回 401，此处与其余缺失项
+    /// 一并按 403 简化——桩的契约面，不追 dsh 的分档）。双向泵体由对称 `CopyToAsync` 承担，
+    /// 握手即契约面。</summary>
     private sealed class StubWebSocketServer : IDisposable
     {
         private readonly TcpListener _listener;
@@ -510,6 +520,9 @@ public class DshLoopbackProxyTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public int Port { get; }
+
+        /// <summary>最后一次握手首部原文（判门/断言素材）。</summary>
+        public string? LastHead { get; private set; }
 
         public StubWebSocketServer()
         {
@@ -538,17 +551,26 @@ public class DshLoopbackProxyTests
             {
                 using TcpClient client = await _listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
                 using NetworkStream stream = client.GetStream();
-                byte[] buf = new byte[4096];
-                int read = await stream.ReadAsync(buf.AsMemory(0, buf.Length), ct).ConfigureAwait(false);
-                string head = Encoding.ASCII.GetString(buf, 0, read);
-                bool ok = head.Contains("Origin: http://127.0.0.1:" + Port, StringComparison.Ordinal)
+                // 首部按 CRLFCRLF 收满：单次 ReadAsync 遇 TCP 分段会把完整首部误判成缺头（判门假红）。
+                string head = await ReadHttpHeadAsync(stream, ct).ConfigureAwait(false);
+                LastHead = head;
+                bool ok = head.Contains("Host: 127.0.0.1:" + Port, StringComparison.OrdinalIgnoreCase)
+                    && head.Contains("Origin: http://127.0.0.1:" + Port, StringComparison.Ordinal)
                     && head.Contains("Cookie: " + CookieName + "=", StringComparison.Ordinal)
                     && head.Contains("sec-fetch-site: same-origin", StringComparison.OrdinalIgnoreCase)
                     && head.Contains("Upgrade: websocket", StringComparison.OrdinalIgnoreCase);
-                if (ok)
+                if (!ok)
                 {
-                    _handshakeOk.TrySetResult();
+                    // 对齐 dsh 网关实证：Host/Origin 门不过即 403 forbidden（体 9 字节）+ 关连接；
+                    // 代理把该响应原样泵给页面，客户端退避重连（ADR upgrade-tunnel-host-authority）。
+                    byte[] forbid = Encoding.ASCII.GetBytes(
+                        "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n" +
+                        "Content-Length: 9\r\n\r\nforbidden");
+                    await stream.WriteAsync(forbid, ct).ConfigureAwait(false);
+                    return;
                 }
+
+                _handshakeOk.TrySetResult();
 
                 byte[] accept = Encoding.ASCII.GetBytes(
                     "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +

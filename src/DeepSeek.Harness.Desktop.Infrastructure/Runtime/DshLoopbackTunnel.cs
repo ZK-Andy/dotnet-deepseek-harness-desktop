@@ -4,7 +4,7 @@ using System.Text;
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 /// <summary>回环代理的升级隧道面（ADR loopback-forward-proxy）：向 dsh authority 建裸 TCP
-/// 重放 WS 握手并双向直泵（标准反代语义：`Origin`→dsh 自源 + 贴 cookie，页源不透传）。
+/// 重放 WS 握手并双向直泵（标准反代语义：`Host`→dsh authority、`Origin`/`Referer`→dsh 自源 + 贴 cookie，页源不透传）。
 /// 路由经构造注入。</summary>
 internal sealed class DshLoopbackTunnel
 {
@@ -20,7 +20,7 @@ internal sealed class DshLoopbackTunnel
     }
 
     /// <summary>升级通道隧道（标准反代语义）：向 dsh authority 建裸 TCP，
-    /// 重放握手（`Origin`→dsh 自源 + 贴 cookie + `sec-fetch-site: same-origin`，其余原样），
+    /// 重放握手（`Host`→dsh authority + `Origin`→dsh 自源 + 贴 cookie + `sec-fetch-site: same-origin`，其余原样），
     /// 而后双向直泵至任一端关闭（寿命与连接绑定，无计时器）。dsh 客户端远程通道（`remote.mux`）即此。</summary>
     internal async Task RelayUpgradeAsync(NetworkStream page, ShellProxyFraming.PageRequest req, string upgrade, CancellationToken ct)
     {
@@ -53,7 +53,7 @@ internal sealed class DshLoopbackTunnel
         using (upstream)
         {
             NetworkStream up = upstream.GetStream();
-            string head = BuildUpgradeHead(req, authority, cookie);
+            string head = BuildUpgradeHead(req, baseUri, cookie);
             try
             {
                 await up.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
@@ -72,9 +72,11 @@ internal sealed class DshLoopbackTunnel
         }
     }
 
-    /// <summary>升级握手手术（标准反代语义）：`Origin`→dsh 自源 + 贴 cookie +
-    /// `sec-fetch-site: same-origin`，其余原样透传；`Host` 由 TCP 目标隐含，不伪造。</summary>
-    private static string BuildUpgradeHead(ShellProxyFraming.PageRequest req, string authority, string cookie)
+    /// <summary>升级握手手术（标准反代语义）：`Host`→dsh authority + `Origin`/`Referer`→dsh 自源 +
+    /// 贴 cookie + `sec-fetch-site: same-origin`，其余原样透传。`Host` 必写：dsh 网关先判 Host/Origin 门，
+    /// 缺 Host 即 403（`forbidden`）——裸 TCP 重放没有 `HttpClient` 那种按 URI 自动补 Host 的默认。
+    /// `Referer` 与普通转发面同法改写（该头不在 dsh 门上，改写只为页源值零透传这条不变量）。</summary>
+    private static string BuildUpgradeHead(ShellProxyFraming.PageRequest req, Uri baseUri, string cookie)
     {
         var head = new StringBuilder();
         head.Append(req.Method).Append(' ').Append(req.Target).Append(" HTTP/1.1\r\n");
@@ -82,6 +84,7 @@ internal sealed class DshLoopbackTunnel
         {
             if (name.Equals("host", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("origin", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("referer", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("cookie", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("sec-fetch-site", StringComparison.OrdinalIgnoreCase))
             {
@@ -91,7 +94,12 @@ internal sealed class DshLoopbackTunnel
             head.Append(name).Append(": ").Append(value).Append("\r\n");
         }
 
-        head.Append("Origin: ").Append(authority).Append("\r\n");
+        string origin = baseUri.GetLeftPart(UriPartial.Authority);
+        head.Append("Host: ").Append(baseUri.Authority).Append("\r\n");
+        head.Append("Origin: ").Append(origin).Append("\r\n");
+        // 源头改写与普通转发面同法（`DshShellForward` 构造请求时 Origin→authority、Referer→dsh 形目标）：
+        // 页源代理 URL 在此无意义，且两个面必须给出同一形态的源，页源值零透传。
+        head.Append("Referer: ").Append(origin).Append(req.Target).Append("\r\n");
         head.Append("sec-fetch-site: same-origin\r\n");
         if (!string.IsNullOrEmpty(cookie))
         {

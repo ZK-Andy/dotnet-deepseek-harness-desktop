@@ -4,6 +4,8 @@ Status: implemented
 
 Review: LIGHT/2026-09-27/R2=ok
 
+Related: [`bug-fix/2026-09-27-upgrade-tunnel-host-authority`](2026-09-27-upgrade-tunnel-host-authority.md)——本篇去掉自家哨兵这一决定仍成立，但"隧道存活回归泵两端自然收敛"**未成为结果**：该轮上线后隧道依旧在同秒被 dsh 关闭、客户端持续退避重连（推断：没过 dsh 的 Host/Origin 门——缺 `Host` 即 403；该因果链未直接观测，标注见该篇 Problem），存活缺口由该篇独立修补。
+
 R2 自审结论：改动收敛回环代理两文件 + 同目录测试；组合根/Core 未碰；升级分支与普通分支判据同源（`IsUpgrade` 与 `RelayAsync` 同头）；`linked` 仍承接应用退出取消；D003 无新增空 catch；0 Blocker。
 
 ## Problem
