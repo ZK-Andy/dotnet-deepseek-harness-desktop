@@ -78,7 +78,12 @@ CI 全绿，但绿得没有语义：一批被当成「门」的步骤没有任�
 
 - 六个工作流 `yaml.safe_load` 全解析通过（新增 step 名里的 ASCII `:` 被本地治理门禁当场抓出，已加引号）；`python3 scripts/verify-governance.py` exit 0、`--self-test` 通过。
 - 门禁全绿：`verify-adr-format` / `verify-cookbook` / `verify-doc-budgets` / `verify-md-links` / `verify-readme-badges` / `verify-handoff-structure` / `verify-governance` / `verify-skill-format` / `verify-code-health --enforce` / `verify-code-conventions --enforce` / `verify-ui-copy`。
-- **dispatch 实跑**（`.github/workflows/**` 变更的硬要求，见 feature-flow 步骤 3）：见本批提交信息与交接条的 run 号。
+- **dispatch 实跑**（`.github/workflows/**` 变更的硬要求，见 feature-flow 步骤 3）：
+  - `ci`（PR #2 `pull_request` 路径）`36337067299` 全绿：`changes` 命中 `scripts/**`；`docs` job 实跑新增的 `verify-skill-format.py`（`OK: 8 skills conform`）并以 PR `base.sha` 走档位门 `--since`；`build-test (ubuntu)` 的 coverage 步按 `TESTS_OUTCOME: success` 走带基线分支，打印 `line-rate=59.95%`（恰等基线，容差内）。
+  - `governance`（同 PR）`36337067272` success：新增「治理门禁」步（`verify-governance.py` 输出 `OK`）与「提示（不判门）」步各跑一次——issue/PR 事件是它唯一的触发路径，无法 dispatch，故用 PR 事件取证。
+  - `package-linux` dispatch `36337109586` 两腿全绿：布局断言在真 staging 上通过（`ok: dsh-desktop-companion.tgz (16K)`），`dpkg-deb -I` / `rpm -qp --requires` 断言通过，留痕显示 rpm Requires 恰为 `libwebkitgtk-6.0.so.4()(64bit)` + `libadwaita-1.so.0()(64bit)`（无 `aarch64`/`musl`/`perl` 假依赖），四个证据 artifact 均落地（截图 75KB / 日志 9.2KB）。
+  - `package-macos` dispatch `36337114236` 两腿全绿；`package-windows` dispatch `36337111841` 全绿（含改名后的 WebView2 步；截图 130KB / 日志 7.2KB 均上传）——绿跑下证据位有实体，分档表达式没有把设计认可的绿判红。
+  - **残余验证缺口**：tag 触发的版本门（`if: startsWith(github.ref, 'refs/tags/v')`）dispatch 到不了。该段 shell 已在本地按四种输入形态实跑：tag `v0.5.9` 配输入 `v0.5.9` / `0.5.9` / 留空均 exit 0，配输入 `v0.5.8` exit 1 且 `::error::` 点名两个版本号——下一次真 tag 会给出真 runner 证据。`release.yml` 的改动只有步骤名与注释（零表达式、零新增步），未 dispatch（dispatch 它会在真仓库创建 Release）。
 
 ## Related
 
