@@ -51,7 +51,8 @@ public static class RuntimeVersionGate
         UpdateVersion.Compare(version, MinimumVersion) < 0;
 
     /// <summary>构造版本探针的 <c>dsh --version</c> 进程启动信息：先剥离宿主继承噪声
-    /// （ADR spawn-env-and-plugin-spec-hardening），避免宿主 <c>NODE_OPTIONS</c> 在探针期执行任意代码。</summary>
+    /// （ADR spawn-env-and-plugin-spec-hardening），避免宿主 <c>NODE_OPTIONS</c> 在探针期执行任意代码。
+    /// dsh 经 <see cref="RuntimeBootstrap.DshCommandFor"/> 构造（Windows 走 cmd 中转，裸名直跑起不来）。</summary>
     /// <returns>已配好参数与环境净化的启动信息。</returns>
     internal static ProcessStartInfo BuildProbePsi()
     {
@@ -64,8 +65,13 @@ public static class RuntimeVersionGate
         };
         EnvironmentHygiene.StripInherited(psi);
         HarnessRuntimeHost.UseUtf8TextStreams(psi);
-        psi.FileName = "dsh";
-        psi.ArgumentList.Add("--version");
+        DshCommand cmd = RuntimeBootstrap.DshCommandFor(null, ["--version"]);
+        psi.FileName = cmd.Exe;
+        foreach (string arg in cmd.Args)
+        {
+            psi.ArgumentList.Add(arg);
+        }
+
         return psi;
     }
 

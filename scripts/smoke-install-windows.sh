@@ -123,7 +123,7 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   progress_watchdog_tick 0 "$tdir/wd-home" && tpass "watchdog-first-alive" || tfail "watchdog-first-alive"
   progress_watchdog_tick $((_WD_STALL_SECONDS - 1)) "$tdir/wd-home" && tpass "watchdog-under-window" || tfail "watchdog-under-window"
   progress_watchdog_tick "$_WD_STALL_SECONDS" "$tdir/wd-home" && tfail "watchdog-stall-should-trip" || tpass "watchdog-stall-trips"
-  echo x >>"$OUT"
+  echo '[bootstrap] test-progress' >>"$OUT"
   progress_watchdog_tick $((_WD_STALL_SECONDS + 300)) "$tdir/wd-home" && tpass "watchdog-growth-resets" || tfail "watchdog-growth-resets"
   OUT="$o_out"; LOG="$o_log"
   rm -rf "$tdir"
@@ -270,7 +270,7 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
   fi
   heartbeat "$SECONDS" "$HOME_DIR"
   if ! progress_watchdog_tick "$SECONDS" "$HOME_DIR"; then
-    echo "error: 冒烟停滞（${_WD_STALL_SECONDS}s 内 OUT/host.log/dsh-home 零增长、无新信号），提前收工" >&2
+    echo "error: 冒烟停滞（${_WD_STALL_SECONDS}s 内进展标记/dsh-home 零增长、无新信号），提前收工" >&2
     stalled=1
     rc=1
     smoke_shot "smoke-windows-fail.png"

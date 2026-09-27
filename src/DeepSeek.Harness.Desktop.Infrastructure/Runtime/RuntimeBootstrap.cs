@@ -77,7 +77,13 @@ public static partial class RuntimeBootstrap
             }
 
             report(new BootstrapProgress(BootstrapStep.InstallDsh, $"安装 dsh（{options.DshSpec}）"));
+            // npm 步内存活自报：npm 自身输出不可靠（CI 非 TTY 下 gauge 可全程静默，本跑 5 分钟零行实证），
+            // 引导侧每分钟自报一行，与 npm 输出无关；完成即停，不污染结果。
+            using var npmAliveCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            Task npmAlive = NpmAliveLoopAsync(report, NpmAliveReportSeconds, npmAliveCts.Token);
             (int exit, string? stdout, string? stderr) = await RunNpmInstallGlobalAsync(options, node, hooks, english, ct).ConfigureAwait(false);
+            npmAliveCts.Cancel();
+            await npmAlive.ConfigureAwait(false);
             if (exit != 0)
             {
                 string errText = string.IsNullOrEmpty(stderr) ? stdout ?? string.Empty : stderr;
@@ -342,24 +348,6 @@ public static partial class RuntimeBootstrap
 
         return await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct, token => hooks.RunProcessAsync(
             node.NodePath, args, token)).ConfigureAwait(false);
-    }
-
-    /// <summary>验证全局 dsh 版本可解析：先 PATH 裸名直解（<c>dsh --version</c>），
-    /// 失败回退 npm 全局 bin 垫片绝对路径直跑（Windows 复用预装 node 的 P1 形态：
-    /// npm 前缀 bin 未进进程 PATH 时裸名在 CreateProcess 下不可解析，而垫片文件真实存在；
-    /// 文件存在性先行，不猜测执行；垫片可跑则把 bin 目录补进 PATH，后续子进程可直解）。</summary>
-    private static async Task<string?> VerifyDshAsync(
-        RuntimeBootstrapOptions options, NodeResult node, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
-    {
-        (int exit, string? stdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
-            token => hooks.RunProcessAsync("dsh", ["--version"], token)).ConfigureAwait(false);
-        if (exit == 0 && RuntimeVersionGate.TryParseVersionOutput(stdout ?? string.Empty) is { } v)
-        {
-            return v;
-        }
-
-        report(new BootstrapProgress(BootstrapStep.VerifyDsh, "PATH 未命中 dsh，回退 npm 全局 bin 垫片直验"));
-        return await TryVerifyDshViaNpmBinShimAsync(options, node, report, hooks, english, ct).ConfigureAwait(false);
     }
 
     /// <summary>判定 npm/lockfile 是否因权限不足（需 sudo）失败。</summary>

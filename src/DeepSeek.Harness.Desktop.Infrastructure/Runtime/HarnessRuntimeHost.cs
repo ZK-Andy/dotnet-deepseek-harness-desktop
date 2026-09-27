@@ -147,7 +147,8 @@ public sealed partial class HarnessRuntimeHost : IDisposable
         return url;
     }
 
-    /// <summary>构造 dsh web 子进程的 ProcessStartInfo（PATH dsh 形态 + 环境注入）。
+    /// <summary>构造 dsh web 子进程的 ProcessStartInfo（dsh 启动命令 + 环境注入）。
+    /// dsh 经 <see cref="RuntimeBootstrap.DshCommandFor"/> 构造（Windows 走 cmd 中转，裸名直跑起不来）。
     /// 先剥离宿主继承噪声（ADR spawn-env-and-plugin-spec-hardening）再写我方变量。</summary>
     /// <param name="port">固定端口；<c>null</c> 时让 OS 分配（<c>--port 0</c>）。</param>
     /// <param name="home">共享 DSH_HOME。</param>
@@ -163,9 +164,10 @@ public sealed partial class HarnessRuntimeHost : IDisposable
         };
         EnvironmentHygiene.StripInherited(psi);
         UseUtf8TextStreams(psi);
-        psi.FileName = "dsh";
+        DshCommand cmd = RuntimeBootstrap.DshCommandFor(null, BuildDshWebArgs(port));
+        psi.FileName = cmd.Exe;
 
-        foreach (string arg in BuildDshWebArgs(port))
+        foreach (string arg in cmd.Args)
         {
             psi.ArgumentList.Add(arg);
         }

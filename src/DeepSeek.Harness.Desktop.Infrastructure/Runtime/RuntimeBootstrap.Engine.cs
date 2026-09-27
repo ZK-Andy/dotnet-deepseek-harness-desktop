@@ -26,6 +26,10 @@ public static partial class RuntimeBootstrap
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // stdin 显式重定向并在启动后立即关闭（见 RunCaptureAsync/RunStreamingCaptureAsync）：
+            // GUI 进程继承的 stdin 句柄形态不定，子进程（npm/dsh）一旦读 stdin 即与宿主互等。
+            // 竞品同款（hairyf unix `stdin(Stdio::null())` + Windows 隐藏控制台 spawn）。
+            RedirectStandardInput = true,
             // GUI 子系统壳 spawn node/npm 不能闪控制台窗（Windows）
             CreateNoWindow = true,
         };
@@ -55,6 +59,8 @@ public static partial class RuntimeBootstrap
         log?.Invoke($"[bootstrap] run: {psi.FileName} {string.Join(' ', args)}");
         using Process p = Process.Start(psi)
             ?? throw new InvalidOperationException(UiCopy.BootstrapProcessStartFailed(exe, english));
+        // stdin 已重定向即关闭写端：子进程读到 EOF 而非阻塞等宿主（见 BuildCapturePsi）。
+        p.StandardInput.Close();
         try
         {
             // 双流并发读：顺序先读 stdout 时 stderr 塞满 pipe buffer（~64KB）会互等死锁
@@ -103,6 +109,8 @@ public static partial class RuntimeBootstrap
         log?.Invoke($"[bootstrap] run: {psi.FileName} {string.Join(' ', args)}");
         using Process p = Process.Start(psi)
             ?? throw new InvalidOperationException(UiCopy.BootstrapProcessStartFailed(exe, english));
+        // stdin 已重定向即关闭写端：子进程读到 EOF 而非阻塞等宿主（见 BuildCapturePsi）。
+        p.StandardInput.Close();
         var outSb = new StringBuilder();
         var errSb = new StringBuilder();
         try
@@ -159,32 +167,69 @@ public static partial class RuntimeBootstrap
         }
     }
 
+    /// <summary>验证全局 dsh 版本可解析：先统一启动命令直解（Unix PATH 裸名 / Windows cmd 中转），
+    /// 失败（退出码非零或起不来抛错）回退 npm 全局 bin 垫片直验（Windows 复用预装 node 的 P1 形态：
+    /// npm 前缀 bin 未进进程 PATH 时裸名在 CreateProcess 下不可解析，而垫片文件真实存在）。
+    /// spawn 异常一律按验证失败处理进回退，不抛新异常面（run 36310235841 的 09:50:14 Win32Exception 实证）。</summary>
+    internal static async Task<string?> VerifyDshAsync(
+        RuntimeBootstrapOptions options, NodeResult node, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
+    {
+        DshCommand primary = DshCommandFor(null, ["--version"]);
+        try
+        {
+            (int exit, string? stdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
+                token => hooks.RunProcessAsync(primary.Exe, primary.Args, token)).ConfigureAwait(false);
+            if (exit == 0 && RuntimeVersionGate.TryParseVersionOutput(stdout ?? string.Empty) is { } v)
+            {
+                return v;
+            }
+
+            report(new BootstrapProgress(BootstrapStep.VerifyDsh, "PATH 未命中 dsh，回退 npm 全局 bin 垫片直验"));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            report(new BootstrapProgress(BootstrapStep.VerifyDsh, $"PATH 直解失败（{ex.GetType().Name}），回退 npm 全局 bin 垫片直验"));
+        }
+
+        return await TryVerifyDshViaNpmBinShimAsync(options, node, report, hooks, english, ct).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// npm 全局 bin 垫片直验（VerifyDsh 的 PATH 失败回退，Windows 复用预装 node 的 P1 形态）：
-    /// 垫片绝对路径直跑（Windows <c>dsh.cmd</c> / Unix <c>dsh</c>），文件存在性先行，不猜测执行；
-    /// 可跑则把 bin 目录补进进程 PATH（后续子进程可直解）并返回版本，否则返回 null。
+    /// 经 <see cref="DshCommandFor"/> 跑垫片（Windows 走 cmd 中转，Unix 直跑），文件存在性先行，
+    /// 不猜测执行；可跑则把 bin 目录补进进程 PATH（后续子进程可直解）并返回版本，否则返回 null。
+    /// Spawn 自身抛错（缺文件/不可执行）同样返回 null——调用方统一走既有指引失败，不抛新异常面。
     /// </summary>
     internal static async Task<string?> TryVerifyDshViaNpmBinShimAsync(
         RuntimeBootstrapOptions options, NodeResult node, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
     {
         string? binDir = await ResolveNpmGlobalBinDirAsync(node, hooks, ct).ConfigureAwait(false);
-        string shim = Path.Combine(binDir ?? string.Empty, OperatingSystem.IsWindows() ? "dsh.cmd" : "dsh");
+        string shim = DshShimPath(binDir);
         if (binDir is null || !File.Exists(shim))
         {
             return null;
         }
 
-        (int shimExit, string? shimStdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
-            token => hooks.RunProcessAsync(shim, ["--version"], token)).ConfigureAwait(false);
-        string? shimVersion = RuntimeVersionGate.TryParseVersionOutput(shimStdout ?? string.Empty);
-        if (shimExit != 0 || shimVersion is null)
+        DshCommand cmd = DshCommandFor(binDir, ["--version"]);
+        try
         {
+            (int shimExit, string? shimStdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
+                token => hooks.RunProcessAsync(cmd.Exe, cmd.Args, token)).ConfigureAwait(false);
+            string? shimVersion = RuntimeVersionGate.TryParseVersionOutput(shimStdout ?? string.Empty);
+            if (shimExit != 0 || shimVersion is null)
+            {
+                return null;
+            }
+
+            PrependPathToProcessEnv(binDir);
+            report(new BootstrapProgress(BootstrapStep.VerifyDsh, $"垫片直验通过并暴露到 PATH：{binDir}"));
+            return shimVersion;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // 垫片不可 spawn（删档竞速/权限）：按验证失败处理，走既有指引，不抛新异常面。
             return null;
         }
-
-        PrependPathToProcessEnv(binDir);
-        report(new BootstrapProgress(BootstrapStep.VerifyDsh, $"垫片直验通过并暴露到 PATH：{binDir}"));
-        return shimVersion;
     }
 
     /// <summary>探测 PATH 上系统全局 node（取真实可执行路径）+ 其 npm-cli.js。全局 node 是那份唯一 dsh 的运行时，
@@ -215,6 +260,30 @@ public static partial class RuntimeBootstrap
         {
             log?.Invoke($"[bootstrap] PATH node 探测失败（视为不存在）：{ex.Message}");
             return (null, null);
+        }
+    }
+
+    /// <summary>npm 安装步内存活自报间隔（秒）：npm 自身输出不可靠（CI 非 TTY 下可全程静默），
+    /// 引导侧按此节拍自报一行，与 npm 输出无关；npm 返回即停。</summary>
+    internal const int NpmAliveReportSeconds = 60;
+
+    /// <summary>npm 安装步内存活循环：每 <paramref name="intervalSeconds"/> 报一行进度（InstallDsh 步），
+    /// 调用方在 npm 返回后取消 <paramref name="ct"/> 并等待本循环收尾。取消即静默返回，无其他副作用。</summary>
+    internal static async Task NpmAliveLoopAsync(Action<BootstrapProgress> report, int intervalSeconds, CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
+            int elapsed = 0;
+            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+            {
+                elapsed += intervalSeconds;
+                report(new BootstrapProgress(BootstrapStep.InstallDsh, $"npm 安装进行中（已 {elapsed}s）…"));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 调用方取消（npm 返回或应用退出）：静默收尾。
         }
     }
 

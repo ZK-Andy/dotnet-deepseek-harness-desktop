@@ -69,6 +69,12 @@ jobs:
       - name: 安装器内容断言（staging 即安装器唯一内容源，防 Inno [Files] 漏配）
         shell: bash
         run: bash scripts/verify-package-layout.sh --target artifacts/win-x64/stage/DeepSeek.Harness.Desktop
+      - name: 缓存 npm 下载缓存（只缓存 cacache 下载内容，不缓存 %APPDATA%\npm 安装树——首启冷装路径仍被真实演练）
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/npm-cache
+          key: npm-cache-windows-x64
+          restore-keys: npm-cache-windows-
       - name: 安装 WebView2 Evergreen（运行态实验，ADR smoke-runner-deepening）
         shell: bash
         env:

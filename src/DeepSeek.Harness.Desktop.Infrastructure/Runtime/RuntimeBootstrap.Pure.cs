@@ -31,6 +31,11 @@ public sealed record RuntimeBootstrapHooks(
 /// <param name="NpmCli">npm-cli.js 路径。</param>
 public sealed record NodeResult(string NodePath, string NpmCli);
 
+/// <summary>一条 dsh 启动命令（exe + 参数表，调用方按原样喂子进程）。</summary>
+/// <param name="Exe">可执行（Windows 经 cmd.exe 中转，见 <see cref="RuntimeBootstrap.DshCommandFor"/>）。</param>
+/// <param name="Args">参数表（调用方原样透传，不再二次解释）。</param>
+public sealed record DshCommand(string Exe, IReadOnlyList<string> Args);
+
 /// <summary>
 /// <see cref="RuntimeBootstrap"/> 的纯函数/文件系统原子面（partial，ADR 尺寸健康闸）。
 /// 无网络/子进程调用，可独立单测；状态机（RunAsync/EnsureGlobalNodeAsync/InstallGlobalNodeAsync）在
@@ -134,6 +139,33 @@ public static partial class RuntimeBootstrap
     internal static string NodeBinDir(string prefix) => OperatingSystem.IsWindows()
         ? prefix
         : Path.Combine(prefix, "bin");
+
+    /// <summary>npm 全局 bin 里的 dsh 垫片路径（binDir 为 null 即 PATH 语义，不拼目录）。
+    /// Windows 是 <c>dsh.cmd</c>（npm 生成 <c>dsh</c>/<c>dsh.cmd</c>/<c>dsh.ps1</c> 三件套，无 <c>.exe</c>），
+    /// Unix 是可执行位 <c>dsh</c>（shebang）。只做路径计算，不碰文件系统。</summary>
+    internal static string DshShimPath(string? binDir) => DshShimPath(binDir, OperatingSystem.IsWindows());
+
+    /// <summary>垫片路径计算的平台可注入重载（单测在非 Windows 上断言 Windows 形态）。</summary>
+    internal static string DshShimPath(string? binDir, bool windows)
+    {
+        string name = windows ? "dsh.cmd" : "dsh";
+        return binDir is null ? name : Path.Combine(binDir, name);
+    }
+
+    /// <summary>
+    /// 跨平台 dsh 启动命令构造（五处裸名 spawn 的唯一家；ADR windows-dsh-spawn-unified）：
+    /// Windows 经 <c>cmd.exe /d /s /c</c> 中转垫片——<c>UseShellExecute=false</c> 的 CreateProcess 对裸名
+    /// 只试本名 + <c>.exe</c>（不走 PATHEXT），裸 <c>dsh</c> 与直跑 <c>dsh.cmd</c>（报 193）都起不来；
+    /// cmd 自身做 PATH/PATHEXT 解析。<c>binDir</c> 为 null 即 PATH 语义。Unix 保持现有形态。
+    /// 调用方把 <see cref="DshCommand.Args"/> 原样喂参数表，不再二次解释/拼串。
+    /// </summary>
+    internal static DshCommand DshCommandFor(string? binDir, IReadOnlyList<string> args) =>
+        DshCommandFor(binDir, args, OperatingSystem.IsWindows());
+
+    /// <summary>启动命令构造的平台可注入重载（单测覆盖 Windows 引号形态）。</summary>
+    internal static DshCommand DshCommandFor(string? binDir, IReadOnlyList<string> args, bool windows) => windows
+        ? new DshCommand("cmd.exe", ["/d", "/s", "/c", DshShimPath(binDir, windows), .. args])
+        : new DshCommand(DshShimPath(binDir, windows), args);
 
     /// <summary>系统全局 node 默认安装前缀（用户可写，避免需 sudo）：Windows <c>%LOCALAPPDATA%\nodejs</c>；
     /// Unix 用户主目录 <c>~/.local</c>（<c>~/.local/bin</c> 经宿主 spawn PATH 增补与 CLI shim rc 块已在 PATH）。</summary>

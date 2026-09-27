@@ -122,18 +122,19 @@ heartbeat() {
   echo "note: 等待中（${elapsed}s）：OUT ${out_kb}KB host.log ${log_kb}KB dsh-home ${home_kb}KB；缺：$(settle_missing)" >&2
 }
 
-# 无进展看门狗：OUT/host.log/dsh-home 三体积连续 _WD_STALL_SECONDS 秒零增长
-# → 1（停滞）；任一增长即复位计时 → 0。调用方等待循环每秒调一次，循环前先调
-# progress_watchdog_reset。npm 下载/日志滚动天然复位计时，只有真停滞才满窗——
-# heartbeat 注释里的"慢与死可区分"在此落地为判定，不再等满 SMOKE_WAIT。
+# 无进展看门狗：OUT/host.log 的进展标记行数 + dsh-home 体积，三者连续
+# _WD_STALL_SECONDS 秒零增长 → 1（停滞）；任一增长即复位计时 → 0。
+# 调用方等待循环每秒调一次，循环前先调 progress_watchdog_reset。npm 下载/日志滚动
+# 天然复位计时，只有真停滞才满窗——heartbeat 注释里的"慢与死可区分"在此落地为判定，
+# 不再等满 SMOKE_WAIT。
 _WD_STALL_SECONDS=300
 progress_watchdog_reset() {
   _WD_O=-1; _WD_L=-1; _WD_H=-1; _WD_T=0
 }
 progress_watchdog_tick() { # $1=已耗秒 $2=dsh-home：0=活（或慢），1=停滞满窗
   local elapsed="${1:-0}" home="${2:-}" o=0 l=0 h=0 last_o=-1 last_l=-1 last_h=-1 last_t=0
-  o=$(wc -c <"${OUT:-/dev/null}" 2>/dev/null || echo 0)
-  if [[ -n "${LOG:-}" && -f "$LOG" ]]; then l=$(wc -c <"$LOG" 2>/dev/null || echo 0); fi
+  o=$(progress_markers "${OUT:-/dev/null}")
+  if [[ -n "${LOG:-}" && -f "$LOG" ]]; then l=$(progress_markers "$LOG"); fi
   h=$(du -sk "$home" 2>/dev/null | cut -f1 || echo 0)
   last_o="${_WD_O:--1}"; last_l="${_WD_L:--1}"; last_h="${_WD_H:--1}"; last_t="${_WD_T:-0}"
   if [[ "$o" != "$last_o" || "$l" != "$last_l" || "$h" != "$last_h" ]]; then
@@ -146,6 +147,15 @@ progress_watchdog_tick() { # $1=已耗秒 $2=dsh-home：0=活（或慢），1=�
   return 0
 }
 
+# 进展标记（内容感知）行正则：我方六前缀的行（OUT 素行 + host.log 时间戳前缀行均命中）。
+# 体积 Byte 再多也不算进展——Ryn info/Edge 代理日志等杂项字节曾把计时器反复清零
+# （run 36310235841 实证），只有自家信号行才复位。
+MARKER_RE='(\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]{8}\] )?\[(bootstrap|host|shell|nav|update|health)\]'
+progress_markers() { # $1=文件：标记行数（缺失即 0）
+  [[ -f "${1:-}" ]] || { echo 0; return 0; }
+  grep -cE "$MARKER_RE" "$1" 2>/dev/null || true
+}
+# 或双无 → 1。读调用方 rc/FULL_RE/BOOT_RE 全局与 log_has。
 # 超时回退门（R2 B1 回归锁）：未见①但见② → 0（按安装链收工）；①已见（落定失败）
 # 或双无 → 1。读调用方 rc/FULL_RE/BOOT_RE 全局与 log_has。
 timeout_fallback() {

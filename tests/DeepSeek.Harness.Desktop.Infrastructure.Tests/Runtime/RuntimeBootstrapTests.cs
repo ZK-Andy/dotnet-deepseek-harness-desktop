@@ -338,6 +338,67 @@ public class RuntimeBootstrapTests
         }
     }
 
+    /// <summary>验证 PATH 直解抛错（Windows 裸名经 CreateProcess 不走 PATHEXT，本跑 09:50:14 实证）
+    /// 同样进垫片回退而非整单失败：spawn 异常 ≠ 验证失败。</summary>
+    [Fact]
+    public async Task RunAsync_VerifyDsh_SpawnThrows_FallsBackToShim()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "shim-ex-" + Guid.NewGuid().ToString("N"));
+        string binDir = RuntimeBootstrap.NodeBinDir(root);
+        Directory.CreateDirectory(binDir);
+        string shim = Path.Combine(binDir, OperatingSystem.IsWindows() ? "dsh.cmd" : "dsh");
+        File.WriteAllText(shim, OperatingSystem.IsWindows() ? "@echo off\n" : "#!/bin/sh\n");
+        string? oldPath = Environment.GetEnvironmentVariable("PATH");
+        try
+        {
+            var hooks = new RuntimeBootstrapHooks(
+                DownloadFileAsync: (url, dest, ct) => Task.CompletedTask,
+                FetchTextAsync: (url, ct) => Task.FromResult(string.Empty),
+                ExtractArchiveAsync: (archive, destDir, ct) => Task.CompletedTask,
+                RunProcessAsync: (exe, args, ct) =>
+                {
+                    string joined = string.Join(' ', args);
+                    if (joined.Contains("install", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult((0, string.Empty, string.Empty));
+                    }
+
+                    if (joined.Contains("config", StringComparison.Ordinal))
+                    {
+                        return Task.FromResult((0, root + Environment.NewLine, string.Empty));
+                    }
+
+                    if (string.Equals(exe, "dsh", StringComparison.Ordinal)
+                        || string.Equals(exe, "cmd.exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new System.ComponentModel.Win32Exception(2);
+                    }
+
+                    return Task.FromResult((0, "0.1.2-alpha.3" + Environment.NewLine, string.Empty));
+                },
+                ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((Path.Combine("/fake", "node"), Path.Combine("/fake", "npm-cli.js"))));
+            BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), _ => { }, hooks, english: false, CancellationToken.None);
+            Assert.True(outcome.Success);
+            Assert.Equal("0.1.2-alpha.3", outcome.DshVersion);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", oldPath);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>验证 npm 存活循环在已取消 token 下立即静默返回（行数零，可确定性单测；节拍行为由生产常量覆盖）。</summary>
+    [Fact]
+    public async Task NpmAliveLoop_PreCancelled_ReturnsWithoutReporting()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var progress = new List<BootstrapProgress>();
+        await RuntimeBootstrap.NpmAliveLoopAsync(progress.Add, 60, cts.Token);
+        Assert.Empty(progress);
+    }
+
     /// <summary>验证 npm 全局安装带 --progress=true：CI 非 TTY 下安装进度进 host.log，
     /// 冒烟侧可区分"慢"与"死"（run 36307412722 实证 --loglevel=error 下 720s 零行）。</summary>
     [Fact]

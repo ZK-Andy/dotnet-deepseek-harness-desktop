@@ -208,23 +208,25 @@ public static partial class MarketInstallHelper
 
         System.Diagnostics.ProcessStartInfo BuildPsi(bool relaxPolicy)
         {
+            // node 直跑位优先（node 直接跑 JS 入口，无 shell 问题）；否则经统一 dsh 启动命令
+            // （Windows 走 cmd 中转，裸名直跑起不来）。
+            List<string> inner = PluginArgs(dshEntry, spec);
+            Runtime.DshCommand? cmd = nodeExe is null
+                ? Runtime.RuntimeBootstrap.DshCommandFor(null, inner)
+                : null;
             var psi = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = nodeExe is null ? "dsh" : nodeExe,
+                FileName = cmd?.Exe ?? nodeExe!,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             };
             EnvironmentHygiene.StripInherited(psi);
-            if (dshEntry is not null)
+            System.Collections.Generic.IReadOnlyList<string> outer = cmd?.Args ?? inner;
+            foreach (string a in outer)
             {
-                psi.ArgumentList.Add(dshEntry);
+                psi.ArgumentList.Add(a);
             }
-            psi.ArgumentList.Add("plugin");
-            psi.ArgumentList.Add("--profile");
-            psi.ArgumentList.Add(HarnessRuntimeHost.DesktopProfileName);
-            psi.ArgumentList.Add("add");
-            psi.ArgumentList.Add(spec);
             psi.Environment["DSH_HOME"] = dshHome;
             if (relaxPolicy)
             {
@@ -248,5 +250,22 @@ public static partial class MarketInstallHelper
         }
 
         return (exitCode, outText, errText);
+    }
+
+    /// <summary>插件安装内层参数（dsh 入口 + plugin --profile … add spec），供直跑与统一命令两路复用。</summary>
+    private static List<string> PluginArgs(string? dshEntry, string spec)
+    {
+        var args = new List<string>();
+        if (dshEntry is not null)
+        {
+            args.Add(dshEntry);
+        }
+
+        args.Add("plugin");
+        args.Add("--profile");
+        args.Add(HarnessRuntimeHost.DesktopProfileName);
+        args.Add("add");
+        args.Add(spec);
+        return args;
     }
 }
