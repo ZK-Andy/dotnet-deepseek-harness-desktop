@@ -171,8 +171,8 @@ public sealed class DshLoopbackProxy : IDisposable
 
     private async Task RelayAsync(NetworkStream stream, ShellProxyFraming.PageRequest req, CancellationToken ct)
     {
-        // 代理本地端点（无需铸币）：就绪探针/指南页/未铸币 holder（对齐上游 serveWebDocument 的
-        // 本地文档面；holder 长轮询等铸币，无计时器，见 ADR）。
+        // 代理本地端点（无需铸币）：就绪探针/指南页/未铸币 holder
+        // （holder 长轮询等铸币，无计时器，见 ADR）。
         if (await _local.RelayLocalAsync(stream, req, ct).ConfigureAwait(false))
         {
             return;

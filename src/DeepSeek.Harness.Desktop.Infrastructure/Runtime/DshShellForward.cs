@@ -1,7 +1,9 @@
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
-/// <summary>壳路由家 + dsh 请求共享策略（对齐上游 <c>apps/desktop/src/web-document.ts</c>）：
-/// 壳铸币、逐请求贴 cookie 转发。渲染器永不见 token 与 cookie；dsh 鉴权门原样保留
+/// <summary>壳路由家 + dsh 请求共享策略（铸币对齐上游
+/// <c>packages/client/connection/src/browser-auth.ts</c> 的 <c>authorizeIndex</c>：
+/// token 跳 303 铸 cookie；转发面逐请求贴 cookie、扣 <c>set-cookie</c> 不回页面）。
+/// 渲染器永不见 token 与 cookie；dsh 鉴权门原样保留
 /// （每个转发请求都带合法 cookie，独立运行的 dsh 行为零变化）。
 /// 传输面在 <see cref="DshLoopbackProxy"/>（回环代理源，流式透传）；本类只留铸币态、
 /// 路由解析与请求构造（ADR loopback-forward-proxy）。</summary>

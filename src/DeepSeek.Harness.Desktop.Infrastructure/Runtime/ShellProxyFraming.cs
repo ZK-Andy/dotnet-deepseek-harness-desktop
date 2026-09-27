@@ -202,7 +202,7 @@ internal static class ShellProxyFraming
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
     }
 
-    /// <summary>指南静态 MIME（对齐上游 `serveWebDocument` 的类型表子集；未知按 octet-stream）。</summary>
+    /// <summary>指南静态 MIME（未知按 octet-stream）。</summary>
     internal static string GuideMimeType(string extension) => extension.ToUpperInvariant() switch
     {
         ".HTML" or ".HTM" => "text/html; charset=utf-8",

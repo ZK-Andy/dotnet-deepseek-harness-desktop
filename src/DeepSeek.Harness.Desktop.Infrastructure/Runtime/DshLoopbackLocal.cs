@@ -75,14 +75,35 @@ internal sealed class DshLoopbackLocal
     }
 
     // holder 页（英文极简；中文指南在 /__shell_guide/，词典零负担见 ADR）：
-    // 单次 fetch 长轮询（服务端等铸币，无计时器），200 即自 reload；网络异常留静态指南链（手动）。
+    // 就绪轮询无计时器：单次 fetch 即长轮询（服务端等铸币），200 即自 reload。
+    // 自恢复无计时器（禁祈祷式加时）：失败（长轮询正常持有，不断即异常）先有界即时重 poll
+    // 3 次，再只由事件驱动——`online`/可见性恢复/手动重试链；`busy` 守卫防多路并发 poll
+    // 在铸币瞬间各回 200 致重复 reload。`display:none` 的重试链不进 innerText，不污染探针。
+    // 首行文本即 Core.WebAuthRecovery.HolderMarker（裁决据此排除 holder，改文案必同步改常量）。
     private const string HolderPage =
         "<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\">" +
         "<title>DeepSeek Harness Desktop</title></head>\n<body>\n" +
-        "<p>Starting DeepSeek Harness…</p>\n" +
+        "<p>" + WebAuthRecovery.HolderMarker + "…</p>\n" +
         "<p><a href=\"/__shell_guide/\">Troubleshooting</a></p>\n" +
-        "<script>\nfetch('/__shell_ready', {cache: 'no-store'}).then(function (r) {\n" +
-        "  if (r.ok) location.reload();\n}).catch(function () {});\n</script>\n</body>\n</html>\n";
+        "<p><a id=\"retry\" href=\"/__shell_ready\" style=\"display:none\">Retry</a></p>\n" +
+        "<script>\n(function () {\n" +
+        "  var link = document.getElementById('retry');\n" +
+        "  var busy = false, failed = 0;\n" +
+        "  function showRetry() { if (link) link.style.display = ''; }\n" +
+        "  function onFail() { busy = false; failed++; showRetry(); if (failed < 3) poll(); }\n" +
+        "  function poll() {\n" +
+        "    if (busy) return;\n" +
+        "    busy = true;\n" +
+        "    fetch('/__shell_ready', {cache: 'no-store'}).then(function (r) {\n" +
+        "      if (r.ok) { location.reload(); return; }\n" +
+        "      onFail();\n" +
+        "    }).catch(onFail);\n" +
+        "  }\n" +
+        "  if (link) link.addEventListener('click', function (e) { e.preventDefault(); failed = 0; link.style.display = 'none'; poll(); });\n" +
+        "  window.addEventListener('online', function () { failed = 0; poll(); });\n" +
+        "  document.addEventListener('visibilitychange', function () { if (!document.hidden) { failed = 0; poll(); } });\n" +
+        "  poll();\n" +
+        "})();\n</script>\n</body>\n</html>\n";
 
     private async Task ServeGuideAsync(NetworkStream stream, ShellProxyFraming.PageRequest req, string path, CancellationToken ct)
     {

@@ -9,9 +9,11 @@
 #   ②`[bootstrap] 引导开始：` = 安装链保底（装包→依赖齐→运行时检测→首启引导已启动）。
 # 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
 # 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
-# 落定语义（ADR smoke-settle-content-verdict + page-verdict-gate）：①只是 dsh 就绪行，verdict 与截图
-# 必须等导航落定——`[nav] 导航已到达` 去重 ≥1 次且含 `?token=` 第二跳，或①之后到达 ≥1 次（单跳世界：壳直达；token 路径保留）。落定超时或
-# 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
+# 落定语义（ADR shell-settle-behavior-gate）：①只是 dsh 就绪行，落定 = ① + 铸币 303
+# （转发路由存在）+ 客户端存活（代理 200/WS 隧道，holder 零次——唯一区分 holder 与真 UI
+# 的机器信号）。导航到达只作诊断回显，不判门（holder 自 reload 不产生到达回调；
+# token 第二跳已随转发模型退役）。verdict 只取 auth 硬拦（401 真坏页），healthy/
+# unknown/缺行一律交存活 + 见证判定。落定超时或落定期进程退出即 FAIL。
 #     deb 腿（有显示）还要等应用自己的终页裁决行 `[nav] 页面裁决=healthy` 才算落定：
 #     auth / unknown / 裁决未出现（探针未回）皆 FAIL——绿必须等于"同源且非鉴权页"，
 #     到达过的 401 页（v0.5.7 实跑：verdict 绿配 401 图）不再能冒充通过；截图在裁决之后
@@ -45,8 +47,8 @@ APP_BIN="/usr/bin/deepseek-harness-desktop"
 # 单步上限 + 120s 余量 = 720s。重试轮不计入——冒烟只等首轮落定，超时按②收工。
 # 引导步数或 StepTimeoutMinutes 变化时必须同批重算。SMOKE_WAIT_SECONDS 可覆写。
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
-# 落定窗：①出现后等导航提交，再等应用终页裁决。预算须覆盖含自愈重进的最坏链
-# （建窗 120 残量 + 2×(导航调用 30 + 提交 5) + 探针 15×2 + 重进 35 + 再探针 30 ≈ 285s，
+# 落定窗：①出现后等铸币 + 客户端存活；auth 裁决即拦。预算须覆盖含自愈重进的最坏链
+# （建窗 120 残量 + 铸币/探针/重进各段有界等待 ≈ 285s，
 # ADR page-verdict-gate），故 ci 矩阵按架构给值（SMOKE_SETTLE_SECONDS；见 package-linux.yml）。
 # 硬上限（用户令）：冒烟总时长不许超 3 分钟，落定窗不得超过 120s——CI 矩阵值超限即夹紧，避免"加时间换绿"。
 SMOKE_MAX_SETTLE_SECONDS="${SMOKE_MAX_SETTLE_SECONDS:-120}"
@@ -123,7 +125,9 @@ shot_capped() {
 
 wait_url() { # $1=日志 $2=pid $3=dsh-home：①命中即落定等待；只有②（超时或退出时）亦 0；双无才 1
   local log="$1" pid="$2" home="$3" boot_seen=0 start="$SECONDS"
-  OUT="$log"; LOG=""
+  # OUT/LOG 同指一文件：Linux 腿 stdout 即全量日志（含 [shell] 行为行），存活门须读得到；
+  # 双读同文件经去重归一，无双计（strip_ts + sort -u，见 R6）。
+  OUT="$log"; LOG="$log"
   for _ in $(seq 1 "$SMOKE_WAIT"); do
     if grep -qE "$FULL_RE" "$log"; then
       grep -m1 -E "$FULL_RE" "$log"
@@ -166,13 +170,14 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   SMOKE_FROZEN=1 smoke_frozen_pass "$tdir/f1" && tpass "frozen-seen" || tfail "frozen-seen"
   SMOKE_FROZEN=1 smoke_frozen_pass "$tdir/f2" && tfail "frozen-missing" || tpass "frozen-missing"
   SMOKE_FROZEN=0 smoke_frozen_pass "$tdir/f1" && tfail "frozen-off" || tpass "frozen-off"
-  printf '[nav] 导航已到达：http://127.0.0.1:1/（origin → x）\n[nav] 导航已到达：http://127.0.0.1:1/?token=t → y\n' >"$OUT"
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-ok" || tfail "settle-ok"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   printf '[nav] 导航已到达：http://127.0.0.1:1/（origin → x）\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-timeout-should-fail" || tpass "settle-timeout-fails"
+  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-arrival-only-should-fail" || tpass "settle-arrival-only-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   heartbeat "60" "$tdir/home" 2>&1 | grep -q "等待中（60s）" && tpass "heartbeat" || tfail "heartbeat"
   # smoke_shot：无 DISPLAY 即静默跳过（不建目录不拦冒烟）；fake scrot 开火留痕且非空
@@ -188,8 +193,8 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   rm -f "$tdir/shots/s2.png"
   PATH="$tdir/fakebin:/usr/bin:/bin" DISPLAY=:99 SMOKE_SHOT_DIR="$tdir/shots" smoke_shot "s2.png" >/dev/null 2>&1 \
     && [[ "$(cat "$tdir/shots/s2.png")" == "PNG" ]] && tpass "shot-fallback" || tfail "shot-fallback"
-  # wait_url 集成：①+落定 → 0；只有②（短窗）→ 0；双无 → 1；①无落定 → 1
-  log="$tdir/w1"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
+  # wait_url 集成：①+铸币+存活 → 0；只有②（短窗）→ 0；双无 → 1；①无铸币/存活 → 1
+  log="$tdir/w1"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$log"
   sleep 30 & live=$!
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-full" || tfail "wait_url-full"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
@@ -203,7 +208,7 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   sleep 30 & live=$!
   SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-nosettle-should-fail" || tpass "wait_url-nosettle-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  log="$tdir/w4b"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 代理源就绪：http://localhost:9/（回环独占）\n[nav] 导航已到达：http://localhost:9/\n' >"$log"
+  log="$tdir/w4b"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 代理源就绪：http://localhost:9/（回环独占）\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）\n' >"$log"
   sleep 30 & live=$!
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-single-proxy-settles" || tfail "wait_url-single-proxy-settles"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
@@ -211,14 +216,14 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   sleep 30 & live=$!
   SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-placeholder-should-not-settle" || tpass "wait_url-placeholder-not-settled"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  log="$tdir/w5"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
+  log="$tdir/w5"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$log"
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-exit-settled" || tfail "wait_url-exit-settled"
-  # wait_url × 落定（ADR page-verdict-gate 新语义）：①+到达+healthy → 0；到达齐缺裁决 → 亦 0（内容见证在截图）
-  log="$tdir/w6"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$log"
+  # wait_url × 落定新语义：①+铸币+存活（+healthy）→ 0；行为齐缺 verdict → 亦 0（内容见证在截图）
+  log="$tdir/w6"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$log"
   sleep 30 & live=$!
   SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-verdict-healthy" || tfail "wait_url-verdict-healthy"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  log="$tdir/w7"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$log"
+  log="$tdir/w7"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$log"
   sleep 30 & live=$!
   SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-verdict-missing-passes" || tfail "wait_url-verdict-missing-passes"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
@@ -233,61 +238,68 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   else
     echo "skip: 无 convert，跳过截图内容见证夹具"
   fi
-  # 存活门：≥3 次代理 200 即活；不足即死（形状与实现一致：缓冲 `代理回包：` + 流式 `代理流转：`）。
+  # 存活门：代理 200（缓冲 `代理回包：` + 流式 `代理流转：`）或 WS 隧道合计 ≥3 即活。
   { echo '[shell] 代理回包：200 application/json 100字节（POST /api/a）'; echo '[shell] 代理流转：200 text/event-stream（GET /plugins/events）'; echo '[shell] 代理回包：200 application/json 200字节（POST /api/b）'; } >"$tdir/alive.log"
   smoke_client_alive "$tdir/alive.log" && tpass "alive-enough-passes" || tfail "alive-enough-passes"
+  { echo '[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）'; echo '[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）'; echo '[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）'; } >"$tdir/alive.log"
+  smoke_client_alive "$tdir/alive.log" && tpass "alive-tunnel-passes" || tfail "alive-tunnel-fails"
   printf '[shell] 代理请求：GET /x\n' >"$tdir/alive.log"
   smoke_client_alive "$tdir/alive.log" && tfail "alive-short-should-fail" || tpass "alive-short-fails"
-  PAGE_VERDICT_REQUIRED=0
-  # 落定①后计数（ADR settle-gate-and-probe-retry）：①前双到达不算落定；①后双到达即落定（Linux 只报最终 URL）
+  # 落定行为门：①前信号再多也不算落定；①+铸币+存活即落定（到达只诊断，不参与）。
   # 注意：此前 wait_url 用例把 OUT/LOG 指走，此处显式复位回自测夹具（settle-ok 先例同理）。
   OUT="$tdir/out"; LOG="$tdir/host.log"
   printf '[nav] 导航已到达：ryn://app/index.html\n[nav] 导航已到达：http://127.0.0.1:1/\n[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-preready-should-fail" || tpass "settle-preready-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：ryn://app/index.html\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/\n' >"$OUT"; : >"$LOG"
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-postready" || tfail "settle-postready"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 裁决 auth 进门（ADR page-verdict-gate）：到达再多、终页裁决 auth 即失败（不置位也拦，容器腿同门）
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，请重开 dsh 打印的 URL；启动继续）\n' >"$OUT"; : >"$LOG"
+  # 裁决 auth 进门：行为信号齐、终页裁决 auth 即失败
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，请重开 dsh 打印的 URL；启动继续）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-auth-should-fail" || tpass "settle-auth-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 显示腿裁决门（PAGE_VERDICT_REQUIRED=1）：arrivals + healthy → 0
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$OUT"; : >"$LOG"
+  # 行为齐 + healthy → 0
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-healthy" || tfail "settle-verdict-healthy"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 同门：arrivals + unknown → 1（到达过不算绿）
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=unknown（探针无采样，期望 origin=http://127.0.0.1:1）\n' >"$OUT"; : >"$LOG"
+  # 同门：行为齐 + unknown → 0（unknown 交存活 + 见证判定，不拦落定）
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=unknown（探针无采样，期望 origin=http://127.0.0.1:1）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-unknown-passes" || tfail "settle-verdict-unknown-passes"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 同门：arrivals 齐但裁决行始终不出现（探针未回）→ 1
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$OUT"; : >"$LOG"
+  # 同门：行为齐但裁决行始终不出现（探针未回）→ 0
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-missing-passes" || tfail "settle-verdict-missing-passes"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # LOG 兜底（宿主腿形态，R2 S5）：OUT 无裁决行、裁决只在 host.log → 仍读得到且 auth 判红
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n' >"$OUT"
-  printf '[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n' >"$LOG"
+  # LOG 兜底：OUT 无裁决行、裁决只在 host.log → 仍读得到且 auth 判红（OUT 侧补铸币行）
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-log-fallback-auth-should-fail" || tpass "settle-log-fallback-auth-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   : >"$LOG"
   # 只认最后一条：healthy 之后又坏成 auth（页面塌陷）→ 1，旧 healthy 不得冒充绿
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n' >"$OUT"; : >"$LOG"
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-verdict-relapse-should-fail" || tpass "settle-verdict-relapse-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   # 只认最后一条：auth 之后重试恢复 healthy → 0（终页确实是 UI）
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://127.0.0.1:1/\n[nav] 导航已到达：http://127.0.0.1:1/?token=t\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$OUT"; : >"$LOG"
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-recovery" || tfail "settle-verdict-recovery"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  PAGE_VERDICT_REQUIRED=0
   rm -rf "$tdir"
   [[ $fail -eq 0 ]] && echo "self-test: PASS" || echo "self-test: FAIL"
   return $fail
@@ -323,7 +335,6 @@ smoke_deb() {
     timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
   pid=$!
   # 动态作用域：wait_url→wait_settled 读得到；钉在本次调用内，不外泄给后续腿（R2 S3）。
-  local PAGE_VERDICT_REQUIRED=1
   local frozen=""
   wait_url "$log" "$pid" "$home"; rc=$?
   # 冻结腿（ADR smoke-witness-real-and-eval-first-hop：arm64 原生 hang 已知病灶）：
@@ -390,7 +401,8 @@ smoke_rpm_container() {
 set -uo pipefail
 log=/tmp/smoke.log
 SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
-OUT="$log"; LOG=""
+# OUT/LOG 同指一文件（宿主侧 wait_url 同款理由：容器内 stdout 即全量日志，存活门须读得到）。
+OUT="$log"; LOG="$log"
 # 落定等待与宿主侧同一实现（R1：禁止手抄复刻，挂载 + source 共享库）
 # shellcheck disable=SC1091
 source /smoke-lib.sh
@@ -404,10 +416,10 @@ home=$(mktemp -d)
 timeout "$APP_TIMEOUT" env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
   "$SMOKE_APP_BIN" >"$log" 2>&1 &
 pid=$!
-OUT="$log"; LOG=""
+OUT="$log"; LOG="$log"
 boot_seen=0; start="$SECONDS"
 rc=1
-# 与宿主侧 wait_url 同款语义：②命中后继续等①至超时/退出，①命中后等导航落定（ADR smoke-settle-content-verdict）
+# 与宿主侧 wait_url 同款语义：②命中后继续等①至超时/退出，①命中后等行为落定（ADR shell-settle-behavior-gate）
 for _ in $(seq 1 "$SMOKE_WAIT"); do
   if grep -qE "$FULL_RE" "$log"; then
     grep -m1 -E "$FULL_RE" "$log"
@@ -415,6 +427,8 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
       echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"
       kill $pid 2>/dev/null; exit 0
     else
+      echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
+      echo_nav_lines >&2; echo_mint_lines >&2
       tail -30 "$log" >&2
       kill $pid 2>/dev/null; exit 1
     fi
@@ -428,6 +442,8 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
     if grep -qE "$FULL_RE" "$log"; then
       grep -m1 -E "$FULL_RE" "$log"
       if wait_settled ""; then echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"; exit 0; fi
+      echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
+      echo_nav_lines >&2; echo_mint_lines >&2
       tail -30 "$log" >&2; exit 1
     fi
     if grep -qE "$BOOT_RE" "$log"; then echo "note: 进程已退出，未见①，按②安装链收工" >&2; echo "SMOKE_VERDICT=install-chain（仅引导启动）"; exit 0; fi

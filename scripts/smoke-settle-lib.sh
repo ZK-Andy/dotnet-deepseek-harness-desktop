@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke-settle-lib.sh — 冒烟落定等待共享库（ADR smoke-settle-content-verdict）。
+# smoke-settle-lib.sh — 冒烟落定等待共享库（ADR shell-settle-behavior-gate）。
 # linux-host/mac/win 三脚本 source 它；rpm 容器经 docker -v 挂载后 source。
 # 本文件只含定义（正则常量 + 函数），source 无副作用；SMOKE_WAIT/SETTLE_WAIT/
 # OUT/LOG/FULL_RE/BOOT_RE 由调用方设置，函数运行时惰性读取。
@@ -7,8 +7,14 @@
 # 可能非零的管道都显式收口（pipefail 下裸 grep 会污染调用方判断，见 nav_lines 注释）。
 # shellcheck disable=SC2034  # NAV_*/SETTLE 由调用方与自测消费
 
+# 导航到达行：只作诊断回显（FAIL 证据打印），不判门——新链路零 host 导航，
+# holder 自 reload 不产生到达回调（dispatch 36300876224 双腿实证：代理流量
+# 证明 reload 发生，到达计数 0 新增）。token 第二跳已随转发模型退役
+# （token 永不进导航靶点，见 DesktopBootstrap.App 注释），此处不再检查。
 NAV_RE='\[nav\] 导航已到达'
-NAV_TOKEN_RE='\?token='
+# 铸币行（ADR loopback-forward-proxy）：`MintAsync` 成功即打印，
+# `token 跳 → 303` 是转发路由存在的唯一机器可读信号。
+MINT_RE='\[shell\] 铸币：token 跳 → 303'
 # 终页裁决（ADR page-verdict-gate）：应用在落定期写下唯一的裁决行；显示腿的"绿"必须由 healthy 背书。
 PAGE_LINE_RE='\[nav\] 页面裁决=(healthy|auth|unknown)'
 
@@ -32,74 +38,75 @@ log_has() { # $1=正则
   grep -qE "$1" "$OUT" 2>/dev/null || { [[ -n "${LOG:-}" && -f "$LOG" ]] && grep -qE "$1" "$LOG"; }
 }
 
+# 双源时间戳归一化：host.log 行带 `[yyyy-MM-dd HH:mm:ss] ` 前缀，stdout 无；
+# 去重前先剥，否则同一行被数两次（曾致"到达 2 次"误导三轮，见 R6）。无前缀行原样透传。
+strip_ts() { sed -E 's/^\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\] //'; }
+
 # 导航到达行（OUT 与 host.log 双写，去重防双计；任一缺失即跳过该源）。
 # pipefail 注意：组内 grep 读空文件/无命中即退 1，组状态会被 pipefail 透过调用方
 # 管道传出（曾致命中仍判失败）——组尾 `|| true` 把组状态恒置 0，命中与否只由外层 grep 判定。
 nav_lines() {
-  { [[ -n "${OUT:-}" ]] && grep -hE "$NAV_RE" "$OUT" 2>/dev/null; [[ -n "${LOG:-}" && -f "$LOG" ]] && grep -hE "$NAV_RE" "$LOG" 2>/dev/null; true; } | sort -u
+  { [[ -n "${OUT:-}" ]] && grep -hE "$NAV_RE" "$OUT" 2>/dev/null; [[ -n "${LOG:-}" && -f "$LOG" ]] && grep -hE "$NAV_RE" "$LOG" 2>/dev/null; true; } | strip_ts | sort -u
 }
 nav_count() { nav_lines | grep -c . || true; }
-# ①之后壳到达计数（ADR loopback-forward-proxy）：只认代理源 localhost / dsh 直连 127
-# 二者之一——占位页（ryn://app）在①之后也可能到达（健康 reload/恢复导航），直接数到达会把
-# 占位当落定（mac dispatch 36294149610 实证：4 次占位到达即落定，见证拍到白页而 UI 稍后才到）。
-# token 第二跳保留为独立 OR（dsh 直连形态回归即用）。以 $OUT 文件序为准；
-# $OUT 无①即 0（回退 token 路径）。pipefail 下裸 grep 恒收口（nav_lines 注释同理）。
-nav_count_after_ready() {
-  local m=0
-  if [[ -n "${OUT:-}" && -f "${OUT:-}" ]]; then
-    m=$(grep -m1 -nE "$FULL_RE" "$OUT" 2>/dev/null | cut -d: -f1 || true)
-    m=${m:-0}
-    if [[ "$m" -gt 0 ]]; then
-      tail -n +"$((m + 1))" "$OUT" 2>/dev/null | grep -E "$NAV_RE" | grep -cE "localhost|127\.0\.0\.1" || true
-      return 0
-    fi
-  fi
-  echo 0
+
+# 铸币行（双源同上，去重防双计）。pipefail 收口同 nav_lines。
+mint_lines() {
+  { [[ -n "${OUT:-}" ]] && grep -hE "$MINT_RE" "$OUT" 2>/dev/null; [[ -n "${LOG:-}" && -f "$LOG" ]] && grep -hE "$MINT_RE" "$LOG" 2>/dev/null; true; } | strip_ts | sort -u
 }
 # 命中判定读完全部输入再退（不用 -q：-q 命中即关管道，上游 sort 收 SIGPIPE，
 # pipefail 下同样误报；>/dev/null 等价静默且无此风险）。
-nav_token_seen() { nav_lines | grep -E "$NAV_TOKEN_RE" >/dev/null; }
+mint_seen() { mint_lines | grep -E '.' >/dev/null; }
 
-# 落定等待：①后等导航提交，再（显示腿）等应用终页裁决。$1=pid（可空：空即只查一次，进程已死不再等）。
-# 到达门（≥1 到达且含 token 第二跳，或①之后壳到达 ≥1 次）：代理源直达的精确信号——
-# 占位到达不计（①前后都可能出现）；token 路径保留（dsh 直连形态回归即用）。
-#   auth 裁决 → 立即 1（终页确认是鉴权页，机器可判的坏页门）；
-#   其余（healthy/unknown/缺行）一律 0：内容真伪由截图见证裁（`smoke_capture_witness`）。
-# 读调用方 SETTLE_WAIT 全局。
+# FAIL 证据显式打印（诊断用，不判门）：到达/铸币去重行 + token 脱敏。
+# 失败分支只打 tail 会被代理行为日志淹没关键行，此处专打判定信号（见 R6）。
+echo_nav_lines() {
+  { nav_lines 2>/dev/null; true; } | sed -E 's/token=[^& ]*/token=***/g' | sort -u >&2 || true
+}
+echo_mint_lines() {
+  { mint_lines 2>/dev/null; true; } | sort -u >&2 || true
+}
+
+# 缺信号说明（落定失败/退出的诊断后缀）：逐项点名缺①、缺铸币 303、存活不足。
+settle_missing() {
+  local miss=()
+  log_has "$FULL_RE" || miss+=("缺①[dsh-web]")
+  mint_seen || miss+=("缺铸币303")
+  smoke_client_alive "${LOG:-}" || miss+=("存活不足")
+  printf '%s' "${miss[*]:-全齐}"
+}
+
+# 落定等待（ADR shell-settle-behavior-gate）：新链路零 host 导航，落定 = 传输 +
+# 铸币 + 行为三信号——① dsh 就绪行、②铸币 303 行（转发路由存在）、③客户端存活
+# （代理 200 json/SSE 或 WS 隧道，`smoke_client_alive`：真 UI 启动数秒内必有，
+# holder 零次——这是唯一能区分 holder 与真 UI 的机器信号）。
+# 导航到达只作诊断回显，不判门；verdict 探针与 reload 赛跑（常采到 holder），
+# 只取 auth 硬拦（401 真坏页），healthy/unknown/缺行一律交由存活 + 见证判定。
+# $1=pid（可空：空即只查一次，进程已死不再等）。读调用方 SETTLE_WAIT 全局。
 wait_settled() {
-  local pid="${1:-}" i n arrived=0 state=""
+  local pid="${1:-}" i state=""
   for i in $(seq 1 "$SETTLE_WAIT"); do
-    n="$(nav_count)"
-    if [[ "$n" -ge 1 ]] && { nav_token_seen || [[ "$(nav_count_after_ready)" -ge 1 ]]; }; then
-      arrived=1
-      state="$(page_verdict_state)"
-      # 裁决 auth 即终页确认是鉴权页，任何腿都判 FAIL（ADR verdict-honesty-repair 的机器可判门）。
-      if [[ "$state" == "auth" ]]; then
-        echo "error: 落定但页面裁决=auth（终页为鉴权页），按失败计" >&2
-        return 1
-      fi
-      echo "note: 导航已落定（到达 ${n} 次，裁决=${state:-无}，用时 ${i}s）" >&2
+    state="$(page_verdict_state)"
+    # 裁决 auth 即终页确认是鉴权页，任何腿都判 FAIL（ADR verdict-honesty-repair 的机器可判门）。
+    if [[ "$state" == "auth" ]]; then
+      echo "error: 终页裁决=auth（鉴权页），按失败计" >&2
+      return 1
+    fi
+    if log_has "$FULL_RE" && mint_seen && smoke_client_alive "${LOG:-}"; then
+      echo "note: 行为落定（①+铸币303+客户端存活，用时 ${i}s）" >&2
       return 0
     fi
     if [[ -z "$pid" ]]; then
-      if [[ "$arrived" -eq 1 ]]; then
-        echo "error: 进程已退出且未见页面裁决（到达 ${n} 次）" >&2
-      else
-        echo "error: 进程已退出且导航未落定（到达 ${n} 次，无 token 第二跳且①后无壳到达）" >&2
-      fi
+      echo "error: 进程已退出且行为未落定（$(settle_missing)）" >&2
       return 1
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
-      if [[ "$arrived" -eq 1 ]]; then
-        echo "error: 落定期进程退出且未见页面裁决（到达 ${n} 次）" >&2
-      else
-        echo "error: 落定期进程退出且导航未落定（到达 ${n} 次）" >&2
-      fi
+      echo "error: 落定期进程退出且行为未落定（$(settle_missing)）" >&2
       return 1
     fi
     sleep 1
   done
-  echo "error: 落定超时（${SETTLE_WAIT}s 内未见 token 第二跳且①后无壳到达；到达 $(nav_count) 次）" >&2
+  echo "error: 落定超时（${SETTLE_WAIT}s 内未集齐①+铸币303+客户端存活：$(settle_missing)；到达 $(nav_count) 次仅诊断）" >&2
   return 1
 }
 
@@ -148,12 +155,14 @@ smoke_capture_witness() {
 
 # 客户端存活门（ADR loopback-forward-proxy）：浅色主题真 UI 的 mean/sd 与空白页重叠
 # （mac light UI mean≈0.99/sd≈0.04 vs 401 墙 sd≈0.04），像素无法区分；改证行为——
-# dsh 客户端启动后必经代理发 RPC/SSE（同源），host.log 里 ≥3 次 200 即活（实测启动数秒内 ~10 次）。
-# 两种回包前缀都要数：缓冲体走 `代理回包：`、流式走 `代理流转：`（只数其一即漏数，R3 实证）。
-# $1=host.log 路径。0=存活（调用方与像素见证 OR 组绿）。
+# dsh 客户端启动后必经代理发 RPC/SSE/WS（同源），host.log 里 200 回包/流转或 WS 隧道
+# 合计 ≥3 即活（实测启动数秒内 ~10 次）。三种前缀都要数：缓冲体走 `代理回包：`、
+# 流式走 `代理流转：`（只数其一即漏数，R3 实证）、WS 走 `代理升级隧道已建`
+# （remote.mux 无 200 行，纯 WS 形态会漏数）。holder 零次——落定门的行为支即此。
+# $1=host.log 路径。0=存活（落定门行为支 + 像素见证 OR 组绿）。
 smoke_client_alive() {
   local log="${1:-}" n=0
   [[ -f "$log" ]] || return 1
-  n=$(grep -cE "代理(流转|回包)：200 (application/json|text/event-stream)" "$log" 2>/dev/null || true)
+  n=$(grep -cE "代理(流转|回包)：200 (application/json|text/event-stream)|代理升级隧道已建" "$log" 2>/dev/null || true)
   [[ "${n:-0}" -ge 3 ]]
 }

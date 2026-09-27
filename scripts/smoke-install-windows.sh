@@ -9,8 +9,10 @@
 #   ②`[bootstrap] 引导开始：` = 安装链保底。
 # 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
 # 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
-# 落定语义（ADR smoke-settle-content-verdict）：①只是 dsh 就绪行，verdict 与截图
-# 必须等导航落定——`[nav] 导航已到达` 去重 ≥1 次且含 `?token=` 第二跳，或①之后壳到达 ≥1 次（代理源 localhost/dsh 直连 127；占位到达不算，ADR loopback-forward-proxy）。落定超时或
+# 落定语义（ADR shell-settle-behavior-gate）：①只是 dsh 就绪行，落定 = ① + 铸币 303
+# （转发路由存在）+ 客户端存活（代理 200/WS 隧道，holder 零次——唯一区分 holder 与真 UI
+# 的机器信号）。导航到达只作诊断回显，不判门（holder 自 reload 不产生到达回调；
+# token 第二跳已随转发模型退役）。verdict 只取 auth 硬拦。落定超时或
 # 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
 # 实测边界（2026-08-29 首跑）：Windows runner 的壳同样在窗口创建（Ryn Run）即
 # 退出——WebView2 初始化的原生依赖在 runner 环境不可用，全链信号不可达，冒烟
@@ -89,13 +91,19 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   [[ "$(smoke_verdict "$OUT" "$LOG")" == *"full-chain"* ]] && tpass "verdict-full" || tfail "verdict-full"
   : >"$OUT"; : >"$LOG"
   [[ "$(smoke_verdict "$OUT" "$LOG")" == *"install-chain"* ]] && tpass "verdict-install" || tfail "verdict-install"
-  printf '[nav] 导航已到达：http://127.0.0.1:1/（origin → x）\n[nav] 导航已到达：http://127.0.0.1:1/?token=t → y\n' >"$OUT"
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-ok" || tfail "settle-ok"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[nav] 导航已到达：http://127.0.0.1:1/（origin → x）\n' >"$OUT"; : >"$LOG"
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-timeout-should-fail" || tpass "settle-timeout-fails"
+  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-no-traffic-should-fail" || tpass "settle-no-traffic-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  # 到达不判门：到达再多，无铸币无流量即不落定。
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://localhost:9/（origin → x）\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-arrival-only-should-fail" || tpass "settle-arrival-only-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   SETTLE_WAIT=90 wait_settled "" >/dev/null 2>&1 && tfail "settle-deadpid-should-fail" || tpass "settle-deadpid-fails"
   heartbeat "60" "$HOME_DIR" 2>&1 | grep -q "等待中（60s）" && tpass "heartbeat" || tfail "heartbeat"
@@ -201,6 +209,9 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
     else
       rc=1
       smoke_shot "smoke-windows-fail.png"
+      echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
+      echo_nav_lines
+      echo_mint_lines
       echo "--- 壳输出尾部（FAIL 证据）---" >&2
       tail -30 "$OUT" >&2 || true
       if [[ -f "$LOG" ]]; then
@@ -228,6 +239,9 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
       else
         rc=1
         smoke_shot "smoke-windows-fail.png"
+        echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
+        echo_nav_lines
+        echo_mint_lines
         echo "--- 壳输出尾部（FAIL 证据）---" >&2
         tail -30 "$OUT" >&2 || true
       fi

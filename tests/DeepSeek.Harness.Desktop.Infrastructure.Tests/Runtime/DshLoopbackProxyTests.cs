@@ -293,6 +293,14 @@ public class DshLoopbackProxyTests
         Assert.Equal(HttpStatusCode.OK, held.StatusCode);
         Assert.Contains("__shell_ready", heldBody, StringComparison.Ordinal);
         Assert.Contains("location.reload()", heldBody, StringComparison.Ordinal);
+        // holder 首行即裁决排除用的标记常量（改文案必同步改常量，否则误判健康）。
+        Assert.Contains(WebAuthRecovery.HolderMarker, heldBody, StringComparison.Ordinal);
+        // 自恢复无计时器：失败只由事件驱动重试（online/可见性恢复/手动链），禁 setTimeout/setInterval。
+        Assert.Contains("addEventListener('online'", heldBody, StringComparison.Ordinal);
+        Assert.Contains("addEventListener('visibilitychange'", heldBody, StringComparison.Ordinal);
+        Assert.Contains("getElementById('retry')", heldBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("setTimeout", heldBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("setInterval", heldBody, StringComparison.Ordinal);
 
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));

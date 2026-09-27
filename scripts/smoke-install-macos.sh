@@ -8,9 +8,11 @@
 #   ②`[bootstrap] 引导开始：` = 安装链保底。
 # 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
 # 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
-# 落定语义（ADR smoke-settle-content-verdict）：①只是 dsh 就绪行，verdict 与截图
-# 必须等导航落定——`[nav] 导航已到达` 去重 ≥1 次且含 `?token=` 第二跳，或①之后到达 ≥1 次（单跳世界：壳直达；token 路径保留）。落定超时或
-# 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
+# 落定语义（ADR shell-settle-behavior-gate）：①只是 dsh 就绪行，落定 = ① + 铸币 303
+# （转发路由存在）+ 客户端存活（代理 200/WS 隧道，holder 零次——唯一区分 holder 与真 UI
+# 的机器信号）。导航到达只作诊断回显，不判门（holder 自 reload 不产生到达回调；
+# token 第二跳已随转发模型退役，token 永不进导航靶点）。verdict 探针与 reload 赛跑，
+# 只取 auth 硬拦，其余交存活 + 见证判定。落定超时或落定期进程退出即 FAIL。
 # mac runner 有 WindowServer 会话，①应命中；若 WKWebView/WindowServer 在 runner
 # 会话受限使壳提前退出（①前），②为保底判定位（已记录边界，同 Linux CI）。
 # verdict 观测 + 截图门（ADR macos-cookie-grace-reload）：应用侧 verdict/重进/探针行回显到 step 日志
@@ -116,17 +118,34 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   [[ "$(smoke_verdict "$OUT" "$LOG")" == *"full-chain"* ]] && tpass "verdict-full" || tfail "verdict-full"
   : >"$OUT"; : >"$LOG"
   [[ "$(smoke_verdict "$OUT" "$LOG")" == *"install-chain"* ]] && tpass "verdict-install" || tfail "verdict-install"
-  printf '[nav] 导航已到达：http://127.0.0.1:1/（origin → x）\n[nav] 导航已到达：http://127.0.0.1:1/?token=t → y\n' >"$OUT"
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）\n' >"$LOG"
   sleep 30 & live=$!
   SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-ok" || tfail "settle-ok"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[nav] 导航已到达：http://127.0.0.1:1/（origin → x）\n' >"$OUT"; : >"$LOG"
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
   sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-timeout-should-fail" || tpass "settle-timeout-fails"
+  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-no-mint-should-fail" || tpass "settle-no-mint-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 代理源就绪：http://localhost:9/（回环独占）\n[nav] 导航已到达：http://localhost:9/\n' >"$OUT"; : >"$LOG"
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-single-proxy" || tfail "settle-single-proxy"
+  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-no-traffic-should-fail" || tpass "settle-no-traffic-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  # 到达不判门（回归锁）：到达再多，无铸币无流量即不落定——产品不再发射落定导航。
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://localhost:9/（origin → x）\n[nav] 导航已到达：http://localhost:9/（origin → x）\n' >"$OUT"; : >"$LOG"
+  sleep 30 & live=$!
+  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-arrival-only-should-fail" || tpass "settle-arrival-only-fails"
+  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
+  # 双源双计回归锁：同一到达在 OUT 与带时间戳 host.log 各一行，去重后计 1 次。
+  printf '[nav] 导航已到达：http://localhost:9/（origin → x）\n' >"$OUT"
+  printf '[2026-09-27 06:44:03] [nav] 导航已到达：http://localhost:9/（origin → x）\n' >"$LOG"
+  [[ "$(nav_count)" -eq 1 ]] && tpass "settle-dedupe" || tfail "settle-dedupe"
+  # auth 硬拦：行为信号齐但终页是鉴权页 → 失败。
+  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=auth（origin=http://localhost:9 可见文本 60 字）\n' >"$OUT"
+  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
+  sleep 30 & live=$!
+  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-auth-should-fail" || tpass "settle-auth-fails"
   kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
   printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：ryn://app/index.html\n[nav] 导航已到达：ryn://app/index.html\n' >"$OUT"; : >"$LOG"
   sleep 30 & live=$!
@@ -148,10 +167,12 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   wait_verdict 10 2 >/dev/null 2>&1 && tpass "verdict-quiescent-seen" || tfail "verdict-quiescent-seen"
   : >"$OUT"; : >"$LOG"
   wait_verdict 3 2 >/dev/null 2>&1 && tpass "verdict-quiescent-missing-proceeds" || tfail "verdict-quiescent-missing-proceeds"
-  # 存活门：≥3 次代理 200 即活；不足/缺文件即死（浅色 UI 像素不可分的兜底）。
-  # 形状须与实现一致：缓冲 RPC 走 `代理回包：`、流式走 `代理流转：`。
+  # 存活门：代理 200（缓冲 `代理回包：` + 流式 `代理流转：`）或 WS 隧道（`代理升级隧道已建`，
+  # remote.mux 无 200 行）合计 ≥3 即活；不足/缺文件即死（浅色 UI 像素不可分的兜底）。
   { echo '[shell] 代理回包：200 application/json 100字节（POST /api/a）'; echo '[shell] 代理流转：200 text/event-stream（GET /plugins/events）'; echo '[shell] 代理回包：200 application/json 200字节（POST /api/b）'; } >"$LOG"
   smoke_client_alive "$LOG" && tpass "alive-enough-passes" || tfail "alive-enough-passes"
+  { echo '[shell] 代理回包：200 application/json 100字节（POST /api/a）'; echo '[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）'; echo '[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）'; } >"$LOG"
+  smoke_client_alive "$LOG" && tpass "alive-tunnel-passes" || tfail "alive-tunnel-fails"
   printf '[shell] 代理流转：200 application/json（POST /api/a）\n' >"$LOG"
   smoke_client_alive "$LOG" && tfail "alive-short-should-fail" || tpass "alive-short-fails"
   : >"$LOG"
@@ -257,6 +278,9 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
     else
       rc=1
       echo_verdict_lines
+      echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
+      echo_nav_lines
+      echo_mint_lines
       smoke_shot "smoke-macos-fail.png"
       echo "--- 壳输出尾部（FAIL 证据）---" >&2
       tail -30 "$OUT" >&2 || true
@@ -286,6 +310,9 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
       else
         rc=1
         echo_verdict_lines
+        echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
+        echo_nav_lines
+        echo_mint_lines
         smoke_shot "smoke-macos-fail.png"
         echo "--- 壳输出尾部（FAIL 证据）---" >&2
         tail -30 "$OUT" >&2 || true

@@ -49,6 +49,32 @@ public class WebAuthRecoveryTests
         Assert.Equal(WebAuthRecovery.PageVerdict.Healthy, Classify(Sample(Origin.ToUpperInvariant(), text), Origin));
     }
 
+    /// <summary>holder 页文本（同源）→ 未知：holder 与真 UI 同源且文本非空，无排除即误判
+    /// 健康（dispatch 36300876224 实证 43 字 holder 判绿）；命中交存活 + 见证判定，不挡启动。</summary>
+    [Theory]
+    [InlineData("Starting DeepSeek Harness…")]
+    [InlineData("Starting DeepSeek Harness…\n\nTroubleshooting")]
+    public void HolderText_IsUnknown(string text)
+    {
+        Assert.Equal(WebAuthRecovery.PageVerdict.Unknown, Classify(Sample(Origin, text), Origin));
+    }
+
+    /// <summary>holder 标记常量值钉死：改 holder 文案必须同步改常量（发射点唯一家声明），否则本测试先红。</summary>
+    [Fact]
+    public void HolderMarker_ValuePinned()
+    {
+        Assert.Equal("Starting DeepSeek Harness", WebAuthRecovery.HolderMarker, StringComparer.Ordinal);
+    }
+
+    /// <summary>鉴权优先于 holder：同含两标记判 auth（401 真坏页不被 holder 排除掩盖）。</summary>
+    [Fact]
+    public void AuthBeatsHolder()
+    {
+        Assert.Equal(WebAuthRecovery.PageVerdict.Auth, Classify(
+            Sample(Origin, "Starting DeepSeek Harness… dsh web authentication required; reopen the URL printed by dsh web."),
+            Origin));
+    }
+
     /// <summary>文本内含分隔符同串 → 只按首个切分，仍判健康（不误伤）。</summary>
     [Fact]
     public void SeparatorInsideText_StillSplitsOnce()

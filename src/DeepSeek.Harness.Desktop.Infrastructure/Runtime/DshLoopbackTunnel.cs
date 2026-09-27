@@ -4,7 +4,8 @@ using System.Text;
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 /// <summary>回环代理的升级隧道面（ADR loopback-forward-proxy）：向 dsh authority 建裸 TCP
-/// 重放 WS 握手并双向直泵（对齐上游 `onBeforeSendHeaders` 手术）。路由经构造注入。</summary>
+/// 重放 WS 握手并双向直泵（标准反代语义：`Origin`→dsh 自源 + 贴 cookie，页源不透传）。
+/// 路由经构造注入。</summary>
 internal sealed class DshLoopbackTunnel
 {
     private readonly DshShellForward _forward;
@@ -18,7 +19,7 @@ internal sealed class DshLoopbackTunnel
         _log = log;
     }
 
-    /// <summary>升级通道隧道（对齐上游 `onBeforeSendHeaders` 手术）：向 dsh authority 建裸 TCP，
+    /// <summary>升级通道隧道（标准反代语义）：向 dsh authority 建裸 TCP，
     /// 重放握手（`Origin`→dsh 自源 + 贴 cookie + `sec-fetch-site: same-origin`，其余原样），
     /// 而后双向直泵至任一端关闭（寿命与连接绑定，无计时器）。dsh 客户端远程通道（`remote.mux`）即此。</summary>
     internal async Task RelayUpgradeAsync(NetworkStream page, ShellProxyFraming.PageRequest req, string upgrade, CancellationToken ct)
@@ -71,7 +72,7 @@ internal sealed class DshLoopbackTunnel
         }
     }
 
-    /// <summary>升级握手手术（对齐上游 `onBeforeSendHeaders`）：`Origin`→dsh 自源 + 贴 cookie +
+    /// <summary>升级握手手术（标准反代语义）：`Origin`→dsh 自源 + 贴 cookie +
     /// `sec-fetch-site: same-origin`，其余原样透传；`Host` 由 TCP 目标隐含，不伪造。</summary>
     private static string BuildUpgradeHead(ShellProxyFraming.PageRequest req, string authority, string cookie)
     {

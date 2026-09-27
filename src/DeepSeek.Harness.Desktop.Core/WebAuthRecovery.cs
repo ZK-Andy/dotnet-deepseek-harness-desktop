@@ -16,6 +16,15 @@ public static class WebAuthRecovery
     /// </summary>
     public const string AuthRequiredMarker = "authentication required";
 
+    /// <summary>
+    /// holder 页标记：代理未铸币时 serve 的本地加载页首行（发射点见
+    /// <c>Infrastructure.Runtime.DshLoopbackLocal</c>，本常量是该文本的唯一家——
+    /// 改 holder 文案必须同步改此处）。holder 与真 UI 同源且文本非空，无此排除即恒判
+    /// healthy（dispatch <c>36300876224</c> 实证：43 字 holder 判绿）。
+    /// 正常 dsh UI 永不含该英文整句；命中即 <see cref="PageVerdict.Unknown"/>（未证伪，不挡启动，
+    /// 交存活 + 见证判定），绝不判健康。
+    /// </summary>
+    public const string HolderMarker = "Starting DeepSeek Harness";
     /// <summary>裁决 token（日志行 <c>[nav] 页面裁决=&lt;token&gt;</c> 的取值；冒烟门禁 grep 同串）。
     /// 串由应用侧拥有：改 token 即显示腿缺行转红（fail loud），未置位腿丢 auth 门。</summary>
     public const string VerdictHealthy = "healthy";
@@ -29,7 +38,7 @@ public static class WebAuthRecovery
     /// <summary>终页三态：健康 / 鉴权页 / 未知（探针失败、非同源无标记文本、或文本为空）。</summary>
     public enum PageVerdict
     {
-        /// <summary>同源、可见文本非空且不含鉴权标记。</summary>
+        /// <summary>同源、可见文本非空且不含鉴权/holder 标记。</summary>
         Healthy,
 
         /// <summary>可见文本命中鉴权标记（不限 origin：壳 opaque origin 页亦可判；正常 UI 永不含该串）。</summary>
@@ -71,6 +80,10 @@ public static class WebAuthRecovery
         if (visibleText.Contains(AuthRequiredMarker, StringComparison.Ordinal))
         {
             verdict = PageVerdict.Auth;
+        }
+        else if (visibleText.Contains(HolderMarker, StringComparison.Ordinal))
+        {
+            verdict = PageVerdict.Unknown;
         }
         else if (!sameOrigin)
         {
