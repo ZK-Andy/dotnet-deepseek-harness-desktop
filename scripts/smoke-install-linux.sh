@@ -47,16 +47,8 @@ APP_BIN="/usr/bin/deepseek-harness-desktop"
 # 单步上限 + 120s 余量 = 720s。重试轮不计入——冒烟只等首轮落定，超时按②收工。
 # 引导步数或 StepTimeoutMinutes 变化时必须同批重算。SMOKE_WAIT_SECONDS 可覆写。
 SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
-# 落定窗：①出现后等铸币 + 客户端存活；auth 裁决即拦。预算须覆盖含自愈重进的最坏链
-# （建窗 120 残量 + 铸币/探针/重进各段有界等待 ≈ 285s，
-# ADR page-verdict-gate），故 ci 矩阵按架构给值（SMOKE_SETTLE_SECONDS；见 package-linux.yml）。
-# 硬上限（用户令）：冒烟总时长不许超 3 分钟，落定窗不得超过 120s——CI 矩阵值超限即夹紧，避免"加时间换绿"。
-SMOKE_MAX_SETTLE_SECONDS="${SMOKE_MAX_SETTLE_SECONDS:-120}"
+# 落定窗：①出现后等铸币 + 客户端存活；auth 裁决即拦。默认 90s，SMOKE_SETTLE_SECONDS 可覆写。
 SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
-if [[ "$SETTLE_WAIT" =~ ^[0-9]+$ ]] && (( SETTLE_WAIT > SMOKE_MAX_SETTLE_SECONDS )); then
-  echo "note: 落定窗 ${SETTLE_WAIT}s 超过上限 ${SMOKE_MAX_SETTLE_SECONDS}s，按上限执行（时长硬约束）" >&2
-  SETTLE_WAIT="$SMOKE_MAX_SETTLE_SECONDS"
-fi
 # 裁决后重绘窗（秒）：WebKit 提交回调早于新页出像素，裁决一过立刻拍易拍到上一跳旧帧
 # （ADR page-verdict-gate）；无显示时 smoke_shot 本就早退，不睡。非数字按默认。
 SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
@@ -82,12 +74,6 @@ smoke_verdict() { # $1=日志
   else
     echo "SMOKE_VERDICT=install-chain（仅引导启动）"
   fi
-}
-
-# 冻结腿放行判定（ADR smoke-witness-real-and-eval-first-hop）：冻结腿上落定失败但①已达
-# （已知原生 hang 签名）→ 调用方记 frozen verdict 放行；①都没见仍是真回归。0=放行。
-smoke_frozen_pass() { # $1=日志
-  [[ "${SMOKE_FROZEN:-0}" == "1" ]] && grep -qE "$FULL_RE" "$1" 2>/dev/null
 }
 
 # 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
@@ -171,11 +157,6 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   [[ "$(smoke_verdict "$OUT")" == *"full-chain"* ]] && tpass "verdict-full" || tfail "verdict-full"
   : >"$OUT"
   [[ "$(smoke_verdict "$OUT")" == *"install-chain"* ]] && tpass "verdict-install" || tfail "verdict-install"
-  # 冻结腿放行判定：冻结开且①已达 → 放行；①未见 → 不放行；冻结关 → 不放行
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$tdir/f1"; : >"$tdir/f2"
-  SMOKE_FROZEN=1 smoke_frozen_pass "$tdir/f1" && tpass "frozen-seen" || tfail "frozen-seen"
-  SMOKE_FROZEN=1 smoke_frozen_pass "$tdir/f2" && tfail "frozen-missing" || tpass "frozen-missing"
-  SMOKE_FROZEN=0 smoke_frozen_pass "$tdir/f1" && tfail "frozen-off" || tpass "frozen-off"
   printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
   printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）\n' >"$LOG"
   sleep 30 & live=$!
@@ -353,23 +334,14 @@ smoke_deb() {
   env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
     timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
   pid=$!
-  # 动态作用域：wait_url→wait_settled 读得到；钉在本次调用内，不外泄给后续腿（R2 S3）。
-  local frozen=""
   wait_url "$log" "$pid" "$home"; rc=$?
-  # 冻结腿（ADR smoke-witness-real-and-eval-first-hop：arm64 原生 hang 已知病灶）：
-  # ①已达仅未落定 → 记 frozen verdict 放行（截图留痕，不拦发版）；①都没见仍是真回归，保持红。
-  if [[ $rc -ne 0 ]] && smoke_frozen_pass "$log"; then
-    echo "SMOKE_VERDICT=frozen-native-hang（已知病灶冻结：①已达，未落定；截图留痕，不拦发版）" >&2
-    rc=0; frozen=1
-  fi
   # 裁决已过再等有界重绘窗：提交回调早于新页出像素，立刻拍会拍到上一跳（401）旧帧；无显示不睡。
   if [[ $rc -eq 0 && -n "${DISPLAY:-}" ]]; then
     sleep "$SMOKE_REPAINT_SECONDS"
     kill -0 "$pid" 2>/dev/null || echo "note: 重绘窗内应用已退出，截图可能为空窗（rc 仍按落定结论）" >&2
   fi
   smoke_shot "smoke-linux-deb.png"
-  # 冻结腿跳过内容见证（终页本就是未落定的旧帧，见证必红；截图留痕供人眼）。
-  if [[ $rc -eq 0 && -z "$frozen" && -n "${DISPLAY:-}" && -n "${SMOKE_SHOT_DIR:-}" ]]; then
+  if [[ $rc -eq 0 && -n "${DISPLAY:-}" && -n "${SMOKE_SHOT_DIR:-}" ]]; then
     if smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-linux-deb.png"; then
       :
     elif smoke_client_alive "$home/logs/host.log"; then
@@ -386,8 +358,7 @@ smoke_deb() {
     echo "error: [deb] 冒烟失败。日志尾部：" >&2
     cat "$log" >&2
   else
-    # 冻结腿 verdict 已在落定处打印（frozen-native-hang），此处不再复打 smoke_verdict。
-    if [[ -z "$frozen" ]]; then smoke_verdict "$log"; fi
+    smoke_verdict "$log"
     # 成功也留尾（ADR verdict-honesty-repair）：绿跑的导航/探针/自愈行此前随日志删除，
     # "绿即无证"致 401 绿 verdict 无从复核；30 行覆盖导航段（仓内尾部惯例）。
     echo "== [deb] 冒烟通过，应用日志尾部（内容判定留痕）：" >&2

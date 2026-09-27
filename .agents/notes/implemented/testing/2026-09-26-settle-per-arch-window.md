@@ -2,6 +2,7 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 撤回「矩阵按架构分腿给落定窗（amd64 180 / arm64 300）」的落地形态：两腿实为同值 300，且 `settle_seconds` 矩阵列与脚本侧 120s 夹紧上限已随旧链路一并退役，落定窗现为三平台单值 90s（见 [settle-window-and-arm64-freeze-retirement](2026-09-28-settle-window-and-arm64-freeze-retirement.md)）。保留本 ADR 作「分腿调参」这条思路的反例档案，正文不动。
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 
 Related: 证据为 dispatch run `36237256739`（arm64 超时行缺席 ⟹ hop1 发起距 kill 不足 30s ⟹ 窗就绪在启动后约 103s+）。

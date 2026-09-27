@@ -35,19 +35,9 @@ jobs:
           - arch: amd64
             rid: linux-x64
             runs-on: ubuntu-latest
-            # 落定窗秒数（ADR settle-per-arch-window + page-verdict-gate）：窗口须覆盖含自愈
-            # 重进的最坏链——建窗残量 120 + 两跳(30+5)×2 + 探针 15×2 + 重进(35) + 再探针 30 ≈ 285s；
-            # 裁决行出现前收工即假红。
-            settle_seconds: 300
-            # 冻结腿（ADR smoke-witness-real-and-eval-first-hop）：0=正常门。
-            frozen: 0
           - arch: arm64
             rid: linux-arm64
             runs-on: ubuntu-24.04-arm
-            settle_seconds: 300
-            # arm64 原生 hang 已知病灶冻结：①已达仅未落定 → frozen verdict 放行（截图留痕，
-            # 不拦发版）；①未见仍红。解冻待 Ryn 最小复现有回音。
-            frozen: 1
     runs-on: ${{ matrix.runs-on }}
     env:
       DOTNET_NOLOGO: '1'
@@ -129,13 +119,9 @@ jobs:
           # 产品侧条件降级在 runner 上同样命中（sysctl 阳性，日志有禁用行），CI 显式设与产品行为一致。
           WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
           # 软件渲染实验（Xvfb 无 DRI3 加速，DRI3 warning 后窗口在 dsh 就位前消失；纯 CI 取证，不动产品）：
-          # 关 WebKit 合成 + 强制 Mesa 软渲染，看窗口能否存活到第二跳。
+          # 关 WebKit 合成 + 强制 Mesa 软渲染，看窗口能否存活到 dsh 就位、页面出像素。
           WEBKIT_DISABLE_COMPOSITING_MODE: '1'
           LIBGL_ALWAYS_SOFTWARE: '1'
-          # 落定窗分腿（ADR settle-per-arch-window）：脚本既有 SMOKE_SETTLE_SECONDS 口，无脚本改动。
-          SMOKE_SETTLE_SECONDS: ${{ matrix.settle_seconds }}
-          # 冻结腿开关（ADR smoke-witness-real-and-eval-first-hop）：arm64=1，amd64=0。
-          SMOKE_FROZEN: ${{ matrix.frozen }}
           # W2 落盘：冒烟日志（stdout 全量 + host.log）进稳定目录，CI 传 artifact（step 日志只有尾巴）。
           SMOKE_LOG_DIR: ${{ github.workspace }}/smoke-logs
         run: dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" bash scripts/smoke-install-linux.sh artifacts/${{ matrix.rid }}
