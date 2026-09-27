@@ -4,9 +4,11 @@ Status: implemented
 
 Review: FULL/2026-09-28#3/R1=ok R2=ok R3=ok
 
+Review: LIGHT/2026-09-28#2/R2=ok
+
 评审：R1（简化面）4 轮、R2（代码面）4 轮——第 2–4 轮的结论均落在本批自身措辞的自相矛盾面（勘误计数、写错的「不变」、门禁扩面后别处描述未跟改），已随批改正，用户按「证据行判据 = 0 Blocker」叫停续轮；R3（ADR/文档面）本批首轮，1 Blocker + 8 Suggestion。逐条裁定：
 
-- **Blocker**（残余缺口①把「推送后要跑的 dispatch」写成已取得的替代证据）：**已修**——改为「机器替代证据 = `--self-test`；分支 ref 上的 dispatch 待本批推送后补跑，实跑记录见 Testing」。
+- **Blocker**（残余缺口①把「推送后要跑的 dispatch」写成已取得的替代证据）：**已修**——改为「机器替代证据 = `--self-test`；分支 ref 上的 dispatch 待本批推送后补跑，实跑记录见 Testing」；该补跑已随推送完成（三条全 success，见 Testing）。
 - **S1**（Problem 表首行「`permissions` + `concurrency` + `workflow_dispatch` 版本输入头」记 74 行，与自述口径不符）：**采纳**——按该行口径复算为 43（linux 11 + macos 16 + windows 16）。
 - **S2**（同表 checkout 行标注含 linux `setup-node`，数字却只算 18）：**采纳**——改 21（3×6 + 3）。
 - **S3**（「2026-09-26 至 09-27 两天里…三次」与 git 史不符）：**采纳**——三文件同改的三次提交是 `f352280`/`9bd49a3`/`c608ab0`（09-25/09-27/09-28），已改写为具名。
@@ -17,6 +19,8 @@ Review: FULL/2026-09-28#3/R1=ok R2=ok R3=ok
 - **S8**（`docs/development.md` 称 `release.yml` 为「tag 触发」，漏掉手动 dispatch 这半个触发面，而本篇 Decision 二依赖它）：**采纳**——补「手动 dispatch 在分支 ref 上只出包不发布」。
 
 R3 另独立用 `gh` 与 base 文件复核了本篇全部数值断言（176/123/133=432、`36325106379` 的 6m43s/7m01s、11 条自测、治理扫描面、16 处勘误恰等且 16 篇均只增不删、`page-verdict-gate` 勘误指向成立），并确认 Decision 全为现在时、Alternatives 覆盖三案、durable 文档已零残留旧文件名引用。
+
+本批推送后另有**一轮 LIGHT 回写**（把三条 dispatch 的实跑证据写进 Testing 与 Consequences，`Review: LIGHT/2026-09-28#2/R2=ok`）：R2 首轮 2 Blocker + 1 Suggestion，**全采纳**——①把 `needs:` 与 `if:` 并列为发布作业跳过原因（实为五腿全绿、依赖已满足，跳过由 `if:` 单独所致）；②「两轮组名只差 workflow 名段」与所举的两串自相矛盾（`concurrency` 组名字面串取不到实测值，已降级为「两轮不同组、互不干扰」）；③①条称覆盖 `needs:` 跳过语义，而该路径未触发，改为设计保证、实跑证据只到 `if:` 跳过。
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
@@ -81,7 +85,7 @@ R3 另独立用 `gh` 与 base 文件复核了本篇全部数值断言（176/123/
 - 自签旋钮从死变活：dispatch `self_sign=true` → `SELF_SIGN=1` → `codesign`/`signtool` 自签路径真执行（缺工具仍 fail loud）；tag 发布路径的未签名行为不变。
 - 新执行点：`bash scripts/package-version.sh --self-test` 进 `ci.yml` 的 `docs` job；判据矩阵登记在 `docs/testing.md`。
 - 预览重 dispatch 仍自取消（`package-workflow_dispatch-<ref>` 组内）；tag 发布轮不被任何 dispatch 影响。
-- **残余验证缺口**：①**tag 触发臂到不了**——`workflow_dispatch` 用的是**该 ref 所在提交的** workflow 文件，tag 指向的提交里没有本批的新文件，故「tag ref 上版本门放行/拦截 + 发布作业的 download-artifact→preflight→Release」只能由下一次真 tag 关闭（与 [CI 门禁诚实化](2026-09-28-ci-gate-honesty.md) 同款缺口）；本批的机器替代证据 = `--self-test`（11/11，覆盖 tag 门全部分支与参数缺值诊断），分支 ref 上的 `release.yml`/`package.yml` dispatch（覆盖 reusable 调用面、`needs:` 跳过语义、三条腿）待本批推送后补跑，实跑记录见 Testing。②Windows 腿的自签路径（`SELF_SIGN=1` → `signtool`）只能由人工带 `self_sign=true` 的 dispatch 关闭，本批未跑（改的是映射，不是签名实现）。③本 workflow 的 `concurrency` 组名解析与自取消语义（`cancel-in-progress` 的实际生效面）只有真 runner 能实证——本批的组名设计与死锁规避是文档+推演结论（runner 侧无本地可跑的验证面）。
+- **残余验证缺口**：①**tag 触发臂到不了**——`workflow_dispatch` 用的是**该 ref 所在提交的** workflow 文件，tag 指向的提交里没有本批的新文件，故「tag ref 上版本门放行/拦截 + 发布作业的 download-artifact→preflight→Release」只能由下一次真 tag 关闭（与 [CI 门禁诚实化](2026-09-28-ci-gate-honesty.md) 同款缺口）；本批的机器替代证据 = `--self-test`（11/11，覆盖 tag 门全部分支与参数缺值诊断），分支 ref 上的 `release.yml`/`package.yml` dispatch 已随本批推送补跑（`36357111848`/`36357116884`，全 success），覆盖 reusable 调用面、三条腿与 `if:` 驱动的发布作业跳过；`needs:` **失败**→不发 Release 这条路径本轮未触发（五腿全绿、依赖已满足），仍属设计保证而非实跑证据。②Windows 腿的自签路径（`SELF_SIGN=1` → `signtool`）只能由人工带 `self_sign=true` 的 dispatch 关闭，本批未跑（改的是映射，不是签名实现）。③本 workflow 的 `concurrency` 组名解析与自取消语义（`cancel-in-progress` 的实际生效面）只有真 runner 能实证——本批的组名设计与死锁规避是文档+推演结论（runner 侧无本地可跑的验证面）；三条 dispatch 的时间窗重叠（见 Testing）给出一条实跑旁证：组名只差 workflow 名段的两轮互不干扰，但**同组**竞争下的 `cancel-in-progress` 触发面仍未证。
 - 后续若要给预览再加「同一分支只保留最新一轮」之外的并发语义，改的是 `package.yml` 的 `concurrency` 两行，别动发布轮的语义。
 
 ## Testing
@@ -91,7 +95,11 @@ R3 另独立用 `gh` 与 base 文件复核了本篇全部数值断言（176/123/
 - **旧文件名在 `implemented/**` 语料里的勘误定档**：本批删除三份 `package-*.yml` 后全库仍有引用，判据分开——**历史叙述不改**（Testing 段的 `dispatch package-*` + run id、逐批实录、Problem 段对当时状态的描述：那些记录的当时文件名是对的）；**把已删文件当作现行落点的断言**（今天按该文件名 grep 会落空）按勘误纪律补 `Erratum:` 行、正文不动，共 **16 处**（`git diff --cached -- .agents/notes/ | grep -c '^+Erratum:'` 可复核）：`2026-09-28-ci-gate-honesty`、`2026-08-28-publish-aot-jit-alignment`、`2026-09-27-cookbook-retired-entry-cold-archive`、`2026-08-20-free-self-sign-dev`、`2026-08-20-community-targeted-testing`、`2026-08-20-remove-linux-main-push-packaging-trigger`、`2026-09-13-payload-smoke-probe`、`2026-08-20-linux-packaging-pilot-harness-model`、`2026-09-25-smoke-runner-deepening`、`2026-09-13-workflow-input-env-interpolation`、`2026-09-26-smoke-linux-xvfb-fullchain`、`2026-09-26-smoke-witness-real-and-eval-first-hop`、`2026-09-27-macos-cookie-grace-reload-and-witness-gate`、`2026-08-20-drop-standalone-zip-artifacts`、`2026-08-20-unified-release-and-structured-notes`、`2026-09-26-page-verdict-gate`（末篇同时点出文件名与落定窗数值两条失效面）。
 - 三腿**行为保真**由 R2 逐 job 逐字比对确认（与 base 三份旧 workflow 的 step 体结构级相等）：六处 `if: always()`、九处 `upload-artifact`（6 证据 + 3 包）、六处分档表达式、`fail-fast: false`、matrix/`runs-on` 全部逐字保住；版本解析判据由 linux 单腿扩到三腿属收紧而非丢失。
 - 门禁全绿：`verify-adr-format` / `verify-cookbook` / `verify-doc-budgets` / `verify-md-links` / `verify-readme-badges` / `verify-handoff-structure` / `verify-governance` / `verify-skill-format` / `verify-code-health --enforce` / `verify-code-conventions --enforce` / `verify-ui-copy`。
-- **dispatch 实跑**（`.github/workflows/**` 变更的硬要求，见 feature-flow 步骤 3）：本批推送后在分支 ref 上实跑三条——`release.yml`（三平台包腿 + `needs:` 跳过发布作业）、`package.yml` 直调（预览路径）、`ci.yml` 推送轮（新增自测步）；run id 与 verdict 随本批回写至本行。
+- **dispatch 实跑**（`.github/workflows/**` 变更的硬要求，见 feature-flow 步骤 3）：本批推送后（`c93bd4c`）在分支 ref `main` 上实跑三条，全部 success：
+  - `release.yml` `36357111848`（7m04s）：`package / build-{linux(amd64,arm64), macos(arm64,x64), windows}` 五腿全 success，**`release` 作业 = skipped**——分支 ref 非 tag，`if: startsWith(github.ref, 'refs/tags/v')` 判假即跳过。这次跳过**不是** `needs:` 所致（五腿全绿、依赖已满足），故 `needs:` 失败→不发 Release 那条路径本轮未被触发。
+  - `package.yml` 直调 `36357116884`（预览路径）：同名五腿全 success、无发布作业（预览不发布）。
+  - `ci.yml` 推送轮 `36357097964`：success，含新增的 `bash scripts/package-version.sh --self-test` 步。
+  - 三条时间窗实测重叠（`ci` 22:58:31–23:00:17、`release` 22:58:45–23:05:49、`package` 22:58:50–23:05:40），且 `release` 轮内的 `package / build-*` 五腿与直调 `package.yml` 的预览轮**全程并发而未互相取消**——按 Decision 一的构造，被调用腿的组名取调用方 workflow 名（`release`）、直调取自身名（`package`），两轮因此不同组，即 Decision 一所指「预览轮的 cancel 掐掉发布腿」这一失败面在真 runner 上未出现。组名字面串（含被调用腿的事件段取值）取不到实测值（run 元数据的 `concurrency` 字段为 null，跳过作业无日志），故本条只证「两轮不同组、互不干扰」；`cancel-in-progress` 在**同组**竞争下的真实触发面仍需专门场景（残余缺口③的主体不变）。
 
 ## Related
 
