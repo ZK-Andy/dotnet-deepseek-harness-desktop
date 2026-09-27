@@ -75,7 +75,7 @@ public sealed class RynNavigationCallbacks
     /// 更权威的「页面已到达」信号（取代已删除的 <c>RuntimeSupervisor.onNavigated</c>）。
     /// 写入在主线程（<c>app.Build()</c> 后），读在 saucer 原生回调线程，故用
     /// <see cref="Volatile"/> 保证跨线程可见性。
-    /// 宿主消费者：引导完成两跳导航的提交等待（组合根 <c>NavigateAndAwaitCommitAsync</c>，
+    /// 宿主消费者：导航提交等待（组合根 <c>NavigateAndAwaitCommitAsync</c>，
     /// ADR bootstrap-cross-scheme-cookie-401）；横幅/恢复各自有自重复试与直注入，不经此信号。
     /// </summary>
     public void SetOnNavigated(Action onNavigated) => Volatile.Write(ref _onNavigatedImpl, onNavigated);

@@ -15,6 +15,8 @@ public sealed class DshLoopbackProxy : IDisposable
     private readonly Action<string> _log;
     private readonly HttpClient _client;
     private readonly TcpListener _listener;
+    private readonly DshLoopbackLocal _local;
+    private readonly DshLoopbackTunnel _tunnel;
     private bool _disposed;
 
     /// <summary>代理源（窗口 URL 与探针/守卫口径家；端口 OS 分配，构造即绑定）。</summary>
@@ -26,13 +28,14 @@ public sealed class DshLoopbackProxy : IDisposable
     /// <summary>构造并绑定回环代理（端口 OS 分配；dsh 通道另配，见重载）。</summary>
     /// <param name="forward">壳转发器（铸币态家）。</param>
     /// <param name="log">日志回调（入口/终态 loud；值永不落盘）。</param>
-    public DshLoopbackProxy(DshShellForward forward, Action<string> log)
-        : this(forward, log, new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false })
+    /// <param name="contentRoot">引导页静态根（wwwroot；null 即无指南面，指南请求 502）。</param>
+    public DshLoopbackProxy(DshShellForward forward, Action<string> log, string? contentRoot)
+        : this(forward, log, new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, contentRoot)
     {
     }
 
     /// <summary>测试缝：注入 dsh 通道传输。</summary>
-    internal DshLoopbackProxy(DshShellForward forward, Action<string> log, HttpMessageHandler transport)
+    internal DshLoopbackProxy(DshShellForward forward, Action<string> log, HttpMessageHandler transport, string? contentRoot = null)
     {
         ArgumentNullException.ThrowIfNull(forward);
         ArgumentNullException.ThrowIfNull(log);
@@ -42,6 +45,8 @@ public sealed class DshLoopbackProxy : IDisposable
         // 流式直通：Timeout 无限（SSE 空闲不断），寿命与页 socket 绑定（页断联即 cancel，
         // EventSource 自重连；见 ADR loopback-forward-proxy）。
         _client = new HttpClient(transport) { Timeout = Timeout.InfiniteTimeSpan };
+        _local = new DshLoopbackLocal(forward, log, contentRoot);
+        _tunnel = new DshLoopbackTunnel(forward, log);
         _listener = new TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
         int port = ((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -166,11 +171,16 @@ public sealed class DshLoopbackProxy : IDisposable
 
     private async Task RelayAsync(NetworkStream stream, ShellProxyFraming.PageRequest req, CancellationToken ct)
     {
+        // 代理本地端点（无需铸币）：就绪探针/指南页/未铸币 holder（对齐上游 serveWebDocument 的
+        // 本地文档面；holder 长轮询等铸币，无计时器，见 ADR）。
+        if (await _local.RelayLocalAsync(stream, req, ct).ConfigureAwait(false))
+        {
+            return;
+        }
+
         if (req.Headers.TryGetValue("Upgrade", out string? upgrade) && !string.IsNullOrWhiteSpace(upgrade))
         {
-            // WS 等升级通道：本代理只做 HTTP 语义中继（dsh 客户端只用 fetch/SSE，见 ADR），loud 502。
-            _log($"[shell] 代理拒升级通道：502（{req.Method} {ShellProxyFraming.PagePath(req.Target)} Upgrade={upgrade}）");
-            await ShellProxyFraming.WriteSmallAsync(stream, 502, "shell proxy: upgrade not supported", ct).ConfigureAwait(false);
+            await _tunnel.RelayUpgradeAsync(stream, req, upgrade, ct).ConfigureAwait(false);
             return;
         }
 

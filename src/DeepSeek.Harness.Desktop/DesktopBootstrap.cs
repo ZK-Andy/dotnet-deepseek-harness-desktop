@@ -98,14 +98,16 @@ public sealed partial class DesktopBootstrap
     }
 
     /// <summary>启动回环代理源（ADR loopback-forward-proxy）：绑定失败 loud 后降级
-    /// （窗口走 wwwroot，行为与 dsh 未起一致，不挡启动）。</summary>
+    /// （窗口走 wwwroot，行为与 dsh 未起一致，不挡启动）。引导静态根随代理装配
+    /// （未铸币时本地 holder/指南面；Ryn IPC 自窗口创建即活，不依赖 dsh 时序）。</summary>
     private void StartProxy()
     {
         CancellationTokenSource cts = new();
         _proxyCts = cts;
         try
         {
-            _proxy = new DshLoopbackProxy(_shellForward, HostLog.Write);
+            _proxy = new DshLoopbackProxy(
+                _shellForward, HostLog.Write, Path.Combine(AppContext.BaseDirectory, "wwwroot"));
             _ = _proxy.RunAsync(cts.Token);
         }
         catch (Exception ex) when (ex is SocketException or IOException or ObjectDisposedException or ArgumentException)

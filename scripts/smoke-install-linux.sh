@@ -233,6 +233,11 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   else
     echo "skip: 无 convert，跳过截图内容见证夹具"
   fi
+  # 存活门：≥3 次代理 200 即活；不足即死（形状与实现一致：缓冲 `代理回包：` + 流式 `代理流转：`）。
+  { echo '[shell] 代理回包：200 application/json 100字节（POST /api/a）'; echo '[shell] 代理流转：200 text/event-stream（GET /plugins/events）'; echo '[shell] 代理回包：200 application/json 200字节（POST /api/b）'; } >"$tdir/alive.log"
+  smoke_client_alive "$tdir/alive.log" && tpass "alive-enough-passes" || tfail "alive-enough-passes"
+  printf '[shell] 代理请求：GET /x\n' >"$tdir/alive.log"
+  smoke_client_alive "$tdir/alive.log" && tfail "alive-short-should-fail" || tpass "alive-short-fails"
   PAGE_VERDICT_REQUIRED=0
   # 落定①后计数（ADR settle-gate-and-probe-retry）：①前双到达不算落定；①后双到达即落定（Linux 只报最终 URL）
   # 注意：此前 wait_url 用例把 OUT/LOG 指走，此处显式复位回自测夹具（settle-ok 先例同理）。
@@ -335,7 +340,13 @@ smoke_deb() {
   smoke_shot "smoke-linux-deb.png"
   # 冻结腿跳过内容见证（终页本就是未落定的旧帧，见证必红；截图留痕供人眼）。
   if [[ $rc -eq 0 && -z "$frozen" && -n "${DISPLAY:-}" && -n "${SMOKE_SHOT_DIR:-}" ]]; then
-    smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-linux-deb.png" || rc=1
+    if smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-linux-deb.png"; then
+      :
+    elif smoke_client_alive "$home/logs/host.log"; then
+      echo "note: 像素偏白但客户端存活（代理 200 RPC/SSE ≥3，浅色主题像素不可分），按活判过" >&2
+    else
+      rc=1
+    fi
   fi
   kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
   set -e

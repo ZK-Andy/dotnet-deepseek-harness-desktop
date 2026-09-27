@@ -28,6 +28,10 @@ public sealed class DshShellForward
     private string _authority = string.Empty;
     private string _cookieHeader = string.Empty;
 
+    // 铸币就绪门（单调：首次铸币成功即永久就绪；holder 长轮询的等待位，无计时器，
+    // 中止即页断联/应用退出，见 ADR loopback-forward-proxy）。
+    private readonly TaskCompletionSource _mintedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <summary>构造转发器（应用单例；HttpClient 生命周期随实例）。</summary>
     public DshShellForward()
         : this(new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false })
@@ -78,6 +82,7 @@ public sealed class DshShellForward
                 _cookieHeader = string.Join("; ", pairs);
             }
 
+            _mintedTcs.TrySetResult();
             return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -116,6 +121,10 @@ public sealed class DshShellForward
 
         return !string.IsNullOrEmpty(authority);
     }
+
+    /// <summary>等铸币就绪（holder 长轮询用；无超时，中止即调用方收回等待）。</summary>
+    /// <param name="ct">调用方取消令牌（页断联/应用退出）。</param>
+    internal Task WaitMintedAsync(CancellationToken ct) => _mintedTcs.Task.WaitAsync(ct);
 
     /// <summary>构造外发转发请求：黑名单头剔除 + 壳 cookie 附带 + 体与 content 头保真
     /// + 源头改写（标准反代语义）。两级落头：请求头不成落 <c>Content.Headers</c>

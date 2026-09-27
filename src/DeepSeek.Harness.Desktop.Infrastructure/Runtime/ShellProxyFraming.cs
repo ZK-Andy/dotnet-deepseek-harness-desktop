@@ -177,6 +177,46 @@ internal static class ShellProxyFraming
         await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
     }
 
+    /// <summary>写 JSON 小体（就绪探针；`Connection: close` 定界）。</summary>
+    internal static async Task WriteJsonAsync(NetworkStream stream, int status, string json, CancellationToken ct)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(json);
+        string head = $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Type: application/json\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
+        await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>写 HTML 小体（holder 页；`Connection: close` 定界）。</summary>
+    internal static async Task WriteHtmlAsync(NetworkStream stream, int status, string html, CancellationToken ct)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(html);
+        string head = $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
+        await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>只写响应头（HEAD 语义：头与 GET 同值，无体）。</summary>
+    internal static async Task WriteHeadAsync(NetworkStream stream, int status, string contentType, long contentLength, CancellationToken ct)
+    {
+        string head = $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Type: {contentType}\r\nContent-Length: {contentLength}\r\nConnection: close\r\n\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
+    }
+
+    /// <summary>指南静态 MIME（对齐上游 `serveWebDocument` 的类型表子集；未知按 octet-stream）。</summary>
+    internal static string GuideMimeType(string extension) => extension.ToUpperInvariant() switch
+    {
+        ".HTML" or ".HTM" => "text/html; charset=utf-8",
+        ".JS" or ".MJS" => "application/javascript; charset=utf-8",
+        ".CSS" => "text/css; charset=utf-8",
+        ".JSON" => "application/json; charset=utf-8",
+        ".SVG" => "image/svg+xml",
+        ".PNG" => "image/png",
+        ".ICO" => "image/x-icon",
+        ".WOFF" => "font/woff",
+        ".WOFF2" => "font/woff2",
+        _ => "application/octet-stream",
+    };
+
     internal static async Task WriteBufferedAsync(NetworkStream stream, int status, string contentType, byte[] bytes, CancellationToken ct)
     {
         string head = $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Type: {contentType}\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n";

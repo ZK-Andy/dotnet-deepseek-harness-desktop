@@ -46,11 +46,10 @@ SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
 SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
 # 截图前等应用侧 verdict 行静默：探针 + grace 重载 + 再探针全程可超 100s，取 150s 有界（只定截图时机，不判门）。
 VERDICT_WAIT="${SMOKE_VERDICT_SECONDS:-150}"
-# 裁决后重绘窗（秒）：提交回调早于新页出像素，立刻拍易拍到上一跳旧帧（Linux 同款）；
-# dsh 客户端冷启动（5MB bundle 解析 + RPC + 首绘）在 mac 约 10s（dispatch 36294149610 实证：
-# 裁决后 +10s 白页、稍后 fail 截图已是全 UI）。非数字按默认。
-SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-15}"
-[[ "$SMOKE_REPAINT_SECONDS" =~ ^[0-9]+$ ]] || SMOKE_REPAINT_SECONDS=15
+# 裁决后重绘窗（秒）：提交回调早于新页出像素，立刻拍易拍到上一跳旧帧（Linux 同款）；非数字按默认。
+# （存活门落地后启动判定不再依赖截图时序，回退 3s——禁祈祷式加时。）
+SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
+[[ "$SMOKE_REPAINT_SECONDS" =~ ^[0-9]+$ ]] || SMOKE_REPAINT_SECONDS=3
 FULL_RE='\[host\] dsh web ='
 BOOT_RE='\[bootstrap\] 引导开始：'
 PASS_RE="$FULL_RE|$BOOT_RE"
@@ -149,6 +148,14 @@ smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回�
   wait_verdict 10 2 >/dev/null 2>&1 && tpass "verdict-quiescent-seen" || tfail "verdict-quiescent-seen"
   : >"$OUT"; : >"$LOG"
   wait_verdict 3 2 >/dev/null 2>&1 && tpass "verdict-quiescent-missing-proceeds" || tfail "verdict-quiescent-missing-proceeds"
+  # 存活门：≥3 次代理 200 即活；不足/缺文件即死（浅色 UI 像素不可分的兜底）。
+  # 形状须与实现一致：缓冲 RPC 走 `代理回包：`、流式走 `代理流转：`。
+  { echo '[shell] 代理回包：200 application/json 100字节（POST /api/a）'; echo '[shell] 代理流转：200 text/event-stream（GET /plugins/events）'; echo '[shell] 代理回包：200 application/json 200字节（POST /api/b）'; } >"$LOG"
+  smoke_client_alive "$LOG" && tpass "alive-enough-passes" || tfail "alive-enough-passes"
+  printf '[shell] 代理流转：200 application/json（POST /api/a）\n' >"$LOG"
+  smoke_client_alive "$LOG" && tfail "alive-short-should-fail" || tpass "alive-short-fails"
+  : >"$LOG"
+  smoke_client_alive "$LOG" && tfail "alive-empty-should-fail" || tpass "alive-empty-fails"
   printf '[nav] 页面裁决=healthy（origin=x 可见文本 10 字）\n' >"$OUT"
   ( sleep 1; printf '[nav] 页面裁决=auth（origin=x 可见文本 5 字）\n' >>"$OUT" ) &
   bg=$!
@@ -236,7 +243,13 @@ for _ in $(seq 1 "$SMOKE_WAIT"); do
       # 内容见证（与 Linux 同阈值，中央裁剪避菜单栏/Dock）：401 墙/引导页像素即红，截图缺失亦红。
       # 落定/裁决门：显示腿 mac 开门（ADR macos-cookie-grace-reload）——到达过不算绿。
       if [[ -n "${SMOKE_SHOT_DIR:-}" ]]; then
-        smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-macos.png" "800x600+0+0" "center" || rc=1
+        if smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-macos.png" "800x600+0+0" "center"; then
+          :
+        elif smoke_client_alive "$LOG"; then
+          echo "note: 像素偏白但客户端存活（代理 200 RPC/SSE ≥3，浅色主题像素不可分），按活判过" >&2
+        else
+          rc=1
+        fi
       fi
       # PASS 也打印壳输出尾部：壳何时/为何退出（如窗口创建即退出）需要证据在案
       echo "--- 壳输出尾部（PASS 证据）---" >&2

@@ -15,9 +15,10 @@ public sealed partial class DesktopBootstrap
 {
     private AppSetup BuildApp(Preflight preflight, RuntimeSetup runtime, UpdateSetup update)
     {
-        // 导航靶点初值：代理源（dsh 就位即直载代理 URL；dsh 未起/代理未起为 null，健康 reload 跳过）。
+        // 导航靶点初值：代理源（恒定，与 dsh 是否就绪无关；未铸币时代理 serve 本地 holder，
+        // 就绪后 holder 自 reload，无需 host 导航——绕开 saucer set_url 原生挂家族）。
         // token 只活在铸币链（StartRuntime/收养/落定重铸），永不进导航靶点。
-        _webUrl = runtime.WebUrl is not null ? _proxy?.Url : null;
+        _webUrl = _proxy?.Url;
 
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 IsReady）
         string iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
@@ -34,16 +35,16 @@ public sealed partial class DesktopBootstrap
                     opts.AllowedOrigins.Add(_proxy.Origin);
                 }
 
-                if (runtime.WebUrl is not null && _proxy is not null)
+                if (_proxy is not null)
                 {
-                    // 代理源直载（ADR loopback-forward-proxy）：窗口永远只进代理 URL，
-                    // token/cookie 永不进页面（铸币在各 epoch 起点落定，见 EnterMainUiAsync/收养；
-                    // Ryn 对 http loopback 页自动起 IPC 服并注绝对 _ipcBase，见 RynWindow.LoadContent）。
+                    // 代理源恒为初始 URL（dsh 未就绪时窗口即开 holder；Ryn dev-server 分支在窗口创建时
+                    // 接管 IPC，不依赖 dsh 时序——冷机探针同样有效）。
+                    // 仅代理绑定失败才回退 wwwroot 占位（极罕见，行为与旧降级一致）。
                     opts.Url = _proxy.Url;
                 }
                 else
                 {
-                    // 降级：dsh 未起时展示本地占位页，保证壳仍可开
+                    // 降级：代理未起时展示本地占位页，保证壳仍可开
                     opts.ContentDirectory = Path.Combine(AppContext.BaseDirectory, "wwwroot");
                 }
 
@@ -61,7 +62,7 @@ public sealed partial class DesktopBootstrap
                     HostLog.Write($"[host] icon 缺失：{iconPath}");
                 }
 
-                HostLog.Write($"[host] Ryn opts: Url={(runtime.WebUrl is { } logged ? logged.ToString() : "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
+                HostLog.Write($"[host] Ryn opts: Url={(_proxy?.Url?.ToString() ?? "null")}（dsh={(runtime.WebUrl is not null ? "就绪" : "未起")}） ApplicationId={opts.ApplicationId} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 // WebView 调试器默认关闭（正式打包无调试窗口）；开发期设 DSH_DEVTOOLS=1 开启。
                 opts.DevTools = Environment.GetEnvironmentVariable("DSH_DEVTOOLS") == "1";
             })
@@ -270,8 +271,8 @@ public sealed partial class DesktopBootstrap
         // 人肉发现）从此有自动留痕；连续 Dead 达阈值后在预算内触发一次有界 reload，耗尽转观测-only，
         // 成功恢复复位预算（防误报引发无限重载循环，对齐参照 plugin_boot.rs 的有界刷新门控）。
         // 首拍延迟（HealthInitialDelaySeconds）避开启动空窗，探针异常按 Unknown 续跑。reload 委托捕获 webUrl（字段，
-        // 初始/引导完成/崩溃恢复导航三处都会刷新，见上文与 RuntimeSupervisor 的 navigate），
-        // 恒为当前 dsh web 靶点；webUrl 只有当引导未落定（dsh 未起）才为空，而该窗口页面是
+        // 初始恒代理根/引导完成刷新，见上文与 RuntimeSupervisor 的 navigate），
+        // 恒为当前代理靶点；webUrl 只有当代理绑定失败才为空，而该窗口页面是
         // wwwroot 引导页（有内容 → Alive），不会进入 Dead 恢复分支——reload 委托的空态只是防御性兜底。
         _healthMonitor = new PageHealthMonitor(
             app.WindowAccessor,
@@ -326,10 +327,12 @@ public sealed partial class DesktopBootstrap
         });
     }
 
-    /// <summary>引导完成后的代理侧导航收尾：窗口进代理源单跳直达；导航前必先铸币（本方法是 bootstrap 路径的
-    /// epoch 起点，覆盖式重铸）。由引导服务在 dsh 就位时回调。</summary>
+    /// <summary>引导完成后的铸币收尾：覆盖式重铸（本方法是 bootstrap 路径的 epoch 起点）。
+    /// 不导航（鉴权自愈的同源重载除外）——窗口恒在代理源上，未铸币时 holder 自轮询就绪后自 reload
+    /// （renderer 发起，绕开 saucer set_url 原生挂家族；见 ADR loopback-forward-proxy）。
+    /// 由引导服务在 dsh 就位时回调。</summary>
     /// <param name="app">Ryn 应用装配产出（窗口访问器与回调服务来源）。</param>
-    /// <param name="url">dsh 就位端点（仅供落定重铸与日志；导航一律走代理 URL）。</param>
+    /// <param name="url">dsh 就位端点（仅供落定重铸与日志；无需导航，恒驻代理源）。</param>
     /// <param name="ct">引导任务取消令牌。</param>
     private async Task EnterMainUiAsync(AppSetup app, DshWebUrl url, CancellationToken ct)
     {
@@ -340,20 +343,16 @@ public sealed partial class DesktopBootstrap
         }
 
         _webUrl = _proxy.Url;
+        // 壳铸币先行（不依赖窗口：纯 HTTP；holder 的就绪轮询以此次铸币为门——先铸才放行）。
+        _ = await _shellForward.MintAsync(url, HostLog.Write, ct).ConfigureAwait(false);
         // 窗口可能尚未建好（原生建窗慢于 dsh 就位时，首个 Current 即抛，ADR bootstrap-window-ready-wait）：
-        // 有界等可用，超时 loud 跳过本次导航（dsh 已就绪，重启即进）。
+        // 有界等可用，超时 loud 跳过本次（dsh 已就绪，holder 自 reload 即进）。
         if (!await WaitForWindowAsync(app, ct).ConfigureAwait(false))
         {
-            HostLog.Write($"[nav] 等窗口可用超时（{_timeouts.WindowReadyTimeoutSeconds}s），跳过本次进入主界面导航");
+            HostLog.Write($"[nav] 等窗口可用超时（{_timeouts.WindowReadyTimeoutSeconds}s），跳过本次（holder 自 reload 即进）");
             return;
         }
-        // 壳铸币（bootstrap 路径 dsh 在 StartRuntime 之后才就位，此处是 epoch 起点；覆盖式重铸，
-        // MintAsync 无 epoch 跟踪，每次全量 HTTP。无 mint 即导航 → 代理 502 白页
-        // （dispatch 36273205175 arm64 实证），故导航前必铸）。
-        _ = await _shellForward.MintAsync(url, HostLog.Write, ct).ConfigureAwait(false);
-        // 代理单跳直达：同站内无 token、无 cookie 链（Ryn dev-server 分支已自动信任代理源，
-        // 无需逐跳授权）。第二跳等提交的旧语义退役（单跳无合并问题）；提交等待仍有界（NavCommitTimeoutSeconds）。
-        await NavigateAndAwaitCommitAsync(app, _proxy.Url, ct);
+
         await SettleWebSessionAsync(app, url, ct);
     }
 }

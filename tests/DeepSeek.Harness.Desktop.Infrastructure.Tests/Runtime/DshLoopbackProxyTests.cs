@@ -214,9 +214,9 @@ public class DshLoopbackProxyTests
         await runCts.CancelAsync();
     }
 
-    /// <summary>升级通道（WS）即停 502：本代理只做 HTTP 语义中继（dsh 客户端只用 fetch/SSE）。</summary>
+    /// <summary>升级隧道上游不可达即 502（桩内存传输无 TCP 面；成功面见隧道单测）。</summary>
     [Fact]
-    public async Task Proxy_UpgradeRequest_Returns502()
+    public async Task Proxy_UpgradeUnreachable_Returns502()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
@@ -238,8 +238,228 @@ public class DshLoopbackProxyTests
         int read = await stream.ReadAsync(buf.AsMemory(0, 12), cts.Token);
 
         Assert.StartsWith("HTTP/1.1 502", Encoding.ASCII.GetString(buf, 0, read), StringComparison.Ordinal);
-        Assert.Contains(lines, l => l.Contains("拒升级通道"));
+        Assert.Contains(lines, l => l.Contains("升级上游不可达"));
         await runCts.CancelAsync();
+    }
+
+    /// <summary>升级隧道成功面：裸 TCP 直泵 + 握手手术（Origin→dsh 自源 + 贴 cookie + same-origin），
+    /// 对标上游 `onBeforeSendHeaders`（dsh 远程通道 `remote.mux` 即此）。</summary>
+    [Fact]
+    public async Task Proxy_UpgradeTunnelsWithHeaderSurgery()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var wsStub = new StubWebSocketServer();
+        var httpStub = new StubDshHandler();
+        var forward = new DshShellForward(httpStub);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+
+        using var socket = new TcpClient();
+        await socket.ConnectAsync(IPAddress.Loopback, proxy.Url.Port, cts.Token);
+        using NetworkStream stream = socket.GetStream();
+        byte[] head = Encoding.ASCII.GetBytes(
+            "GET /api/remote.mux HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+        await stream.WriteAsync(head, cts.Token);
+        byte[] buf = new byte[12];
+        int read = await stream.ReadAsync(buf.AsMemory(0, 12), cts.Token);
+
+        Assert.StartsWith("HTTP/1.1 101", Encoding.ASCII.GetString(buf, 0, read), StringComparison.Ordinal);
+        Assert.True(await wsStub.HandshakeOkAsync(cts.Token));
+        Assert.Contains(lines, l => l.Contains("升级隧道已建"));
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>holder 面：未铸币的 `/` 回 holder 页（含就绪轮询与指南链）；铸币后 `/` 走 dsh（桩 200）。</summary>
+    [Fact]
+    public async Task Proxy_Holder_ServedOnlyWhenUnminted()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stub = new StubDshHandler();
+        var forward = new DshShellForward(stub);
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, stub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+        using var page = new HttpClient();
+
+        using HttpResponseMessage held = await page.GetAsync(new Uri(proxy.Url, "/"), cts.Token);
+        string heldBody = await held.Content.ReadAsStringAsync(cts.Token);
+
+        Assert.Equal(HttpStatusCode.OK, held.StatusCode);
+        Assert.Contains("__shell_ready", heldBody, StringComparison.Ordinal);
+        Assert.Contains("location.reload()", heldBody, StringComparison.Ordinal);
+
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+        using HttpResponseMessage doc = await page.GetAsync(new Uri(proxy.Url, "/"), cts.Token);
+        string docBody = await doc.Content.ReadAsStringAsync(cts.Token);
+
+        Assert.Equal("DSH-DOC", docBody);
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>就绪探针：未铸币长轮询（无计时器；500ms 内必不返回），铸币后即 200 ready。</summary>
+    [Fact]
+    public async Task Proxy_Ready_LongPollsUntilMinted()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stub = new StubDshHandler();
+        var forward = new DshShellForward(stub);
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, stub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+        using var page = new HttpClient();
+
+        Task<HttpResponseMessage> waiting = page.GetAsync(new Uri(proxy.Url, "__shell_ready"), cts.Token);
+        await Task.Delay(500, cts.Token);
+        Assert.False(waiting.IsCompleted);
+
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+        using HttpResponseMessage ready = await waiting;
+        string body = await ready.Content.ReadAsStringAsync(cts.Token);
+
+        Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
+        Assert.Contains("\"ready\":true", body, StringComparison.Ordinal);
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>指南面：磁盘文件按 MIME 直出；越界 403；缺失 404；非 GET/HEAD 405。</summary>
+    [Fact]
+    public async Task Proxy_Guide_ServesDiskWithGuards()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        string root = Path.Combine(Path.GetTempPath(), "proxy-guide-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, "js"));
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "index.html"), "<html>GUIDE</html>", cts.Token);
+            await File.WriteAllTextAsync(Path.Combine(root, "js", "app.js"), "var x = 1;", cts.Token);
+            var stub = new StubDshHandler();
+            var forward = new DshShellForward(stub);
+            var lines = new List<string>();
+            using var proxy = new DshLoopbackProxy(forward, lines.Add, stub, root);
+            using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+            _ = proxy.RunAsync(runCts.Token);
+            using var page = new HttpClient();
+
+            using HttpResponseMessage index = await page.GetAsync(new Uri(proxy.Url, "__shell_guide/"), cts.Token);
+            Assert.Equal(HttpStatusCode.OK, index.StatusCode);
+            Assert.Equal("text/html; charset=utf-8", index.Content.Headers.ContentType?.ToString());
+
+            using HttpResponseMessage js = await page.GetAsync(new Uri(proxy.Url, "__shell_guide/js/app.js"), cts.Token);
+            Assert.Equal("application/javascript; charset=utf-8", js.Content.Headers.ContentType?.ToString());
+
+            using HttpResponseMessage bare = await page.GetAsync(new Uri(proxy.Url, "__shell_guide"), cts.Token);
+            string bareBody = await bare.Content.ReadAsStringAsync(cts.Token);
+            Assert.Equal(HttpStatusCode.OK, bare.StatusCode);
+            Assert.Contains("GUIDE", bareBody, StringComparison.Ordinal);
+
+            using var headRequest = new HttpRequestMessage(HttpMethod.Head, new Uri(proxy.Url, "__shell_guide/"));
+            using HttpResponseMessage head = await page.SendAsync(headRequest, cts.Token);
+            string headBody = await head.Content.ReadAsStringAsync(cts.Token);
+            Assert.Equal(HttpStatusCode.OK, head.StatusCode);
+            Assert.Equal("<html>GUIDE</html>".Length, head.Content.Headers.ContentLength);
+            Assert.Equal(string.Empty, headBody);
+
+            using HttpResponseMessage missing = await page.GetAsync(new Uri(proxy.Url, "__shell_guide/nope.html"), cts.Token);
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+
+            // 越界需裸 socket（HttpClient 会先规范化 `..`，真到不了服务端；WebKit 同）。
+            using var raw = new TcpClient();
+            await raw.ConnectAsync(IPAddress.Loopback, proxy.Url.Port, cts.Token);
+            using NetworkStream rawStream = raw.GetStream();
+            byte[] evil = Encoding.ASCII.GetBytes("GET /__shell_guide/../evil HTTP/1.1\r\nHost: x\r\n\r\n");
+            await rawStream.WriteAsync(evil, cts.Token);
+            byte[] evilBuf = new byte[12];
+            int evilRead = await rawStream.ReadAsync(evilBuf.AsMemory(0, 12), cts.Token);
+            Assert.StartsWith("HTTP/1.1 403", Encoding.ASCII.GetString(evilBuf, 0, evilRead), StringComparison.Ordinal);
+
+            using HttpResponseMessage post = await page.PostAsync(
+                new Uri(proxy.Url, "__shell_guide/"), new StringContent("x"), cts.Token);
+            Assert.Equal(HttpStatusCode.MethodNotAllowed, post.StatusCode);
+            await runCts.CancelAsync();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>桩 WebSocket 服务端（裸 TCP）：断言握手手术（Origin→authority + 贴 cookie +
+    /// same-origin），回 101。双向泵体由对称 `CopyToAsync` 承担，握手即契约面。</summary>
+    private sealed class StubWebSocketServer : IDisposable
+    {
+        private readonly TcpListener _listener;
+        private readonly CancellationTokenSource _cts = new();
+        private readonly TaskCompletionSource _handshakeOk =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int Port { get; }
+
+        public StubWebSocketServer()
+        {
+            _listener = new TcpListener(IPAddress.Loopback, 0);
+            _listener.Start();
+            Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+            _ = ServeAsync(_cts.Token);
+        }
+
+        public async Task<bool> HandshakeOkAsync(CancellationToken ct)
+        {
+            try
+            {
+                await _handshakeOk.Task.WaitAsync(ct).ConfigureAwait(false);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+        }
+
+        private async Task ServeAsync(CancellationToken ct)
+        {
+            try
+            {
+                using TcpClient client = await _listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
+                using NetworkStream stream = client.GetStream();
+                byte[] buf = new byte[4096];
+                int read = await stream.ReadAsync(buf.AsMemory(0, buf.Length), ct).ConfigureAwait(false);
+                string head = Encoding.ASCII.GetString(buf, 0, read);
+                bool ok = head.Contains("Origin: http://127.0.0.1:" + Port, StringComparison.Ordinal)
+                    && head.Contains("Cookie: " + CookieName + "=", StringComparison.Ordinal)
+                    && head.Contains("sec-fetch-site: same-origin", StringComparison.OrdinalIgnoreCase)
+                    && head.Contains("Upgrade: websocket", StringComparison.OrdinalIgnoreCase);
+                if (ok)
+                {
+                    _handshakeOk.TrySetResult();
+                }
+
+                byte[] accept = Encoding.ASCII.GetBytes(
+                    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+                    "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n");
+                await stream.WriteAsync(accept, ct).ConfigureAwait(false);
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException or IOException)
+            {
+                // 测试收尾。
+            }
+        }
+
+        public void Dispose()
+        {
+            _cts.Cancel();
+            _listener.Stop();
+        }
     }
 
     /// <summary>桩 dsh（内存传输）：token 跳 303 + 铸 cookie；/events 永不结束的 SSE；
@@ -336,6 +556,14 @@ public class DshLoopbackProxyTests
                 };
                 ui.Headers.TryAddWithoutValidation("Set-Cookie", $"{CookieName}=ROTATED; Path=/");
                 return ui;
+            }
+
+            if (path == "/")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("DSH-DOC", Encoding.UTF8, "text/html"),
+                };
             }
 
             return new HttpResponseMessage(HttpStatusCode.Unauthorized);

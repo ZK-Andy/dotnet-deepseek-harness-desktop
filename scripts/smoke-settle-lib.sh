@@ -145,3 +145,15 @@ smoke_capture_witness() {
   echo "error: 截图内容见证不通过（mean=${mean} sd=${sd}）：近空白/深色页（401 墙或引导页）不算 UI" >&2
   return 1
 }
+
+# 客户端存活门（ADR loopback-forward-proxy）：浅色主题真 UI 的 mean/sd 与空白页重叠
+# （mac light UI mean≈0.99/sd≈0.04 vs 401 墙 sd≈0.04），像素无法区分；改证行为——
+# dsh 客户端启动后必经代理发 RPC/SSE（同源），host.log 里 ≥3 次 200 即活（实测启动数秒内 ~10 次）。
+# 两种回包前缀都要数：缓冲体走 `代理回包：`、流式走 `代理流转：`（只数其一即漏数，R3 实证）。
+# $1=host.log 路径。0=存活（调用方与像素见证 OR 组绿）。
+smoke_client_alive() {
+  local log="${1:-}" n=0
+  [[ -f "$log" ]] || return 1
+  n=$(grep -cE "代理(流转|回包)：200 (application/json|text/event-stream)" "$log" 2>/dev/null || true)
+  [[ "${n:-0}" -ge 3 ]]
+}
