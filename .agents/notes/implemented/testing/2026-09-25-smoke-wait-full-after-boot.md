@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 撤回本笔记关于 `PASS_RE` 的现状陈述（「原 `PASS_RE` 保留为组合串供失败尾部兼容」）：该变量全仓零读者，已随冒烟脚本残留清理删除（含三处定义与 rpm 容器的 `-e` 注入），见 [smoke-script-residue-cleanup](../simplification/2026-09-28-smoke-script-residue-cleanup.md)。保留本笔记关于「②命中后继续等①」的等待语义论证，正文不动。
+
 Review: LIGHT/2026-09-25/R2=ok（0 Blocker、1 Suggestion 已收口）
 
 ## Problem
