@@ -3,6 +3,7 @@
 Status: implemented
 
 Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
+Review: FULL/2026-09-27#2/R1=ok R2=ok R3=ok
 
 三审结论：R1/R2 无触达；R3 新增注册表读写收敛安装器脚本内、HKCU 与 lowest 提权一致、`uninsdeletekey` 清理；PS 空 catch 为探针 miss 路径、收敛至 `::warning`；无 Blocker。
 
@@ -28,3 +29,4 @@ Windows 安装器（Inno Setup 唯一链）相对三家源码存在五处实质�
 ## Testing
 
 `bash -n` 全改脚本；`verify-package-layout.sh` 对本地 publish/staging 目录手跑；`verify-adr-format.py` 新建即校验。`dotnet test` 不受影响（未碰源码）。
+CI 注册表探针只取证不判门：脚本尾 `$error.Clear(); exit 0`——`try` 吞掉的 HKCU miss 仍残留 `$error`，会令 `powershell.exe -Command` 以 exit 1 退出（run `36307146505` 实证：证据已打印仍红），清错后退出码归零；真语法错误无输出仍非零，fail loud 不变。
