@@ -17,7 +17,7 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 - 递归收集每个 job 的 `steps`，对 step 的 `run:` 文本扫描 `${{ … }}` 表达式：命中 `github.event.`（事件载荷）或 `env.`（step env 派生值回读）即 FAIL，报 step 名与表达式。
 - 豁免形态 = step 级 `env:` 键值内的插值——这是载荷进入脚本的唯一合法通道，扫描只针对 `run:` 文本，`env:`/`with:` 块不扫。
 - `github.event_name` / `github.ref` 等非载荷上下文不入检查面（无攻击者可控自由文本）。
-- 接线复用既有三闸：pre-commit、CI `docs` job、AGENTS.md 质量门清单，无需新增调用点。
+- 接线：pre-commit、CI `docs` job、AGENTS.md 质量门清单，另有 `governance.yml` 的「治理门禁」步同源调本脚本（见 [CI 门禁诚实化](2026-09-28-ci-gate-honesty.md)）——四档跑的是同一份实现。
 
 边界：本门禁只拦**仓库自身工作流**的回归；第三方 action 的 `with:` 输入注入面不在本仓可校验范围。
 

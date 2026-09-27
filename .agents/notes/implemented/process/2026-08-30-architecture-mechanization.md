@@ -70,9 +70,9 @@ Superseded（部分）：通道二（ArchitectureTests/NetArchTest 命名空间�
 | 通道 | 产物 | 接入 | 变更 |
 |---|---|---|---|
 | 〇 标准重构 | coding-standards(提额)/architecture-standards | 文档 + 预算 + AGENTS | ① |
-| 一 尺寸健康闸 | `verify-code-health.py` | pre-commit + pre-push + CI `code-health` job（先拆再上） | — |
+| 一 尺寸健康闸 | `verify-code-health.py` | pre-commit + CI `docs` job（`--enforce`；先拆再上） | — |
 | 二 架构测试 | `tests/ArchitectureTests.cs`（NetArchTest） | `dotnet test` → CI | +A5（A6 留评审，不作门禁） |
-| 三 契约扫描 | `verify-code-conventions.py` | pre-commit + pre-push + CI | **替代分析器工程**；D001–003 留评审 |
+| 三 契约扫描 | `verify-code-conventions.py` | pre-commit + CI `docs` job（`--enforce`） | **替代分析器工程**；D001–003 留评审 |
 | 四 存量清账 | 拆分/归位 | 与一二三相结的前置 commit | ②执行序 |
 | 五 工作流集成 | `feature-flow.md` 分流 | 机械化落地后设为强制验证步骤 | ② |
 

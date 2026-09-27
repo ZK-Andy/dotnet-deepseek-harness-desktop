@@ -17,25 +17,72 @@ counted twice and the rate would drift down.
 Rule source of truth: `.agents/notes/implemented/testing/
 2026-09-14-coverage-baseline-multi-project-merge.md`.
 
+`--baseline` turns the print into a gate: the merged rate is compared against
+the `coverage` value of `scripts/test-baseline.json` and the run FAILS when it
+drops more than `--tolerance-pp` percentage points below it. The tolerance is
+not slack for its own sake: the recorded baseline carries two decimals and a
+re-run of the same commit drifts by a few instrumented lines (same-commit
+re-runs differ in `HostLog`'s unwritable-HOME `catch`, 2026-09-12), so an exact
+comparison would turn CI red at random. Both sides are rounded to the recorded
+two decimals before comparing, so two values that the log prints as equal
+compare as equal; rounding is monotone, which means it can only ever be more
+lenient than the raw comparison, never stricter (the whole effect lives inside
+0.01pp, three orders below the tolerance).
+
+The tolerance value and the rationale for having one at all live in
+`.agents/notes/implemented/process/2026-09-28-ci-gate-honesty.md` and
+`docs/testing.md`.
+
 Usage:
     python3 scripts/coverage-summary.py [--results TestResults]
+    python3 scripts/coverage-summary.py --results TestResults \
+        --baseline scripts/test-baseline.json --tolerance-pp 0.5
     python3 scripts/coverage-summary.py --self-test
-Exit code 0 = files merged and printed; 1 = nothing to report either way — no
-cobertura files found (a missing artifact must not print a plausible 0%) or the
-files carry 0 instrumented lines; 2 = malformed XML. Both exit-1 causes print
-their own stderr line, so the code alone does not separate them.
+Exit code 0 = files merged and printed (and, with `--baseline`, not below the
+tolerance floor); 1 = nothing to report either way — no cobertura files found
+(a missing artifact must not print a plausible 0%) or the files carry 0
+instrumented lines; 2 = malformed XML; 3 = measured rate below the baseline
+floor; 4 = the baseline file is missing or malformed. The two exit-1 causes
+print their own stderr line, so the code alone does not separate them.
 """
 
 import argparse
 import contextlib
 import glob
 import io
+import json
+import re
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SUMMARY_PREFIX = "coverage-summary:"
+DEFAULT_TOLERANCE_PP = 0.5
+BASELINE_COVERAGE_RE = re.compile(r"\d+(?:\.\d+)?%")
+
+
+def _load_baseline_pct(path: str) -> float:
+    """Return the baseline coverage as a percentage number (e.g. 59.95).
+
+    The `coverage` value's form is checked with the same regex
+    `verify-readme-badges.py` uses, so the two readers agree on what a
+    well-formed rate looks like. This reader is the wider of the two on the
+    file: it does not repeat that script's exact-key-set and duplicate-key
+    rules (a file only this reader would accept is still rejected by
+    `verify-readme-badges.py`, which runs in the same CI job and pre-commit).
+    Unifying them into one shared helper is the `docs/script-standards.md`
+    shared-library item, not this batch. Anything that fails raises ValueError
+    so main() can fail loud — an unreadable baseline must never read as "no
+    floor, pass".
+    """
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or "coverage" not in data:
+        raise ValueError("not a JSON object carrying a 'coverage' key")
+    text = data["coverage"]
+    if not isinstance(text, str) or BASELINE_COVERAGE_RE.fullmatch(text.strip()) is None:
+        raise ValueError(f"coverage value {text!r} is not '<rate>%'")
+    return float(text.strip()[:-1])
 
 
 def _normalize(package: str, filename: str) -> str:
@@ -77,7 +124,8 @@ def _merge(paths: list[str]) -> tuple[int, int, dict[str, list[int]]]:
     return covered, valid, per_package
 
 
-def _report(paths: list[str]) -> int:
+def _report(paths: list[str], baseline_pct: float | None = None,
+            tolerance_pp: float = DEFAULT_TOLERANCE_PP) -> int:
     try:
         covered, valid, per_package = _merge(paths)
     except ET.ParseError as exc:
@@ -93,13 +141,32 @@ def _report(paths: list[str]) -> int:
     rate = covered / valid
     print(f"{SUMMARY_PREFIX} covered={covered} valid={valid} "
           f"line-rate={rate:.4f} ({100 * rate:.2f}%)")
+    if baseline_pct is None:
+        return 0
+    # Both sides rounded to the two decimals the baseline records, so that two
+    # values the log prints as equal compare as equal. Rounding is monotone, so
+    # it can only be more lenient than comparing raw rates, never stricter; the
+    # difference it can make lives inside 0.01pp.
+    measured_pct = round(100 * rate, 2)
+    floor_pct = round(baseline_pct - tolerance_pp, 2)
+    print(f"{SUMMARY_PREFIX} baseline={baseline_pct:.2f}% "
+          f"tolerance={tolerance_pp:.2f}pp floor={floor_pct:.2f}% "
+          f"measured={measured_pct:.2f}%")
+    if measured_pct < floor_pct:
+        print(f"{SUMMARY_PREFIX} FAIL: 覆盖率 {measured_pct:.2f}% 低于基线 "
+              f"{baseline_pct:.2f}% 超过容差 {tolerance_pp:.2f}pp"
+              f"（下限 {floor_pct:.2f}%）——补测试，或按 docs/testing.md「跟值」"
+              f"流程同变更更新 scripts/test-baseline.json 与 README 双语徽章",
+              file=sys.stderr)
+        return 3
     return 0
 
 
 def _self_test() -> int:
     """Offline fixtures pinning the merge's judgement points (max-hits across
     files, assembly-prefix normalization keeping one physical line on one key)
-    and the three fail-loud exit branches ci.yml relies on."""
+    and the fail-loud exit branches ci.yml relies on: 1/2 for the merge side,
+    3 for a rate under the baseline floor, 4 for an unusable baseline file."""
     failed = 0
 
     def ok(cond: bool, msg: str) -> None:
@@ -173,6 +240,54 @@ def _self_test() -> int:
             sys.argv = old_argv
         ok(missing == 1, "no cobertura files exits 1")
 
+        # Baseline gate: fixtures a+b+c merge to 5/6 = 83.33%. 83.83/83.84 are one
+        # hundredth of a point apart, pinning where "on the floor" stops passing;
+        # 83.834 is the case that pins the rounding itself (raw floor 83.334 would
+        # fail, the recorded two-decimal floor 83.33 passes).
+        def gate_code(baseline_pct: float, tolerance: float = 0.5) -> int:
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                return _report([str(a), str(b), str(c)], baseline_pct, tolerance)
+
+        ok(gate_code(83.00) == 0, "rate above the baseline passes")
+        ok(gate_code(83.80) == 0,
+           "rate 0.47pp under the baseline but inside the tolerance passes")
+        ok(gate_code(83.83) == 0, "rate sitting exactly on the floor passes")
+        ok(gate_code(83.84) == 3, "rate one hundredth under the floor exits 3")
+        ok(gate_code(83.834) == 0, "floor is compared at the baseline's own precision")
+
+        def baseline_of(text: str) -> object:
+            p = Path(td) / "baseline.json"
+            p.write_text(text, encoding="utf-8")
+            try:
+                return _load_baseline_pct(str(p))
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                return exc
+
+        ok(baseline_of('{"tests": "1/1", "coverage": "59.95%"}') == 59.95,
+           "baseline '<rate>%' parses to a percentage number")
+        ok(isinstance(baseline_of('{"coverage": "n/a"}'), ValueError),
+           "non-percentage coverage value is rejected")
+        ok(isinstance(baseline_of('{"coverage": 59.95}'), ValueError),
+           "non-string coverage value is rejected")
+        ok(isinstance(baseline_of('{"tests": "1/1"}'), ValueError),
+           "baseline without a coverage key is rejected")
+        ok(isinstance(baseline_of('{"coverage": "59.95%",'), json.JSONDecodeError),
+           "malformed JSON baseline is rejected")
+
+        # main() maps an unusable baseline to exit 4 (the gate must never read a
+        # broken baseline as "no floor, pass").
+        old_argv = sys.argv
+        sys.argv = ["coverage-summary.py", "--results", str(Path(td)),
+                    "--baseline", str(Path(td) / "absent-baseline.json")]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                unusable = main()
+        finally:
+            sys.argv = old_argv
+        ok(unusable == 4, "unusable baseline exits 4")
+
     if failed == 0:
         print("== coverage-summary self-test passed ==")
     else:
@@ -189,7 +304,22 @@ def main() -> int:
                     "baseline line")
     parser.add_argument("--results", default="TestResults",
                         help="directory holding the coverage artifacts (default TestResults)")
+    parser.add_argument("--baseline", default=None,
+                        help="scripts/test-baseline.json to compare against; "
+                             "omitted = print only, no floor")
+    parser.add_argument("--tolerance-pp", type=float, default=DEFAULT_TOLERANCE_PP,
+                        help="percentage points the rate may sit below the "
+                             f"baseline before failing (default {DEFAULT_TOLERANCE_PP})")
     args = parser.parse_args()
+
+    baseline_pct = None
+    if args.baseline:
+        try:
+            baseline_pct = _load_baseline_pct(args.baseline)
+        except (OSError, ValueError) as exc:
+            print(f"{SUMMARY_PREFIX} unusable baseline {args.baseline}: {exc}",
+                  file=sys.stderr)
+            return 4
 
     paths = sorted(glob.glob(str(Path(args.results) / "**" / "coverage.cobertura.xml"),
                              recursive=True))
@@ -197,7 +327,7 @@ def main() -> int:
         print(f"{SUMMARY_PREFIX} no coverage.cobertura.xml under {args.results}",
               file=sys.stderr)
         return 1
-    return _report(paths)
+    return _report(paths, baseline_pct, args.tolerance_pp)
 
 
 if __name__ == "__main__":

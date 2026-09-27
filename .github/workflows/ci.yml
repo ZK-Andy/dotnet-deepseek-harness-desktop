@@ -14,7 +14,9 @@ concurrency:
 jobs:
   # 改动面分类：纯文档改动让 build-test 显式跳过（run 仍 conclusive 成功），
   # 规避「workflow 级 path filter 跳过导致 PR check 永远 pending」的问题。
-  # code 面含 scripts/（文档门禁脚本本身变更须全量验证）与本文件（CI 变更自验）。
+  # code 面含 scripts/（文档门禁脚本本身变更须全量验证）与本文件（CI 变更自验）；
+  # 结构级构建输入一并纳入——.editorconfig/Directory.*.props/global.json 都能翻转
+  # build 或 format 结论，漏判即整条 format 门禁一起跳过。
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -32,6 +34,10 @@ jobs:
               - 'tests/**'
               - 'scripts/**'
               - '*.slnx'
+              - '.editorconfig'
+              - 'Directory.Build.props'
+              - 'Directory.Packages.props'
+              - 'global.json'
               - '.github/workflows/ci.yml'
 
   # 文档/ADR/插件改动面（含 plugins/ 下 JS 插件、docs/、手写文档）无需 dotnet，
@@ -53,6 +59,7 @@ jobs:
           python3 scripts/verify-readme-badges.py
           python3 scripts/verify-handoff-structure.py
           python3 scripts/verify-governance.py
+          python3 scripts/verify-skill-format.py
       - name: UI 文案单一词典（批次 A）
         run: |
           python3 scripts/verify-ui-copy.py --self-test
@@ -68,13 +75,15 @@ jobs:
           REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           BASE="$REVIEW_BASE"
+          # 无 base（首推/新建分支）时无法判定变更集，本步必须停——工作树扫描在干净的
+          # CI checkout 上是空集、恒绿，不得作为 fallback。判据与 verify-review-tier
+          # 对不可达 base 的处置同源（无法判定 = 违规）。
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-            echo "无可用 base（首推/分支新建），fallback 工作树扫描"
-            python3 scripts/verify-review-tier.py --enforce
-          else
-            echo "review-tier --since $BASE"
-            python3 scripts/verify-review-tier.py --since "$BASE" --enforce
+            echo "::error::档位门禁无法判定变更集（无 base，首推/新建分支）——不得静默放行" >&2
+            exit 1
           fi
+          echo "review-tier --since $BASE"
+          python3 scripts/verify-review-tier.py --since "$BASE" --enforce
 
   build-test:
     needs: changes
@@ -101,19 +110,31 @@ jobs:
         if: runner.os == 'Linux'
         run: dotnet format dotnet-deepseek-harness-desktop.slnx --verify-no-changes --severity warn
       - name: test with coverage
+        id: test
         if: runner.os == 'Linux'
         run: dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build --collect:"XPlat Code Coverage" --results-directory TestResults -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
       - name: test (os-level semantics leg)
         if: runner.os != 'Linux'
         run: dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build --filter "FullyQualifiedName~StalePackagePrunerTests|FullyQualifiedName~ReleaseAssetTests"
-      - name: coverage summary
+      - name: coverage summary（并集复算；测试绿时比对基线，低于基线超容差即 fail）
         if: always() && runner.os == 'Linux'
+        env:
+          TESTS_OUTCOME: ${{ steps.test.outcome }}
         run: |
           echo "== coverage files =="
           find TestResults -name "*.xml" -type f | head -20
           # 每个测试工程一个 cobertura；基线是并集（见 scripts/coverage-summary.py 与
           # ADR testing/2026-09-14-coverage-baseline-multi-project-merge）。
-          python3 scripts/coverage-summary.py --results TestResults
+          # 比对只在测试步成功时进行：测试红了只会留下半量 TestResults，拿它比基线
+          # 是把「测试失败」误诊成「覆盖率下滑」；此时只复算留数。
+          if [[ "$TESTS_OUTCOME" == "success" ]]; then
+            python3 scripts/coverage-summary.py --results TestResults \
+              --baseline scripts/test-baseline.json --tolerance-pp 0.5
+          else
+            # 只复算不判门；若连 cobertura 都没留下，仍按缺产物判红（fail loud 的既有语义）。
+            echo "note: 测试步未成功（${TESTS_OUTCOME}），本次覆盖率数不可比，只复算不判门"
+            python3 scripts/coverage-summary.py --results TestResults
+          fi
       - name: upload coverage
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v4

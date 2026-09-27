@@ -58,4 +58,16 @@ python3 scripts/verify-review-tier.py --staged --enforce
 echo "-> verify-readme-badges.py --staged"
 python3 scripts/verify-readme-badges.py --staged
 
+# 12) 评审简报（ADR review-freeze-worktree-discipline 的启动门禁）：
+#     简报是 gitignore 的本地工作文档，CI 永远看不见，故只在本地校验——启动评审前
+#     手工 `--enforce` 是原有执行点，这里是新增的第二处（把「启动前自证」兜到提交面）。
+#     `.review-briefs/` 有在审简报（archive/ 归档层不算）即校验简报形状 + 冻结判据；
+#     冻结判据要的「工作树只有暂存项」正是 pre-commit 时刻的状态。无简报即跳过。
+if ls .review-briefs/*.md >/dev/null 2>&1; then
+  echo "-> verify-review-brief.py --enforce（.review-briefs/ 有在审简报）"
+  python3 scripts/verify-review-brief.py --enforce
+else
+  echo "-> verify-review-brief.py 跳过（.review-briefs/ 无在审简报，未在评审窗口）"
+fi
+
 echo "pre-commit OK"
