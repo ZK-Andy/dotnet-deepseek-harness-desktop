@@ -1,6 +1,7 @@
 # Agent Note: DesktopBootstrap.Navigation.cs using 排序矫正
 
 Status: implemented
+Archived: 2026-09-29
 
 Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 

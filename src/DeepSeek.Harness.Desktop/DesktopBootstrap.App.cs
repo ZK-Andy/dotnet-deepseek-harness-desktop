@@ -103,8 +103,10 @@ public sealed partial class DesktopBootstrap
                 }
 
                 HostLog.Write($"[host] Ryn opts: Url={(proxy?.Url?.ToString() ?? "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
-                // WebView 调试器默认关闭（正式打包无调试窗口）；开发期设 DSH_DEVTOOLS=1 开启。
-                opts.DevTools = Environment.GetEnvironmentVariable("DSH_DEVTOOLS") == "1";
+                // WebView 调试器默认关闭；开发期设 DSH_DEVTOOLS=1 开启（与 dev 判定无关，
+                // 打包产品形态下同样生效）——判定随 A 类启动配置在 LaunchOptions.Resolve 单点解析
+                // （ADR post-restructure-ledger-batch）。
+                opts.DevTools = preflight.Launch.DevTools;
             })
             .ConfigureServices(services => RegisterServices(services, preflight, update, proxy, wiring))
             .Build();

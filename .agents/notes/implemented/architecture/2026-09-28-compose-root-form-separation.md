@@ -39,7 +39,7 @@ Review: FULL/2026-09-28#7/R1=ok R2=ok R3=ok
 - §4.1 搬家表 #1–#3/#6–#10（profile 生命周期、companion 安装、共享 home 横幅、WebAuth 用例、诊断导出、`PathsEqual`、恢复原因码等细搬）保留在编排服务内，未再向 Core 端口/Infrastructure 细化——形态分离已使这些细搬落 `src/**` 非根文件名 + `tests/**`，不再命中 FULL 面，可作 LIGHT 批次跟进。#5（单实例 socket 拼装）属容器前单实例仲裁面，按本 ADR 红线留组合根。
 - 覆盖率 59.95% → 59.71%（-0.24pp，n=1 本地并集复算）：下降全部来自新增装配胶水（注册扩展/接线槽/结果对象包装）无测试触达；编排主体是整块搬迁，触达面不变。组合根及其编排历史上即不可在单测执行，此差额按基线跟值批口径入账（`854→856` 含序列安全网拆分 +1 与代理 `TryCreate` 回归 +1）。
 - 组合根的 `DesktopBootstrap*` 文件名触发性不变：后续触碰根文件仍是 FULL 档；编排/注册文件（`Bootstrap/StartupSequence*`、`*Registration.cs`）不在触发面，属 LIGHT。
-- 挂账（R3 评审产出，转归档批）：[2026-09-14-nav-partial-import-order-fix](../../implemented/process/2026-09-14-nav-partial-import-order-fix.md) 的主题文件（`DesktopBootstrap.Navigation.cs`）已随本批删除，一次性 process 历史无指引价值，符合归档判据。
+- 挂账已清（2026-09-29 归档批，ADR post-restructure-ledger-batch）：[2026-09-14-nav-partial-import-order-fix](../../archived/process/2026-09-14-nav-partial-import-order-fix.md) 的主题文件（`DesktopBootstrap.Navigation.cs`）已随本批删除，一次性 process 历史无指引价值，符合归档判据。
 
 ## Testing
 

@@ -8,7 +8,7 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 
 ## Problem
 
-[一轮排序矫正](2026-09-14-nav-partial-import-order-fix.md) 后 CI 二轮仍红（run `34777911619`）：残留 IDE0005（`System.Threading`/`Ryn.Core` 两条未使用 using）+ SA1508（文件尾闭括号前空行）。手排不如机器排——本地跑 `dotnet format`（与门禁同工具）即全净。
+[一轮排序矫正](../../archived/process/2026-09-14-nav-partial-import-order-fix.md) 后 CI 二轮仍红（run `34777911619`）：残留 IDE0005（`System.Threading`/`Ryn.Core` 两条未使用 using）+ SA1508（文件尾闭括号前空行）。手排不如机器排——本地跑 `dotnet format`（与门禁同工具）即全净。
 
 ## Decision
 

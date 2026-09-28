@@ -32,8 +32,9 @@ public static class LauncherActivation
     public const string AckResponse = "ok";
 
     /// <summary>锁地址：<paramref name="runtimeDir"/> 下应用名 + dev 隔离后缀（与 ApplicationId 同源规则）。
-    /// dev 与正式版各持一把锁，互不顶牛。</summary>
-    public static string SocketPath(string runtimeDir, string appName, bool isDev) =>
+    /// dev 与正式版各持一把锁，互不顶牛。生产消费仅剩 <see cref="ResolveInstanceSocketPath"/> 同类内
+    /// （ADR post-restructure-ledger-batch 收窄公共面）；测试经 InternalsVisibleTo 可达。</summary>
+    internal static string SocketPath(string runtimeDir, string appName, bool isDev) =>
         Path.Combine(runtimeDir, $"{appName}{(isDev ? ".dev" : string.Empty)}.sock");
 
     /// <summary>单实例应用锁名（socket 文件名字面量单源；锁地址解析唯一消费点在 <see cref="ResolveInstanceSocketPath"/>）。</summary>
@@ -62,8 +63,10 @@ public static class LauncherActivation
 
     /// <summary>XDG_RUNTIME_DIR 缺失回退到共享临时目录时的 socket 名后缀（<c>-&lt;uid&gt;</c>）。
     /// 临时目录跨用户可预测，无 uid 隔离时他用户可抢先把同名 socket 建好并监听，令本机启动
-    /// 误判「已有主实例」而直接退出（零实例 DoS）；掺入 uid 后各用户锁地址互不相交。</summary>
-    public static string FallbackUidSuffix()
+    /// 误判「已有主实例」而直接退出（零实例 DoS）；掺入 uid 后各用户锁地址互不相交。
+    /// 生产消费仅剩 <see cref="ResolveInstanceSocketPath"/> 同类内（ADR post-restructure-ledger-batch
+    /// 收窄公共面）；测试经 InternalsVisibleTo 可达。</summary>
+    internal static string FallbackUidSuffix()
     {
         if (OperatingSystem.IsWindows())
         {

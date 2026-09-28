@@ -8,11 +8,17 @@ namespace DeepSeek.Harness.Desktop.Infrastructure;
 /// </summary>
 public sealed record LaunchOptions
 {
+    /// <summary>WebView 调试器开关的环境变量名（开发期调试用；默认关）。</summary>
+    public const string DevToolsEnv = "DSH_DEVTOOLS";
+
     /// <summary>是否为 dev 运行时（只认显式环境标记，判定见 <see cref="DevEnvironment.IsDevRuntime"/>）。</summary>
     public bool IsDev { get; init; }
 
     /// <summary>本次启动是否把 DSH_HOME 自动隔离到仓库内 dev-home（仅 dev 且未显式覆盖 home 时为真）。</summary>
     public bool DevAutoIsolated { get; init; }
+
+    /// <summary>是否开启 WebView 调试器（<see cref="DevToolsEnv"/>=1；默认关，保持打包产品语义）。</summary>
+    public bool DevTools { get; init; }
 
     /// <summary>按 dev 形态推导 ApplicationId（后缀规则单一来源 <see cref="DevEnvironment.ApplicationIdFor"/>）。</summary>
     /// <param name="baseId">正式版 ApplicationId。</param>
@@ -20,7 +26,10 @@ public sealed record LaunchOptions
     public string ApplicationIdFor(string baseId) => DevEnvironment.ApplicationIdFor(baseId, IsDev);
 
     /// <summary>
-    /// 单点解析启动配置：读 dev 环境标记，并在 dev 且未显式覆盖 DSH_HOME 时把 home 指向仓库内
+    /// 单点解析启动配置：读 dev 环境标记与 WebView 调试器开关（组合根上 dev 域 env 散读清零后的
+    /// 唯一读点；Infrastructure 内 home 覆盖、强制自更新等其余 dev 域 env 由各自消费点直读），
+    /// 并在 dev 且
+    /// 未显式覆盖 DSH_HOME 时把 home 指向仓库内
     /// <c>.cache/dev-home</c>（环境读写归 Infrastructure 边界；原组合根 <c>ResolveRuntimeAndDev</c> 的等价逻辑）。
     /// </summary>
     /// <param name="log">日志回调（隔离生效与误判诊断各一条）。</param>
@@ -30,6 +39,7 @@ public sealed record LaunchOptions
         string? devRuntimeDir = Environment.GetEnvironmentVariable(DevEnvironment.RuntimeDirEnv);
         string? devFlag = Environment.GetEnvironmentVariable(DevEnvironment.DevFlagEnv);
         bool isDev = DevEnvironment.IsDevRuntime(devRuntimeDir, devFlag);
+        bool devTools = Environment.GetEnvironmentVariable(DevToolsEnv) == "1";
         bool devAutoIsolated = false;
         if (isDev && Environment.GetEnvironmentVariable(DevEnvironment.HomeOverrideEnv) is null)
         {
@@ -49,6 +59,6 @@ public sealed record LaunchOptions
             log("[host] 疑似仓库内开发运行但未设 DSH_DESKTOP_DEV=1：按打包产品处理（共享真实 home，无 dev 隔离）");
         }
 
-        return new LaunchOptions { IsDev = isDev, DevAutoIsolated = devAutoIsolated };
+        return new LaunchOptions { IsDev = isDev, DevAutoIsolated = devAutoIsolated, DevTools = devTools };
     }
 }
