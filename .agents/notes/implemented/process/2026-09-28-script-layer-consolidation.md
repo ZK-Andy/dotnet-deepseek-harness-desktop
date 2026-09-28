@@ -86,17 +86,17 @@ Review: FULL/2026-09-28#5/R1=ok R2=ok R3=ok
 - 边界：脚本规范对 `.py` 门禁脚本无约束（尺寸闸只覆盖 shell；`verify-review-brief.py` 815 行仍在 Python 面），Python 层去重是方案 §5.4／F 批的事。
 - 边界：S2 的 250 行是**授权值**不是最优值——Google 的 100 行建议在本仓的行数分布下会把一半工具脚本判违规；超限的处理是拆文件（本批已演示 god script 拆分），不是迁语言。
 - 边界：旋钮声明的「声明面」含 `docs/` 全文——把旋钮名写进任意文档即可放行，这是刻意的信任面（判据只能证「有声明」，不能证「声明在正确的家」）。
-- 未覆盖：①容器腿的**容器内脚本**已由离线夹具覆盖（含窗口契约与判定链），但 docker 起容器本身仍只能靠 tag/dispatch 的 linux 腿实跑（见 Testing「待跑」）；②action 仍全部浮动大版本（`checkout@v4` 等），SHA 钉版按方案 D3 列为后续独立项——`freshness.yml` 退役后**当前无任何 `schedule:` 触发**，浮动钉版无监控这点在本批未修；③Python 门禁共享模块与两道最薄门禁（`verify-doc-budgets.py`/`verify-md-links.py`）的 `--self-test` 缺口仍在（F 批）。
+- 未覆盖：①容器腿的**容器内脚本**已由离线夹具覆盖（含窗口契约与判定链），但 docker 起容器本身仍只能靠 tag/dispatch 的 linux 腿实跑（该证据见 Testing「三平台 dispatch 实跑」）；②action 仍全部浮动大版本（`checkout@v4` 等），SHA 钉版按方案 D3 列为后续独立项——`freshness.yml` 退役后**当前无任何 `schedule:` 触发**，浮动钉版无监控这点在本批未修；③Python 门禁共享模块与两道最薄门禁（`verify-doc-budgets.py`/`verify-md-links.py`）的 `--self-test` 缺口仍在（F 批）。
 - 与整改方案的关系：本批即方案 §5.1–§5.3（批次 C 的脚本面）＋ §6.4（B 批残余的 actionlint/shellcheck）＋ A3/A4/A5 的延后项；§5.4（Python 门禁共享模块）按编排归 F 批，不在本批。
 
 ## Testing
 
-- **离线夹具（本地全跑绿；CI `docs` job 每次 push 跑全集；**现行计数只在此处**）**：`verify-shell-standards.sh --self-test` 7、`verify-package-layout.sh --self-test` 10、三包 `--self-test` 11/11/20、三平台冒烟 `--self-test` 56/55/53、`smoke-linux-rpm-inner.sh --self-test` 3——合计 **226 条断言**，每条判据的判红侧与放行侧同批在位（此处的「共用面」指冒烟三入口的共用夹具 53 条，按平台文件调用点 3/2/0 计；与 Decision 四的「全仓共用面 46 条」统计域不同）。其中 3 条（`trap-keeps-ok` / `trap-reclaims-tmp` / `trap-keeps-fail`）为 [smoke-trap-exit-status-flip](../bug-fix/2026-09-28-smoke-trap-exit-status-flip.md) 补上的 EXIT trap 契约锁。
+- **离线夹具（本地全跑绿；CI `docs` job 每次 push 跑全集；**现行计数只在此处，且为本地口径**）**：`verify-shell-standards.sh --self-test` 7、`verify-package-layout.sh --self-test` 10、三包 `--self-test` 11/11/20、三平台冒烟 `--self-test` 56/55/53、`smoke-linux-rpm-inner.sh --self-test` 3——合计 **226 条断言**，每条判据的判红侧与放行侧同批在位（此处的「共用面」指冒烟三入口的共用夹具 53 条，按平台文件调用点 3/2/0 计；与 Decision 四的「全仓共用面 46 条」统计域不同）。其中 3 条（`trap-keeps-ok` / `trap-reclaims-tmp` / `trap-keeps-fail`）为 [smoke-trap-exit-status-flip](../bug-fix/2026-09-28-smoke-trap-exit-status-flip.md) 补上的 EXIT trap 契约锁。CI 侧实测为 `52 / 49 / 49`（该 job 不装 imagemagick）：`scripts/lib/smoke-selftest-verdict.sh` 的见证夹具走 `skip` 分支（三平台各 −4），mac 另有 `scripts/smoke-install-macos.sh` 的同类分支（再 −2）。
 - **门禁可失败性实测（不止夹具）**：①把 `INSTALL_WAIT_SECONDS` 塞回 `smoke-install-windows.sh`（复现 A 批死旋钮形态）→ `verify-shell-standards.sh` 判红并点名该旋钮，还原即绿；②`publish` 目录塞 `resources/runtime` → `package-linux.sh --stage-only` 经共享布局断言判红（rc=1），干净目录即绿；③撤掉 `packaging-common.sh` 的 `source common.sh` → 其自测判红（诊断文本缺失）；④容器腿改名缺陷形态（容器内不解析窗口）由 `smoke-linux-rpm-inner.sh --self-test` 覆盖；⑤`verify-package-layout.sh` 缺 `--platform` 判红（exit 2）。
 - **`--stage-only` 三平台实跑**（假 publish 目录；`artifacts/` 为本地态）：linux / macos / windows 三份均「布局断言通过（无闭包残留、插件资源齐、主程序在位）」。
 - **静态检查**：`shellcheck -S warning` 全仓 0 告警（26 文件，含 `scripts/lib/**`）；`actionlint -shellcheck="shellcheck -S warning"` 0 告警；两者版本钉 0.11.0 / 1.7.12，`install-linters.sh` 的 sha256 校验实跑通过（本地与 CI 同一条安装路径）。
 - **文档门禁**：`verify-adr-format.py`、`verify-cookbook.py`、`verify-doc-budgets.py --manifest …`（`docs/script-standards.md` 330/500）、`verify-md-links.py`、`verify-governance.py`、`verify-handoff-structure.py`、`verify-readme-badges.py`、`verify-skill-format.py`、`verify-code-health.py --enforce`、`verify-code-conventions.py --enforce`、`verify-ui-copy.py` 全绿。
-- **待跑（推送后 dispatch，run 号回写本段）**：`workflow_dispatch` 三平台打包腿（linux amd64/arm64 + mac 双 rid + win x64）与 `ci.yml` push 轮——覆盖本批唯一无法离线验证的面：真 docker 里的 rpm 容器腿、真 runner 上的 mac/win 冒烟与 `GITHUB_PATH` 生效路径。**未取得该证据前，本批只声明「离线面已验」**。
+- **三平台 dispatch 实跑（`36371907647`，commit `bbb8271`）**：`ci.yml` push 轮 `36371903414` success；`package.yml` 五腿——mac 双 rid ✅✅、win ✅、linux 双腿 ✅。**linux 面曾在本批（`39c860a`）上三连 ❌**（`36363806570`/`36365626333`/`36366396555`：腿结论全绿、step 静默 `exit 1`），根因是本批引入的 `common.sh` EXIT trap 翻码 + 临时路径漏回收，修复见 [smoke-trap-exit-status-flip](../bug-fix/2026-09-28-smoke-trap-exit-status-flip.md)。真 docker 里的 rpm 容器腿、真 runner 上的 mac/win 冒烟与 `GITHUB_PATH` 生效路径均已覆盖。
 - 本批零 `src`/`tests` 变更，`dotnet build/test/format` 按变更面不适用（未跑即未跑，不列为证据）。
 
 ## Related

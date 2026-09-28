@@ -3,6 +3,7 @@
 Status: implemented
 
 Review: FULL/2026-09-28#6/R1=ok R2=ok R3=ok
+Review: LIGHT/2026-09-28#7/R2=ok
 
 ## 评审处置（FULL，R1/R2/R3 三路；首轮 + 第 2/3 轮验轮）
 
@@ -107,7 +108,8 @@ C 批（`39c860a`）之后 linux 冒烟双腿三连全红（`36363806570` / `363
 - **判据取舍**：三条断言各锁一个方向、无恒真空断言；`trap-keeps-fail` 对**本批实际缺陷**不判红（翻码恰好也是 1），它是拦「恒 0」方向的锁——故成功侧那条不可省。`trap-reclaims-tmp` 的两条判据缺一不可：只看「根没了」会漏「路径建到根外」，只看「路径不存在」会漏「清空根内但留下根目录」（探针中止时成功侧也会红，属 fail-loud，不计为逃逸被拦）。
 - **行为面实测（本地逐条）**：`set -euo pipefail` 下 ①`exit 0` + 建临时路径 → rc=0 且根内文件与根全删；②`exit 1` → rc=1（真失败不被吞）；③未建任何临时路径 → rc=0；④`rm` 真失败（子目录 0500）→ rc=0 且留一行 warn；⑤漏调 `common_tmp_trap` → 报错 rc=1。
 - **门禁**：`verify-shell-standards.sh`（S1-S6，26 文件）、`verify-cookbook.py`、`verify-doc-budgets.py`、`verify-md-links.py`、`verify-adr-format.py`、`shellcheck -S warning`、`actionlint` 全绿。
-- **待跑（推送后 dispatch，run 号回写）**：`package.yml` linux amd64/arm64 双腿——本缺陷的唯一真环境判据（真 docker rpm 腿 + 真 Xvfb 链）。
+- **dispatch 实跑（`36371907647`，commit `bbb8271`）**：`package.yml` **五腿全 success**——linux amd64/arm64 **首次转绿**（此前三连 ❌：`36363806570` / `36365626333` / `36366396555`）、mac 双 rid ✅✅、win ✅；同轮 `ci.yml` push 轮 `36371903414` success（含 `docs` job 的三平台自测）。双腿日志以 `== [linux] 腿汇总：rc_total=0` 收尾且**无** `Process completed with exit code` 行——即本缺陷的真环境判据已取得：腿的 step 退出码不再被 trap 翻转。
+- **计数口径（本地 vs CI）**：本地（装了 ImageMagick）三平台自测 `56 / 55 / 53`；CI `docs` job 实测 `52 / 49 / 49`（该 job 不装 imagemagick）。差值两处来源：`scripts/lib/smoke-selftest-verdict.sh:27` 的「无 convert 即 `skip` 截图内容见证夹具」分支（三平台各 −4），以及 mac 专属的 `scripts/smoke-install-macos.sh:68` 同类分支（mac 再 −2）。判据的判红侧在本地取证（上表），CI 侧只跑得到不依赖 convert 的那部分。
 
 ## Related
 
