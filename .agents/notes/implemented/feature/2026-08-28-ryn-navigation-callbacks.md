@@ -21,12 +21,12 @@ Status: implemented
 
 ### 2. 导航层外部链接拦截（替换 companion 点击拦截）
 
-新增 `Services/RynNavigationCallbacks.cs`，宿主侧 `[RynCallback]` 处理器：
+新增 `src/DeepSeek.Harness.Desktop/PageBridge/RynNavigationCallbacks.cs`，宿主侧 `[RynCallback]` 处理器：
 
 - `[RynCallback(WebViewNavigating)]` 返回 `NavigationDecision`。先看 `context.IsUserInitiated`：宿主程序化导航（崩溃恢复 `NavigateAsync`、SPA 内部重定向）为 false 一律放行——否则恢复流程会被本回调误拦。仅对用户发起的导航，用 `ExternalLinkPolicy.IsExternalHttpLink(context.Url, currentOrigin: _currentOrigin, out _)` 判定：非同源绝对 http(s) → `NavigationDecision.Block` + 经共享 `SystemBrowser` 打开；同源 SPA / `ryn://` / `data:` / 非 http(s) → `NavigationDecision.Allow`。
   - `currentOrigin` 初始 = `DesktopBootstrap` `_webUrl` 的 origin（dsh 页面 URL），并在每次 `WebViewNavigated` 刷新为实际到达 URL 的 origin——崩溃恢复可能把端口漂移（ADR child-process-reaping-port-drift），冻结首启 origin 会让漂移后的同源 SPA 路由被误判为外部。`ExternalLinkPolicy` 在 `currentOrigin: null` 时保守地把一切绝对 http(s) 视为外部。
 - `[RynCallback(WebViewNavigated)]` 刷新 `currentOrigin`、记录导航（`context.Url`）留痕，并回调"导航已到达"信号。
-- 打开器抽共享 `Services/SystemBrowser.cs` 静态 `Open(url)`（Linux `xdg-open` + 重定向输出，其余 `Process.Start(UseShellExecute=true)`）；`ExternalLinkCommandRouter` 与 `RynNavigationCallbacks` 的默认打开器收敛到它，消除两份复制逻辑。
+- 打开器抽共享 `src/DeepSeek.Harness.Desktop.Infrastructure/Platform/SystemBrowser.cs` 静态 `Open(url)`（Linux `xdg-open` + 重定向输出，其余 `Process.Start(UseShellExecute=true)`）；`ExternalLinkCommandRouter` 与 `RynNavigationCallbacks` 的默认打开器收敛到它，消除两份复制逻辑。
 - `ConfigureServices` 加 `services.AddRynCallbacks();` + `services.AddRynNavigationCallbacks();`（源生成，`Ryn.Callbacks` 命名空间），注册 `IRynCallbackRouter` 单例；再用工厂覆盖源生成的 handler 无参注册（导航回调依赖：opener/log/currentOrigin 初始值经工厂注入）。Ryn 经 `SetWebViewNavigatingHandler` 把它挂到窗口。
 
 ### 3. 删除 companion 点击拦截

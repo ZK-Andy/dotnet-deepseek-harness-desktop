@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-1. **就绪横幅**：`onTransition` 进入 Ready 且带版本号时（每运行周期一次，去重）注入顶部横幅「新版本 X 已就绪…」；脚本构建器纯函数化入 `Services/Update/UpdateBanner`。
+1. **就绪横幅**：`onTransition` 进入 Ready 且带版本号时（每运行周期一次，去重）注入顶部横幅「新版本 X 已就绪…」；脚本构建器纯函数化入 `src/DeepSeek.Harness.Desktop/Update/UpdateBanner.cs`。
 2. **失败回退固化**：新增回归测试断言 install 委托抛出后状态机回到 Ready、持久化记录与资产文件原样保留、错误消息经路由帧到达页面——把既有行为升级为被测试钉住的契约；不改动状态机逻辑。
 3. **开机自启**：`Services/Autostart` 三平台实现——Linux 写 `~/.config/autostart/*.desktop`（XDG 标准）、Windows 写 HKCU Run 键、macOS 写 LaunchAgents plist；可执行路径取 `Environment.ProcessPath`。开关状态查询/切换走 `desktop.autostart.getState/set` 命令路由，companion 设置页新增「桌面」区块承载开关（version bump）。条目文本构造器纯函数化可单测；Windows 注册表分支不在沙箱测试矩阵内，靠类型系统约束最小面。
 

@@ -4,6 +4,8 @@ Status: implemented
 
 Erratum: 2026-09-28 — 正文「CI」一节的落点已换家：`.github/workflows/package-linux.yml` 合并为 `package.yml`（`build-linux` job）——7 天 Artifacts、`if-no-files-found: error`、预览与 tag 发布分离均不变（发布侧在 `release.yml`）；`concurrency` 组名另由本批加事件段（见 [ci-package-workflow-unification](2026-09-28-ci-package-workflow-unification.md)）。正文不动。
 
+Erratum: 2026-09-29 — 正文引用的 `scripts/bundle-runtime.sh`/`scripts/bundle-runtime-ci.sh` 已随捆绑运行时闭包链路整体退役删除（运行时来源转为全局 dsh，见 [online-first-unbundled-runtime](../architecture/2026-08-29-online-first-unbundled-runtime.md)），无接替脚本；试点期流程叙述保留为历史。正文不动。
+
 ## Problem
 
 Linux 打包在 `0.1.0–0.1.2` 迭代中逐项暴露：闭包仅拷 `dsh/.` 缺依赖导致启动失败（重连循环）、`cp -r` 改名破坏 `RuntimeLocator`、`pnpm` 忽略原生构建致缺 `.node`、`brp-strip` 误伤跨平台 prebuild、`AutoReqProv` 扫描出 `aarch64/musl/perl` 假依赖、`WebKitGTK` 版本误判（4.1 vs 6）。虽已在 `16bab10..eca6b60` 逐项修掉，但脚本是“打补丁”式累积，本地 `resources/runtime` 仍为旧 `dsh/` 布局、`bundle-runtime.sh` 与 `bundle-runtime-ci.sh` 不一致、workflow 保留 `90` 天与手动 `__requires_exclude`，与参照项目 `op7418/pilot-harness` 的打包模型未对齐。

@@ -14,7 +14,7 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Decision
 
-`PluginProfileTransaction`（`Services/PluginProfileTransaction.cs`）承载事务，两个安装驱动共用：
+`PluginProfileTransaction`（`src/DeepSeek.Harness.Desktop.Infrastructure/Plugins/PluginProfileTransaction.cs`）承载事务，两个安装驱动共用：
 
 1. **staging 准备**（`Begin`）：整目录拷贝 active 桌面 profile 到 `<dshHome>/.tx-<uuid>/profiles/<DesktopProfileName>`（排除 `.dsh-web-port`/`.dsh-pid` 运行时管理文件；耗时日志可观测）。active profile 缺失即抛（调用链保证 EnsureProfile 先行，缺序炸出来）。
 2. **staged 变更**：`dsh plugin add` 的 `DSH_HOME` 指向 staging home、`--profile` 名不变（`RunPluginAddAsync` 已按 home 参数化）；spec 形状校验与 minReleaseAge 放宽重试逻辑不变；allowBuilds 放行与 bundles 补写都做在 staging 副本上。

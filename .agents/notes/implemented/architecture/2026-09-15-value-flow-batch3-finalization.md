@@ -17,7 +17,7 @@ Superseded（部分）：Decision 2 的「分部文件终态」（阶段编排�
 
 ## Decision
 
-1. **A 类配置类型化（拍板「IOptions 式」）**：新增 `Infrastructure/Services/LaunchOptions`——不可变 `sealed record`，含 `IsDev`/`DevAutoIsolated` 与派生 `ApplicationIdFor(baseId)`；`LaunchOptions.Resolve(log)` 单点解析环境标记并在 dev 未显式覆盖 home 时应用仓库内隔离（env 读写从组合根下沉 Infrastructure 外部边界）。`Preflight` 产出由两个裸 bool 收成一个类型化值，消费方按需取用：`UpdateCoordinator` 构造收 `LaunchOptions`，组合根经 `ApplicationIdFor` 派生 ApplicationId、经 `IsDev`/`DevAutoIsolated` 分域单实例 socket 与随包插件安装门。该值是环境派生、单次解析的不可变配置，不是被否决的阶段间 context（边界见主 ADR Alternatives）。壳无 Generic Host，不引入 `IOptions<T>`——类型化配置值 + 构造注入是其等价物。
+1. **A 类配置类型化（拍板「IOptions 式」）**：新增 `src/DeepSeek.Harness.Desktop.Infrastructure/LaunchOptions.cs`——不可变 `sealed record`，含 `IsDev`/`DevAutoIsolated` 与派生 `ApplicationIdFor(baseId)`；`LaunchOptions.Resolve(log)` 单点解析环境标记并在 dev 未显式覆盖 home 时应用仓库内隔离（env 读写从组合根下沉 Infrastructure 外部边界）。`Preflight` 产出由两个裸 bool 收成一个类型化值，消费方按需取用：`UpdateCoordinator` 构造收 `LaunchOptions`，组合根经 `ApplicationIdFor` 派生 ApplicationId、经 `IsDev`/`DevAutoIsolated` 分域单实例 socket 与随包插件安装门。该值是环境派生、单次解析的不可变配置，不是被否决的阶段间 context（边界见主 ADR Alternatives）。壳无 Generic Host，不引入 `IOptions<T>`——类型化配置值 + 构造注入是其等价物。
 2. **分部文件终态**：`Lifecycle`/`Navigation`/`Startup` 三个 dot 分部删除，方法归并进 `DesktopBootstrap.cs`（启动主链与阶段编排）与 `DesktopBootstrap.App.cs`（应用装配与后台接线、导航原语）。归并按 R4 ≤400 行/文件约束分配，两文件均在闸内。
 3. **文档同步**：`docs/architecture-standards.md` R1 补值流编排/分部终态/扩展加法三条；`docs/architecture.md` 组合根形态与 dev 配置描述随现状更新。
 4. **主 ADR 迁移**：proposed → implemented（Status/目录/Proposal→Decision/删验收清单/Problem 回写 32 字段实测口径）。

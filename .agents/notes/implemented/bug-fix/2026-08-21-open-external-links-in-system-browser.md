@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-29 — 正文「注入点击拦截脚本」的落点 `Services/ExternalLinkClickCatcher.cs` 已随外部链接拦截迁入第一方伴生插件 `dsh-desktop-companion`（`0a4b6d4`）删除；宿主侧路由/策略两落点现址已随本批修注（PageBridge/Core）；除上述两处修注外，决定与正文不动。
+
 ## Problem
 
 桌面壳（Ryn WebView + 托管 `dsh --profile web`）内，点击**外部链接**打不开。前端把 URL 型内容渲染成 `<a href="..." target="_blank" rel="noopener noreferrer">`（`@deepseek-ai/dsh-web-frontend` 的渲染器如此生成）。在浏览器/web 端，`target="_blank"` 会新开标签页，正常；但在 Ryn 的 WebView 壳里，它触发的是 saucer 的**新窗口请求**（底层符号 `saucer_navigation_new_window`）——而 Ryn 0.30 **不向外暴露导航/新窗口事件**（反编译 `Ryn.Core.dll`：全部 `saucer_webview_on` 只注册了 `SAUCER_WEBVIEW_EVENT_DOM_READY`（事件 2），`_webview` 句柄私有，外部无法自行 `saucer_webview_on` 注册导航回调）。于是该新窗口请求被静默丢弃 → 用户点了没反应。真实场景：AnySearch 搜索返回的 `x.com/...` 等结果链接全部打不开。
@@ -11,8 +13,8 @@ Status: implemented
 在**宿主壳**一侧打开外部链接，逻辑在 C#，不碰前端。借助 Ryn 官方扩展点——**向每个页面注入捕捉脚本 + 自定义命令 router**（与 Ryn 内置 FileDrop/TitleBar/ConsoleForward 同模式）：
 
 - **注入点击拦截脚本**（`Services/ExternalLinkClickCatcher.cs`）：`IRynWebView.InjectScriptAsync` 以 READY 注入（覆盖当前及后续每页/崩溃重启后新页），并用 `EvaluateJavaScriptAsync` 对当前已加载页补跑一次。脚本用 capture 阶段 `document.addEventListener('click', …, true)`：命中 `a[href]` 且为**站外 `http(s)`**（非同源）或带 `target="_blank"` 时 `preventDefault()`，再 `window.__ryn.invoke('app.openExternal', { url })` 交给宿主；同源 SPA 导航、`ryn://`、`data:`、`mailto:` 等一律放行。含 window 级幂等标记，避免重复监听。
-- **宿主命令路由**（`Services/ExternalLinkCommandRouter.cs`）：`Ryn.Ipc.ICommandRouter`，`CanRoute` 命中 `app.openExternal`，`RouteAsync` 解析 JSON 载荷（`{ url }`）、用 `ExternalLinkPolicy` 二次校验（仅绝对 http/https)、交共享 `SystemBrowser` 打开系统默认浏览器（Linux 把 `xdg-open` 承载在 `systemd-run --user --scope` 的独立 transient scope 里，其余平台 `Process.Start(UseShellExecute=true)`；见 [幽灵残留 ADR](2026-09-20-exit-app-scope-ghost-residue.md)）；失败记日志不向 JS 抛错（返回成功帧避免 JS 侧 `catch` 噪声）。打开器经委托注入，测试用假开器避免真弹浏览器。
-- **纯策略**（`Services/ExternalLinkPolicy.cs`）：判定 href 是否应外部打开（绝对 http/https + 非同源或无可参照来源 + 默认端口等价对齐）。
+- **宿主命令路由**（`src/DeepSeek.Harness.Desktop/PageBridge/ExternalLinkCommandRouter.cs`）：`Ryn.Ipc.ICommandRouter`，`CanRoute` 命中 `app.openExternal`，`RouteAsync` 解析 JSON 载荷（`{ url }`）、用 `ExternalLinkPolicy` 二次校验（仅绝对 http/https)、交共享 `SystemBrowser` 打开系统默认浏览器（Linux 把 `xdg-open` 承载在 `systemd-run --user --scope` 的独立 transient scope 里，其余平台 `Process.Start(UseShellExecute=true)`；见 [幽灵残留 ADR](2026-09-20-exit-app-scope-ghost-residue.md)）；失败记日志不向 JS 抛错（返回成功帧避免 JS 侧 `catch` 噪声）。打开器经委托注入，测试用假开器避免真弹浏览器。
+- **纯策略**（`src/DeepSeek.Harness.Desktop.Core/ExternalLinkPolicy.cs`）：判定 href 是否应外部打开（绝对 http/https + 非同源或无可参照来源 + 默认端口等价对齐）。
 - **接线**（DesktopBootstrap.RegisterServices）：`ConfigureServices` 注册 `services.AddSingleton<ICommandRouter, ExternalLinkCommandRouter>()`（`RynCommandDispatcher` 自动收集）；build 后后台任务等 `app.WebView` 可达时做一次持久注入 + 当前页补跑（最多重试 60×500ms，不阻塞首启）。
 
 ## Alternatives considered

@@ -10,7 +10,7 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Problem
 
-`dotnet test` 与安装冒烟都绿仍不等于「打包产物能跑」：自包含 publish 的 native 载荷（Ryn.Interop 携带的 `saucer`/`saucer-bindings`/`saucer-bindings-desktop`/`WebView2Loader`/`ryn-pty`）只有到真机首启才被 OS loader 实际加载——缺库、rpath/执行位破坏、导出符号缺失、图像解码原生路径损坏这几类故障在 Linux 源码 CI 与安装链冒烟（`smoke-install-{windows,macos}.sh` 只验「装得上、起得来」）全部不可见。ZK 无 win/mac 真机（见 [testing/community-targeted-testing](2026-08-20-community-targeted-testing.md)），该缺口恰落在两平台 runner 腿上。上游桌面客户端对同形态风险以 `tests/fixtures/runtime-payload-smoke.mjs` 在打包产物上冒烟 PTY/FFI/图像——上游把打包产物（非源码）作为独立验证层，本 ADR 取同一方法。
+`dotnet test` 与安装冒烟都绿仍不等于「打包产物能跑」：自包含 publish 的 native 载荷（Ryn.Interop 携带的 `saucer`/`saucer-bindings`/`saucer-bindings-desktop`/`WebView2Loader`/`ryn-pty`）只有到真机首启才被 OS loader 实际加载——缺库、rpath/执行位破坏、导出符号缺失、图像解码原生路径损坏这几类故障在 Linux 源码 CI 与安装链冒烟（`smoke-install-{windows,macos}.sh` 只验「装得上、起得来」）全部不可见。ZK 无 win/mac 真机（见 [testing/community-targeted-testing](2026-08-20-community-targeted-testing.md)），该缺口恰落在两平台 runner 腿上。上游桌面客户端对同形态风险以上游仓 `deepseek-harness/tests/fixtures/runtime-payload-smoke.mjs` 在打包产物上冒烟 PTY/FFI/图像——上游把打包产物（非源码）作为独立验证层，本 ADR 取同一方法。
 
 ## Decision
 

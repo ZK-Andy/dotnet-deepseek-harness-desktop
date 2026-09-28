@@ -16,8 +16,8 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// </remarks>
 public static class LauncherActivation
 {
-    /// <summary>二启通知命令行。</summary>
-    public const string ShowCommand = "show";
+    /// <summary>二启通知命令行（值即协议契约，保持固定；可见性随清账批 2 收窄）。</summary>
+    internal const string ShowCommand = "show";
 
     /// <summary>单实例 IPC 超时家（单例装载，见 <see cref="RuntimeTimeouts"/>；同文件 <c>PrimaryListener</c> 共用）。</summary>
     private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
@@ -28,8 +28,8 @@ public static class LauncherActivation
     /// <summary>服务端单次读超时（供 <c>PrimaryListener</c>）。</summary>
     internal static TimeSpan IpcServeTimeout => TimeSpan.FromSeconds(s_timeouts.IpcServeTimeoutSeconds);
 
-    /// <summary>主实例对 <see cref="ShowCommand"/> 的应答。</summary>
-    public const string AckResponse = "ok";
+    /// <summary>主实例对 <see cref="ShowCommand"/> 的应答（值即协议契约，保持固定；可见性随清账批 2 收窄）。</summary>
+    internal const string AckResponse = "ok";
 
     /// <summary>锁地址：<paramref name="runtimeDir"/> 下应用名 + dev 隔离后缀（与 ApplicationId 同源规则）。
     /// dev 与正式版各持一把锁，互不顶牛。生产消费仅剩 <see cref="ResolveInstanceSocketPath"/> 同类内
@@ -91,7 +91,7 @@ public static class LauncherActivation
     /// 系统级 socket 异常或残留文件清理失败时降级为无监听空转（仲裁是增强能力，绝不挡启动，
     /// 降级原因见 <paramref name="log"/>）。false=地址被占且探活可达——存在存活的主实例，
     /// 调用方应走 <see cref="NotifyPrimary"/> 后退出。</summary>
-    public static bool TryBindPrimary(
+    internal static bool TryBindPrimary(
         string path,
         Func<Task> onShowRequested,
         Action<string>? log,
@@ -126,7 +126,7 @@ public static class LauncherActivation
 
     /// <summary>向既有主实例发送显示主窗请求。返回是否收到应答；任何失败都返回 false，
     /// 调用方无论成败都应退出（绝不重复拉起运行时）。</summary>
-    public static bool NotifyPrimary(string path, TimeSpan timeout)
+    internal static bool NotifyPrimary(string path, TimeSpan timeout)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -236,8 +236,9 @@ public static class LauncherActivation
 
 /// <summary>主实例侧的监听句柄：accept 循环读一行命令，<see cref="LauncherActivation.ShowCommand"/>
 /// 则回 <see cref="LauncherActivation.AckResponse"/> 并触发显示主窗回调；其余输入静默丢弃不断链。
-/// Dispose 取消循环并 unlink 锁文件；幂等，重复调用安全。</summary>
-public sealed class PrimaryListener : IDisposable
+/// Dispose 取消循环并 unlink 锁文件；幂等，重复调用安全。生产消费仅 app 程序集（经 IIV 可达，
+/// 清账批 2 收窄）。</summary>
+internal sealed class PrimaryListener : IDisposable
 {
     private readonly Socket _socket;
     private readonly string _path;

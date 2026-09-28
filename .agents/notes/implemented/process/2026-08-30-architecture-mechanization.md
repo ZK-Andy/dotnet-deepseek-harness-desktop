@@ -32,7 +32,7 @@ Superseded（部分）：通道二（ArchitectureTests/NetArchTest 命名空间�
 
 ### 通道二 · 架构测试（R2 依赖方向/禁循环 + A4 组合根 + 新 gate A5；A1/A3 留评审）
 
-- 引入 `NetArchTest.Rules`，写成 `tests/ArchitectureTests.cs`，随 `dotnet test` → CI。
+- 引入 `NetArchTest.Rules`，写成 `tests/DeepSeek.Harness.Desktop.Tests/ArchitectureTests.cs`，随 `dotnet test` → CI。
 - `A1` 层边界（`Services.Update`/`Services.Tray`/`Services` 按既定依赖方向；外层不反向依赖内层）；`A2` 禁命名空间循环依赖；`A3` 应用层不得直引具体基础设施实现（`*Process`/`*Downloader`/`*Client`/注册表/文件系统类不得被非组合根直接实例化/引用），即 R3 边界抽象；`A4` 组合根不被内层依赖。——`A1`/`A3` 经用户拍板**保留为评审项、不作硬门禁**（见 Consequences A-规则校准：A1 对薄壳过度严格、A3 需接口抽取），`A2`/`A4` 为真实可强制。
 - **新 gate（③）**：`A5` **新类型必须进 `Services/` 或子域**（禁落在根命名空间/`DesktopBootstrap` 组合根——治「新功能塞组合根」）。`A6` **IPC 跨界 ID 用强类型**（禁跨包/事件帧裸 `string` ID，治「裸 string 跨包」）经用户拍板**保留为评审项、不作硬门禁**（见 Consequences A-规则校准），不机器化。
 
@@ -71,7 +71,7 @@ Superseded（部分）：通道二（ArchitectureTests/NetArchTest 命名空间�
 |---|---|---|---|
 | 〇 标准重构 | coding-standards(提额)/architecture-standards | 文档 + 预算 + AGENTS | ① |
 | 一 尺寸健康闸 | `verify-code-health.py` | pre-commit + CI `docs` job（`--enforce`；先拆再上） | — |
-| 二 架构测试 | `tests/ArchitectureTests.cs`（NetArchTest） | `dotnet test` → CI | +A5（A6 留评审，不作门禁） |
+| 二 架构测试 | `tests/DeepSeek.Harness.Desktop.Tests/ArchitectureTests.cs`（NetArchTest） | `dotnet test` → CI | +A5（A6 留评审，不作门禁） |
 | 三 契约扫描 | `verify-code-conventions.py` | pre-commit + CI `docs` job（`--enforce`） | **替代分析器工程**；D001–003 留评审 |
 | 四 存量清账 | 拆分/归位 | 与一二三相结的前置 commit | ②执行序 |
 | 五 工作流集成 | `feature-flow.md` 分流 | 机械化落地后设为强制验证步骤 | ② |
@@ -93,7 +93,7 @@ Superseded（部分）：通道二（ArchitectureTests/NetArchTest 命名空间�
 
 - 架构规范从「软约束」变 **build/CI 门禁**：R4/F 刹住上帝对象、D004/D005 补契约/边界、A5 治「新功能塞组合根」。
 - **标准更自洽**：行为契约（async/异常/日志）归编码规范，架构规范只留结构+契约；「一个事实一个家」落地。
-- 新增：`verify-code-health.py`（F1-F4）+ `verify-code-conventions.py`（D004/D005）+ `NetArchTest.Rules`（`tests/ArchitectureTests.cs`，A2/A4/A5）；门禁矩阵扩展（CI + pre-commit，`--enforce` 硬门槛）。**不建分析器工程**。
+- 新增：`verify-code-health.py`（F1-F4）+ `verify-code-conventions.py`（D004/D005）+ `NetArchTest.Rules`（`tests/DeepSeek.Harness.Desktop.Tests/ArchitectureTests.cs`，A2/A4/A5）；门禁矩阵扩展（CI + pre-commit，`--enforce` 硬门槛）。**不建分析器工程**。
 - 存量清账（一次完成）：`Startup`/`MarketInstallHelper`/`HarnessRuntimeHost`/`RuntimeBootstrap`/`DesktopBootstrap` 拆为 <400 的 partial、F2/F4 方法分解到阈值内；D004/D005、A5 归位。
 - **A-规则校准（用户拍板保留为评审项）**：原 A1/A2/A3 对薄桌面壳过度严格（要求 ports-and-adapters 重写：应用层不得直引具体基础设施、子域互不依赖），与 architecture-standards「采纳原理，不照抄模板」矛盾。落地校准为真实可强制：A4 组合根不被内层依赖 / A5 新类型必进 Services / A2 子域无真循环（Tray→Update 单向合理耦合）。**A3（应用层不得直引具体基础设施实现，R3 边界抽象）与 A6（IPC 跨界 ID 强类型）保留为评审项、不作硬门禁**（前者需接口抽取、后者未达量产）——留评审/AI 兜底。D001–D003 留评审。
 - 文档同步：coding-standards（提额 500→1000）与 architecture-standards 重构、AGENTS 质量门清单（加两个 verify）、README 测试徽章 464→467、feature-flow 分流。

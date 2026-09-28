@@ -24,7 +24,7 @@ Status: implemented
 **R1 #1 —— 不采纳（方向倒置）**
 
 - `DesktopBootstrap.Lifecycle.cs` 的 `install:` 委托体中留在组合根的语义是 `_closeGate.ApproveExit()` / `_updateWindow?.Current?.Close()` / `StartExitFallback(ct)`——三者都依赖组合根实例字段（`_closeGate`/`_updateWindow`），是壳生命周期与该子域的**装配胶水**。
-- 业务性工作（复取哈希 `InstallerDownloader.FetchSha256Async`、`UpdateInstaller.LaunchAsync`）**已**在 `Services.Update` 子域内；IPC 侧安装也由 `Services/Update/DesktopUpdateCommandRouter.RouteInstallAsync` 走 `_machine.InstallAsync()`。子域本就拥有编排环，这里只是构造函数接线，属正确归属。
+- 业务性工作（复取哈希 `InstallerDownloader.FetchSha256Async`、`UpdateInstaller.LaunchAsync`）**已**在 `Services.Update` 子域内；IPC 侧安装也由 `src/DeepSeek.Harness.Desktop/Update/DesktopUpdateCommandRouter.cs` 的 `RouteInstallAsync` 走 `_machine.InstallAsync()`。子域本就拥有编排环，这里只是构造函数接线，属正确归属。
 - 若把委托**迁入 `Services/Update/`**，意味着把 `_closeGate`/窗口/退出兜底以回调形式注入子域——子域反向知道自己不该关心的 shell 退出编排，**依赖方向被拉反**。这与「组合根只装配」原则冲突，不做。
 
 ## Alternatives considered

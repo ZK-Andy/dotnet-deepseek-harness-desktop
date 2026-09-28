@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-dev 判定满足其一即触发（首版仅看环境变量，实测裸跑 `dotnet run` 不设变量时漏网——PATH dsh 回退形态同样需要隔离；[online-first 批次二](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)后第二触发条件由「闭包存在性探测」改为第二个显式标记——判定不探测闭包存在性）：①`DSH_DESKTOP_RUNTIME_DIR` 已设置；②`DSH_DESKTOP_DEV=1` 显式声明。纯判定抽到 `Services/DevEnvironment`（可单测）。隔离内容：
+dev 判定满足其一即触发（首版仅看环境变量，实测裸跑 `dotnet run` 不设变量时漏网——PATH dsh 回退形态同样需要隔离；[online-first 批次二](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)后第二触发条件由「闭包存在性探测」改为第二个显式标记——判定不探测闭包存在性）：①`DSH_DESKTOP_RUNTIME_DIR` 已设置；②`DSH_DESKTOP_DEV=1` 显式声明。纯判定抽到 `src/DeepSeek.Harness.Desktop.Infrastructure/Runtime/DevEnvironment.cs`（可单测）。隔离内容：
 
 - **ApplicationId 后缀**：dev 加 `.dev`（`io.github.ZK-Andy.dotnet-deepseek-harness-desktop.dev`），Wayland app_id / GTK unique id 随之独立，任务栏出现单独条目属预期。
 - **DSH_HOME 自动隔离**：dev 且未显式设置 `DSH_DESKTOP_DSH_HOME` 时，默认指向 `<仓库>/.cache/dev-home`——runtime 目录形态从其两级上溯推导；PATH 回退形态从应用基目录向上找 `.git` 定位仓库根；显式设置仍可指回真实 home。

@@ -12,7 +12,7 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 
 ## Decision
 
-覆盖率基线 = 全部 cobertura 的**并集**：键 `(assembly, 源路径, 行号)`，hits 取跨文件最大值（覆盖 = `hits > 0`）。coverlet 在不同工程写出的路径前缀不同（`<Assembly>/Services/X.cs` 与 `Services/X.cs`），键形成前剥掉与 package（程序集）名相同的首段，否则同一物理行按两个键各计一次。
+覆盖率基线 = 全部 cobertura 的**并集**：键 `(assembly, 源路径, 行号)`，hits 取跨文件最大值（覆盖 = `hits > 0`）。coverlet 在不同工程写出的路径前缀不同（`<Assembly>/Update/UpdateBanner.cs` 与 `Update/UpdateBanner.cs`），键形成前剥掉与 package（程序集）名相同的首段，否则同一物理行按两个键各计一次。
 
 新增 `scripts/coverage-summary.py` 承担合并并打印机器可解析的基线行 `coverage-summary: covered=<c> valid=<v> line-rate=<rate> (<pct>%)`；无 cobertura 文件即 exit 1（缺失产物不得打印看似合理的 0%），XML 损坏 exit 2。`ci.yml` 的 `coverage summary` 步调用该脚本。脚本自带 `--self-test`，夹具钉住两个判据点：跨文件 max hits 不因某片 0-hits 而失去命中、程序集前缀归一后同物理行合并为一个键。
 
@@ -23,7 +23,7 @@ Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 - **用标准合并工具（ReportGenerator `dotnet-reportgenerator-globaltool` / first-party `dotnet-coverage merge`）**：落败——两者都须在 CI 引入工具安装与版本维护面，其合并语义与输出随工具版本走；自带自测的 Python 脚本可离线按同一件 artifact 复算，与既有 `verify-*.py` 自测形态一致。
 - **只取主测试工程的 cobertura**：落败——该文件 `line-rate` 0.1743，只含组合根测试触及的行，不描述全量覆盖。
 - **三份 `line-rate` 取平均或取最大**：落败——分片各自的有效行集合重叠（Core 被三份文件都含、Infrastructure 被两份含），算术合并无定义。
-- **键不归一化（直接用 coverlet 原路径）**：落败——同一行在 `DeepSeek.Harness.Desktop.Core/Services/X.cs` 与 `Services/X.cs` 两个键下各计一次，有效行由 7306 虚增到 8087、比率压到 52.94%。
+- **键不归一化（直接用 coverlet 原路径）**：落败——同一行在 `<Assembly>/Update/UpdateBanner.cs` 与 `Update/UpdateBanner.cs` 两个键下各计一次，有效行由 7306 虚增到 8087、比率压到 52.94%。
 - **只让一个测试工程收集覆盖率**：落败——其余工程的测试不再计入覆盖与测试数，是数据缩水而非口径修正。
 
 ## Consequences

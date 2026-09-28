@@ -143,7 +143,8 @@ public class DesktopTrayCommandRouterTests
     private static (DesktopTrayCommandRouter Router, List<string> Calls) MakeRouter(
         CloseGate gate,
         UpdateStateMachine? machine = null,
-        List<string>? logs = null)
+        List<string>? logs = null,
+        Action<string, string>? notify = null)
     {
         var calls = new List<string>();
         var router = new DesktopTrayCommandRouter(
@@ -156,7 +157,8 @@ public class DesktopTrayCommandRouterTests
             closeGate: gate,
             updateMachine: machine,
             uiLocale: new UiLocale(),
-            log: logs is null ? null : logs.Add);
+            log: logs is null ? null : logs.Add,
+            notify: notify);
         return (router, calls);
     }
 
@@ -275,6 +277,120 @@ public class DesktopTrayCommandRouterTests
 
         Assert.Contains(logs, l => l.Contains("检查更新") && l.Contains("已受理"));
         Assert.Contains(logs, l => l.Contains("自更新栈未装载"));
+    }
+
+    /// <summary>machine 就绪态驱动的通知夹具：最小真实状态机（检查命中→下载落临时资产→Ready），
+    /// 持久化用空桩——「检查更新」后台执行体的通知路径由此可达（F 批 R2 挂账补齐）。</summary>
+    private sealed class StubPersistence : UpdateStateMachine.IPersistence
+    {
+        public Task<UpdateStateMachine.ReadyRecord?> GetAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<UpdateStateMachine.ReadyRecord?>(null);
+
+        public Task SetAsync(UpdateStateMachine.ReadyRecord record, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task ClearAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<bool> AssetExistsAsync(string assetPath, CancellationToken cancellationToken) =>
+            Task.FromResult(File.Exists(assetPath));
+    }
+
+    /// <summary>构造检查即命中新版本的状态机：CheckAsync 走完 Checking→Downloading→Ready 全链。
+    /// <paramref name="checkGate"/> 非 null 时 check 委托挂起直至放行——用于钉「受理帧先行返回、
+    /// 通知异步不阻塞路由」。下载落的临时文件不被 CheckAsync 链消费（资产存在性仅 StartAsync/
+    /// Install 阶段查），落盘只为对齐 download 契约形态，调用方负责 finally 清理。</summary>
+    private static (UpdateStateMachine Machine, string AssetPath) MakeCheckHitsMachine(
+        string targetVersion, TaskCompletionSource? checkGate = null)
+    {
+        string assetPath = Path.Combine(Path.GetTempPath(), $"tray-update-test-{targetVersion}-{Guid.NewGuid():N}.bin");
+        var machine = new UpdateStateMachine(
+            currentVersion: "0.0.1",
+            check: async _ =>
+            {
+                if (checkGate is not null)
+                {
+                    await checkGate.Task.ConfigureAwait(false);
+                }
+
+                return new ReleaseMeta(targetVersion, "app.bin", "https://example.invalid/app.bin", Sha256Url: null);
+            },
+            download: (_, _) =>
+            {
+                File.WriteAllBytes(assetPath, [1]);
+                return Task.FromResult(assetPath);
+            },
+            install: (_, _, _) => Task.CompletedTask,
+            persistence: new StubPersistence(),
+            log: _ => { });
+        return (machine, assetPath);
+    }
+
+    /// <summary>验证装载状态机后托盘「检查更新」驱动后台检查到就绪态，结论文案（含版本号）经
+    /// 托盘通知回调送达，且受理帧 {} 先行返回（通知异步不阻塞路由）。</summary>
+    [Fact]
+    public async Task CheckUpdate_MachineReachesReady_NotifiesVersionMessage()
+    {
+        string? notifiedTitle = null;
+        var notified = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        // check 闸门在帧断言之后才放行：若路由内联阻塞等待检查完成，RouteAsync 5s 内回不来，
+        // 「受理帧先行、通知异步不阻塞路由」即响亮失败（对齐 R2 验收的钉法）
+        var checkGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        (UpdateStateMachine stateMachine, string assetPath) = MakeCheckHitsMachine("9.9.9", checkGate);
+        var router = new DesktopTrayCommandRouter(
+            showWindow: () => Task.CompletedTask,
+            closeWindow: () => { },
+            closeGate: new CloseGate(),
+            updateMachine: stateMachine,
+            uiLocale: new UiLocale(),
+            notify: (title, message) =>
+            {
+                notifiedTitle = title;
+                notified.TrySetResult(message);
+            });
+
+        try
+        {
+            string frame = await RouteAsync(router, """{"event":"tray.menuItemClicked","data":"check-update"}""")
+                .AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal("{}", frame);
+            checkGate.TrySetResult();
+
+            string message = await notified.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(TrayCheckFeedback.Title, notifiedTitle);
+            Assert.Contains("9.9.9", message);
+            Assert.Equal(UpdateStatus.Ready, stateMachine.State.Status);
+        }
+        finally
+        {
+            File.Delete(assetPath);
+        }
+    }
+
+    /// <summary>验证检查无更新（UpToDate 结束态）同样经托盘通知给结论文案——结束态通知、
+    /// 中间态不打扰的契约在路由链路闭合。</summary>
+    [Fact]
+    public async Task CheckUpdate_MachineUpToDate_NotifiesAlreadyLatest()
+    {
+        var notified = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var machine = new UpdateStateMachine(
+            currentVersion: "9.9.9",
+            check: _ => Task.FromResult<ReleaseMeta?>(null),
+            download: (_, _) => throw new InvalidOperationException("无更新时不得触发下载"),
+            install: (_, _, _) => Task.CompletedTask,
+            persistence: new StubPersistence(),
+            log: _ => { });
+        var router = new DesktopTrayCommandRouter(
+            showWindow: () => Task.CompletedTask,
+            closeWindow: () => { },
+            closeGate: new CloseGate(),
+            updateMachine: machine,
+            uiLocale: new UiLocale(),
+            notify: (_, message) => notified.TrySetResult(message));
+
+        await RouteAsync(router, """{"event":"tray.menuItemClicked","data":"check-update"}""");
+
+        string message = await notified.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("已是最新版本", message);
     }
 }
 

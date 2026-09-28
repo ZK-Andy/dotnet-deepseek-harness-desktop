@@ -53,9 +53,9 @@ Erratum 存量清理（`verify-adr-format.py --facts` 29 条 warning，E 批挂�
 ## Consequences
 
 - 组合根零 dev 域 env 散读，`docs/architecture.md`「`LaunchOptions.Resolve` 单点解析」陈述与代码一致。
-- `LauncherActivation` 公共面收窄 2 项；单实例仲裁外部契约仅剩 `ResolveInstanceSocketPath`/
-  `TryBindPrimary`/`NotifyPrimary`/`PrimaryListener`（协议常量 `ShowCommand`/`AckResponse` 另计，
-  按「协议常量保持固定」规则维持 public）；剩余公共面收窄候选挂账 HANDOFF。
+- `LauncherActivation` 公共面经两批收窄（本批 -2；清账批 2 再降 `ShowCommand`/`AckResponse`/
+  `TryBindPrimary`/`NotifyPrimary`/`PrimaryListener` 五项——「协议常量保持固定」约束的是值而非
+  可见性）：外部契约仅剩 `ResolveInstanceSocketPath` 与类本身。
 - HANDOFF 待办区清账 4 条；nav-partial 笔记入冷归档，`--facts` 存量 29 条 warning 维持原量随下批。
 - 测试面：LaunchOptions 新增 DevTools 钉回归（null/0/1/true 四形态 + 与 dev 判定独立性钉，
   两 dev 触发器均中和）；既有 LauncherActivationTests 零改动。

@@ -14,9 +14,9 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Decision
 
-插件安装驱动面报告「本轮确有插件装成功」时，spawn 正式 dsh 前先跑一次**体检探针**（`Services/PluginInstallProbe`，对齐官方 healthCheck 的「换血前先证明能活」廉价子集）：
+插件安装驱动面报告「本轮确有插件装成功」时，spawn 正式 dsh 前先跑一次**体检探针**（`src/DeepSeek.Harness.Desktop.Infrastructure/Plugins/PluginInstallProbe.cs`，对齐官方 healthCheck 的「换血前先证明能活」廉价子集）：
 
-- **探针 = 独立 spawn 一次 dsh web**（`--port 0`，psi 复用 `HarnessRuntimeHost.BuildStartPsi` 单一事实源：同一 env 净化、PATH 富化、血统 token），等 `dsh web:` URL（60s 时限，与主 spawn 同宽），随后整树击杀探针进程。URL 出来了 = 插件树可加载、web-app 可起，正式 spawn 照常。编排与 psi 构造在 `Services/PluginInstallProbe`；spawn 执行（`RunProbeAsync`）归 `PluginProcessRunner` 进程边界单点。
+- **探针 = 独立 spawn 一次 dsh web**（`--port 0`，psi 复用 `HarnessRuntimeHost.BuildStartPsi` 单一事实源：同一 env 净化、PATH 富化、血统 token），等 `dsh web:` URL（60s 时限，与主 spawn 同宽），随后整树击杀探针进程。URL 出来了 = 插件树可加载、web-app 可起，正式 spawn 照常。编排与 psi 构造在 `src/DeepSeek.Harness.Desktop.Infrastructure/Plugins/PluginInstallProbe.cs`；spawn 执行（`RunProbeAsync`）归 `PluginProcessRunner` 进程边界单点。
 - **探针失败（超时/早退/无 URL）** → `DesktopProfileBootstrap.ReconcileProfile` 清一次不可解析引用 → 重试探针一次。通过 = 自愈完成；二次仍失败 = 记响亮日志后放行正式 spawn（失败由既有恢复链路兜底——探针是 best-effort 增强，绝不阻断启动）。
 - **触发条件 =「本轮确有插件装成功」**：两个安装驱动（`EnsureBundledPluginsBeforeSpawnAsync`/`EnsureMarketFromRegistryAsync`）改为返回是否装成功，调用方据此决定是否探针——无安装的常规启动零探针成本，保持启动时延不变。
 

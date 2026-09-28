@@ -4,13 +4,13 @@ Status: implemented
 
 ## Problem
 
-导航层外部链接拦截（`Services/RynNavigationCallbacks`，Ryn.Callbacks `WebViewNavigating`）在 `_opener(url)` 打开系统浏览器**失败**时（`xdg-open`/`Process.Start` 没默认浏览器或报错），当前只写一条 host.log，随后照样 `return NavigationDecision.Block`——站外链接本就不该把 WebView 导航走，但用户侧看到的是**静默死链**：点了外链，浏览器没弹、页面也不动，毫无提示。`fail loud` 只对日志（开发者）loud，对**用户**不 loud（R2 代码审查 N2）。
+导航层外部链接拦截（`src/DeepSeek.Harness.Desktop/PageBridge/RynNavigationCallbacks.cs`，Ryn.Callbacks `WebViewNavigating`）在 `_opener(url)` 打开系统浏览器**失败**时（`xdg-open`/`Process.Start` 没默认浏览器或报错），当前只写一条 host.log，随后照样 `return NavigationDecision.Block`——站外链接本就不该把 WebView 导航走，但用户侧看到的是**静默死链**：点了外链，浏览器没弹、页面也不动，毫无提示。`fail loud` 只对日志（开发者）loud，对**用户**不 loud（R2 代码审查 N2）。
 
 ## Decision
 
 给外部链接打开失败补一个**页面级 toast 提示**，让用户知道链接没打开、可手动复制地址到浏览器：
 
-1. **宿主侧**（`Services/RynNavigationCallbacks`）：构造新增可注入的 `Action<string>? notifyLinkFail`（携带失败的 URL）。`OnWebViewNavigating` 里 opener 返回 false **或**抛异常即视为打开失败 → `notifyLinkFail?.Invoke(url)`。委托注入保持本类可单测（对齐 `DesktopTrayCommandRouter._notify` 的模式）。
+1. **宿主侧**（`src/DeepSeek.Harness.Desktop/PageBridge/RynNavigationCallbacks.cs`）：构造新增可注入的 `Action<string>? notifyLinkFail`（携带失败的 URL）。`OnWebViewNavigating` 里 opener 返回 false **或**抛异常即视为打开失败 → `notifyLinkFail?.Invoke(url)`。委托注入保持本类可单测（对齐 `DesktopTrayCommandRouter._notify` 的模式）。
 2. **DesktopBootstrap.RegisterServices 接线**：工厂注册 `RynNavigationCallbacks` 时，`notifyLinkFail` 接 `sp.GetRequiredService<IRynWebView>().EmitEvent("desktop.externalLinkOpenerFailed", new ExternalLinkOpenerFailedFrame(url), AppJsonContext.Default.ExternalLinkOpenerFailedFrame)`——把失败经 deferred `IRynWebView` 推给页面（导航回调触发时页面必然已加载，deferred 转发到真实窗口）。
 3. **AOT 序列化通道**：`Services/AppJson.cs` 新增 `internal sealed record ExternalLinkOpenerFailedFrame(string Url)` 并在 `AppJsonContext` 注册（源生成，漏注册编译期即失败）。
 4. **companion 侧**（`plugins/dsh-desktop-companion/client/client.js`）：`apply(ctx)` 里订阅 `window.__ryn.on('desktop.externalLinkOpenerFailed', ...)`，命中时用纯 DOM 创建一个 `#ddc-linkfail-toast` 浮层（不经 dsh slot 树——它是页面级浮动层），显示标题+URL（无 URL 退化为正文），5s 后淡出。文案进现有 `zh`/`en` 字典（`linkFailTitle`/`linkFailBody`），经 `ctx.locale.bind('desktop-companion')` 随语言切换。companion version `0.0.15 → 0.0.16`（功能变更，随包闭包版本感知升级）。
