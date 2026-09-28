@@ -51,7 +51,7 @@ F 批第三项「覆盖率比对数」已由 B-1（`process/2026-09-28-ci-gate-h
 
 - `python3 scripts/gate_common.py --self-test`、`verify-md-links.py --self-test`、`verify-doc-budgets.py --self-test` 及全部既有门禁自测逐个实跑绿（16 个 Python 门禁全量）。
 - `dotnet test` 867/867 绿、build 0 警告（含 DesktopTrayCommandRouter 拆分后的路由契约测试：记序/帧/日志痕）。
-- ci.yml 变更以 push 实跑验证（ci.yml 无 `workflow_dispatch` 触发器，push@main 即其执行路径；表达式错误只有真 runner 能暴露），实跑 run id 于 Evidence 回写提交中补记本段；在此之前，本步的本地验证 = 三条自测命令逐条实跑绿。
+- ci.yml 变更以 push 实跑验证（ci.yml 无 `workflow_dispatch` 触发器，push@main 即其执行路径；表达式错误只有真 runner 能暴露）：push run `36457713574` 五作业全绿，新步「Python 门禁自测」三条命令在真 runner 实跑通过。
 
 ## Deferred
 
