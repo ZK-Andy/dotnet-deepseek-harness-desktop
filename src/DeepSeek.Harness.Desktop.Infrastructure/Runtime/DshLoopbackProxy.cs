@@ -34,6 +34,47 @@ public sealed class DshLoopbackProxy : IDisposable
     {
     }
 
+    /// <summary>启动回环代理源并返回结果对象（组合根值流：消费段收参，不再借组合根字段回填——
+    /// ADR compose-root-form-separation）。绑定失败 loud 后降级（Proxy 为 null，窗口走 wwwroot，
+    /// 行为与 dsh 未起一致，不挡启动）；绑定异常类型清单（协议/平台策略）住本类，不散在组合根。</summary>
+    /// <param name="forward">壳转发器（铸币态家）。</param>
+    /// <param name="contentRoot">引导页静态根（wwwroot；未铸币时本地 holder/指南面）。</param>
+    /// <param name="log">日志回调。</param>
+    public static ProxySetup TryCreate(DshShellForward forward, string contentRoot, Action<string> log)
+    {
+        // 构造（绑定）先行：绑定异常即 fail loud/降级，无资源泄漏面；CTS 只在绑定成功后创建，
+        // 其寿命随 ProxySetup 交组合根尾部统一释放（cancel → dispose → dispose proxy）。
+        DshLoopbackProxy proxy;
+        try
+        {
+            proxy = new DshLoopbackProxy(forward, log, contentRoot);
+        }
+        catch (Exception ex) when (ex is SocketException or IOException or ObjectDisposedException or ArgumentException)
+        {
+            log($"[shell] 代理源绑定失败（降级 wwwroot）：{ex.GetType().Name} {ex.Message}");
+            return new ProxySetup(null, new CancellationTokenSource());
+        }
+
+        CancellationTokenSource cts = new();
+        _ = proxy.RunAsync(cts.Token);
+        return new ProxySetup(proxy, cts);
+    }
+
+    /// <summary>代理源启动产出（组合根值流管线阶段产出）：Cts 恒非空（随组合根 Run 尾部统一释放），
+    /// Proxy 仅绑定成功非空。</summary>
+    /// <param name="Proxy">回环代理源；null = 绑定失败已降级 wwwroot。</param>
+    /// <param name="Cts">代理受理循环取消令牌源。</param>
+    public readonly record struct ProxySetup(DshLoopbackProxy? Proxy, CancellationTokenSource Cts)
+    {
+        /// <summary>组合根 Run 尾部释放（先停受理循环再放代理；顺序与搬迁前 finally 一致）。</summary>
+        public void Dispose()
+        {
+            Cts.Cancel();
+            Cts.Dispose();
+            Proxy?.Dispose();
+        }
+    }
+
     /// <summary>测试缝：注入 dsh 通道传输。</summary>
     internal DshLoopbackProxy(DshShellForward forward, Action<string> log, HttpMessageHandler transport, string? contentRoot = null)
     {

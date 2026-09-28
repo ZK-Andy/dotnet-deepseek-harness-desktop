@@ -2,72 +2,101 @@ using System.Text.RegularExpressions;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 
-/// <summary>组合根 Run 主链启动序（批次 0 记序安全网，ADR composition-root-value-flow-pipeline）：
-/// 阶段产出类型（批次 2 起：Preflight/HostSetup/RuntimeSetup/UpdateSetup/AppSetup/SupervisorSetup）
+/// <summary>启动序安全网（ADR compose-root-form-separation 后的形态）：组合根只装配与触发
+/// （容器前头部 + BuildApp 装配 + 编排触发），阶段主链与阶段产出搬进 <c>Bootstrap.StartupSequence</c>。
+/// 阶段产出类型（Preflight/HostSetup/UpdateSetup/AppSetup/SupervisorSetup，正式类型见 Bootstrap/StartupStages.cs）
 /// 把产生序钉进编译器——消费段收参数、缺前置产出即缺值编译失败（编译期面无法在测试里断言，
 /// 由源序与产出形态两网兜底）。源序即契约：重排/改名须同步更新本测试。</summary>
 public class CompositionRootSequenceTests
 {
-    /// <summary>Run() 主链调用序按语句序全序断言（带实参调用串因定义签名不同天然不撞；无参调用以分号锚定 Run() 内语句而非定义头）。</summary>
+    /// <summary>组合根容器前头部调用序按语句序全序断言（单实例早退、代理启动留根，编排触发收尾）。</summary>
     [Fact]
-    public void RunChain_StageCalls_AreInContractOrder()
+    public void ComposeRoot_PreContainerChain_IsInContractOrder()
     {
         string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
             "src/DeepSeek.Harness.Desktop/DesktopBootstrap.cs"));
 
         string[] chain =
         [
-            "ResolveRuntimeAndDev();",
-            "AcquireSingleInstance(preflight)",
-            "EnsureDesktopProfile();",
-            "SetupHostAndMarker(preflight)",
-            "InstallCompanionBeforeSpawn(preflight, host)",
-            "StartRuntime(preflight, host)",
-            "InitCloseGateAndUpdateStack(preflight, runtime)",
-            "BuildApp(preflight, runtime, update)",
-            "RunBootstrapIfNeeded(preflight, app)",
-            "ShowTray(app)",
-            "SetupSupervisor(preflight, app, host)",
-            "SetupHealthMonitor(app, supervisor)",
-            "StartUpdateCheck(update)",
-            "SharedHomeBannerTask(preflight, app, host, supervisor)",
-            "RunAppLoop(preflight, app, supervisor)",
+            "WebkitSandboxFallback.Apply();",
+            "ResolveRuntimeAndDev(wiring)",
+            "AcquireSingleInstance(preflight, wiring)",
+            "StartProxy();",
+            "InitCloseGateAndUpdateStack(preflight, wiring)",
+            "BuildApp(preflight, proxy.Proxy, update, wiring)",
+            "GetRequiredService<Core.Bootstrap.IStartupSequence>().Run()",
         ];
 
+        AssertChainOrder(source, chain);
+    }
+
+    /// <summary>编排服务主链调用序按语句序全序断言（搬迁后阶段链的唯一家；无参调用以分号锚定
+    /// Run() 内语句而非定义头）。</summary>
+    [Fact]
+    public void StartupSequence_RunChain_StageCalls_AreInContractOrder()
+    {
+        string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
+            "src/DeepSeek.Harness.Desktop/Bootstrap/StartupSequence.cs"));
+
+        string[] chain =
+        [
+            "EnsureDesktopProfile();",
+            "SetupHostAndMarker()",
+            "InstallCompanionBeforeSpawn(host)",
+            "StartRuntime(host)",
+            "RunBootstrapIfNeeded()",
+            "ShowTray()",
+            "SetupSupervisor(host)",
+            "SetupHealthMonitor(supervisor)",
+            "StartUpdateCheck()",
+            "SharedHomeBannerTask(host, supervisor)",
+            "RunAppLoop(supervisor)",
+        ];
+
+        AssertChainOrder(source, chain);
+    }
+
+    private static void AssertChainOrder(string source, string[] chain)
+    {
         int cursor = -1;
         foreach (string call in chain)
         {
             int at = source.IndexOf(call, StringComparison.Ordinal);
-            Assert.True(at >= 0, $"Run 主链调用点缺失：{call}");
+            Assert.True(at >= 0, $"主链调用点缺失：{call}");
             Assert.True(at > cursor, $"启动序漂移：{call} 出现在前序阶段之前（契约序 = {string.Join(" → ", chain)}）");
             cursor = at;
         }
     }
 
-    /// <summary>值流形态（批次 2）：空载荷 token 退役，六个阶段产出类型均携带真实值，且**每个
-    /// 产出属性至少有一处消费点**——产出即执行序证明，空载荷或死载荷都会退回「只钉序不传值」的旧形态。</summary>
+    /// <summary>值流形态：阶段产出类型均为携带真实值的正式类型，且**每个产出属性至少有一处消费点**——
+    /// 产出即执行序证明，空载荷或死载荷都会退回「只钉序不传值」的旧形态。</summary>
     [Fact]
     public void StageOutputs_CarryConsumedValues()
     {
         string dir = Path.Combine(TestRepoRoot.Find(), "src/DeepSeek.Harness.Desktop");
-        string source = File.ReadAllText(Path.Combine(dir, "DesktopBootstrap.cs"));
+        string stages = File.ReadAllText(Path.Combine(dir, "Bootstrap", "StartupStages.cs"));
 
         Assert.False(
-            Regex.IsMatch(source, @"record struct \w+Token\s*;"),
+            Regex.IsMatch(stages, @"record struct \w+Token\s*[;({]"),
             "空载荷 token 形态应已退役（值流管线批次 2）");
 
-        // 消费点可落在主文件或唯一 dot 分部（App），故按整个组合根分部集扫描；消费须锚定到
-        // 阶段产出变量/形参名（Run 主链与各消费段共用同名 preflight/host/runtime/update/app/supervisor），
-        // 否则无关同名成员（arrived.Task、文档注释里的 DesktopBootstrap.App.cs）会误判为已消费。
-        string composed = string.Concat(Directory.GetFiles(dir, "DesktopBootstrap*.cs")
-            .OrderBy(p => p, StringComparer.Ordinal).Select(File.ReadAllText));
-        const string stageVariables = "preflight|host|runtime|update|app|supervisor";
+        // 消费点可落在编排服务任一分部或组合根分部，故按两侧文件集扫描；消费须锚定到
+        // 阶段产出变量/形参名（主链与各消费段共用同名 preflight/host/update/app/supervisor，
+        // 编排服务内为私有字段 _ 前缀形态），否则无关同名成员（wiring.App、文档注释里的文件名）
+        // 会误判为已消费——前视字符类拦截标识符中段假匹配。
+        string[] sources = Directory.GetFiles(dir, "DesktopBootstrap*.cs")
+            .Concat(Directory.GetFiles(Path.Combine(dir, "Bootstrap"), "StartupSequence*.cs"))
+            .OrderBy(p => p, StringComparer.Ordinal)
+            .Select(File.ReadAllText)
+            .ToArray();
+        string composed = string.Concat(sources);
+        const string stageVariables = "_?(?:preflight|host|updates?|app|supervisor)";
 
-        string[] outputs = ["Preflight", "HostSetup", "RuntimeSetup", "UpdateSetup", "AppSetup", "SupervisorSetup"];
+        string[] outputs = ["Preflight", "HostSetup", "UpdateSetup", "AppSetup", "SupervisorSetup"];
         foreach (string output in outputs)
         {
             // 声明以 ");" 收尾；载荷取到分号为止，容忍参数类型里的 ')'（如元组）。
-            Match declared = Regex.Match(source, $@"private readonly record struct {output}\((?<payload>[^;]*)\);");
+            Match declared = Regex.Match(stages, $@"internal readonly record struct {output}\((?<payload>[^;]*)\);");
             Assert.True(declared.Success, $"阶段产出类型缺失：{output}");
             string payload = declared.Groups["payload"].Value.Trim();
             Assert.False(payload.Length == 0, $"阶段产出无载荷：{output}（值流要求返回真实值）");
@@ -78,7 +107,7 @@ public class CompositionRootSequenceTests
                 Assert.True(name.Success, $"阶段产出参数无法解析：{output}({parameter})");
                 string property = name.Groups[1].Value;
                 Assert.True(
-                    Regex.IsMatch(composed, $@"\b(?:{stageVariables})\.{property}\b"),
+                    Regex.IsMatch(composed, $@"(?<![A-Za-z_0-9]){stageVariables}\.{property}\b"),
                     $"阶段产出属性无消费点（死载荷）：{output}.{property}（消费须经阶段产出变量 {stageVariables}）");
             }
         }

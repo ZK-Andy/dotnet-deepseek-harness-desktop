@@ -735,6 +735,33 @@ public class DshLoopbackProxyTests
         }
     }
 
+    /// <summary>TryCreate 结果对象（组合根值流产出，ADR compose-root-form-separation）：绑定成功产出
+    /// 非空代理（http 回环 URL）与 CTS；Dispose 先 cancel 受理循环再放代理（顺序与组合根尾部一致）。
+    /// 绑定失败路径（Proxy null → 降级 wwwroot）无法稳定注入端口级故障，属组合根消费方语义。</summary>
+    [Fact]
+    public void TryCreate_BindsAndDisposeCancelsToken()
+    {
+        var forward = new DshShellForward(new StubDshHandler());
+        var lines = new List<string>();
+
+        DshLoopbackProxy.ProxySetup setup =
+            DshLoopbackProxy.TryCreate(forward, AppContext.BaseDirectory, lines.Add);
+        try
+        {
+            Assert.NotNull(setup.Proxy);
+            Assert.StartsWith("http://localhost:", setup.Proxy.Url.ToString());
+            Assert.False(setup.Cts.IsCancellationRequested);
+            Assert.Contains(lines, l => l.Contains("代理源就绪"));
+        }
+        finally
+        {
+            setup.Dispose();
+        }
+
+        Assert.True(setup.Cts.IsCancellationRequested);
+        Assert.Throws<ObjectDisposedException>(() => setup.Cts.Token.Register(() => { }));
+    }
+
     /// <summary>桩 dsh（内存传输）：token 跳 303 + 铸 cookie；/events 永不结束的 SSE；
     /// /rpc 断言头并回体；/goto-ext 外链；/loop 自循环；/chat 带 set-cookie 的 200（验剥离）。</summary>
     private sealed class StubDshHandler : HttpMessageHandler

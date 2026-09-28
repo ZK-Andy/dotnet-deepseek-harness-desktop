@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-09-15/R1=ok R2=ok R3=ok
 
+Superseded（部分）：Decision 2 的「分部文件终态」（阶段编排在 `DesktopBootstrap.cs`）由 [2026-09-28-compose-root-form-separation](2026-09-28-compose-root-form-separation.md) 推翻——启动编排已整体搬出根（`Bootstrap/StartupSequence`），组合根只装配与触发；Decision 1 的 LaunchOptions 类型化与文档同步结论仍有效。
+
 ## Problem
 
 [composition-root-value-flow-pipeline](2026-09-15-composition-root-value-flow-pipeline.md)（implemented，四批次主 ADR）批次 3：批次 1 状态下沉、批次 2 值流管线落地后，组合根剩两处收口项——

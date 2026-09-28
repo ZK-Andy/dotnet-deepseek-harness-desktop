@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 编排落点换家：`DesktopBootstrap.WebkitSandbox.cs` 随组合根形态分离迁出（ADR architecture/2026-09-28-compose-root-form-separation），现为 `src/DeepSeek.Harness.Desktop/WebkitSandboxFallback.cs` 的 `WebkitSandboxFallback.Apply()`；机制与判定不变。
+
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 
 Related: 兑现 [`smoke-linux-xvfb-fullchain`](../testing/2026-09-26-smoke-linux-xvfb-fullchain.md) 的真验证待办；dispatch 实证见本 ADR Testing。

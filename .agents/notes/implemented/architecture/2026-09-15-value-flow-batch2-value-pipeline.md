@@ -4,7 +4,7 @@ Status: implemented
 
 Review: FULL/2026-09-15/R1=ok R2=ok R3=ok
 
-Superseded（部分）：`Preflight` 产出的两个裸 bool（`IsDev`/`DevAutoIsolated`）由 [2026-09-15-value-flow-batch3-finalization](2026-09-15-value-flow-batch3-finalization.md) 收为一个类型化 `LaunchOptions`；本 ADR 其余阶段产出结论仍有效。
+Superseded（部分）：`Preflight` 产出的两个裸 bool（`IsDev`/`DevAutoIsolated`）由 [2026-09-15-value-flow-batch3-finalization](2026-09-15-value-flow-batch3-finalization.md) 收为一个类型化 `LaunchOptions`；本 ADR 其余阶段产出结论仍有效。`_webUrl`「留字段作导航靶点」的保留结论由 [2026-09-28-compose-root-form-separation](2026-09-28-compose-root-form-separation.md) 推翻（纯冗余别名：三处写恒等于 `_proxy?.Url`，唯一读点已改直读代理）——不得以本篇的留字段理由重新引入。
 
 ## Problem
 

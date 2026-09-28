@@ -1,15 +1,15 @@
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Core;
 
-namespace DeepSeek.Harness.Desktop;
+namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
-/// <see cref="DesktopBootstrap"/> 的导航调用面（尺寸健康闸拆分，ADR verdict-honesty-repair）：
-/// Ryn 底层为同步原生 <c>set_url</c>（RynWebView.cs:413 实证），直接 <c>WaitAsync</c> 计时器挂不上——
-/// <c>Task.Run</c> 先把同步段隔离进池线程再有界等。决策（超时值）在配置模型，此处仅编排调用/等待/日志
-/// （R1 组合根只装配）。
+/// <see cref="StartupSequence"/> 的导航调用与窗口就绪等待面（原组合根 Navigation/WindowReady 分部随编排搬迁，
+/// ADR compose-root-form-separation）：Ryn 底层为同步原生 <c>set_url</c>（RynWebView.cs:413 实证），直接
+/// <c>WaitAsync</c> 计时器挂不上——<c>Task.Run</c> 先把同步段隔离进池线程再有界等。决策（超时值）在配置模型，
+/// 此处仅编排调用/等待/日志（R1）。
 /// </summary>
-public sealed partial class DesktopBootstrap
+internal sealed partial class StartupSequence
 {
     /// <summary>有界导航调用：超时 loud 后返回（调用方沿"按已提交继续"走提交等待与探针）；
     /// 返回即记"调用已返回"；应用退出取消照常上抛。悬空池线程 fire-and-forget 可接受（探针先例）。</summary>
@@ -43,19 +43,18 @@ public sealed partial class DesktopBootstrap
     /// 等待超时按「已提交」降级继续（信号只是隔跳手段，缺位时不比单跳直导更差）；
     /// 调用本身亦有界（ADR navigate-call-timeout：arm64 实证原生调用可挂起，无界等即永卡）；
     /// 取消（应用退出）照常传播。</summary>
-    /// <param name="app">Ryn 应用装配产出（导航回调服务来源）。</param>
     /// <param name="target">导航靶点。</param>
     /// <param name="ct">引导任务取消令牌。</param>
-    private async Task NavigateAndAwaitCommitAsync(AppSetup app, Uri target, CancellationToken ct)
+    private async Task NavigateAndAwaitCommitAsync(Uri target, CancellationToken ct)
     {
         RynNavigationCallbacks callbacks =
-            app.App.Services.GetRequiredService<RynNavigationCallbacks>();
+            _app.App.Services.GetRequiredService<RynNavigationCallbacks>();
         TaskCompletionSource arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         callbacks.SetOnNavigated(() => arrived.TrySetResult());
         try
         {
             HostLog.Write($"[nav] 发起导航：{target.GetLeftPart(UriPartial.Authority)}");
-            await NavigateWithTimeoutAsync(app.WindowAccessor, target, _timeouts.NavCallTimeoutSeconds, ct).ConfigureAwait(false);
+            await NavigateWithTimeoutAsync(_app.WindowAccessor, target, _timeouts.NavCallTimeoutSeconds, ct).ConfigureAwait(false);
             await WaitNavCommitAsync(arrived.Task, "导航", ct).ConfigureAwait(false);
         }
         finally
@@ -78,6 +77,43 @@ public sealed partial class DesktopBootstrap
         catch (TimeoutException)
         {
             HostLog.Write($"[nav] {hop}提交等待超时（{_timeouts.NavCommitTimeoutSeconds}s），按已提交继续");
+        }
+    }
+
+    /// <summary>等主窗口可用：1s 轮询有界等；应用退出取消照常上抛，超时回 false（调用方 loud 跳过导航）。
+    /// Ryn 原生建窗可能慢于 dsh 就位（CI 无 D-Bus 会话实证 30s+），首个 <c>Current</c> 即抛不再直接失败收口
+    /// （ADR bootstrap-window-ready-wait）；决策（超时值）在配置模型 <c>RuntimeTimeouts.WindowReadyTimeoutSeconds</c>。</summary>
+    /// <param name="ct">引导任务取消令牌。</param>
+    /// <returns>窗口就绪 true；超时 false。</returns>
+    private async Task<bool> WaitForWindowAsync(CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(_timeouts.WindowReadyTimeoutSeconds));
+        while (true)
+        {
+            try
+            {
+                _ = _app.WindowAccessor.Current;
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                // 窗口尚未建好（Ryn"无窗口/未运行"同此型）：继续等；其他异常照抛 fail loud。
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(_timeouts.WindowReadyPollIntervalSeconds), cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // 应用退出：取消必须上抛（R2 B1），不吞。
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
         }
     }
 }

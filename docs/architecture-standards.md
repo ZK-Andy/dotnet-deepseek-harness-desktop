@@ -23,8 +23,10 @@
 ### R1 · 组合根纪律
 `DesktopBootstrap`/`Program` 只做装配、启动、接线与兜底；**具体基础设施类型只允许出现在组合根的 DI 注册处**。业务/领域逻辑进 Core，边界实现进 Infrastructure；新逻辑「塞不进 Core」即触发重构信号，而非继续膨胀组合根。
 
-- **值流编排**：`Run()` 的阶段方法返回真实产出、消费段收参数——缺前置产出即缺值编译失败；管线值寿命 = 单段，长命共享状态一律进服务，禁止借阶段产出回填全局态。真并行 fan-out（健康/更新/横幅）无阶段序，由记序测试兜底。
-- **分部终态**：组合根钉在 `Program.cs` + `DesktopBootstrap.cs` + 至多一个 dot 分部（官方 dot 后缀 partial 惯例）；启动主链与阶段编排在根文件，其余方法按 R4 ≤400 行/文件预算归入分部。
+- **启动编排不住根**：阶段主链与用例编排由容器解析的 `IStartupSequence` 实现（`Bootstrap/StartupSequence`）承载，组合根 Build 后显式触发——Ryn 无 hosted-service 机制，编排器必须存在且由根调用，但不允许借「编排」名义把阶段逻辑留在根上（ADR [compose-root-form-separation](../.agents/notes/implemented/architecture/2026-09-28-compose-root-form-separation.md)）。
+- **注册按域下沉**：命令路由/域服务注册写成各域 `AddXxx(this IServiceCollection, …)` 扩展（扩展留 shell 工程按域分文件），组合根 `RegisterServices` 只做统一调用与工厂闭包组装。
+- **值流编排**：编排 `Run()` 的阶段方法返回真实产出、消费段收参数——缺前置产出即缺值编译失败；管线值寿命 = 单段，长命共享状态一律进服务，禁止借阶段产出回填全局态。真并行 fan-out（健康/更新/横幅）无阶段序，由记序测试兜底。
+- **分部终态**：组合根钉在 `Program.cs` + `DesktopBootstrap.cs` + 至多一个 dot 分部（官方 dot 后缀 partial 惯例）；容器前启动头部与装配面之外的内容一律搬出根，不靠加新分部消化根预算。
 - **扩展为加法**：新阶段 = 阶段方法 + 值类型；新后台服务 = fan-out 清单加行；新子域 = 服务 + DI 注册。
 
 ### R2 · 依赖方向（编译器强制）

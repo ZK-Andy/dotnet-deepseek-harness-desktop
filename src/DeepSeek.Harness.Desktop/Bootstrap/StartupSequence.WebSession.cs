@@ -1,21 +1,21 @@
-namespace DeepSeek.Harness.Desktop;
+namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
-/// <see cref="DesktopBootstrap"/> 的网页会话自愈面（尺寸健康闸拆分，ADR webauth-token-reentry）：
+/// <see cref="StartupSequence"/> 的网页会话自愈面（原组合根 WebAuth 分部随编排搬迁，ADR compose-root-form-separation）：
 /// 进入主界面后的鉴权页有界重进 + 终页裁决。决策在 <c>Core.WebAuthRecovery</c> 纯策略，
-/// 此处仅编排探针/导航/日志（R1 组合根只装配）。
+/// 此处仅编排探针/导航/日志（R1）。
 /// </summary>
-public sealed partial class DesktopBootstrap
+internal sealed partial class StartupSequence
 {
     /// <summary>
     /// 网页会话落定（代理转发模型）：代理 URL 提交后探一次终页。鉴权页（代理链断/cookie 失效）则重铸
     /// 并重载代理页一次，再坏只 fail loud（不挡启动、不循环）。探针超时/异常按未知放过启动；
     /// 未知由冒烟见证门判定（与 Linux 同语义），启动不为此等待。
     /// </summary>
-    private async Task SettleWebSessionAsync(AppSetup app, DshWebUrl url, CancellationToken ct)
+    private async Task SettleWebSessionAsync(DshWebUrl url, CancellationToken ct)
     {
         string expectedOrigin = _proxy?.Origin ?? string.Empty;
-        string? sample = await ProbePageSampleAsync(app, ct).ConfigureAwait(false);
+        string? sample = await ProbePageSampleAsync(ct).ConfigureAwait(false);
         Core.WebAuthRecovery.PageVerdictDetail detail = Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin);
         if (detail.Verdict != Core.WebAuthRecovery.PageVerdict.Auth)
         {
@@ -31,8 +31,8 @@ public sealed partial class DesktopBootstrap
             return;
         }
 
-        await NavigateAndAwaitCommitAsync(app, _proxy.Url, ct).ConfigureAwait(false);
-        sample = await ProbePageSampleAsync(app, ct).ConfigureAwait(false);
+        await NavigateAndAwaitCommitAsync(_proxy.Url, ct).ConfigureAwait(false);
+        sample = await ProbePageSampleAsync(ct).ConfigureAwait(false);
         detail = Core.WebAuthRecovery.ClassifyDetail(sample, expectedOrigin);
         LogPageVerdict(detail, expectedOrigin, "，重铸后");
     }
@@ -67,7 +67,7 @@ public sealed partial class DesktopBootstrap
     /// <summary>探当前页采样（origin + 400 字可见文本，<see cref="Core.PageProbeSample"/> 形态）；
     /// 有限重试后仍超时/异常返回 null（未知），调用方按放过启动处理（ADR settle-gate-and-probe-retry：
     /// 偶发 renderer 繁忙一次采样赌运气，成功即返，耗尽才 Unknown；快机器零变化）。</summary>
-    private async Task<string?> ProbePageSampleAsync(AppSetup app, CancellationToken ct)
+    private async Task<string?> ProbePageSampleAsync(CancellationToken ct)
     {
         for (int attempt = 1; ; attempt++)
         {
@@ -77,7 +77,7 @@ public sealed partial class DesktopBootstrap
             {
                 // 经 AsTask 统一（ValueTask 无 WaitAsync；R1 S5 本地包装已删）。
                 // 桥回报是 JSON 文档：字符串带引号与转义，先经 RynProbeValue 解码再交裁决（否则 origin 带引号，同源恒不成立）。
-                string? raw = await app.WindowAccessor.Current.EvaluateJavaScriptAsync(PageBridge.WebAuthProbe.Script).AsTask().WaitAsync(cts.Token).ConfigureAwait(false);
+                string? raw = await _app.WindowAccessor.Current.EvaluateJavaScriptAsync(PageBridge.WebAuthProbe.Script).AsTask().WaitAsync(cts.Token).ConfigureAwait(false);
                 return PageBridge.RynProbeValue.Decode(raw);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

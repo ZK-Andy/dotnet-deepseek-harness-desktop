@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 残留边界记账的落点换家：三处宿主导航点随组合根形态分离迁出（ADR architecture/2026-09-28-compose-root-form-separation）——收养恢复与健康 reload 现在 `Bootstrap/StartupSequence.Supervision.cs`（NavigateAfterAdoptAsync/SetupHealthMonitor），鉴权重载在 `Bootstrap/StartupSequence.WebSession.cs`（SettleWebSessionAsync）；记账对象不变。
+
 Review: FULL/2026-09-28/R1=ok R2=ok R3=ok
 
 三审结论：R1 1 Blocker + 2 Suggestion，**全采纳**——删掉被删变量留下的孤立注释（`smoke-install-linux.sh` 中「动态作用域」说明的指称对象 `local frozen=""` 已随本批消失，共享库实际以全局读 `SETTLE_WAIT`）；workflow 软件渲染注释的「第二跳」措辞随旧链路更新；补记 120s 用户令上限的处置并修正 Alternatives 里「上限与矩阵值同源于 285s 推导」的错误归因（二者不同源，上限的实施面消费者才是矩阵值）。R2 0 Blocker / 0 Suggestion——并排除一处实现报告的文字笔误隐患：见证门引用的是 `SMOKE_SHOT_DIR`（`SHOT_DIR` 全仓零定义），像素见证门未被静默关闭；rc 链闭合无静默降级，三平台默认值一致。R3 0 Blocker + 5 Suggestion，**全采纳**——两篇被 supersede 笔记按勘误纪律各补 `Erratum:` 行（正文不动，避免 `implemented/` 语料继续断言已删键）；撤掉无据的「1/6 资产」分数，改为可辩护的「linux-arm64 deb 这一个包」（豁免调用点仅在 `smoke_deb`，arm64 的 rpm 容器腿无 X、恒 install-chain 够不到）；补 run/job ID 使数值可复核；删掉对未提交草稿的引用。R3 独立用 `gh` 复核了本笔记全部数值断言，并补充一条更准确的事实——转向后前两次 arm64 run 的像素见证本身未过、由客户端存活 OR 门判过，仅 tag 那次真过见证（与 amd64 同轮待遇一致，已据实改写）。无拒绝项。
