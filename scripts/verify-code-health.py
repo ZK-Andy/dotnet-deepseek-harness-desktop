@@ -6,7 +6,10 @@ Implements the size health gate from the architecture-mechanization ADR
 
   F1  any file > `--file-limit` physical lines (default 400)
   F2  any method > `--method-limit` lines (default 80)
-  F3  compose-root file (DesktopBootstrap*.cs + Program.cs) > `--file-limit`
+  F3  compose-root SET (DesktopBootstrap*.cs + Program.cs) total
+      > `--compose-total-limit` lines (default 500) — the root is gated by
+      what it holds in aggregate, not by per-file budgets that fragment
+      orchestration into new partials (ADR compose-root-form-separation)
   F4  compose-root method > `--compose-method-limit` lines (default 60)
 
 A method is a brace-matched body whose opening line looks like a C# method
@@ -36,6 +39,7 @@ from pathlib import Path
 DEFAULT_FILE_LIMIT = 400
 DEFAULT_METHOD_LIMIT = 80
 DEFAULT_COMPOSE_METHOD_LIMIT = 60
+DEFAULT_COMPOSE_TOTAL_LIMIT = 500
 IGNORE_MARK = "verify-code-health: ignore"
 
 CONTROL_KEYWORDS = {
@@ -274,20 +278,22 @@ def _file_ignore(lines: list[str], limit: int = 12) -> bool:
     return False
 
 
+def _is_compose_root(path: Path) -> bool:
+    """Compose-root set membership: Program.cs + any DesktopBootstrap partial."""
+    return path.name == "Program.cs" or path.name.startswith("DesktopBootstrap")
+
+
 def _violations(path: Path, file_limit: int, method_limit: int,
                 compose_method_limit: int) -> list[str]:
     lines = path.read_text(encoding="utf-8").splitlines()
     out: list[str] = []
     total = len(lines)
-    is_compose = path.name == "Program.cs" or path.name.startswith("DesktopBootstrap")
+    is_compose = _is_compose_root(path)
 
-    if total > file_limit and not (is_compose and False):
-        # F1 applies to all files; F3 (compose-root) tightens nothing beyond
-        # the same file-limit but is reported distinctly for clarity.
+    if total > file_limit:
+        # F1 applies to all files alike; the compose-root set is gated in
+        # aggregate (F3 in _scan), not by a per-file budget.
         out.append(f"  {path.name}: F1 {total} lines > {file_limit}")
-
-    if is_compose and total > file_limit:
-        out.append(f"  {path.name}: F3 compose-root {total} lines > {file_limit}")
 
     limit = compose_method_limit if is_compose else method_limit
     if _file_ignore(lines):
@@ -302,14 +308,21 @@ def _violations(path: Path, file_limit: int, method_limit: int,
 
 
 def _scan(src: Path, file_limit: int, method_limit: int,
-          compose_method_limit: int) -> list[str]:
+          compose_method_limit: int, compose_total_limit: int) -> list[str]:
     rows: list[str] = []
+    compose_total = 0
     for path in sorted(src.rglob("*.cs")):
         rel = path.relative_to(src)
         if any(part in ("obj", "bin") for part in rel.parts):
             continue
+        if _is_compose_root(path):
+            compose_total += len(path.read_text(encoding="utf-8").splitlines())
         for v in _violations(path, file_limit, method_limit, compose_method_limit):
             rows.append(v)
+    if compose_total > compose_total_limit:
+        rows.append(
+            f"  F3 compose-root set {compose_total} lines > {compose_total_limit} "
+            f"(Program.cs + DesktopBootstrap*.cs; orchestration belongs in domain services, not new partials)")
     return rows
 
 
@@ -344,7 +357,7 @@ def _self_test() -> int:
         (root / "Pass.cs").write_text("\n".join(cases[0][0]) + "\n", encoding="utf-8")
         (root / "Pass2.cs").write_text("\n".join(cases[1][0]) + "\n", encoding="utf-8")
         rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
-                     DEFAULT_COMPOSE_METHOD_LIMIT)
+                     DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
         if rows:
             print(f"  ✗ conforming files reported: {rows}")
             failed = 1
@@ -358,7 +371,7 @@ def _self_test() -> int:
             ["}"]
         (root / "BigFile.cs").write_text("\n".join(big_file) + "\n", encoding="utf-8")
         rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
-                     DEFAULT_COMPOSE_METHOD_LIMIT)
+                     DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
         if any("F1" in r for r in rows):
             print("  ok: F1 file-limit violation flagged")
         else:
@@ -373,7 +386,7 @@ def _self_test() -> int:
         (root / "BigMethod.cs").write_text("\n".join(big_method) + "\n",
                                            encoding="utf-8")
         rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
-                     DEFAULT_COMPOSE_METHOD_LIMIT)
+                     DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
         if any("F2" in r for r in rows):
             print("  ok: F2 method-limit violation flagged")
         else:
@@ -389,11 +402,37 @@ def _self_test() -> int:
         (root / "DesktopBootstrap.cs").write_text("\n".join(compose) + "\n",
                                                   encoding="utf-8")
         rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
-                     DEFAULT_COMPOSE_METHOD_LIMIT)
+                     DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
         if any("F4" in r for r in rows):
             print("  ok: F4 compose-root method violation flagged")
         else:
             print(f"  ✗ F4 not flagged: {rows}")
+            failed = 1
+
+        # F3 set-total: compose-root files each under the per-file limit whose
+        # SUM exceeds the set budget — the regression F3 exists to catch (per-file
+        # budgets fragment orchestration into new partials; the set must not grow).
+        def padded(n):
+            return ["namespace Foo;", "public partial class C {"] + [
+                f"    // line {i}" for i in range(n)] + ["}"]
+        # 两文件自足超帽（303+253=556 > 500），不依赖前序夹具残留行数。
+        (root / "DesktopBootstrap.App.cs").write_text("\n".join(padded(300)) + "\n", encoding="utf-8")
+        (root / "Program.cs").write_text("\n".join(padded(250)) + "\n", encoding="utf-8")
+        rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
+                     DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
+        if any("F3" in r for r in rows) and not any("F1" in r and "App" in r for r in rows):
+            print("  ok: F3 compose-root set-total violation flagged")
+        else:
+            print(f"  ✗ F3 not flagged (or F1 misfired): {rows}")
+            failed = 1
+
+        # and the same set passing when the total is under budget
+        rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
+                     DEFAULT_COMPOSE_METHOD_LIMIT, 700)
+        if not any("F3" in r for r in rows):
+            print("  ok: F3 passes under raised set budget")
+        else:
+            print(f"  ✗ F3 still flagged with raised budget: {rows}")
             failed = 1
 
     if failed == 0:
@@ -417,6 +456,8 @@ def main() -> int:
     parser.add_argument("--method-limit", type=int, default=DEFAULT_METHOD_LIMIT)
     parser.add_argument("--compose-method-limit", type=int,
                         default=DEFAULT_COMPOSE_METHOD_LIMIT)
+    parser.add_argument("--compose-total-limit", type=int,
+                        default=DEFAULT_COMPOSE_TOTAL_LIMIT)
     parser.add_argument("--enforce", action="store_true",
                         help="exit 1 on any violation (default: report only)")
     args = parser.parse_args()
@@ -424,7 +465,7 @@ def main() -> int:
     rows = []
     for s in args.src:
         rows.extend(_scan(Path(s), args.file_limit, args.method_limit,
-                          args.compose_method_limit))
+                          args.compose_method_limit, args.compose_total_limit))
     if rows:
         print(f"code-health: {len(rows)} size violation(s)")
         for r in rows:

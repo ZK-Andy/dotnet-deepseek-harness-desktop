@@ -104,6 +104,9 @@ jobs:
       - name: 契约扫描（R3 边界/日志）
         run: |
           python3 scripts/verify-code-conventions.py --enforce
+      - name: 组合根语义闸（R1：根只装配——方法清单封闭 + new 自有类型 ≤16 + 单 dot 分部 + 禁同步编排；ADR compose-root-form-separation）
+        run: |
+          python3 scripts/verify-compose-root.py --enforce
       - name: 评审档位硬闸（FULL 档变更须携 Review 证据；ADR review-tier-escape-proofing）
         env:
           REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}

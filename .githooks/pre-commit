@@ -46,6 +46,10 @@ python3 scripts/verify-code-health.py --enforce
 echo "-> verify-code-conventions.py"
 python3 scripts/verify-code-conventions.py --enforce
 
+# 9a) 组合根语义闸（R1：根只装配——方法清单封闭 + new 自有类型 ≤16 + 单 dot 分部）
+echo "-> verify-compose-root.py"
+python3 scripts/verify-compose-root.py --enforce
+
 # 9b) 脚本规范门禁（docs/script-standards.md 的机器强制面 S1-S6，含 shellcheck -S warning）。
 #     执行点与 CI 的 docs job 同源；缺 shellcheck 判红并提示 scripts/install-linters.sh
 #     （门禁悄悄不执行 = 假绿，故宁可挡住提交）。
