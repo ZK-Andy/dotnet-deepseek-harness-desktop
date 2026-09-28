@@ -45,3 +45,4 @@ Related: 总纲 [proposed/process/2026-09-27-post-packaging-churn-restructure](.
 - `python3 scripts/verify-doc-budgets.py --manifest …`：11 条全 OK（三新登记 + 两下调后实测均在限内）。
 - `python3 scripts/verify-cookbook.py` / `verify-handoff-structure.py` / `verify-governance.py` / `verify-readme-badges.py` / `verify-compose-root.py` / `verify-code-health.py --enforce` / `verify-code-conventions.py --enforce` 全绿（docs 门禁面回归）。
 - `dotnet test` 全绿（零代码变更；代码注释中 3 处 ADR 引用名改指现行家为唯一 src/tests 触碰点）。
+- **CI 实跑（本批 done 判据，已通过）**：main push run `36414196841` —— docs / changes / build-test（ubuntu+macos+windows）五作业全 success。
