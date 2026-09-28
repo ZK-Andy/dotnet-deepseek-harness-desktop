@@ -8,6 +8,7 @@
 
 ## 脚本
 
+- **[脚本] 「腿全绿、step 静默红」的判别（2026-09-28 linux 冒烟实证）**：腿结论全绿、脚本也已走完，step 却报 exit 1 → 查**脚本自己的 EXIT trap**（`set -e` 下 trap 末命令失败会把 `exit 0` 改写成 1，且句柄可能零输出）；`$(...)` 里的库函数在 subshell 跑，对调用方 shell 的赋值一律失效。
 - **[脚本] 跨平台 shell 语法坑（写脚本必读，2026-08-27 实机/评审沉淀）**：CI 三平台（ubuntu/macOS/Git Bash）语文差异——①**`sed -i` 的 GNU/BSD 语法不同**：GNU（Linux/Git Bash）`sed -i 's///'` 可用，macOS BSD sed 的 `-i` 需显式备份扩展名（`-i ''`）——跨平台脚本宁用 **`perl -i`**（三平台一致，`perl -i -ne 'print unless m{...}'` 无文件名时读 stdin 打 "used with no filenames" warning）；②**`xargs -r`（GNU 专属）在 BSD xargs 不存在**——空输入保护用 `[[ -s "$list" ]]` 守卫而非 `-r`；③**Windows Git Bash 命令行上限 32K**——批量文件处理必须显式 `-n 64` 级分批（`xargs` 自动分包按 ARG_MAX，win 下更大值会 `CreateProcess` 失败）；④`grep -rl` 零命中返回非零 + `set -euo pipefail` → 管道前命令补 `|| true`；⑤`grep -rlZ` 输出 NUL 分隔，`wc -l` 数出来恒 0 / `for` 循环吞整串——转 `tr '\0' '\n'` 再数或用 `grep -rl` 换行版。
 - **[脚本] dev 门禁验证盲区（2026-08-24）**：「命令路由不存在即降级」的功能，沙箱只能验降级分支——成功分支需真机或 force 开关（如 `DSH_DESKTOP_UPDATE_FORCE=1`）走一遍，否则把优雅降级误当功能验证。
 - **[脚本] dsh 插件客户端三连坑（Self-Update 实机调试沉淀，2026-08-22）**：①factory 必须带 `require` 形参且返回带 `apply` 的 exports——缺 `apply` 整个 web boot 白屏、缺 `require` 内部功能静默跳过；②访问 `ctx.slots` 必须在 exports 声明 `inject:['slots']`（cordis 守卫："cannot get property without inject"）；③页面 invoke 的命令命名空间必须在壳侧 `ryn.json` 的 `capabilities` 声明（未声明 500 + Command failed，无任何插件侧报错）。三者共同点：拒绝都发生在插件无感位置——调试用 `window.__ddc.setupUpdateUI()` 手动句柄把装配过程炸出来（DevTools 开启晚于启动期日志，历史消息不保留）。

@@ -13,32 +13,38 @@ die() { error "$*"; exit 1; }
 
 # ── 临时文件纪律 ──────────────────────────────────────────────────────────
 # 一个脚本只有一个 EXIT trap，句柄集中在本库：调用方开跑主体前 `common_tmp_trap`
-# 一次，之后用 common_tmp_dir/file 建（自动登记），退出时统一回收。
-_common_tmp_paths=""
+# 一次，之后用 common_tmp_dir/file 建，退出时统一回收。
+#
+# 回收靠**单一临时根**：`common_tmp_trap` 建根，`common_tmp_dir/file` 建的路径都在根**里面**，
+# trap 删根即全清。两条约束：①路径必须建在根内——建到根外就漏，没有人回收；②根是普通变量，
+# subshell 照常继承，故 `x="$(common_tmp_dir)"` 这类调用面也照样落进根里。
+#
+# **EXIT trap 纪律（调用方带 `set -e` 时）**：句柄不得翻转调用方退出码——trap 的末命令失败
+# 会把 `exit 0` 翻成 exit 1。故句柄须以 0 返回、体内每一步都不得中断。回归锁见
+# `scripts/lib/smoke-selftest.sh` 的 `trap-*` 三条断言（成功侧不翻红 / 根内路径真回收 / 不吞失败）。
+_common_tmp_root=""
 
 _common_tmp_cleanup() {
-  local p
-  # 逐行读而非未加引号的展开：目录名含空白亦安全（SC2086 面）
-  printf '%s\n' "$_common_tmp_paths" | while IFS= read -r p; do
-    [[ -n "$p" ]] && rm -rf -- "$p"
-  done
+  local root="$_common_tmp_root"
+  _common_tmp_root=""
+  # 留痕不抛：`rm -rf` 对缺失路径本就返 0，warn 自身失败也被 `|| true` 兜住（本句须恒为 0）。
+  if [[ -n "$root" ]]; then
+    rm -rf -- "$root" || warn "临时根回收失败（不影响退出码）：$root" || true
+  fi
   return 0
 }
 
-common_tmp_trap() { trap '_common_tmp_cleanup' EXIT; }
-
-common_tmp_dir() { # 打印新建临时目录路径
-  local d
-  d="$(mktemp -d)"
-  _common_tmp_paths="${_common_tmp_paths}${d}"$'\n'
-  printf '%s' "$d"
+common_tmp_trap() {
+  [[ -n "$_common_tmp_root" ]] || _common_tmp_root="$(mktemp -d)"
+  trap '_common_tmp_cleanup' EXIT
 }
 
-common_tmp_file() { # 打印新建临时文件路径
-  local f
-  f="$(mktemp)"
-  _common_tmp_paths="${_common_tmp_paths}${f}"$'\n'
-  printf '%s' "$f"
+common_tmp_dir() { # 打印新建临时目录路径（建在临时根内）
+  mktemp -d "${_common_tmp_root:?先调 common_tmp_trap 建临时根}/XXXXXX"
+}
+
+common_tmp_file() { # 打印新建临时文件路径（同上）
+  mktemp "${_common_tmp_root:?先调 common_tmp_trap 建临时根}/XXXXXX"
 }
 
 # 文件字节数；缺失/不可读即 0。顺序不可换：GNU 的 `stat -c` 先试，BSD 落 `-f%z`

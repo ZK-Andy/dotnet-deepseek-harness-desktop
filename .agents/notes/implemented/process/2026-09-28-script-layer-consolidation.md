@@ -54,7 +54,7 @@ Review: FULL/2026-09-28#5/R1=ok R2=ok R3=ok
 
 三、**三包脚本去重与去脆弱兜底**：Inno 脚本落 `packaging/windows/installer.iss.in` 模板（渲染器在 `package-windows.sh`，渲染后残留 `@占位@` 即 fail loud）；自签实现（mac `codesign` / win `signtool` + 自签证书）唯一家 `scripts/dev-sign.sh`，三包脚本只在 `SELF_SIGN=1` 时转调；hdiutil 的 `srcfolder` 回退链与 `chmod +x … || true` 静默删除（失败即 fail loud）；`verify-package-layout.sh` 的 `--platform` 改**必填**（原先按「内容根里有没有 .exe」隐式判平台，linux/mac 腿整段静默跳过）、补**主程序 + 可执行位**断言（此前只有 Windows 断主 exe，linux/mac 可静默发布「无主程序包」）、配 `--self-test`。
 
-四、**冒烟拆分 + 自测接线**：三平台入口 + rpm 腿 + 三库 + 共用夹具，god script 尺寸 503/387/318 → 208/183/177；CI `docs` job 每次 push 跑 9 份离线夹具共 217 条断言（原 83 条里可共用的部分收敛为共用面 46 条，平台专属各留几例）。
+四、**冒烟拆分 + 自测接线**：三平台入口 + rpm 腿 + 三库 + 共用夹具，god script 尺寸 503/387/318 → 208/183/177；CI `docs` job 每次 push 跑 9 份离线夹具（本批落地时共 217 条断言：全仓共用面 46 条 + 平台专属各留几例；**现行条数见 Testing**——锁会随批次继续加）。
 
 五、**`probe-gui-freeze.sh` 退役**：210 行、零调用点（workflow/hook/其他脚本全无引用）、7 个 `FREEZE_*` 旋钮在 CI 与文档里都无设置点、唯一价值是一次已归档的真机排查。判别知识留 cookbook（条目改写为手工抽样动作），退役事实记在[取证探针 ADR](2026-08-28-gui-freeze-forensics-probe.md)。
 
@@ -79,7 +79,7 @@ Review: FULL/2026-09-28#5/R1=ok R2=ok R3=ok
 
 - 收益：跨脚本逻辑有了唯一家，新增平台/新腿只需接共享库——「一次改动 N 处同步」的耦合面消失（三包头部 3→1、闭包残留判据 4→1、等待循环 4→1、平台自测 3→1+3 小份）。
 - 收益：脚本规范从「不存在」变成**可失败的门**：S4 能复现历史缺陷形态（把 `INSTALL_WAIT_SECONDS` 塞回 win 脚本即被判红，实测），S5 能拦影子副本（A5 的 `log_has` 形态），S6 把全仓 shell 面交工具而不是靠人眼。首轮 shellcheck 报 15 处（其中 1 处是真缺陷——`packaging-common.sh` 里未使用的局部变量 `want`；其余为需行内豁免的误报与真实风格问题），actionlint 在 `-S warning` 下报 1 处（`package.yml` 的 `for i in 1 2 3` 未用 `i`），全部已修/已豁免。
-- 收益：83 处从不执行的冒烟自测断言接线进 CI（现 204 条，含包布局三平台分支与 Inno 模板渲染）——「资产已写好但没人跑」的状态结束。
+- 收益：83 处从不执行的冒烟自测断言接线进 CI（条数见 Testing；含包布局三平台分支与 Inno 模板渲染）——「资产已写好但没人跑」的状态结束。
 - 代价：CI `docs` job 每次 push 多约 1.5 分钟（装两个工具 + 8 份夹具）；本地 pre-commit 多一条 **需要 shellcheck 的门**——缺工具即判红并提示 `scripts/install-linters.sh`（门禁悄悄不执行 = 假绿，宁可挡住提交）。
 - 代价：`package-windows.sh` 的 Inno 段从「内联全貌」变成「模板 + 渲染器」两处，读代码要跳一次；换来模板可被离线夹具验证（渲染后残留占位、空语言行、含空格路径三种形态已钉）。
 - 代价：`smoke-linux-rpm.sh` 的容器内脚本成为 `scripts/` 下第二个非入口脚本（第一个是 hooks），其容器路径 `/smoke-lib`、`/smoke-inner.sh` 是硬编码的挂载点——改挂载必须同步改两处，已在双方注释互指。
@@ -91,11 +91,11 @@ Review: FULL/2026-09-28#5/R1=ok R2=ok R3=ok
 
 ## Testing
 
-- **离线夹具（本地全跑绿；CI `docs` job 每次 push 跑全集）**：`verify-shell-standards.sh --self-test` 7、`verify-package-layout.sh --self-test` 10、三包 `--self-test` 11/11/20、三平台冒烟 `--self-test` 53/52/50、`smoke-linux-rpm-inner.sh --self-test` 3——合计 **217 条断言**，每条判据的判红侧与放行侧同批在位（共用面 50 条 + 平台专属 3/2/0）。
+- **离线夹具（本地全跑绿；CI `docs` job 每次 push 跑全集；**现行计数只在此处**）**：`verify-shell-standards.sh --self-test` 7、`verify-package-layout.sh --self-test` 10、三包 `--self-test` 11/11/20、三平台冒烟 `--self-test` 56/55/53、`smoke-linux-rpm-inner.sh --self-test` 3——合计 **226 条断言**，每条判据的判红侧与放行侧同批在位（此处的「共用面」指冒烟三入口的共用夹具 53 条，按平台文件调用点 3/2/0 计；与 Decision 四的「全仓共用面 46 条」统计域不同）。其中 3 条（`trap-keeps-ok` / `trap-reclaims-tmp` / `trap-keeps-fail`）为 [smoke-trap-exit-status-flip](../bug-fix/2026-09-28-smoke-trap-exit-status-flip.md) 补上的 EXIT trap 契约锁。
 - **门禁可失败性实测（不止夹具）**：①把 `INSTALL_WAIT_SECONDS` 塞回 `smoke-install-windows.sh`（复现 A 批死旋钮形态）→ `verify-shell-standards.sh` 判红并点名该旋钮，还原即绿；②`publish` 目录塞 `resources/runtime` → `package-linux.sh --stage-only` 经共享布局断言判红（rc=1），干净目录即绿；③撤掉 `packaging-common.sh` 的 `source common.sh` → 其自测判红（诊断文本缺失）；④容器腿改名缺陷形态（容器内不解析窗口）由 `smoke-linux-rpm-inner.sh --self-test` 覆盖；⑤`verify-package-layout.sh` 缺 `--platform` 判红（exit 2）。
 - **`--stage-only` 三平台实跑**（假 publish 目录；`artifacts/` 为本地态）：linux / macos / windows 三份均「布局断言通过（无闭包残留、插件资源齐、主程序在位）」。
 - **静态检查**：`shellcheck -S warning` 全仓 0 告警（26 文件，含 `scripts/lib/**`）；`actionlint -shellcheck="shellcheck -S warning"` 0 告警；两者版本钉 0.11.0 / 1.7.12，`install-linters.sh` 的 sha256 校验实跑通过（本地与 CI 同一条安装路径）。
-- **文档门禁**：`verify-adr-format.py`、`verify-cookbook.py`、`verify-doc-budgets.py --manifest …`（`docs/script-standards.md` 302/500）、`verify-md-links.py`、`verify-governance.py`、`verify-handoff-structure.py`、`verify-readme-badges.py`、`verify-skill-format.py`、`verify-code-health.py --enforce`、`verify-code-conventions.py --enforce`、`verify-ui-copy.py` 全绿。
+- **文档门禁**：`verify-adr-format.py`、`verify-cookbook.py`、`verify-doc-budgets.py --manifest …`（`docs/script-standards.md` 330/500）、`verify-md-links.py`、`verify-governance.py`、`verify-handoff-structure.py`、`verify-readme-badges.py`、`verify-skill-format.py`、`verify-code-health.py --enforce`、`verify-code-conventions.py --enforce`、`verify-ui-copy.py` 全绿。
 - **待跑（推送后 dispatch，run 号回写本段）**：`workflow_dispatch` 三平台打包腿（linux amd64/arm64 + mac 双 rid + win x64）与 `ci.yml` push 轮——覆盖本批唯一无法离线验证的面：真 docker 里的 rpm 容器腿、真 runner 上的 mac/win 冒烟与 `GITHUB_PATH` 生效路径。**未取得该证据前，本批只声明「离线面已验」**。
 - 本批零 `src`/`tests` 变更，`dotnet build/test/format` 按变更面不适用（未跑即未跑，不列为证据）。
 
@@ -108,4 +108,5 @@ Review: FULL/2026-09-28#5/R1=ok R2=ok R3=ok
 - [shell-settle-behavior-gate](../bug-fix/2026-09-27-shell-settle-behavior-gate.md)：落定门语义的来源；本批只搬实现（等待/判定入共享库），语义一字不动。
 - [macos-cookie-grace-reload-and-witness-gate](../bug-fix/2026-09-27-macos-cookie-grace-reload-and-witness-gate.md)：`wait_verdict` 与像素见证的由来，即 Decision 六的取舍对象。
 - [gui-freeze-forensics-probe](2026-08-28-gui-freeze-forensics-probe.md)：被退役探针的立项 ADR（Consequences 已记退役指针）。
+- [smoke-trap-exit-status-flip](../bug-fix/2026-09-28-smoke-trap-exit-status-flip.md)：本批引入的缺陷与其修复（linux 冒烟双腿静默翻红 + 临时路径漏回收）；其三平台自测的计数已按修后现实回写本段。
 - `.plan/整改方案-三平台震荡后结构清理-2026-09-27.md` §5（本地工作文档，未入库）：本批的编排来源。

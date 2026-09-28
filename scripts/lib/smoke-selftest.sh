@@ -44,8 +44,20 @@ _st_kill_live() {
   wait 2>/dev/null || true
 }
 
+# 临时文件纪律契约探针（`common.sh`）：子 shell 里装 EXIT trap、按生产形态 `x="$(...)"` 建临时
+# 路径（跨 subshell 的赋值正是历史缺陷所在），按 $1 退出；`cd -P`/`pwd -P` 规范化后判「在根内」。
+_st_trap_probe() {
+  local lib_dir
+  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  bash -c "set -euo pipefail; source '$lib_dir/common.sh'; common_tmp_trap
+    r=\"\$(cd -P \"\$_common_tmp_root\" && pwd -P)\"; f=\"\$(common_tmp_file)\"; d=\"\$(common_tmp_dir)\"
+    f=\"\$(cd -P \"\$(dirname \"\$f\")\" && pwd -P)/\$(basename \"\$f\")\"; d=\"\$(cd -P \"\$d\" && pwd -P)\"
+    inside=no; [[ \"\$f\" == \"\$r\"/* && \"\$d\" == \"\$r\"/* ]] && inside=yes
+    printf 'ROOT=%s\nINSIDE=%s\nF=%s\nD=%s\n' \"\$r\" \"\$inside\" \"\$f\" \"\$d\"; exit $1"
+}
+
 smoke_selftest_common() { # $1=夹具根目录
-  local tdir="$1" live log
+  local tdir="$1" live log probe probe_root probe_inside
   _ST_PASS=0; _ST_FAIL=0
   _ST_TDIR="$tdir"
   : >"$tdir/out"; : >"$tdir/host.log"; : >"$tdir/live.pids"; mkdir -p "$tdir/home"
@@ -202,6 +214,17 @@ smoke_selftest_common() { # $1=夹具根目录
   smoke_resolve_windows
   [[ "$SMOKE_WAIT" -eq 720 && "$SETTLE_WAIT" -eq 90 ]] && tpass "windows-defaults" || tfail "windows-defaults"
   SMOKE_WAIT=720 SETTLE_WAIT=90
+
+  # 临时文件纪律契约（common.sh 的临时根 + EXIT trap）：三侧同锁——成功侧不翻红、根内路径
+  # 真回收、失败侧不吞红。少了失败侧，「恒 0 且吞掉真失败」的句柄也能过；少了回收侧的
+  # 「路径在根内」判据，「建到根外」的实现在这里全绿。机制与事故现场见
+  # `.agents/notes/implemented/bug-fix/2026-09-28-smoke-trap-exit-status-flip.md`。
+  probe="$(_st_trap_probe 0)" && tpass "trap-keeps-ok" || tfail "trap-keeps-ok"
+  probe_root="$(sed -n 's/^ROOT=//p' <<<"$probe")"
+  probe_inside="$(sed -n 's/^INSIDE=//p' <<<"$probe")"
+  [[ -n "$probe_root" && "$probe_inside" == yes && ! -e "$probe_root" ]] \
+    && tpass "trap-reclaims-tmp" || tfail "trap-reclaims-tmp（probe=$(tr '\n' ' ' <<<"$probe")）"
+  _st_trap_probe 1 >/dev/null 2>&1 && tfail "trap-keeps-fail" || tpass "trap-keeps-fail"
 
   _st_kill_live
   log "共用夹具：$_ST_PASS ok / $_ST_FAIL FAIL"
