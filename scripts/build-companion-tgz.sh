@@ -8,6 +8,8 @@
 # 用法: build-companion-tgz.sh <out.tgz>
 set -euo pipefail
 
+# shellcheck source=lib/common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 OUT="${1:?usage: build-companion-tgz.sh <out.tgz>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/plugins/dsh-desktop-companion"
@@ -33,7 +35,7 @@ if [[ "$pkg_name" != "dsh-desktop-companion" ]]; then
   echo "error: tgz 内 package.json name='$pkg_name'，期望 'dsh-desktop-companion'" >&2
   exit 1
 fi
-SZ=$(stat -c%s "$OUT" 2>/dev/null || stat -f%z "$OUT" 2>/dev/null || echo 0)
+SZ="$(file_size "$OUT")"
 if [[ "$SZ" -lt 4096 ]]; then
   echo "error: tgz 过小（${SZ}B < 4096B），疑似假包/半截包" >&2
   exit 1

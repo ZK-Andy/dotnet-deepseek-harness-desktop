@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
-# smoke-settle-lib.sh — 冒烟落定等待共享库（ADR shell-settle-behavior-gate）。
-# linux-host/mac/win 三脚本 source 它；rpm 容器经 docker -v 挂载后 source。
-# 本文件只含定义（正则常量 + 函数），source 无副作用；SMOKE_WAIT/SETTLE_WAIT/
-# OUT/LOG/FULL_RE/BOOT_RE 由调用方设置，函数运行时惰性读取。
-# 前提：调用方已 `set -euo pipefail`（或容器侧 `set -uo pipefail`）；函数内所有
-# 可能非零的管道都显式收口（pipefail 下裸 grep 会污染调用方判断，见 nav_lines 注释）。
-# shellcheck disable=SC2034  # NAV_*/SETTLE 由调用方与自测消费
+# smoke-wait-lib.sh — 冒烟等待与落定共享库（唯一家：判定串①②、窗口解析、等①、等落定、
+# 心跳、无进展看门狗、回退门）。消费方：linux/mac/win 三冒烟脚本与 rpm 容器腿（挂载后 source）。
+# 依赖：common.sh（消息模板）——本库自带 source，消费方只需 source 本文件。
+# 本文件只含定义，source 无副作用（窗口解析在函数里，见 smoke_resolve_windows）；
+# 调用方须已 `set -euo pipefail`（容器侧 `set -uo pipefail`）；OUT/LOG/rc 由调用方设置。
+# shellcheck disable=SC2034  # 判定串/正则常量由调用方与自测消费
+
+_SMOKE_WAIT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./common.sh
+source "$_SMOKE_WAIT_LIB_DIR/common.sh"
+
+# 判定信号（双信号，唯一家）：①`[host] dsh web =`（注意是等号——`dsh web:` 冒号格式是 dsh
+# 子进程自检输出，壳打印的是等号格式；两串曾因错位致冒烟恒败，CI 实证）= dsh 就绪（传输层）；
+# ②`[bootstrap] 引导开始：` = 安装链保底（装包→依赖齐→运行时检测→首启引导已启动）。
+# 与 NAV/MINT 正则同置库内：各腿不再各写一份、容器腿经挂载共享库同样拿到（无需 `-e` 注入）。
+FULL_RE='\[host\] dsh web ='
+BOOT_RE='\[bootstrap\] 引导开始：'
 
 # 导航到达行：只作诊断回显（FAIL 证据打印），不判门——新链路零 host 导航，
 # holder 自 reload 不产生到达回调（dispatch 36300876224 双腿实证：代理流量
@@ -17,6 +27,17 @@ NAV_RE='\[nav\] 导航已到达'
 MINT_RE='\[shell\] 铸币：token 跳 → 303'
 # 终页裁决（ADR page-verdict-gate）：应用在落定期写下唯一的裁决行；显示腿的"绿"必须由 healthy 背书。
 PAGE_LINE_RE='\[nav\] 页面裁决=(healthy|auth|unknown)'
+
+# 等待窗/落定窗的唯一家。等待窗 = 单轮尝试预算：RuntimeBootstrapOptions.StepTimeoutMinutes
+# （默认 10 分钟）单步上限 + 120s 余量 = 720s；重试轮不计入——冒烟只等首轮落定，超时按②收工。
+# 引导步数或 StepTimeoutMinutes 变化时必须同批重算。落定窗 = ①出现后等铸币 + 客户端存活
+# （auth 裁决即拦）。SMOKE_WAIT_SECONDS / SMOKE_SETTLE_SECONDS 是覆写旋钮，SMOKE_WAIT /
+# SETTLE_WAIT 是库读的全局：调用方 source 后**必须先调本函数**——漏调会让
+# `seq 1 "$SMOKE_WAIT"` 在 set -u 下直接炸（rpm 容器腿改名时实测的回归形态）。
+smoke_resolve_windows() {
+  SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
+  SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
+}
 
 # 最后一条页面裁决（healthy/auth/unknown）；无则空串。取"最后一条"而非"曾经命中"：
 # 每进程今日至多一条裁决行，但落定/重试形态一旦增多，旧 healthy 不得冒充绿（防御性取尾）。
@@ -35,7 +56,7 @@ page_verdict_state() {
 
 # 双源日志探活：stdout 或 host.log 任一命中 $1（调用方定义 OUT/LOG 全局）。
 log_has() { # $1=正则
-  grep -qE "$1" "$OUT" 2>/dev/null || { [[ -n "${LOG:-}" && -f "$LOG" ]] && grep -qE "$1" "$LOG"; }
+  grep -qE "$1" "${OUT:-}" 2>/dev/null || { [[ -n "${LOG:-}" && -f "$LOG" ]] && grep -qE "$1" "$LOG"; }
 }
 
 # 双源时间戳归一化：host.log 行带 `[yyyy-MM-dd HH:mm:ss] ` 前缀，stdout 无；
@@ -89,24 +110,24 @@ wait_settled() {
     state="$(page_verdict_state)"
     # 裁决 auth 即终页确认是鉴权页，任何腿都判 FAIL（ADR verdict-honesty-repair 的机器可判门）。
     if [[ "$state" == "auth" ]]; then
-      echo "error: 终页裁决=auth（鉴权页），按失败计" >&2
+      error "终页裁决=auth（鉴权页），按失败计"
       return 1
     fi
     if log_has "$FULL_RE" && mint_seen && smoke_client_alive "${LOG:-}"; then
-      echo "note: 行为落定（①+铸币303+客户端存活，用时 ${i}s）" >&2
+      log "行为落定（①+铸币303+客户端存活，用时 ${i}s）"
       return 0
     fi
     if [[ -z "$pid" ]]; then
-      echo "error: 进程已退出且行为未落定（$(settle_missing)）" >&2
+      error "进程已退出且行为未落定（$(settle_missing)）"
       return 1
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
-      echo "error: 落定期进程退出且行为未落定（$(settle_missing)）" >&2
+      error "落定期进程退出且行为未落定（$(settle_missing)）"
       return 1
     fi
     sleep 1
   done
-  echo "error: 落定超时（${SETTLE_WAIT}s 内未集齐①+铸币303+客户端存活：$(settle_missing)；到达 $(nav_count) 次仅诊断）" >&2
+  error "落定超时（${SETTLE_WAIT}s 内未集齐①+铸币303+客户端存活：$(settle_missing)；到达 $(nav_count) 次仅诊断）"
   return 1
 }
 
@@ -119,7 +140,7 @@ heartbeat() {
   out_kb=$(( $(wc -c <"${OUT:-/dev/null}" 2>/dev/null || echo 0) / 1024 ))
   if [[ -n "${LOG:-}" && -f "$LOG" ]]; then log_kb=$(( $(wc -c <"$LOG" 2>/dev/null || echo 0) / 1024 )); fi
   home_kb=$(du -sk "$home" 2>/dev/null | cut -f1 || echo 0)
-  echo "note: 等待中（${elapsed}s）：OUT ${out_kb}KB host.log ${log_kb}KB dsh-home ${home_kb}KB；缺：$(settle_missing)" >&2
+  log "等待中（${elapsed}s）：OUT ${out_kb}KB host.log ${log_kb}KB dsh-home ${home_kb}KB；缺：$(settle_missing)"
 }
 
 # 无进展看门狗：OUT/host.log 的进展标记行数 + dsh-home 体积，三者连续
@@ -163,42 +184,56 @@ timeout_fallback() {
   [[ ${rc:-1} -ne 0 ]] && ! log_has "$FULL_RE" && log_has "$BOOT_RE"
 }
 
-# 截图内容见证（ADR page-verdict-gate）：外部 origin 上 DOM 探针回不来，故内容真伪由**截图本身**判——
-# 近空白（401 墙：实测 mean≈1.00/sd≈0.04）与深色引导页（mean≈0.14）判失败，真 UI（mean≈0.81/sd≈0.13）通过。
-# 阈值取自 CI 实测四图；无 convert 即 fail loud（调用点已限定显示腿）。
-# $1=截图路径；$2=裁剪几何（默认 1200x800+0+0，Linux Xvfb 全屏沿用）；
-# $3=gravity（默认空；mac 全屏截图含菜单栏/Dock 时传 center 取中央避边框 chrome）。0=内容像 UI。
-# bash 3.2 安全：无数组展开（mac runner 默认 bash 3.2，空数组 + set -u 即炸）。
-smoke_capture_witness() {
-  local shot="$1" crop="${2:-1200x800+0+0}" gravity="${3:-}" stats mean sd
-  [[ -s "$shot" ]] || { echo "error: 截图缺失，内容见证不通过：$shot" >&2; return 1; }
-  command -v convert >/dev/null 2>&1 || { echo "error: 无 convert，截图内容见证无法执行（显示腿须装 imagemagick）" >&2; return 1; }
-  if [[ -n "$gravity" ]]; then
-    stats="$(convert "$shot" -gravity "$gravity" -crop "$crop" +repage -colorspace Gray -format '%[fx:mean] %[fx:standard_deviation]' info: 2>/dev/null || true)"
-  else
-    stats="$(convert "$shot" -crop "$crop" +repage -colorspace Gray -format '%[fx:mean] %[fx:standard_deviation]' info: 2>/dev/null || true)"
+# 一等等待循环（唯一家；宿主三平台与 rpm 容器腿共用）——语义固定为 ADR
+# smoke-wait-full-after-boot + shell-settle-behavior-gate：
+#   ① 命中即进落定等待，落定结果即返回值（失败即 FAIL，不翻回安装链）；
+#   ② 命中后不收工，继续等①至超时/退出；超时仍只有②按安装链 PASS（回退门）；
+#   ③ 进程退出补扫一次（信号可能落在退出前），按最佳信号收工；
+#   ④ 无进展满窗即提前收工 FAIL（零进展的②不是"慢"，是死）。
+# 每次循环打心跳并跑看门狗。
+# $1=stdout 路径（Linux 腿与容器腿即与 $2 同一文件） $2=host.log 路径
+# $3=pid $4=dsh-home；0=落定或安装链收工，1=失败。读调用方 SMOKE_WAIT 全局。
+smoke_wait_ready() {
+  local out="$1" log="$2" pid="$3" home="$4" boot_seen=0 start="$SECONDS"
+  # OUT/LOG 同源时经 strip_ts + sort -u 归一，无双计（见 nav_lines）。
+  OUT="$out"; LOG="$log"
+  progress_watchdog_reset
+  for _ in $(seq 1 "$SMOKE_WAIT"); do
+    if log_has "$FULL_RE"; then
+      grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
+      wait_settled "$pid"
+      return $?
+    fi
+    if [[ $boot_seen -eq 0 ]] && log_has "$BOOT_RE"; then
+      boot_seen=1
+      grep -m1 -E "$BOOT_RE" "$OUT" 2>/dev/null || grep -m1 -E "$BOOT_RE" "$LOG"
+      log "已见②安装链（$((SECONDS - start))s），继续等①至超时/退出…"
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      if log_has "$FULL_RE"; then
+        grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
+        wait_settled ""
+        return $?
+      fi
+      if log_has "$BOOT_RE"; then log "进程已退出，未见①，按②安装链收工"; return 0; fi
+      return 1
+    fi
+    heartbeat "$((SECONDS - start))" "$home"
+    if ! progress_watchdog_tick "$((SECONDS - start))" "$home"; then
+      error "冒烟停滞（${_WD_STALL_SECONDS}s 内进展标记/dsh-home 零增长、无新信号），提前收工"
+      tail -30 "$log" >&2 || true
+      return 1
+    fi
+    sleep 1
+  done
+  if log_has "$FULL_RE"; then
+    grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
+    wait_settled "$pid"
+    return $?
   fi
-  mean="${stats%% *}"; sd="${stats##* }"
-  if [[ -z "$mean" || -z "$sd" || "$mean" == "$stats" ]]; then
-    echo "error: 截图统计失败（ImageMagick），内容见证不通过" >&2; return 1
+  if log_has "$BOOT_RE"; then
+    log "${SMOKE_WAIT}s 内未见①，按②安装链收工"
+    return 0
   fi
-  if awk "BEGIN{exit !($mean >= 0.35 && $sd >= 0.08)}"; then
-    echo "note: 截图内容见证通过（mean=${mean} sd=${sd}）" >&2; return 0
-  fi
-  echo "error: 截图内容见证不通过（mean=${mean} sd=${sd}）：近空白/深色页（401 墙或引导页）不算 UI" >&2
   return 1
-}
-
-# 客户端存活门（ADR loopback-forward-proxy）：浅色主题真 UI 的 mean/sd 与空白页重叠
-# （mac light UI mean≈0.99/sd≈0.04 vs 401 墙 sd≈0.04），像素无法区分；改证行为——
-# dsh 客户端启动后必经代理发 RPC/SSE/WS（同源），host.log 里 200 回包/流转或 WS 隧道
-# 合计 ≥3 即活（实测启动数秒内 ~10 次）。三种前缀都要数：缓冲体走 `代理回包：`、
-# 流式走 `代理流转：`（只数其一即漏数，R3 实证）、WS 走 `代理升级隧道已建`
-# （remote.mux 无 200 行，纯 WS 形态会漏数）。holder 零次——落定门的行为支即此。
-# $1=host.log 路径。0=存活（落定门行为支 + 像素见证 OR 组绿）。
-smoke_client_alive() {
-  local log="${1:-}" n=0
-  [[ -f "$log" ]] || return 1
-  n=$(grep -cE "代理(流转|回包)：200 (application/json|text/event-stream)|代理升级隧道已建" "$log" 2>/dev/null || true)
-  [[ "${n:-0}" -ge 3 ]]
 }

@@ -34,6 +34,8 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-handoff-structure.py` | HANDOFF 滚动窗/状态区 | `python3 scripts/verify-handoff-structure.py` |
 | `verify-governance.py` | Issue/PR 模板治理字段 + 工作流/composite action 的 run: 禁插值事件载荷/env 回读 | `python3 scripts/verify-governance.py` |
 | `verify-skill-format.py` | 技能格式（frontmatter/目录束/内链/结构，`.agents/skills/*/SKILL.md`） | `python3 scripts/verify-skill-format.py` |
+| `verify-shell-standards.sh` | 脚本规范 S1-S6（errexit / 尺寸 ≤250 行 / 库不可执行且不自设选项 / 旋钮声明 / 共享库单源 / `shellcheck -S warning`），规范见 [script-standards](script-standards.md) | `bash scripts/verify-shell-standards.sh`（`--self-test` 夹具） |
+| `install-linters.sh` + `actionlint` | 脚本层静态检查工具（shellcheck + actionlint，版本与 sha256 双钉）与工作流静态检查（对 `run:` 块跑 `shellcheck -S warning`） | `bash scripts/install-linters.sh` → `actionlint -shellcheck="shellcheck -S warning"` |
 | `verify-review-brief.py` | 评审简报形状 + 评审对象冻结 + 轮次纪律（轮次上限、标题↔文件名互校、处置段与条目、验轮 `base` 须为上一轮冻结 tree 且增量非空）（`--enforce`；简报是 gitignore 本地文档） | `python3 scripts/verify-review-brief.py --enforce` |
 | `change-scope.sh` | `push` 前最小证据（`merge-base` diff） | `scripts/change-scope.sh` |
 
@@ -49,6 +51,8 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-handoff-structure.py` | ✓ | ✓（本地文档存在即校验） | — |
 | `verify-governance.py` | ✓（`governance.yml` 的「治理门禁」步同源调它） | ✓ | — |
 | `verify-skill-format.py` | ✓ | — | — |
+| `verify-shell-standards.sh`（含 shellcheck） | ✓（先跑 `install-linters.sh`） | ✓ | — |
+| `install-linters.sh` + `actionlint` | ✓ | —（本地按需自跑） | — |
 | `verify-review-brief.py` | —（简报不入库，CI 看不见） | ✓（`.review-briefs/` 有在审简报时） | — |
 | `verify-code-health.py` / `verify-code-conventions.py` | ✓（`--enforce`） | ✓ | — |
 | `verify-review-tier.py` | ✓（`--since`） | ✓（`--staged`） | ✓（`--since origin/main`） |
@@ -56,13 +60,13 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `package-version.sh` | ✓（`--self-test`；判据本体在打包腿调用链上） | — | — |
 | `change-scope.sh` | — | — | ✓（取证型，非判据：`\|\| true` 只打印范围） |
 
-`CI` (`ci.yml`)：`docs` job 无条件跑上表全部门禁；`build-test` job 三平台矩阵（ubuntu/windows/macos，`fail-fast: false`；ADR cross-process-filelock-semantics），只在 code 面命中时跑——code 面含 `src/**`、`tests/**`、`scripts/**`、`*.slnx`、`.editorconfig`、`Directory.*.props`、`global.json` 与 `ci.yml` 自身（结构级构建输入都能翻转 build/format 结论，漏判即整条 format 门禁跳过）。format 门禁与 `test with coverage`（每测试工程一个 cobertura，`coverage summary` 步合并后**比对基线**，`upload-artifact 7d`）仅 ubuntu 腿，windows/macos 腿跑清扫/资产锁两测试类全量。
+`CI` (`ci.yml`)：`docs` job 无条件跑上表全部门禁，另跑两道**工具门**（`actionlint` 工作流静态检查 + `shellcheck -S warning`，工具由 `install-linters.sh` 钉版装）与**离线夹具自测**（三平台冒烟共用面、包布局三平台分支、三包脚本共用头部与 Inno 模板渲染——这些逻辑平时只在 tag/dispatch 打包腿上执行）；`build-test` job 三平台矩阵（ubuntu/windows/macos，`fail-fast: false`；ADR cross-process-filelock-semantics），只在 code 面命中时跑——code 面含 `src/**`、`tests/**`、`scripts/**`、`*.slnx`、`.editorconfig`、`Directory.*.props`、`global.json` 与 `ci.yml` 自身（结构级构建输入都能翻转 build/format 结论，漏判即整条 format 门禁跳过）。format 门禁与 `test with coverage`（每测试工程一个 cobertura，`coverage summary` 步合并后**比对基线**，`upload-artifact 7d`）仅 ubuntu 腿，windows/macos 腿跑清扫/资产锁两测试类全量。
 
 ## 冒烟与集成
 
 * **沙箱冒烟**：`HarnessRuntimeHost` `StartAsync` 抓 `dsh web:`（`60s`），`RuntimeSupervisor` `kill` 子进程→自动重启+换 `URL`（回归断言重启 `URL` 相同以保 `origin`）。
 * **本机冒烟**：`dotnet run --project src/DeepSeek.Harness.Desktop` 起 `Ryn` 窗口加载 `dsh web:`（需 `DEEPSEEK_API_KEY` 与 `WebKitGTK`）。`DSH_DEVTOOLS=1` 开 `WebView` 调试。
-* **打包自检**：`verify-package-layout.sh` 断言安装器 staging 无闭包残留、插件 tgz 过名称/体积关（`build-companion-tgz.sh` 打包时现打现校验，新鲜度由「现打直进 staging」结构性保证）；`release-preflight.sh` 发布前复核资产矩阵/体积下限（15MB）/SHA256SUMS；`smoke-install-{linux,windows,macos}.sh` 三平台「静默安装/拷装 → 启动 → 双信号」（Linux 全链/安装链、win/mac runner 有桌面会话应达全链）。
+* **打包自检**：`verify-package-layout.sh --platform <linux|macos|windows>`（平台必填，判据不再按内容根隐式推断）断言内容根无闭包残留、插件 tgz 过名称/体积关、主程序在位且带可执行位（Windows 追加托管程序集/原生库/runtimes/wwwroot）（`build-companion-tgz.sh` 打包时现打现校验，新鲜度由「现打直进 staging」结构性保证）；`release-preflight.sh` 发布前复核资产矩阵/体积下限（15MB）/SHA256SUMS；`smoke-install-{linux,windows,macos}.sh` 三平台「静默安装/拷装 → 启动 → 双信号」（Linux 全链/安装链、win/mac runner 有桌面会话应达全链）。
 * **打包与发布流水线**：三平台打包的唯一家是 [`.github/workflows/package.yml`](../.github/workflows/package.yml)（`workflow_call` + `workflow_dispatch`，三平台 job 共用 [`.github/actions/package-setup`](../.github/actions/package-setup/action.yml) 前置；版本解析与 tag/输入一致性判据的唯一实现在 [`scripts/package-version.sh`](../scripts/package-version.sh)）。tag 发布走 [`release.yml`](../.github/workflows/release.yml)：先把三个包腿作为 reusable workflow 调用，再以 `needs:` 在**同一 run** 内 `download-artifact` 聚合 → preflight → 创建单个 Release（包腿失败即发布作业不启动）。
 * **插件面**：首启引导（`RuntimeBootstrap`）全局 dsh 就位后、spawn dsh **前**装插件——companion（internal）静默自愈（`EnsureBundledPluginsBeforeSpawnAsync`，`BundledPluginCatalog` 清单 + 版本感知升级，自安装器 `resources/plugins`）、dshmarket（preset）经引导页「插件准备」步确认/跳过（`desktop.preinstall.choose` 决策 + `dsh-desktop-preinstall` 日志回流，5 分钟超时默认跳过），全部 `plugin add` 就位后 `StartAsync`（不再「装后 `host.Stop()` 重启」）；启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用（见 [architecture.md](architecture.md)）。
 

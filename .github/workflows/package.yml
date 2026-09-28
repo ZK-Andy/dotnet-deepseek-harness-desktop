@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash scripts/verify-package-layout.sh \
+          bash scripts/verify-package-layout.sh --platform linux \
             --target "artifacts/${{ matrix.rid }}/stage/deepseek-harness-desktop-$VERSION/usr/lib/deepseek-harness-desktop"
 
       - name: 包可解析断言 + 打包取证（deb control / rpm Requires 留痕，人眼复核）
@@ -212,7 +212,7 @@ jobs:
           # 断言失败也要卸载：trap 兜底 detach，失败路径不留挂载点给同 job 后续步骤
           trap 'hdiutil detach "$MNT" >/dev/null 2>&1 || true' EXIT
           hdiutil attach "$DMG" -mountpoint "$MNT" -nobrowse -readonly
-          bash scripts/verify-package-layout.sh --target "$MNT/DeepSeek.Harness.Desktop.app/Contents/MacOS"
+          bash scripts/verify-package-layout.sh --platform macos --target "$MNT/DeepSeek.Harness.Desktop.app/Contents/MacOS"
           hdiutil detach "$MNT"
 
       - name: 安装截图见证工具（截图内容判定：convert，中央裁剪口径）
@@ -287,7 +287,7 @@ jobs:
 
       - name: 安装器内容断言（staging 即安装器唯一内容源，防 Inno [Files] 漏配）
         shell: bash
-        run: bash scripts/verify-package-layout.sh --target artifacts/win-x64/stage/DeepSeek.Harness.Desktop
+        run: bash scripts/verify-package-layout.sh --platform windows --target artifacts/win-x64/stage/DeepSeek.Harness.Desktop
 
       - name: 缓存 npm 下载缓存（只缓存 cacache 下载内容，不缓存 %APPDATA%\npm 安装树——首启冷装路径仍被真实演练）
         uses: actions/cache@v4
@@ -310,7 +310,7 @@ jobs:
         run: |
           set -euo pipefail
           EXE="$RUNNER_TEMP/MicrosoftEdgeWebview2Setup.exe"
-          for i in 1 2 3; do
+          for _ in 1 2 3; do
             curl -sSL --fail --retry 2 -o "$EXE" "https://go.microsoft.com/fwlink/p/?LinkId=2124703" && break || sleep 10
           done
           [[ -f "$EXE" ]] || { echo "::error::Evergreen 下载失败（3 次重试）"; exit 1; }

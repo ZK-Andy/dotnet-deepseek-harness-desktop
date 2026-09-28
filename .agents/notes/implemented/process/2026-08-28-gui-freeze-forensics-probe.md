@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-09-28 — 落点换家：正文所述 `scripts/probe-gui-freeze.sh` 已退役（210 行、零调用点、7 个 `FREEZE_*` 旋钮在 CI 与文档里都无设置点）；判别知识留在 [cookbook](../../../../docs/cookbook.md) 的「高强度负载下 GUI 冻结的判别」条目，退役决定见 [script-layer-consolidation](2026-09-28-script-layer-consolidation.md)。正文不动。
+
 ## Problem
 
 DeepSeek Harness 桌面壳（Ryn/saucer → WebKitGTK）在高强度负载（后台并行多个 subagent 并发向 dsh Web UI 倾倒内容）下，用户观察到「窗口能动、内容不动」的页面冻结。该现象具三个判据叠加：Linux Wayland/GNOME + 无 GPU（`/dev/dri` 缺失，`XDG_SESSION_TYPE=wayland`）。

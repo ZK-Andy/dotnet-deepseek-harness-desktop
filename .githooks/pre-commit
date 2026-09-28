@@ -46,6 +46,12 @@ python3 scripts/verify-code-health.py --enforce
 echo "-> verify-code-conventions.py"
 python3 scripts/verify-code-conventions.py --enforce
 
+# 9b) 脚本规范门禁（docs/script-standards.md 的机器强制面 S1-S6，含 shellcheck -S warning）。
+#     执行点与 CI 的 docs job 同源；缺 shellcheck 判红并提示 scripts/install-linters.sh
+#     （门禁悄悄不执行 = 假绿，故宁可挡住提交）。
+echo "-> verify-shell-standards.sh"
+bash scripts/verify-shell-standards.sh
+
 # 10) 评审档位硬闸（ADR review-tier-escape-proofing）：FULL 档变更（组合根/门禁判据/
 #     承诺三重审核的 ADR/行为契约面）必须随变更携带 Review 证据，否则拦下——
 #     档位判定机械化，执行者不得以「轻审」跳过（防逃逸机械限制）。

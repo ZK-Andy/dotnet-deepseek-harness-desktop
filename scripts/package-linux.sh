@@ -12,30 +12,25 @@
 # 用法：
 #   scripts/package-linux.sh [publish_dir]          # 全量（需 dpkg-deb + rpmbuild；Ubuntu runner 自带 dpkg-deb，rpm 需 apt 安装）
 #   scripts/package-linux.sh --stage-only [dir]     # 仅组装 staging，供无工具机校验布局
+#   scripts/package-linux.sh --self-test            # 离线夹具（共用头部 + 架构映射）
 # 环境：VERSION（默认 0.1.0，CI 由 tag/inputs.version 注入）、MAINTAINER、ARCH（amd64/x86_64/arm64/aarch64）
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ARG1="${1:-}"
-STAGE_ONLY=0
-if [[ "$ARG1" == "--stage-only" ]]; then STAGE_ONLY=1; ARG1="${2:-}"; fi
+ROOT_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/packaging-common.sh
+source "$ROOT_SCRIPTS/lib/packaging-common.sh"
 
-# 归一化 ARCH：amd64/x86_64 → amd64，arm64/aarch64 → arm64
-ARCH_RAW="${ARCH:-amd64}"
-case "$ARCH_RAW" in
-  amd64|x86_64) ARCH="amd64"; RPM_ARCH="x86_64"; RID="linux-x64"; OUT_SUFFIX="linux-x64" ;;
-  arm64|aarch64) ARCH="arm64"; RPM_ARCH="aarch64"; RID="linux-arm64"; OUT_SUFFIX="linux-arm64" ;;
-  *) echo "error: 不支持 ARCH=${ARCH_RAW}（仅 amd64/arm64）" >&2; exit 1 ;;
-esac
+if [[ "${1:-}" == "--self-test" ]]; then
+  packaging_self_test
+  exit $?
+fi
 
-PUBLISH_DIR="${ARG1:-$ROOT/artifacts/publish-$RID}"
-VERSION="${VERSION:-0.1.0}"
+# CLI 解析 / ARCH 归一化 / VERSION / PUBLISH_DIR / OUT 由共享头部统一处理
+# （scripts/lib/packaging-common.sh；-前闭包残留与主程序判据唯一家在 verify-package-layout.sh）。
+packaging_init linux "$@"
 APP="deepseek-harness-desktop"
 MAINTAINER="${MAINTAINER:-zhangkun <253117546@qq.com>}"
-OUT="$ROOT/artifacts/$OUT_SUFFIX"
 STAGE="$OUT/stage/$APP-$VERSION"
-
-[[ -d "$PUBLISH_DIR" ]] || { echo "error: publish 目录不存在: $PUBLISH_DIR" >&2; exit 1; }
 
 echo "== 组装 staging: $STAGE"
 DEST="usr/lib/$APP"
@@ -48,11 +43,6 @@ cp -r "$PUBLISH_DIR/." "$STAGE/$DEST/"
 #    不再捆绑运行时闭包——首启引导确保全局 dsh（ADR simple-shell-single-global-dsh）。
 mkdir -p "$STAGE/$DEST/resources/plugins"
 bash "$ROOT/scripts/build-companion-tgz.sh" "$STAGE/$DEST/resources/plugins/dsh-desktop-companion.tgz"
-# 闭包残留检测：resources/runtime 出现即打包漂移（旧缓存/手工产物混入），fail loud
-if [[ -e "$STAGE/$DEST/resources/runtime" ]]; then
-  echo "error: staging 出现 resources/runtime（闭包已退役，属打包漂移）" >&2
-  exit 1
-fi
 chmod +x "$STAGE/$DEST/DeepSeek.Harness.Desktop"
 
 # 3) bin 符号链接 + desktop 入口（对齐 pilot-harness linux.desktop）
@@ -84,17 +74,20 @@ if [[ -d "$ROOT/assets/icons" ]]; then
   cp "$ROOT/assets/icon.png" "$STAGE/usr/share/pixmaps/$APP.png"
 fi
 
+# 4) 布局断言（staging 即 deb/rpm 的内容源）：闭包残留 / 插件资源 / 主程序 + 可执行位
+packaging_assert_layout linux "$STAGE/$DEST"
+
 echo "== staging 体积: $(du -sh "$STAGE" | cut -f1)"
 if [[ $STAGE_ONLY -eq 1 ]]; then
   echo "(--stage-only 校验布局)："
   find "$STAGE" -maxdepth 3 -type d | sort | head -30 || true
   echo "--- 插件资源 ---"
-  ls -lh "$STAGE/$DEST/resources/plugins/" 2>&1 | head -3 || echo "plugins 缺失"
+  ls -lh "$STAGE/$DEST/resources/plugins/" 2>&1 | head -3 || true
   exit 0
 fi
 
-command -v dpkg-deb >/dev/null || { echo "error: 缺 dpkg-deb（Ubuntu runner 自带；本地可用 --stage-only 校验）" >&2; exit 1; }
-command -v rpmbuild >/dev/null || { echo "error: 缺 rpmbuild（Ubuntu: sudo apt-get install -y rpm）" >&2; exit 1; }
+command -v dpkg-deb >/dev/null || die "缺 dpkg-deb（Ubuntu runner 自带；本地可用 --stage-only 校验）"
+command -v rpmbuild >/dev/null || die "缺 rpmbuild（Ubuntu: sudo apt-get install -y rpm）"
 
 echo "== [deb]"
 mkdir -p "$STAGE/DEBIAN"
@@ -175,7 +168,9 @@ for f in "$OUT"/rpmbuild/RPMS/*/*.rpm; do
 done
 
 echo "== 产物:"
-ls -lh "$OUT"/*.deb "$OUT"/*.rpm 2>&1 | grep -E "^-|deepseek" || true
+shopt -s nullglob
+for f in "$OUT"/*.deb "$OUT"/*.rpm; do ls -lh "$f"; done
+shopt -u nullglob
 echo "== deb 校验（如可用）:"
 dpkg-deb -I "$OUT/${APP}_${VERSION}_linux-${ARCH}.deb" 2>&1 | head -20 || true
 echo "== rpm 校验（如可用）:"

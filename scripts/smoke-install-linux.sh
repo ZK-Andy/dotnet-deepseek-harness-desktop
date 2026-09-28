@@ -1,23 +1,17 @@
 #!/usr/bin/env bash
-# smoke-install-linux.sh — Linux 安装冒烟（批次一，ADR artifact-verification-chain；
-# online-first 批次二起覆盖「装包 → 首启引导 → dsh web URL」全链）。
+# smoke-install-linux.sh — Linux 安装冒烟入口（ADR artifact-verification-chain）。
 # 对构建产物目录中的 deb/rpm 做「干净环境装包 → 启动 → 等 dsh web URL」验证：
-#   deb → runner 原生 apt 安装（真实解析 Depends）
+#   deb → runner 原生 apt 安装（真实解析 Depends）——本脚本
 #   rpm → fedora 容器内 dnf 安装（AutoReqProv:no 的显式 Requires 是否够，装了才知道）
+#                                       ——scripts/smoke-linux-rpm.sh（本脚本按产物存在转调）
 # 判定信号（双信号）：
 #   ①`[host] dsh web =`（注意是等号——`dsh web:` 冒号格式是 dsh 子进程自检输出，壳打印的是等号格式；首版判定串错位致冒烟恒败，CI 实证）= dsh 就绪（传输层）；
 #   ②`[bootstrap] 引导开始：` = 安装链保底（装包→依赖齐→运行时检测→首启引导已启动）。
-# 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
-# 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
-# 落定语义（ADR shell-settle-behavior-gate）：①只是 dsh 就绪行，落定 = ① + 铸币 303
-# （转发路由存在）+ 客户端存活（代理 200/WS 隧道，holder 零次——唯一区分 holder 与真 UI
-# 的机器信号）。导航到达只作诊断回显，不判门（holder 自 reload 不产生到达回调；
-# token 第二跳已随转发模型退役）。verdict 只取 auth 硬拦（401 真坏页），healthy/
-# unknown/缺行一律交存活 + 见证判定。落定超时或落定期进程退出即 FAIL。
+# 等待/落定语义、心跳、看门狗、回退门、缺信号摘要在 scripts/lib/smoke-wait-lib.sh（唯一家；
+# 三平台与容器腿同一实现）。裁决门（auth 硬拦）与截图内容见证在 scripts/lib/smoke-verdict-lib.sh。
 #     deb 腿（有显示）在此之上只加截图时机与见证：落定后再等一个有界重绘窗
 #     （SMOKE_REPAINT_SECONDS，默认 3s）才拍，避免拍到上一跳的旧像素；见证判红（近空白/
 #     深色页）后仅客户端存活可兜底，两者俱缺才 FAIL（见 smoke_deb）。
-#     win 腿未置位（mac 腿已开门：同阈值见证 + 客户端存活兜底）；rpm 容器腿的落定/裁决门不适用。
 #     CI 经 xvfb-run 启动（ADR smoke-linux-xvfb-fullchain）：虚拟 DISPLAY 下窗口可创建，
 #     引导后台任务存活——deb 腿全链信号可达，落定 verdict + 截图真实开火；Xvfb 起不来
 #     或无显示直跑仍回退②安装链（回退门语义不变）。rpm 容器腿无 X，恒②。
@@ -26,53 +20,33 @@
 # deb/rpm 已补显式声明）+ online-first「引导断链、dsh 起不来」。
 #
 # 用法: smoke-install-linux.sh <产物目录（含 *.deb 与/或 *.rpm）>
-# 自测: smoke-install-linux.sh --self-test（纯函数 + wait_url 回归，不碰装包）
+# 自测: smoke-install-linux.sh --self-test（纯函数 + 等待循环回归，不碰装包）
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/smoke-verdict-lib.sh
+source "$SCRIPT_DIR/lib/smoke-verdict-lib.sh"
+# shellcheck source=lib/smoke-selftest-verdict.sh
+source "$SCRIPT_DIR/lib/smoke-selftest-verdict.sh"
 
 SELFTEST=0
 if [[ "${1:-}" == "--self-test" ]]; then SELFTEST=1; fi
 if [[ "$SELFTEST" -eq 0 ]]; then
   PKG_DIR="${1:?usage: smoke-install-linux.sh <dir-with-deb/rpm>}"
-  [[ -d "$PKG_DIR" ]] || { echo "error: 目录不存在: $PKG_DIR" >&2; exit 1; }
+  [[ -d "$PKG_DIR" ]] || die "目录不存在: $PKG_DIR"
   PKG_DIR="$(realpath "$PKG_DIR")"
 fi
 APP_BIN="/usr/bin/deepseek-harness-desktop"
 
-# 等待启动日志出现 [host] dsh web = 的公共循环。进程探活用 kill -0 <pid>：
-# 安装后的入口是小写符号链接（/usr/bin/deepseek-harness-desktop），pgrep 按
-# 大写二进制名匹配会立刻误判「进程已死」。进程退出后再补扫一次日志，兜住
-# 「URL 已打出但进程随即退出」的窗口。
-# 等待窗 = 单轮尝试预算：RuntimeBootstrapOptions.StepTimeoutMinutes（默认 10 分钟）
-# 单步上限 + 120s 余量 = 720s。重试轮不计入——冒烟只等首轮落定，超时按②收工。
-# 引导步数或 StepTimeoutMinutes 变化时必须同批重算。SMOKE_WAIT_SECONDS 可覆写。
-SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
-# 落定窗：①出现后等铸币 + 客户端存活；auth 裁决即拦。默认 90s，SMOKE_SETTLE_SECONDS 可覆写。
-SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
+# 等待窗/落定窗（含 SMOKE_WAIT_SECONDS / SMOKE_SETTLE_SECONDS 覆写）与判定串 ①②
+# 的唯一家在共享库，此处只做一次解析（漏调即 set -u 炸——见 smoke-wait-lib 注释）。
+smoke_resolve_windows
 # 裁决后重绘窗（秒）：WebKit 提交回调早于新页出像素，裁决一过立刻拍易拍到上一跳旧帧
 # （ADR page-verdict-gate）；无显示时 smoke_shot 本就早退，不睡。非数字按默认。
+# SMOKE_REPAINT_SECONDS 可覆写。
 SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
 [[ "$SMOKE_REPAINT_SECONDS" =~ ^[0-9]+$ ]] || SMOKE_REPAINT_SECONDS=3
 APP_TIMEOUT=$((SMOKE_WAIT + 20))
-FULL_RE='\[host\] dsh web ='
-BOOT_RE='\[bootstrap\] 引导开始：'
-
-# 落定等待共享库（NAV 正则 + log_has/nav/wait_settled/heartbeat/timeout_fallback）。
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB="$SCRIPT_DIR/smoke-settle-lib.sh"
-# shellcheck disable=SC1091
-source "$LIB"
-
-# 截图内容见证实现在 smoke-settle-lib.sh（上已 source）：`smoke_capture_witness` 显示腿共用，
-# Linux 沿用默认裁剪几何（Xvfb 全屏），阈值与既有自测夹具不变（R1：禁止手抄复刻）。
-
-# 判定结论（ADR smoke-runner-deepening）：命中 ① 全链还是 ② 安装链必须打印成结论。
-smoke_verdict() { # $1=日志
-  if grep -qE '\[host\] dsh web =' "$1" 2>/dev/null; then
-    echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"
-  else
-    echo "SMOKE_VERDICT=install-chain（仅引导启动）"
-  fi
-}
 
 # 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
 # CI 经 xvfb-run 启动（ADR smoke-linux-xvfb-fullchain）时 $DISPLAY 存在即真实开火；
@@ -93,9 +67,9 @@ smoke_shot() { # $1=文件名
     if shot_capped gnome-screenshot -f "$shot" 2>/dev/null && [[ -s "$shot" ]]; then fired="gnome-screenshot"; else rm -f "$shot"; fi
   fi
   if [[ -n "$fired" ]]; then
-    echo "note: 截图已存（${fired}）：${shot}（$(wc -c <"$shot" 2>/dev/null || echo ?) 字节）" >&2
+    log "截图已存（${fired}）：${shot}（$(file_size "$shot") 字节）"
   else
-    echo "note: 截图失败（import/scrot/gnome-screenshot 均无或全败）" >&2
+    log "截图失败（import/scrot/gnome-screenshot 均无或全败）"
   fi
 }
 
@@ -105,81 +79,10 @@ shot_capped() {
   if command -v timeout >/dev/null 2>&1; then timeout 20 "$@"; else "$@"; fi
 }
 
-# 落定等待与心跳实现在 smoke-settle-lib.sh（上已 source）。
-
-wait_url() { # $1=日志 $2=pid $3=dsh-home：①命中即落定等待；只有②（超时或退出时）亦 0；双无才 1
-  local log="$1" pid="$2" home="$3" boot_seen=0 start="$SECONDS"
-  # OUT/LOG 同指一文件：Linux 腿 stdout 即全量日志（含 [shell] 行为行），存活门须读得到；
-  # 双读同文件经去重归一，无双计（strip_ts + sort -u，见 R6）。
-  OUT="$log"; LOG="$log"
-  progress_watchdog_reset
-  for _ in $(seq 1 "$SMOKE_WAIT"); do
-    if grep -qE "$FULL_RE" "$log"; then
-      grep -m1 -E "$FULL_RE" "$log"
-      wait_settled "$pid"
-      return $?
-    fi
-    if [[ $boot_seen -eq 0 ]] && grep -qE "$BOOT_RE" "$log"; then
-      boot_seen=1
-      grep -m1 -E "$BOOT_RE" "$log"
-      echo "note: 已见②安装链（$((SECONDS - start))s），继续等①至超时/退出…" >&2
-    fi
-    if ! kill -0 "$pid" 2>/dev/null; then
-      if grep -qE "$FULL_RE" "$log"; then grep -m1 -E "$FULL_RE" "$log"; wait_settled ""; return $?; fi
-      if grep -qE "$BOOT_RE" "$log"; then echo "note: 进程已退出，未见①，按②安装链收工" >&2; return 0; fi
-      return 1
-    fi
-    heartbeat "$((SECONDS - start))" "$home"
-    if ! progress_watchdog_tick "$((SECONDS - start))" "$home"; then
-      echo "error: 冒烟停滞（${_WD_STALL_SECONDS}s 内进展标记/dsh-home 零增长、无新信号），提前收工" >&2
-      tail -30 "$log" >&2 || true
-      return 1
-    fi
-    sleep 1
-  done
-  if grep -qE "$FULL_RE" "$log"; then grep -m1 -E "$FULL_RE" "$log"; wait_settled "$pid"; return $?; fi
-  if grep -qE "$BOOT_RE" "$log"; then
-    echo "note: ${SMOKE_WAIT}s 内未见①，按②安装链收工" >&2
-    return 0
-  fi
-  return 1
-}
-
-smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/心跳/等待循环
-  local tdir fail=0 live log rc
-  tdir="$(mktemp -d)"
-  OUT="$tdir/out"; LOG="$tdir/host.log"; mkdir -p "$tdir/home"
-  tpass() { echo "ok: $1"; }
-  tfail() { echo "FAIL: $1"; fail=1; }
-  echo "[host] dsh web = http://127.0.0.1:1/?token=t" >"$OUT"; : >"$LOG"
-  [[ "$(smoke_verdict "$OUT")" == *"full-chain"* ]] && tpass "verdict-full" || tfail "verdict-full"
-  : >"$OUT"
-  [[ "$(smoke_verdict "$OUT")" == *"install-chain"* ]] && tpass "verdict-install" || tfail "verdict-install"
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-ok" || tfail "settle-ok"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[nav] 导航已到达：http://127.0.0.1:1/（origin → x）\n' >"$OUT"; : >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-arrival-only-should-fail" || tpass "settle-arrival-only-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  heartbeat "60" "$tdir/home" 2>&1 | grep -q "等待中（60s）" && tpass "heartbeat" || tfail "heartbeat"
-  # 看门狗（无进展提前收工）：首 tick 活；窗内静止活；满窗静止判死；任一增长复位
-  local o_out o_log
-  o_out="$OUT"; o_log="$LOG"
-  OUT="$tdir/wd-out"; LOG="$tdir/wd-log"; : >"$OUT"; : >"$LOG"; mkdir -p "$tdir/wd-home"
-  progress_watchdog_reset
-  progress_watchdog_tick 0 "$tdir/wd-home" && tpass "watchdog-first-alive" || tfail "watchdog-first-alive"
-  progress_watchdog_tick $((_WD_STALL_SECONDS - 1)) "$tdir/wd-home" && tpass "watchdog-under-window" || tfail "watchdog-under-window"
-  progress_watchdog_tick "$_WD_STALL_SECONDS" "$tdir/wd-home" && tfail "watchdog-stall-should-trip" || tpass "watchdog-stall-trips"
-  printf '[09:45:10 info] Ryn.Core.RynApplication: noise\n[update] Checking\n[health] alive\n' >>"$OUT"
-  progress_watchdog_tick $((_WD_STALL_SECONDS + 100)) "$tdir/wd-home" && tfail "watchdog-misc-should-not-reset" || tpass "watchdog-misc-no-reset"
-  echo '[bootstrap] test-progress' >>"$OUT"
-  progress_watchdog_tick $((_WD_STALL_SECONDS + 300)) "$tdir/wd-home" && tpass "watchdog-growth-resets" || tfail "watchdog-growth-resets"
-  OUT="$o_out"; LOG="$o_log"
-  # smoke_shot：无 DISPLAY 即静默跳过（不建目录不拦冒烟）；fake scrot 开火留痕且非空
-  DISPLAY= SMOKE_SHOT_DIR="$tdir/shots" smoke_shot "no.png" >/dev/null 2>&1 \
+# Linux 专属夹具（共用面在 scripts/lib/smoke-selftest.sh）：截图工具级联的三条回归锁。
+smoke_selftest_platform() { # $1=夹具根
+  local tdir="$1"
+  DISPLAY='' SMOKE_SHOT_DIR="$tdir/shots" smoke_shot "no.png" >/dev/null 2>&1 \
     && [[ ! -e "$tdir/shots/no.png" ]] && tpass "shot-nodisplay" || tfail "shot-nodisplay"
   mkdir -p "$tdir/fakebin"
   printf '#!/bin/sh\nprintf "PNG" > "$1"\n' >"$tdir/fakebin/scrot"; chmod +x "$tdir/fakebin/scrot"
@@ -191,159 +94,47 @@ smoke_self_test() { # 纯函数 + wait_url 回归：夹具断言 verdict/落定/
   rm -f "$tdir/shots/s2.png"
   PATH="$tdir/fakebin:/usr/bin:/bin" DISPLAY=:99 SMOKE_SHOT_DIR="$tdir/shots" smoke_shot "s2.png" >/dev/null 2>&1 \
     && [[ "$(cat "$tdir/shots/s2.png")" == "PNG" ]] && tpass "shot-fallback" || tfail "shot-fallback"
-  # wait_url 集成：①+铸币+存活 → 0；只有②（短窗）→ 0；双无 → 1；①无铸币/存活 → 1
-  log="$tdir/w1"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$log"
-  sleep 30 & live=$!
-  SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-full" || tfail "wait_url-full"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  log="$tdir/w2"; printf '[bootstrap] 引导开始：x\n' >"$log"
-  sleep 30 & live=$!
-  SMOKE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-bootonly" || tfail "wait_url-bootonly"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  log="$tdir/w3"; : >"$log"
-  SMOKE_WAIT=2 wait_url "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-nosignal-should-fail" || tpass "wait_url-nosignal-fails"
-  log="$tdir/w4"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$log"
-  sleep 30 & live=$!
-  SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-nosettle-should-fail" || tpass "wait_url-nosettle-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  log="$tdir/w4b"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 代理源就绪：http://localhost:9/（回环独占）\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）\n' >"$log"
-  sleep 30 & live=$!
-  SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-single-proxy-settles" || tfail "wait_url-single-proxy-settles"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  log="$tdir/w4c"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：ryn://app/index.html\n' >"$log"
-  sleep 30 & live=$!
-  SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait_url-placeholder-should-not-settle" || tpass "wait_url-placeholder-not-settled"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  log="$tdir/w5"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$log"
-  SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-exit-settled" || tfail "wait_url-exit-settled"
-  # wait_url × 落定新语义：①+铸币+存活（+healthy）→ 0；行为齐缺 verdict → 亦 0（内容见证在截图）
-  log="$tdir/w6"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$log"
-  sleep 30 & live=$!
-  SMOKE_WAIT=5 SETTLE_WAIT=90 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-verdict-healthy" || tfail "wait_url-verdict-healthy"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  log="$tdir/w7"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$log"
-  sleep 30 & live=$!
-  SMOKE_WAIT=5 SETTLE_WAIT=2 wait_url "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait_url-verdict-missing-passes" || tfail "wait_url-verdict-missing-passes"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 截图内容见证夹具：白（401 墙形态）/深色（引导页形态）判失败，浅色有结构判通过
-  if command -v convert >/dev/null 2>&1; then
-    convert -size 1200x800 xc:white "$tdir/w_white.png" 2>/dev/null
-    convert -size 1200x800 xc:"#111111" "$tdir/w_dark.png" 2>/dev/null
-    convert -size 1200x800 xc:"#cccccc" -fill "#222222" -draw "rectangle 0,0 300,800" "$tdir/w_ui.png" 2>/dev/null
-    smoke_capture_witness "$tdir/w_white.png" >/dev/null 2>&1 && tfail "witness-blank-should-fail" || tpass "witness-blank-fails"
-    smoke_capture_witness "$tdir/w_dark.png" >/dev/null 2>&1 && tfail "witness-dark-should-fail" || tpass "witness-dark-fails"
-    smoke_capture_witness "$tdir/w_ui.png" >/dev/null 2>&1 && tpass "witness-ui-passes" || tfail "witness-ui-passes"
-  else
-    echo "skip: 无 convert，跳过截图内容见证夹具"
-  fi
-  # 存活门：代理 200（缓冲 `代理回包：` + 流式 `代理流转：`）或 WS 隧道合计 ≥3 即活。
-  { echo '[shell] 代理回包：200 application/json 100字节（POST /api/a）'; echo '[shell] 代理流转：200 text/event-stream（GET /plugins/events）'; echo '[shell] 代理回包：200 application/json 200字节（POST /api/b）'; } >"$tdir/alive.log"
-  smoke_client_alive "$tdir/alive.log" && tpass "alive-enough-passes" || tfail "alive-enough-passes"
-  { echo '[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）'; echo '[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）'; echo '[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）'; } >"$tdir/alive.log"
-  smoke_client_alive "$tdir/alive.log" && tpass "alive-tunnel-passes" || tfail "alive-tunnel-fails"
-  printf '[shell] 代理请求：GET /x\n' >"$tdir/alive.log"
-  smoke_client_alive "$tdir/alive.log" && tfail "alive-short-should-fail" || tpass "alive-short-fails"
-  # 落定行为门：①前信号再多也不算落定；①+铸币+存活即落定（到达只诊断，不参与）。
-  # 注意：此前 wait_url 用例把 OUT/LOG 指走，此处显式复位回自测夹具（settle-ok 先例同理）。
-  OUT="$tdir/out"; LOG="$tdir/host.log"
-  printf '[nav] 导航已到达：ryn://app/index.html\n[nav] 导航已到达：http://127.0.0.1:1/\n[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$OUT"; : >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-preready-should-fail" || tpass "settle-preready-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-postready" || tfail "settle-postready"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 裁决 auth 进门：行为信号齐、终页裁决 auth 即失败
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，请重开 dsh 打印的 URL；启动继续）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-auth-should-fail" || tpass "settle-auth-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 行为齐 + healthy → 0
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-healthy" || tfail "settle-verdict-healthy"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 同门：行为齐 + unknown → 0（unknown 交存活 + 见证判定，不拦落定）
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=unknown（探针无采样，期望 origin=http://127.0.0.1:1）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-unknown-passes" || tfail "settle-verdict-unknown-passes"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 同门：行为齐但裁决行始终不出现（探针未回）→ 0
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-missing-passes" || tfail "settle-verdict-missing-passes"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # LOG 兜底：OUT 无裁决行、裁决只在 host.log → 仍读得到且 auth 判红（OUT 侧补铸币行）
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-log-fallback-auth-should-fail" || tpass "settle-log-fallback-auth-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  : >"$LOG"
-  # 只认最后一条：healthy 之后又坏成 auth（页面塌陷）→ 1，旧 healthy 不得冒充绿
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-verdict-relapse-should-fail" || tpass "settle-verdict-relapse-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 只认最后一条：auth 之后重试恢复 healthy → 0（终页确实是 UI）
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=auth（origin=http://127.0.0.1:1 可见文本 60 字，重进后，请重开 dsh 打印的 URL；启动继续）\n[nav] 页面裁决=healthy（origin=http://127.0.0.1:1 可见文本 400 字）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-verdict-recovery" || tfail "settle-verdict-recovery"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  rm -rf "$tdir"
-  [[ $fail -eq 0 ]] && echo "self-test: PASS" || echo "self-test: FAIL"
-  return $fail
 }
 
 if [[ "$SELFTEST" -eq 1 ]]; then
-  smoke_self_test
+  smoke_self_test_run smoke_selftest_platform
   exit $?
 fi
 
 smoke_deb() {
   local deb="$1" log home pid rc apt_log
-  log="$(mktemp)"; home="$(mktemp -d)"; apt_log="$(mktemp)"
+  log="$(common_tmp_file)"; home="$(common_tmp_dir)"; apt_log="$(common_tmp_file)"
   echo "== [deb] 安装 $deb"
   sudo apt-get update -qq
   # apt 直接吃绝对路径的 deb 并自动解 Depends（libwebkitgtk-6.0-4 / libadwaita-1-0 等）。
   # DEBIAN_FRONTEND=noninteractive 防 debconf 交互挂死；stdout 留档（装包环节取证，
   # 失败打尾部——与 rpm dnf 同款，曾有 >/dev/null 丢证据的盲区）
+  # shellcheck disable=SC2024  # 重定向由调用 shell 执行，$apt_log 是当前用户可写的 mktemp 文件，无需 tee
   sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$deb" >"$apt_log" 2>&1 || {
-    echo "error: [deb] apt 安装失败（Depends 解析或包损坏）。apt 输出尾部：" >&2
+    error "[deb] apt 安装失败（Depends 解析或包损坏）。apt 输出尾部："
     tail -30 "$apt_log" >&2
-    rm -rf "$home" "$log" "$apt_log"
     return 1
   }
   tail -3 "$apt_log" >&2 || true
-  rm -f "$apt_log"
   # WebKit 版本留痕（arm64 原生 hang 三选一诊断：saucer arm64 库 / WebKitGTK 构建 / runner 环境）。
   dpkg -l 2>/dev/null | grep -i -m 5 webkit >&2 || true
   echo "== [deb] 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s；DISPLAY=${DISPLAY:-<无>}）"
   set +e
-  # 无人值守跳过可选插件（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
-  env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
-    timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
+  smoke_unattended_env "$home"
+  timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
   pid=$!
-  wait_url "$log" "$pid" "$home"; rc=$?
+  smoke_wait_ready "$log" "$log" "$pid" "$home"; rc=$?
   # 裁决已过再等有界重绘窗：提交回调早于新页出像素，立刻拍会拍到上一跳（401）旧帧；无显示不睡。
   if [[ $rc -eq 0 && -n "${DISPLAY:-}" ]]; then
     sleep "$SMOKE_REPAINT_SECONDS"
-    kill -0 "$pid" 2>/dev/null || echo "note: 重绘窗内应用已退出，截图可能为空窗（rc 仍按落定结论）" >&2
+    kill -0 "$pid" 2>/dev/null || log "重绘窗内应用已退出，截图可能为空窗（rc 仍按落定结论）"
   fi
   smoke_shot "smoke-linux-deb.png"
   if [[ $rc -eq 0 && -n "${DISPLAY:-}" && -n "${SMOKE_SHOT_DIR:-}" ]]; then
     if smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-linux-deb.png"; then
       :
     elif smoke_client_alive "$home/logs/host.log"; then
-      echo "note: 像素偏白但客户端存活（代理 200 RPC/SSE ≥3，浅色主题像素不可分），按活判过" >&2
+      log "像素偏白但客户端存活（代理 200 RPC/SSE ≥3，浅色主题像素不可分），按活判过"
     else
       rc=1
     fi
@@ -353,132 +144,19 @@ smoke_deb() {
   sudo apt-get remove -y deepseek-harness-desktop >/dev/null 2>&1 || sudo dpkg -r deepseek-harness-desktop >/dev/null 2>&1 || true
   if [[ $rc -ne 0 ]]; then
     # 现场必须落进 CI 日志：应用秒退时 stderr 是唯一定位线索（arm64 首跑实证）
-    echo "error: [deb] 冒烟失败。日志尾部：" >&2
-    cat "$log" >&2
+    error "[deb] 冒烟失败"
+    smoke_evidence_fail "$log" "$log" full
   else
-    smoke_verdict "$log"
     # 成功也留尾（ADR verdict-honesty-repair）：绿跑的导航/探针/自愈行此前随日志删除，
-    # "绿即无证"致 401 绿 verdict 无从复核；30 行覆盖导航段（仓内尾部惯例）。
-    echo "== [deb] 冒烟通过，应用日志尾部（内容判定留痕）：" >&2
-    tail -30 "$log" >&2 || true
+    # "绿即无证"致 401 绿 verdict 无从复核；本腿取 30 行覆盖导航段（仓内尾部惯例）。
+    smoke_evidence_pass "$log" "$log" "" 30
   fi
-  # 日志落盘（W2）：调用方经 SMOKE_LOG_DIR 注入稳定目录（与 SMOKE_SHOT_DIR 同模式），
-  # CI 传 artifact——host.log 只在文件里全，step 日志只有尾巴。落盘先于清扫。
-  if [[ -n "${SMOKE_LOG_DIR:-}" ]]; then
-    mkdir -p "$SMOKE_LOG_DIR" 2>/dev/null || true
-    cp "$log" "$SMOKE_LOG_DIR/smoke-linux-deb.log" 2>/dev/null || true
-    [[ -f "$home/logs/host.log" ]] && cp "$home/logs/host.log" "$SMOKE_LOG_DIR/smoke-linux-deb-host.log" 2>/dev/null || true
-  fi
-  rm -rf "$home" "$log"
+  # 日志落盘（W2）：SMOKE_LOG_DIR 由调用方注入稳定目录，CI 传 artifact。
+  smoke_dump_logs "smoke-linux-deb" "$log" "$home/logs/host.log"
   [[ $rc -eq 0 ]]
 }
 
-smoke_rpm_container() {
-  local rpm_path="$1" base rpm_log_host="" rpm_log_tmp=""
-  base="$(basename "$rpm_path")"
-  echo "== [rpm] fedora 容器安装冒烟: $base"
-  # W2 落盘：SMOKE_LOG_DIR 置时挂进容器供 INNER trap 落日志；未置则挂一次性 tmp（跑后清掉）。
-  if [[ -n "${SMOKE_LOG_DIR:-}" ]]; then
-    rpm_log_host="$SMOKE_LOG_DIR"
-  else
-    rpm_log_tmp="$(mktemp -d)"
-    rpm_log_host="$rpm_log_tmp"
-  fi
-  mkdir -p "$rpm_log_host" 2>/dev/null || true
-  # 容器内 root + 无 display：判定走双信号（见文件头），引导启动行先于窗口创建输出。
-  # heredoc 用引号界定符：宿主变量经 docker -e 显式注入，容器侧 $ 一律保持字面——
-  # 未加引号版本曾被宿主 set -u 撞上容器变量（$log 未定义）直接炸掉 rpm 路径（CI 实证）。
-  docker run --rm -i \
-    -v "$PKG_DIR:/pkg:ro" \
-    -v "$LIB:/smoke-lib.sh:ro" \
-    -v "$rpm_log_host:/smokelogs:rw" \
-    -e SMOKE_PKG_NAME="$base" \
-    -e SMOKE_APP_BIN="$APP_BIN" \
-    -e SMOKE_WAIT="$SMOKE_WAIT" \
-    -e SMOKE_SETTLE_SECONDS="${SMOKE_SETTLE_SECONDS:-90}" \
-    -e FULL_RE="$FULL_RE" \
-    -e BOOT_RE="$BOOT_RE" \
-    -e APP_TIMEOUT="$APP_TIMEOUT" \
-    fedora:44 bash -s <<'INNER'
-# 刻意不带 -e：dnf 失败走显式分支打印包安装诊断，而非无声退出
-set -uo pipefail
-log=/tmp/smoke.log
-SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
-# OUT/LOG 同指一文件（宿主侧 wait_url 同款理由：容器内 stdout 即全量日志，存活门须读得到）。
-OUT="$log"; LOG="$log"
-# 落定等待与宿主侧同一实现（R1：禁止手抄复刻，挂载 + source 共享库）
-# shellcheck disable=SC1091
-source /smoke-lib.sh
-if ! dnf install -y --setopt=install_weak_deps=False "/pkg/$SMOKE_PKG_NAME" >"$log" 2>&1; then
-  echo "error: [rpm] dnf 安装失败（显式 Requires 不满足或包损坏）："
-  tail -30 "$log" >&2
-  exit 1
-fi
-home=$(mktemp -d)
-# W2 落盘：EXIT 时把容器内日志拷到挂载目录（宿主 SMOKE_LOG_DIR 或一次性 tmp，见函数头）。
-# $log 在 trap 前已定义；$home 可能未建（dnf 失败早退），用 :- 守 set -u。
-trap '[[ -d /smokelogs ]] && { cp "$log" /smokelogs/smoke-linux-rpm.log 2>/dev/null || true; [[ -f "${home:-}/logs/host.log" ]] && cp "${home:-}/logs/host.log" /smokelogs/smoke-linux-rpm-host.log 2>/dev/null || true; } || true' EXIT
-# 无人值守跳过可选插件（同上，容器内同样无人点选）。
-timeout "$APP_TIMEOUT" env DSH_DESKTOP_DSH_HOME="$home" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
-  "$SMOKE_APP_BIN" >"$log" 2>&1 &
-pid=$!
-OUT="$log"; LOG="$log"
-boot_seen=0; start="$SECONDS"
-progress_watchdog_reset
-rc=1
-# 与宿主侧 wait_url 同款语义：②命中后继续等①至超时/退出，①命中后等行为落定（ADR shell-settle-behavior-gate）
-for _ in $(seq 1 "$SMOKE_WAIT"); do
-  if grep -qE "$FULL_RE" "$log"; then
-    grep -m1 -E "$FULL_RE" "$log"
-    if wait_settled "$pid"; then
-      echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"
-      kill $pid 2>/dev/null; exit 0
-    else
-      echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
-      echo_nav_lines >&2; echo_mint_lines >&2
-      tail -30 "$log" >&2
-      kill $pid 2>/dev/null; exit 1
-    fi
-  fi
-  if [[ "${boot_seen:-0}" -eq 0 ]] && grep -qE "$BOOT_RE" "$log"; then
-    boot_seen=1
-    grep -m1 -E "$BOOT_RE" "$log"
-    echo "note: 已见②安装链，继续等①至超时/退出…" >&2
-  fi
-  if ! kill -0 $pid 2>/dev/null; then
-    if grep -qE "$FULL_RE" "$log"; then
-      grep -m1 -E "$FULL_RE" "$log"
-      if wait_settled ""; then echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"; exit 0; fi
-      echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
-      echo_nav_lines >&2; echo_mint_lines >&2
-      tail -30 "$log" >&2; exit 1
-    fi
-    if grep -qE "$BOOT_RE" "$log"; then echo "note: 进程已退出，未见①，按②安装链收工" >&2; echo "SMOKE_VERDICT=install-chain（仅引导启动）"; exit 0; fi
-    break
-  fi
-  elapsed=$((SECONDS - start)); [[ $((elapsed % 60)) -eq 0 ]] && heartbeat "$elapsed" "$home"
-  if ! progress_watchdog_tick "$elapsed" "$home"; then
-    echo "error: 冒烟停滞（${_WD_STALL_SECONDS}s 内进展标记/dsh-home 零增长、无新信号），提前收工" >&2
-    echo "--- 到达/铸币行（停滞时判定信号，去重）---" >&2
-    echo_nav_lines >&2; echo_mint_lines >&2
-    tail -30 "$log" >&2
-    exit 1
-  fi
-  sleep 1
-done
-if grep -qE "$FULL_RE" "$log"; then grep -m1 -E "$FULL_RE" "$log"; if wait_settled "$pid"; then echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"; kill $pid 2>/dev/null; exit 0; fi; tail -30 "$log" >&2; kill $pid 2>/dev/null; exit 1; fi
-if grep -qE "$BOOT_RE" "$log"; then echo "note: ${SMOKE_WAIT}s 内未见①，按②安装链收工" >&2; echo "SMOKE_VERDICT=install-chain（仅引导启动）"; kill $pid 2>/dev/null; exit 0; fi
-echo "error: [rpm] 冒烟失败——${SMOKE_WAIT}s 内未出现 dsh web URL 或引导启动行。尾部："
-tail -30 "$log" >&2
-kill $pid 2>/dev/null
-exit 1
-INNER
-  # 函数退出状态必须是 docker 的（调用方 `|| rc_total=1` 靠它判红），清扫不许覆盖。
-  docker_rc=$?
-  if [[ -n "$rpm_log_tmp" ]]; then rm -rf "$rpm_log_tmp" || true; fi
-  return "$docker_rc"
-}
-
+common_tmp_trap
 found=0
 rc_total=0
 DEB="$(find "$PKG_DIR" -maxdepth 1 -name '*.deb' | head -1 || true)"
@@ -487,10 +165,10 @@ RPM="$(find "$PKG_DIR" -maxdepth 1 -name '*.rpm' | head -1 || true)"
 if [[ -n "$RPM" ]]; then
   found=1
   if ! command -v docker >/dev/null 2>&1; then
-    echo "error: 需要 docker 运行 rpm 冒烟（GitHub ubuntu runner 预装；本地请自行安装）" >&2
+    error "需要 docker 运行 rpm 冒烟（GitHub ubuntu runner 预装；本地请自行安装）"
     rc_total=1
   else
-    smoke_rpm_container "$RPM" || rc_total=1
+    SMOKE_PKG_DIR="$PKG_DIR" bash "$SCRIPT_DIR/smoke-linux-rpm.sh" "$RPM" || rc_total=1
   fi
 fi
 
@@ -499,5 +177,5 @@ if [[ -n "$DEB" ]]; then
   smoke_deb "$DEB" || rc_total=1
 fi
 
-[[ $found -eq 1 ]] || { echo "error: $PKG_DIR 下未找到 deb/rpm 产物" >&2; exit 1; }
+[[ $found -eq 1 ]] || die "$PKG_DIR 下未找到 deb/rpm 产物"
 exit $rc_total

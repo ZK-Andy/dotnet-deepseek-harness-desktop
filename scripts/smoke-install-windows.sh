@@ -7,13 +7,8 @@
 # 判定信号与 Linux 冒烟同款双信号：
 #   ①`[host] dsh web =` = dsh 就绪（传输层）；
 #   ②`[bootstrap] 引导开始：` = 安装链保底。
-# 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
-# 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
-# 落定语义（ADR shell-settle-behavior-gate）：①只是 dsh 就绪行，落定 = ① + 铸币 303
-# （转发路由存在）+ 客户端存活（代理 200/WS 隧道，holder 零次——唯一区分 holder 与真 UI
-# 的机器信号）。导航到达只作诊断回显，不判门（holder 自 reload 不产生到达回调；
-# token 第二跳已随转发模型退役）。verdict 只取 auth 硬拦。落定超时或
-# 落定期进程退出即 FAIL（dsh 已就绪但 UI 未落定是真实事故，不再按 full-chain 放行）。
+# 等待/落定/心跳/看门狗/回退门语义在 scripts/lib/smoke-wait-lib.sh（唯一家，三平台同一实现）；
+# 裁决门（auth 硬拦）、存活门、证据打印在 scripts/lib/smoke-verdict-lib.sh。
 # 实测边界（2026-08-29 首跑）：Windows runner 的壳同样在窗口创建（Ryn Run）即
 # 退出——WebView2 初始化的原生依赖在 runner 环境不可用，全链信号不可达，冒烟
 # 停在②安装链位；「装得上、起得来」的启动段覆盖由此完成。
@@ -33,11 +28,17 @@
 # 自测: smoke-install-windows.sh --self-test（纯函数回归，不碰安装器）
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/smoke-verdict-lib.sh
+source "$SCRIPT_DIR/lib/smoke-verdict-lib.sh"
+# shellcheck source=lib/smoke-selftest-verdict.sh
+source "$SCRIPT_DIR/lib/smoke-selftest-verdict.sh"
+
 SELFTEST=0
 if [[ "${1:-}" == "--self-test" ]]; then SELFTEST=1; fi
 if [[ "$SELFTEST" -eq 0 ]]; then
   SETUP="${1:?usage: smoke-install-windows.sh <setup.exe>}"
-  [[ -f "$SETUP" ]] || { echo "error: 安装器不存在: $SETUP" >&2; exit 1; }
+  [[ -f "$SETUP" ]] || die "安装器不存在: $SETUP"
   SETUP="$(realpath "$SETUP")"
 fi
 APP_NAME="DeepSeek.Harness.Desktop"
@@ -46,25 +47,8 @@ APP_NAME="DeepSeek.Harness.Desktop"
 # 同款先例），MSYS2_ARG_CONV_EXCL 排除。
 export MSYS2_ARG_CONV_EXCL='*'
 
-SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
-# 落定窗：①出现后等导航提交（commit 延迟毫秒级，90s 只防 runner 卡顿）。
-SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
-FULL_RE='\[host\] dsh web ='
-BOOT_RE='\[bootstrap\] 引导开始：'
-
-# 落定等待共享库（NAV 正则 + log_has/nav/wait_settled/heartbeat/timeout_fallback）。
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/smoke-settle-lib.sh"
-
-# 判定结论（ADR smoke-runner-deepening）：命中 ① 全链还是 ② 安装链必须打印成结论。
-smoke_verdict() { # $1=stdout $2=host.log
-  if grep -qE '\[host\] dsh web =' "$1" 2>/dev/null || { [[ -f "$2" ]] && grep -qE '\[host\] dsh web =' "$2"; }; then
-    echo "SMOKE_VERDICT=full-chain（dsh web 就绪）"
-  else
-    echo "SMOKE_VERDICT=install-chain（仅引导启动）"
-  fi
-}
+# 等待窗/落定窗（含覆写旋钮）与判定串 ①②的唯一家在共享库，此处只做一次解析。
+smoke_resolve_windows
 
 # 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
 # 落盘目录由调用方经 SMOKE_SHOT_DIR 注入；未设（本地跑）即跳过。无桌面会话时静默跳过。
@@ -75,65 +59,11 @@ smoke_shot() { # $1=文件名
   winshot="$(cygpath -w "$SMOKE_SHOT_DIR/$1" 2>/dev/null || echo "$SMOKE_SHOT_DIR/$1")"
   SMOKE_SHOT_WIN="$winshot" powershell -NoProfile -Command \
     "Add-Type -AssemblyName System.Drawing,System.Windows.Forms; \$s=[Windows.Forms.Screen]::PrimaryScreen.Bounds; \$b=New-Object Drawing.Bitmap(\$s.Width,\$s.Height); \$g=[Drawing.Graphics]::FromImage(\$b); \$g.CopyFromScreen(0,0,0,0,\$b.Size); \$b.Save(\$env:SMOKE_SHOT_WIN); \$g.Dispose(); \$b.Dispose()" 2>/dev/null \
-    || echo "note: 截图跳过（无桌面会话）" >&2
-}
-
-# 落定等待与心跳实现在 smoke-settle-lib.sh（上已 source）。
-
-smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回退门（函数实现在 smoke-settle-lib.sh）
-  local tdir fail=0 live
-  tdir="$(mktemp -d)"
-  OUT="$tdir/out"; LOG="$tdir/host.log"; HOME_DIR="$tdir/home"; mkdir -p "$HOME_DIR"
-  tpass() { echo "ok: $1"; }
-  tfail() { echo "FAIL: $1"; fail=1; }
-  echo "[host] dsh web = http://127.0.0.1:1/?token=t" >"$OUT"; : >"$LOG"
-  [[ "$(smoke_verdict "$OUT" "$LOG")" == *"full-chain"* ]] && tpass "verdict-full" || tfail "verdict-full"
-  : >"$OUT"; : >"$LOG"
-  [[ "$(smoke_verdict "$OUT" "$LOG")" == *"install-chain"* ]] && tpass "verdict-install" || tfail "verdict-install"
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-ok" || tfail "settle-ok"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"; : >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-no-traffic-should-fail" || tpass "settle-no-traffic-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 到达不判门：到达再多，无铸币无流量即不落定。
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://localhost:9/（origin → x）\n' >"$OUT"; : >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-arrival-only-should-fail" || tpass "settle-arrival-only-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  SETTLE_WAIT=90 wait_settled "" >/dev/null 2>&1 && tfail "settle-deadpid-should-fail" || tpass "settle-deadpid-fails"
-  heartbeat "60" "$HOME_DIR" 2>&1 | grep -q "等待中（60s）" && tpass "heartbeat" || tfail "heartbeat"
-  # 回退门（R2 B1 回归锁）：①已见不得翻回；纯②才翻回；双无不翻
-  rc=1
-  printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$OUT"
-  timeout_fallback >/dev/null 2>&1 && tfail "fallback-full-should-not-flip" || tpass "fallback-full-noflip"
-  printf '[bootstrap] 引导开始：x\n' >"$OUT"
-  timeout_fallback >/dev/null 2>&1 && tpass "fallback-boot-flips" || tfail "fallback-boot-flips"
-  : >"$OUT"; : >"$LOG"
-  timeout_fallback >/dev/null 2>&1 && tfail "fallback-empty-should-not-flip" || tpass "fallback-empty-noflip"
-  # 看门狗（无进展提前收工）：首 tick 活；窗内静止活；满窗静止判死；任一增长复位
-  local o_out o_log
-  o_out="$OUT"; o_log="$LOG"
-  OUT="$tdir/wd-out"; LOG="$tdir/wd-log"; : >"$OUT"; : >"$LOG"; mkdir -p "$tdir/wd-home"
-  progress_watchdog_reset
-  progress_watchdog_tick 0 "$tdir/wd-home" && tpass "watchdog-first-alive" || tfail "watchdog-first-alive"
-  progress_watchdog_tick $((_WD_STALL_SECONDS - 1)) "$tdir/wd-home" && tpass "watchdog-under-window" || tfail "watchdog-under-window"
-  progress_watchdog_tick "$_WD_STALL_SECONDS" "$tdir/wd-home" && tfail "watchdog-stall-should-trip" || tpass "watchdog-stall-trips"
-  printf '[09:45:10 info] Ryn.Core.RynApplication: noise\n[update] Checking\n[health] alive\n' >>"$OUT"
-  progress_watchdog_tick $((_WD_STALL_SECONDS + 100)) "$tdir/wd-home" && tfail "watchdog-misc-should-not-reset" || tpass "watchdog-misc-no-reset"
-  echo '[bootstrap] test-progress' >>"$OUT"
-  progress_watchdog_tick $((_WD_STALL_SECONDS + 300)) "$tdir/wd-home" && tpass "watchdog-growth-resets" || tfail "watchdog-growth-resets"
-  OUT="$o_out"; LOG="$o_log"
-  rm -rf "$tdir"
-  [[ $fail -eq 0 ]] && echo "self-test: PASS" || echo "self-test: FAIL"
-  return $fail
+    || log "截图跳过（无桌面会话）"
 }
 
 if [[ "$SELFTEST" -eq 1 ]]; then
-  smoke_self_test
+  smoke_self_test_run ""
   exit $?
 fi
 
@@ -145,7 +75,8 @@ APP_EXE="$INSTALL_DIR/$APP_NAME.exe"
 
 cleanup() {
   powershell -NoProfile -Command "Stop-Process -Name '$APP_NAME' -Force -ErrorAction SilentlyContinue" >/dev/null 2>&1 || true
-  rm -rf "$OUT"
+  # 安装目录与 home 也要收：只删 $OUT 会留下 mktemp 树（本批补）
+  rm -rf "$OUT" "$INSTALL_DIR" "$HOME_DIR"
 }
 trap cleanup EXIT
 
@@ -170,7 +101,7 @@ for _ in $(seq 1 "$INSTALL_WAIT"); do
   sleep 1
 done
 if [[ $install_done -eq 0 ]]; then
-  echo "error: [win] 安装器 ${INSTALL_WAIT}s 未退出（疑似卡住）。install.log 尾部：" >&2
+  error "[win] 安装器 ${INSTALL_WAIT}s 未退出（疑似卡住）。install.log 尾部："
   tail -40 "$HOME_DIR/install.log" >&2 || true
   echo "--- 进程表（setup/DeepSeek 相关）---" >&2
   tasklist 2>/dev/null | grep -iE "setup|deepseek" >&2 || true
@@ -185,134 +116,42 @@ wait "$setup_pid"
 install_rc=$?
 set -e
 if [[ $install_rc -ne 0 || ! -f "$APP_EXE" ]]; then
-  echo "error: [win] 安装器退出码 $install_rc 或缺主程序。install.log 尾部：" >&2
+  error "[win] 安装器退出码 $install_rc 或缺主程序。install.log 尾部："
   tail -40 "$HOME_DIR/install.log" >&2 || true
   exit 1
 fi
 if [[ ! -f "$INSTALL_DIR/unins000.exe" ]]; then
   # 真安装器语义断言：无卸载器 = 产物是自解压包而非安装器（历史静默降级事故的判别位）
-  echo "error: 安装后缺 unins000.exe——产物疑似非 Inno 安装器（回退链静默降级？）" >&2
-  exit 1
+  die "安装后缺 unins000.exe——产物疑似非 Inno 安装器（回退链静默降级？）"
 fi
 echo "== 安装完成（install.log 尾部留痕）"
 tail -3 "$HOME_DIR/install.log" >&2
 echo "== 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s）"
+LOG="$HOME_DIR/logs/host.log"
 set +e
-# 无人值守跳过可选插件（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
-env DSH_DESKTOP_DSH_HOME="$HOME_DIR" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
-  "$APP_EXE" >"$OUT" 2>&1 &
+smoke_unattended_env "$HOME_DIR"
+"$APP_EXE" >"$OUT" 2>&1 &
 pid=$!
 rc=1
-boot_seen=0
-SECONDS=0
-LOG="$HOME_DIR/logs/host.log"
-stalled=0
-progress_watchdog_reset
-for _ in $(seq 1 "$SMOKE_WAIT"); do
-  if log_has "$FULL_RE"; then
-    grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
-    if wait_settled "$pid"; then
-      rc=0
-      smoke_verdict "$OUT" "$LOG"
-      smoke_shot "smoke-windows.png"
-      # PASS 也打印壳输出尾部：壳何时/为何退出（如窗口创建即退出）需要证据在案
-      echo "--- 壳输出尾部（PASS 证据）---" >&2
-      tail -5 "$OUT" >&2 || true
-    else
-      rc=1
-      smoke_shot "smoke-windows-fail.png"
-      echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
-      echo_nav_lines
-      echo_mint_lines
-      echo "--- 壳输出尾部（FAIL 证据）---" >&2
-      tail -30 "$OUT" >&2 || true
-      if [[ -f "$LOG" ]]; then
-        echo "--- host.log 尾部 ---" >&2
-        tail -30 "$LOG" >&2 || true
-      fi
-    fi
-    break
-  fi
-  if [[ $boot_seen -eq 0 ]] && log_has "$BOOT_RE"; then
-    boot_seen=1
-    grep -m1 -E "$BOOT_RE" "$OUT" 2>/dev/null || grep -m1 -E "$BOOT_RE" "$LOG"
-    echo "note: 已见②安装链（${SECONDS}s），继续等①至超时/退出…" >&2
-  fi
-  if ! kill -0 "$pid" 2>/dev/null; then
-    # 进程已退出：补扫一次（信号可能刚好落在退出前），按最佳信号收工
-    if log_has "$FULL_RE"; then
-      grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
-      if wait_settled ""; then
-        rc=0
-        smoke_verdict "$OUT" "$LOG"
-        smoke_shot "smoke-windows.png"
-        echo "--- 壳输出尾部（PASS 证据）---" >&2
-        tail -5 "$OUT" >&2 || true
-      else
-        rc=1
-        smoke_shot "smoke-windows-fail.png"
-        echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
-        echo_nav_lines
-        echo_mint_lines
-        echo "--- 壳输出尾部（FAIL 证据）---" >&2
-        tail -30 "$OUT" >&2 || true
-      fi
-    elif log_has "$BOOT_RE"; then
-      echo "note: 进程已退出，未见①，按②安装链收工" >&2
-      rc=0
-      smoke_verdict "$OUT" "$LOG"
-      smoke_shot "smoke-windows.png"
-      echo "--- 壳输出尾部（PASS 证据）---" >&2
-      tail -5 "$OUT" >&2 || true
-    fi
-    break
-  fi
-  heartbeat "$SECONDS" "$HOME_DIR"
-  if ! progress_watchdog_tick "$SECONDS" "$HOME_DIR"; then
-    echo "error: 冒烟停滞（${_WD_STALL_SECONDS}s 内进展标记/dsh-home 零增长、无新信号），提前收工" >&2
-    stalled=1
-    rc=1
-    smoke_shot "smoke-windows-fail.png"
-    echo "--- 到达/铸币行（停滞时判定信号，去重）---" >&2
-    echo_nav_lines
-    echo_mint_lines
-    echo "--- 壳输出尾部（停滞证据）---" >&2
-    tail -30 "$OUT" >&2 || true
-    if [[ -f "$LOG" ]]; then
-      echo "--- host.log 尾部 ---" >&2
-      tail -30 "$LOG" >&2 || true
-    fi
-    break
-  fi
-  sleep 1
-done
-# 超时仍只有②：按安装链 PASS（等满窗语义），而非失败。回退门保证①已见时不翻回
-# （R2 B1：①已见 + 落定失败必须保持 FAIL）。停滞跳出不翻回：零进展的②不是"慢"，是死。
-if [[ "$stalled" -eq 0 ]] && timeout_fallback; then
-  echo "note: ${SMOKE_WAIT}s 内未见①，按②安装链收工" >&2
+if smoke_wait_ready "$OUT" "$LOG" "$pid" "$HOME_DIR"; then
   rc=0
-  smoke_verdict "$OUT" "$LOG"
+  smoke_evidence_pass "$OUT" "$LOG" ""
   smoke_shot "smoke-windows.png"
-  echo "--- 壳输出尾部（PASS 证据）---" >&2
-  tail -5 "$OUT" >&2 || true
+else
+  rc=1
+  smoke_shot "smoke-windows-fail.png"
+  smoke_evidence_fail "$OUT" "$LOG" tail
 fi
 set -e
 if [[ $rc -ne 0 ]]; then
-  echo "error: [win] 冒烟失败——${SMOKE_WAIT}s 内未出现 dsh web URL 或引导启动行。stdout 尾部：" >&2
+  error "[win] 冒烟失败——${SMOKE_WAIT}s 内未出现 dsh web URL 或引导启动行。stdout 尾部："
   tail -30 "$OUT" >&2 || true
-  if [[ -f "$LOG" ]]; then
-    echo "--- host.log 尾部 ---" >&2
-    tail -30 "$LOG" >&2
-  fi
   smoke_shot "smoke-windows-fail.png"
 fi
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true
 # 日志落盘（W2）：调用方经 SMOKE_LOG_DIR 注入稳定目录（与 SMOKE_SHOT_DIR 同模式），
 # CI 传 artifact——host.log 只在文件里全，step 日志只有尾巴。
-if [[ -n "${SMOKE_LOG_DIR:-}" ]]; then
-  mkdir -p "$SMOKE_LOG_DIR" 2>/dev/null || true
-  cp "$OUT" "$SMOKE_LOG_DIR/smoke-windows-stdout.log" 2>/dev/null || true
-  { [[ -f "${LOG:-}" && "${LOG:-}" != "$OUT" ]]; } && cp "$LOG" "$SMOKE_LOG_DIR/smoke-windows-host.log" 2>/dev/null || true
-fi
+# 日志落盘（W2）：SMOKE_LOG_DIR 由调用方注入稳定目录，CI 传 artifact。
+smoke_dump_logs "smoke-windows" "$OUT" "${LOG:-}"
 exit $rc

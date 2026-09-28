@@ -6,18 +6,13 @@
 # 判定信号与 Linux/Windows 冒烟同款双信号：
 #   ①`[host] dsh web =` = dsh 就绪（传输层）；
 #   ②`[bootstrap] 引导开始：` = 安装链保底。
-# 等待语义（ADR smoke-wait-full-after-boot）：②命中后不收工，继续等①至
-# 超时或进程退出；超时仍只有②按安装链 PASS，进程退出按退出时最佳信号收工。
-# 落定语义（ADR shell-settle-behavior-gate）：①只是 dsh 就绪行，落定 = ① + 铸币 303
-# （转发路由存在）+ 客户端存活（代理 200/WS 隧道，holder 零次——唯一区分 holder 与真 UI
-# 的机器信号）。导航到达只作诊断回显，不判门（holder 自 reload 不产生到达回调；
-# token 第二跳已随转发模型退役，token 永不进导航靶点）。verdict 探针与 reload 赛跑，
-# 只取 auth 硬拦，其余交存活 + 见证判定。落定超时或落定期进程退出即 FAIL。
+# 等待/落定/心跳/看门狗/回退门语义在 scripts/lib/smoke-wait-lib.sh（唯一家，三平台同一实现）；
+# 裁决门（auth 硬拦）、存活门、像素见证、证据打印在 scripts/lib/smoke-verdict-lib.sh。
+# 导航到达只作诊断回显，不判门（holder 自 reload 不产生到达回调；token 第二跳已随转发模型退役）。
 # mac runner 有 WindowServer 会话，①应命中；若 WKWebView/WindowServer 在 runner
 # 会话受限使壳提前退出（①前），②为保底判定位（已记录边界，同 Linux CI）。
-# verdict 观测 + 截图门（ADR macos-cookie-grace-reload）：应用侧 verdict/重进/探针行回显到 step 日志
-# （token 脱敏），截图等 verdict 行数静默后再拍（应用侧 grace 重载可能改写终页）；
-# 到达后拍截图内容见证（与 Linux 同阈值，中央裁剪避菜单栏/Dock）。判定逻辑见各函数。
+# verdict 观测 + 截图门（ADR macos-cookie-grace-reload）：截图等 verdict 行静默后再拍
+# （应用侧 grace 重载可能改写终页），到达后拍截图内容见证（与 Linux 同阈值，中央裁剪避菜单栏/Dock）。
 #
 # 信号源 = <DSH_HOME>/logs/host.log（HostLog 双写 stdout 与该文件；unix 形态 stdout
 # 重定向同样捕获，双源并查，去重防双计）。
@@ -30,45 +25,31 @@
 # 自测: smoke-install-macos.sh --self-test（纯函数回归，不碰安装器）
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/smoke-verdict-lib.sh
+source "$SCRIPT_DIR/lib/smoke-verdict-lib.sh"
+# shellcheck source=lib/smoke-selftest-verdict.sh
+source "$SCRIPT_DIR/lib/smoke-selftest-verdict.sh"
+
 SELFTEST=0
 if [[ "${1:-}" == "--self-test" ]]; then SELFTEST=1; fi
 if [[ "$SELFTEST" -eq 0 ]]; then
   DMG="${1:?usage: smoke-install-macos.sh <dmg>}"
-  [[ -f "$DMG" ]] || { echo "error: dmg 不存在: $DMG" >&2; exit 1; }
+  [[ -f "$DMG" ]] || die "dmg 不存在: $DMG"
   DMG="$(realpath "$DMG")"
 fi
 APP_BUNDLE="DeepSeek.Harness.Desktop.app"
 APP_NAME="DeepSeek.Harness.Desktop"
 
-# 等待窗 = 单轮尝试预算：RuntimeBootstrapOptions.StepTimeoutMinutes（默认 10 分钟）
-# 单步上限 + 120s 余量 = 720s。重试轮不计入——冒烟只等首轮落定，超时按②收工。
-# 引导步数或 StepTimeoutMinutes 变化时必须同批重算。SMOKE_WAIT_SECONDS 可覆写。
-SMOKE_WAIT="${SMOKE_WAIT_SECONDS:-720}"
-# 落定窗：①出现后等导航提交（commit 延迟毫秒级，90s 只防 runner 卡顿）。
-SETTLE_WAIT="${SMOKE_SETTLE_SECONDS:-90}"
-# 截图前等应用侧 verdict 行静默：探针 + grace 重载 + 再探针全程可超 100s，取 150s 有界（只定截图时机，不判门）。
-VERDICT_WAIT="${SMOKE_VERDICT_SECONDS:-150}"
+# 等待窗/落定窗（含覆写旋钮）与判定串 ①②的唯一家在共享库，此处只做一次解析。
+smoke_resolve_windows
+# 裁决静默等待预算（秒，只定截图时机不判门）：探针 + grace 重载 + 再探针全程可超 100s，
+# 取 150s 有界。SMOKE_VERDICT_SECONDS 可覆写。
+SMOKE_VERDICT_SECONDS="${SMOKE_VERDICT_SECONDS:-150}"
 # 裁决后重绘窗（秒）：提交回调早于新页出像素，立刻拍易拍到上一跳旧帧（Linux 同款）；非数字按默认。
-# （存活门落地后启动判定不再依赖截图时序，回退 3s——禁祈祷式加时。）
+# （存活门落地后启动判定不再依赖截图时序，回退 3s——禁祈祷式加时。）SMOKE_REPAINT_SECONDS 可覆写。
 SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
 [[ "$SMOKE_REPAINT_SECONDS" =~ ^[0-9]+$ ]] || SMOKE_REPAINT_SECONDS=3
-FULL_RE='\[host\] dsh web ='
-BOOT_RE='\[bootstrap\] 引导开始：'
-
-# 落定等待共享库（NAV 正则 + log_has/nav/wait_settled/heartbeat/timeout_fallback）。
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/smoke-settle-lib.sh"
-
-# 判定结论（ADR smoke-runner-deepening）：命中 ① 全链还是 ② 安装链必须打印成结论，
-# 不能靠翻日志。arch 自带出处（x64 leg 跑在 ARM runner = Rosetta 下验证）。
-smoke_verdict() { # $1=stdout $2=host.log
-  if grep -qE '\[host\] dsh web =' "$1" 2>/dev/null || { [[ -f "$2" ]] && grep -qE '\[host\] dsh web =' "$2"; }; then
-    echo "SMOKE_VERDICT=full-chain（dsh web 就绪） arch=$(uname -m)"
-  else
-    echo "SMOKE_VERDICT=install-chain（仅引导启动） arch=$(uname -m)"
-  fi
-}
 
 # 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
 # 落盘目录由调用方经 SMOKE_SHOT_DIR 注入；未设（本地跑）即跳过。
@@ -76,151 +57,26 @@ smoke_shot() { # $1=文件名
   [[ -n "${SMOKE_SHOT_DIR:-}" ]] || return 0
   mkdir -p "$SMOKE_SHOT_DIR" 2>/dev/null || return 0
   screencapture -x -t png "$SMOKE_SHOT_DIR/$1" 2>/dev/null \
-    || echo "note: 截图跳过（无 WindowServer 会话或 screencapture 不可用）" >&2
+    || log "截图跳过（无 WindowServer 会话或 screencapture 不可用）"
 }
 
-# 应用侧 verdict/重进/探针行回显到 step 日志（token 脱敏）：CI 日志直接可见终态是 healthy
-# 还是 auth/unknown。只读观测，不判门。
-echo_verdict_lines() {
-  { grep -ahE '\[nav\] 页面裁决=|\[nav\] 检测到鉴权页|鉴权探针|终页非健康' "$OUT" 2>/dev/null; [[ -f "${LOG:-}" ]] && grep -ahE '\[nav\] 页面裁决=|\[nav\] 检测到鉴权页|鉴权探针|终页非健康' "$LOG" 2>/dev/null; true; } \
-    | sed -E 's/token=[^& ]*/token=***/g' | sort -u >&2 || true
-}
-
-# verdict 静默等待：截图时机 aid，不判门（恒 0）。等裁决行出现后"裁决行数 + grace 触发行数"
-# 双双 QUIET 秒不变即返；grace 触发（应用侧重载在途）即重置静默计数——文本相同的两条裁决行被
-# sort -u 压成一行也误不了事。预算耗尽按现状截图。
-# $1=总预算秒（默认 VERDICT_WAIT），$2=静默秒（默认 5）。
-# 事件驱动（双计数静默），非固定睡眠——应用侧 1 条还是 2 条 verdict（grace 重载）都对齐终页。
-wait_verdict() {
-  local budget="${1:-$VERDICT_WAIT}" quiet="${2:-5}" i vlast=-1 glast=-1 vstable=0 n g
-  for i in $(seq 1 "$budget"); do
-    n=$( { grep -ahE "$PAGE_LINE_RE" "$OUT" 2>/dev/null; [[ -f "${LOG:-}" ]] && grep -ahE "$PAGE_LINE_RE" "$LOG" 2>/dev/null; true; } | sort -u | grep -c . || true )
-    g=$( { grep -ahE '终页非健康.*grace' "$OUT" 2>/dev/null; [[ -f "${LOG:-}" ]] && grep -ahE '终页非健康.*grace' "$LOG" 2>/dev/null; true; } | sort -u | grep -c . || true )
-    if [[ "$n" -gt 0 && "$n" -eq "$vlast" && "$g" -eq "$glast" ]]; then vstable=$((vstable + 1)); else vstable=0; fi
-    vlast="$n"; glast="$g"
-    if [[ "$vstable" -ge "$quiet" ]]; then echo "note: 页面裁决已稳定（${n} 行，静默 ${vstable}s，总用时 ${i}s）" >&2; return 0; fi
-    sleep 1
-  done
-  echo "note: verdict 等待预算耗尽（末态 ${vlast} 行），按现状截图" >&2
-  return 0
-}
-
-# 落定等待与心跳实现在 smoke-settle-lib.sh（上已 source）。
-
-smoke_self_test() { # 纯函数回归：夹具断言 verdict/落定/心跳/回退门（函数实现在 smoke-settle-lib.sh）
-  local tdir fail=0 live
-  tdir="$(mktemp -d)"
-  OUT="$tdir/out"; LOG="$tdir/host.log"; HOME_DIR="$tdir/home"; mkdir -p "$HOME_DIR"
-  tpass() { echo "ok: $1"; }
-  tfail() { echo "FAIL: $1"; fail=1; }
-  echo "[host] dsh web = http://127.0.0.1:1/?token=t" >"$OUT"; : >"$LOG"
-  [[ "$(smoke_verdict "$OUT" "$LOG")" == *"full-chain"* ]] && tpass "verdict-full" || tfail "verdict-full"
-  : >"$OUT"; : >"$LOG"
-  [[ "$(smoke_verdict "$OUT" "$LOG")" == *"install-chain"* ]] && tpass "verdict-install" || tfail "verdict-install"
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tpass "settle-ok" || tfail "settle-ok"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-no-mint-should-fail" || tpass "settle-no-mint-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n' >"$OUT"; : >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-no-traffic-should-fail" || tpass "settle-no-traffic-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 到达不判门（回归锁）：到达再多，无铸币无流量即不落定——产品不再发射落定导航。
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：http://localhost:9/（origin → x）\n[nav] 导航已到达：http://localhost:9/（origin → x）\n' >"$OUT"; : >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-arrival-only-should-fail" || tpass "settle-arrival-only-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  # 双源双计回归锁：同一到达在 OUT 与带时间戳 host.log 各一行，去重后计 1 次。
-  printf '[nav] 导航已到达：http://localhost:9/（origin → x）\n' >"$OUT"
-  printf '[2026-09-27 06:44:03] [nav] 导航已到达：http://localhost:9/（origin → x）\n' >"$LOG"
-  [[ "$(nav_count)" -eq 1 ]] && tpass "settle-dedupe" || tfail "settle-dedupe"
-  # auth 硬拦：行为信号齐但终页是鉴权页 → 失败。
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[shell] 铸币：token 跳 → 303（set-cookie=[c] 共1个；http://127.0.0.1:1）\n[nav] 页面裁决=auth（origin=http://localhost:9 可见文本 60 字）\n' >"$OUT"
-  printf '[shell] 代理回包：200 application/json 100字节（POST /api/a）\n[shell] 代理流转：200 text/event-stream（GET /plugins/events）\n[shell] 代理回包：200 application/json 200字节（POST /api/b）\n' >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=90 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-auth-should-fail" || tpass "settle-auth-fails"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  printf '[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：ryn://app/index.html\n[nav] 导航已到达：ryn://app/index.html\n' >"$OUT"; : >"$LOG"
-  sleep 30 & live=$!
-  SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-placeholder-should-not-settle" || tpass "settle-placeholder-not-settled"
-  kill "$live" 2>/dev/null || true; wait "$live" 2>/dev/null || true
-  : >"$OUT"; : >"$LOG"
-  SETTLE_WAIT=90 wait_settled "" >/dev/null 2>&1 && tfail "settle-deadpid-should-fail" || tpass "settle-deadpid-fails"
-  heartbeat "60" "$HOME_DIR" 2>&1 | grep -q "等待中（60s）" && tpass "heartbeat" || tfail "heartbeat"
-  # 回退门（R2 B1 回归锁）：①已见不得翻回；纯②才翻回；双无不翻
-  rc=1
-  printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$OUT"
-  timeout_fallback >/dev/null 2>&1 && tfail "fallback-full-should-not-flip" || tpass "fallback-full-noflip"
-  printf '[bootstrap] 引导开始：x\n' >"$OUT"
-  timeout_fallback >/dev/null 2>&1 && tpass "fallback-boot-flips" || tfail "fallback-boot-flips"
-  : >"$OUT"; : >"$LOG"
-  timeout_fallback >/dev/null 2>&1 && tfail "fallback-empty-should-not-flip" || tpass "fallback-empty-noflip"
-  # 看门狗（无进展提前收工）：首 tick 活；窗内静止活；满窗静止判死；任一增长复位
-  local o_out o_log
-  o_out="$OUT"; o_log="$LOG"
-  OUT="$tdir/wd-out"; LOG="$tdir/wd-log"; : >"$OUT"; : >"$LOG"; mkdir -p "$tdir/wd-home"
-  progress_watchdog_reset
-  progress_watchdog_tick 0 "$tdir/wd-home" && tpass "watchdog-first-alive" || tfail "watchdog-first-alive"
-  progress_watchdog_tick $((_WD_STALL_SECONDS - 1)) "$tdir/wd-home" && tpass "watchdog-under-window" || tfail "watchdog-under-window"
-  progress_watchdog_tick "$_WD_STALL_SECONDS" "$tdir/wd-home" && tfail "watchdog-stall-should-trip" || tpass "watchdog-stall-trips"
-  printf '[09:45:10 info] Ryn.Core.RynApplication: noise\n[update] Checking\n[health] alive\n' >>"$OUT"
-  progress_watchdog_tick $((_WD_STALL_SECONDS + 100)) "$tdir/wd-home" && tfail "watchdog-misc-should-not-reset" || tpass "watchdog-misc-no-reset"
-  echo '[bootstrap] test-progress' >>"$OUT"
-  progress_watchdog_tick $((_WD_STALL_SECONDS + 300)) "$tdir/wd-home" && tpass "watchdog-growth-resets" || tfail "watchdog-growth-resets"
-  OUT="$o_out"; LOG="$o_log"
-  # verdict 静默等待：单行静默即返；空文件耗尽预算仍 0（只定截图时机，不判门）；增长后稳定才返
-  printf '[nav] 页面裁决=healthy（origin=x 可见文本 10 字）\n' >"$OUT"; : >"$LOG"
-  wait_verdict 10 2 >/dev/null 2>&1 && tpass "verdict-quiescent-seen" || tfail "verdict-quiescent-seen"
-  : >"$OUT"; : >"$LOG"
-  wait_verdict 3 2 >/dev/null 2>&1 && tpass "verdict-quiescent-missing-proceeds" || tfail "verdict-quiescent-missing-proceeds"
-  # 存活门：代理 200（缓冲 `代理回包：` + 流式 `代理流转：`）或 WS 隧道（`代理升级隧道已建`，
-  # remote.mux 无 200 行）合计 ≥3 即活；不足/缺文件即死（浅色 UI 像素不可分的兜底）。
-  { echo '[shell] 代理回包：200 application/json 100字节（POST /api/a）'; echo '[shell] 代理流转：200 text/event-stream（GET /plugins/events）'; echo '[shell] 代理回包：200 application/json 200字节（POST /api/b）'; } >"$LOG"
-  smoke_client_alive "$LOG" && tpass "alive-enough-passes" || tfail "alive-enough-passes"
-  { echo '[shell] 代理回包：200 application/json 100字节（POST /api/a）'; echo '[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）'; echo '[shell] 代理升级隧道已建（GET /api/remote.mux Upgrade=websocket；任一端关闭即收）'; } >"$LOG"
-  smoke_client_alive "$LOG" && tpass "alive-tunnel-passes" || tfail "alive-tunnel-fails"
-  printf '[shell] 代理流转：200 application/json（POST /api/a）\n' >"$LOG"
-  smoke_client_alive "$LOG" && tfail "alive-short-should-fail" || tpass "alive-short-fails"
-  : >"$LOG"
-  smoke_client_alive "$LOG" && tfail "alive-empty-should-fail" || tpass "alive-empty-fails"
-  printf '[nav] 页面裁决=healthy（origin=x 可见文本 10 字）\n' >"$OUT"
-  ( sleep 1; printf '[nav] 页面裁决=auth（origin=x 可见文本 5 字）\n' >>"$OUT" ) &
-  bg=$!
-  wait_verdict 10 2 >/dev/null 2>&1
-  [[ "$(grep -cE '页面裁决=' "$OUT")" -eq 2 ]] && tpass "verdict-quiescent-waits-growth" || tfail "verdict-quiescent-waits-growth"
-  wait "$bg" 2>/dev/null || true
-  # grace 感知：verdict 稳定中途出现 grace 触发行 → 静默重置，不早返
-  printf '[nav] 页面裁决=unknown（x）\n' >"$OUT"; : >"$LOG"
-  ( sleep 1; printf '[nav] 终页非健康（unknown），grace 8s 后无 token 重载一次\n' >>"$OUT"; sleep 1; printf '[nav] 页面裁决=unknown（x，重载后）\n' >>"$OUT" ) &
-  bg=$!
-  wait_verdict 12 2 >/dev/null 2>&1
-  [[ "$(grep -cE '页面裁决=' "$OUT")" -eq 2 ]] && tpass "verdict-quiescent-grace-reset" || tfail "verdict-quiescent-grace-reset"
-  wait "$bg" 2>/dev/null || true
-  printf '[nav] 页面裁决=auth（origin=http://127.0.0.1:1/?token=SECRET 可见文本 5 字）\n' >"$OUT"
-  echo_verdict_lines 2>&1 | grep -q 'SECRET' && tfail "verdict-echo-masks-token" || tpass "verdict-echo-masks-token"
-  echo_verdict_lines 2>&1 | grep -q 'token=\*\*\*' && tpass "verdict-echo-keeps-marker" || tfail "verdict-echo-keeps-marker"
-  # mac 截图内容见证夹具（中央裁剪）：白（401 墙形态）判失败，浅底深块（UI 形态）判通过
+# mac 专属夹具：裁决静默等待的事件驱动侧（增长后稳定才返、grace 触发重置静默）
+# 与中央裁剪几何（含菜单栏/Dock 的全屏图取中央）。
+smoke_selftest_platform() { # $1=夹具根
+  local tdir="$1"
+  # mac 全屏截图含菜单栏/Dock，取中央裁剪（与 Linux 默认几何不同的唯一一处）
   if command -v convert >/dev/null 2>&1; then
     convert -size 1024x768 xc:white "$tdir/m_white.png" 2>/dev/null
     convert -size 1024x768 xc:"#cccccc" -fill "#222222" -draw "rectangle 100,84 400,684" "$tdir/m_ui.png" 2>/dev/null
     smoke_capture_witness "$tdir/m_white.png" "800x600+0+0" "center" >/dev/null 2>&1 && tfail "mac-witness-blank-should-fail" || tpass "mac-witness-blank-fails"
     smoke_capture_witness "$tdir/m_ui.png" "800x600+0+0" "center" >/dev/null 2>&1 && tpass "mac-witness-ui-passes" || tfail "mac-witness-ui-fails"
   else
-    echo "skip: 无 convert，跳过 mac 截图内容见证夹具"
+    log "skip: 无 convert，跳过 mac 截图内容见证夹具"
   fi
-  rm -rf "$tdir"
-  [[ $fail -eq 0 ]] && echo "self-test: PASS" || echo "self-test: FAIL"
-  return $fail
 }
 
 if [[ "$SELFTEST" -eq 1 ]]; then
-  smoke_self_test
+  smoke_self_test_run smoke_selftest_platform
   exit $?
 fi
 
@@ -233,155 +89,60 @@ SMOKE_PID=""
 cleanup() {
   [[ -n "$SMOKE_PID" ]] && kill "$SMOKE_PID" 2>/dev/null || true
   hdiutil detach "$MNT" >/dev/null 2>&1 || true
-  rm -rf "$INSTALLED" "$HOME_DIR" "$OUT" 2>/dev/null || true
+  # MNT 的 mktemp -d 父目录也要收（只 rm -rf "$MNT" 会留下空父目录）
+  rm -rf "$INSTALLED" "$HOME_DIR" "$OUT" "$(dirname "$MNT")" 2>/dev/null || true
 }
 trap cleanup EXIT
 
 echo "== 挂载 $DMG"
 hdiutil attach "$DMG" -mountpoint "$MNT" -nobrowse -readonly
-[[ -d "$MNT/$APP_BUNDLE" ]] || { echo "error: dmg 内缺 $APP_BUNDLE" >&2; exit 1; }
+[[ -d "$MNT/$APP_BUNDLE" ]] || die "dmg 内缺 $APP_BUNDLE"
 
 echo "== 安装（拷入 /Applications）"
 sudo cp -R "$MNT/$APP_BUNDLE" /Applications/
 hdiutil detach "$MNT"
-[[ -f "$INSTALLED/Contents/MacOS/$APP_NAME" ]] || { echo "error: 安装后缺主二进制" >&2; exit 1; }
+[[ -f "$INSTALLED/Contents/MacOS/$APP_NAME" ]] || die "安装后缺主二进制"
 
 echo "== 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s）"
+LOG="$HOME_DIR/logs/host.log"
 set +e
-# 无人值守跳过可选插件（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
-env DSH_DESKTOP_DSH_HOME="$HOME_DIR" DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip \
-  "$INSTALLED/Contents/MacOS/$APP_NAME" >"$OUT" 2>&1 &
+smoke_unattended_env "$HOME_DIR"
+"$INSTALLED/Contents/MacOS/$APP_NAME" >"$OUT" 2>&1 &
 SMOKE_PID=$!
 rc=1
-boot_seen=0
-stalled=0
-SECONDS=0
-LOG="$HOME_DIR/logs/host.log"
-progress_watchdog_reset
-for _ in $(seq 1 "$SMOKE_WAIT"); do
-  if log_has "$FULL_RE"; then
-    grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
-    if wait_settled "$SMOKE_PID"; then
-      rc=0
-      smoke_verdict "$OUT" "$LOG"
-      wait_verdict
-      echo_verdict_lines
-      # 裁决尘埃落定后再等有界重绘窗：提交回调早于新页出像素，立刻拍易拍到上一跳旧帧；只拍才睡。
-      if [[ -n "${SMOKE_SHOT_DIR:-}" ]]; then
-        sleep "$SMOKE_REPAINT_SECONDS"
-      fi
-      smoke_shot "smoke-macos.png"
-      # 内容见证（与 Linux 同阈值，中央裁剪避菜单栏/Dock）：401 墙/引导页像素即红，截图缺失亦红。
-      # 落定/裁决门：显示腿 mac 开门（ADR macos-cookie-grace-reload）——到达过不算绿。
-      if [[ -n "${SMOKE_SHOT_DIR:-}" ]]; then
-        if smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-macos.png" "800x600+0+0" "center"; then
-          :
-        elif smoke_client_alive "$LOG"; then
-          echo "note: 像素偏白但客户端存活（代理 200 RPC/SSE ≥3，浅色主题像素不可分），按活判过" >&2
-        else
-          rc=1
-        fi
-      fi
-      # PASS 也打印壳输出尾部：壳何时/为何退出（如窗口创建即退出）需要证据在案
-      echo "--- 壳输出尾部（PASS 证据）---" >&2
-      tail -5 "$OUT" >&2 || true
+if smoke_wait_ready "$OUT" "$LOG" "$SMOKE_PID" "$HOME_DIR"; then
+  rc=0
+  # 静默等待只为「①已落定且进程还在写终页」这一形态服务：②安装链收工（①未现）与进程已死
+  # 都跳过，免得空裁决面白等满预算（R2 S3）。
+  if log_has "$FULL_RE" && kill -0 "$SMOKE_PID" 2>/dev/null; then wait_verdict; fi
+  smoke_evidence_pass "$OUT" "$LOG" " arch=$(uname -m)"
+  if [[ -n "${SMOKE_SHOT_DIR:-}" ]]; then
+    # 裁决尘埃落定后再等有界重绘窗：提交回调早于新页出像素，立刻拍易拍到上一跳旧帧；只拍才睡。
+    sleep "$SMOKE_REPAINT_SECONDS"
+    smoke_shot "smoke-macos.png"
+    # 内容见证（与 Linux 同阈值，中央裁剪避菜单栏/Dock）：401 墙/引导页像素即红，截图缺失亦红。
+    # 落定/裁决门：显示腿 mac 开门（ADR macos-cookie-grace-reload）——到达过不算绿。
+    if smoke_capture_witness "$SMOKE_SHOT_DIR/smoke-macos.png" "800x600+0+0" "center"; then
+      :
+    elif smoke_client_alive "$LOG"; then
+      log "像素偏白但客户端存活（代理 200 RPC/SSE ≥3，浅色主题像素不可分），按活判过"
     else
       rc=1
-      echo_verdict_lines
-      echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
-      echo_nav_lines
-      echo_mint_lines
-      smoke_shot "smoke-macos-fail.png"
-      echo "--- 壳输出尾部（FAIL 证据）---" >&2
-      tail -30 "$OUT" >&2 || true
-      if [[ -f "$LOG" ]]; then
-        echo "--- host.log 尾部 ---" >&2
-        tail -30 "$LOG" >&2 || true
-      fi
     fi
-    break
   fi
-  if [[ $boot_seen -eq 0 ]] && log_has "$BOOT_RE"; then
-    boot_seen=1
-    grep -m1 -E "$BOOT_RE" "$OUT" 2>/dev/null || grep -m1 -E "$BOOT_RE" "$LOG"
-    echo "note: 已见②安装链（${SECONDS}s），继续等①至超时/退出…" >&2
-  fi
-  if ! kill -0 "$SMOKE_PID" 2>/dev/null; then
-    # 进程已退出：补扫一次（信号可能刚好落在退出前），按最佳信号收工
-    if log_has "$FULL_RE"; then
-      grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
-      if wait_settled ""; then
-        rc=0
-        smoke_verdict "$OUT" "$LOG"
-        echo_verdict_lines
-        smoke_shot "smoke-macos.png"
-        echo "--- 壳输出尾部（PASS 证据）---" >&2
-        tail -5 "$OUT" >&2 || true
-      else
-        rc=1
-        echo_verdict_lines
-        echo "--- 到达/铸币行（FAIL 判定信号，去重）---" >&2
-        echo_nav_lines
-        echo_mint_lines
-        smoke_shot "smoke-macos-fail.png"
-        echo "--- 壳输出尾部（FAIL 证据）---" >&2
-        tail -30 "$OUT" >&2 || true
-      fi
-    elif log_has "$BOOT_RE"; then
-      echo "note: 进程已退出，未见①，按②安装链收工" >&2
-      rc=0
-      smoke_verdict "$OUT" "$LOG"
-      smoke_shot "smoke-macos.png"
-      echo "--- 壳输出尾部（PASS 证据）---" >&2
-      tail -5 "$OUT" >&2 || true
-    fi
-    break
-  fi
-  heartbeat "$SECONDS" "$HOME_DIR"
-  if ! progress_watchdog_tick "$SECONDS" "$HOME_DIR"; then
-    echo "error: 冒烟停滞（${_WD_STALL_SECONDS}s 内进展标记/dsh-home 零增长、无新信号），提前收工" >&2
-    stalled=1
-    rc=1
-    echo_verdict_lines
-    echo "--- 到达/铸币行（停滞时判定信号，去重）---" >&2
-    echo_nav_lines
-    echo_mint_lines
-    smoke_shot "smoke-macos-fail.png"
-    echo "--- 壳输出尾部（停滞证据）---" >&2
-    tail -30 "$OUT" >&2 || true
-    if [[ -f "$LOG" ]]; then
-      echo "--- host.log 尾部 ---" >&2
-      tail -30 "$LOG" >&2 || true
-    fi
-    break
-  fi
-  sleep 1
-done
-# 超时仍只有②：按安装链 PASS（等满窗语义），而非失败。回退门保证①已见时不翻回
-# （R2 B1：①已见 + 落定失败必须保持 FAIL）。停滞跳出不翻回：零进展的②不是"慢"，是死。
-if [[ "$stalled" -eq 0 ]] && timeout_fallback; then
-  echo "note: ${SMOKE_WAIT}s 内未见①，按②安装链收工" >&2
-  rc=0
-  smoke_verdict "$OUT" "$LOG"
-  smoke_shot "smoke-macos.png"
-  echo "--- 壳输出尾部（PASS 证据）---" >&2
-  tail -5 "$OUT" >&2 || true
+else
+  rc=1
+  smoke_shot "smoke-macos-fail.png"
+  smoke_evidence_fail "$OUT" "$LOG" tail
 fi
 set -e
 if [[ $rc -ne 0 ]]; then
-  echo "error: [mac] 冒烟失败（rc=${rc}：落定/见证任一环节红，见上文 error 行；非特指①缺失）" >&2
+  error "[mac] 冒烟失败（rc=${rc}：落定/见证任一环节红，见上文 error 行；非特指①缺失）"
   tail -30 "$OUT" >&2 || true
-  if [[ -f "$LOG" ]]; then
-    echo "--- host.log 尾部 ---" >&2
-    tail -30 "$LOG" >&2 || true
-  fi
   smoke_shot "smoke-macos-fail.png"
 fi
 # 日志落盘（W2）：调用方经 SMOKE_LOG_DIR 注入稳定目录（与 SMOKE_SHOT_DIR 同模式），
 # CI 传 artifact——host.log 只在文件里全，step 日志只有尾巴。
-if [[ -n "${SMOKE_LOG_DIR:-}" ]]; then
-  mkdir -p "$SMOKE_LOG_DIR" 2>/dev/null || true
-  cp "$OUT" "$SMOKE_LOG_DIR/smoke-macos-stdout.log" 2>/dev/null || true
-  { [[ -f "${LOG:-}" && "${LOG:-}" != "$OUT" ]]; } && cp "$LOG" "$SMOKE_LOG_DIR/smoke-macos-host.log" 2>/dev/null || true
-fi
+# 日志落盘（W2）：SMOKE_LOG_DIR 由调用方注入稳定目录，CI 传 artifact。
+smoke_dump_logs "smoke-macos" "$OUT" "${LOG:-}"
 exit $rc

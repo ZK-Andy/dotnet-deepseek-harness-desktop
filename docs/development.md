@@ -15,7 +15,10 @@ src/DeepSeek.Harness.Desktop/  Program.cs, DesktopBootstrap*, Commands/*, ryn.js
 src/DeepSeek.Harness.Desktop.Core/  纯逻辑（零外层引用）
 src/DeepSeek.Harness.Desktop.Infrastructure/  适配器（Update/Runtime/CliShim/Plugins/Platform/*）
 tests/DeepSeek.Harness.Desktop{.Core,.Infrastructure,}.Tests/  xunit（清单见 testing.md）
-scripts/  build-companion-tgz.sh, package-*.sh, release-preflight.sh, verify-*.py, coverage-summary.py
+scripts/  build-companion-tgz.sh, package-*.sh, release-preflight.sh, verify-*.py, coverage-summary.py,
+          smoke-*.sh（三平台安装冒烟）、dev-sign.sh（开发自签）、install-linters.sh（shellcheck/actionlint 钉版装）
+scripts/lib/  common.sh, packaging-common.sh, smoke-wait-lib.sh, smoke-verdict-lib.sh, smoke-selftest.sh
+packaging/windows/installer.iss.in  Inno 安装器模板（package-windows.sh 渲染占位后交 ISCC）
 ```
 
 * `appsettings.json`：`DevTools:false`；`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
@@ -58,8 +61,19 @@ python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.js
 python3 scripts/verify-md-links.py
 python3 scripts/verify-handoff-structure.py
 python3 scripts/verify-governance.py
+bash scripts/verify-shell-standards.sh   # 脚本规范 S1-S6（需 shellcheck；规范见 docs/script-standards.md）
 scripts/change-scope.sh origin/main HEAD
 ```
+
+脚本层静态检查与离线夹具（`shellcheck`/`actionlint` 由 `install-linters.sh` 钉版装到 `.cache/bin/`）：
+
+```sh
+bash scripts/install-linters.sh                     # shellcheck + actionlint（钉版本 + sha256 校验）
+actionlint -shellcheck="shellcheck -S warning"      # 工作流静态检查（含 run: 块 shellcheck）
+bash scripts/package-linux.sh --self-test           # 三包脚本共用头部 + 架构映射（离线）
+bash scripts/verify-package-layout.sh --self-test   # 包布局三平台分支（离线假内容根）
+bash scripts/smoke-install-linux.sh --self-test     # 冒烟判定面（共用夹具 + Linux 截图工具级联）
+# macos/windows 冒烟同法；CI docs job 每次 push 跑全集
 
 ## 打包
 
@@ -82,7 +96,12 @@ bash scripts/package-windows.sh artifacts/publish-win-x64
 
 [ADR: implemented/process/2026-08-20-free-self-sign-dev.md](../.agents/notes/implemented/process/2026-08-20-free-self-sign-dev.md)
 
+签名实现唯一家在 `scripts/dev-sign.sh`（三包脚本只在 `SELF_SIGN=1` 时转调它）：
+
 ```sh
+# 对已产出的产物直接签（不改包）
+bash scripts/dev-sign.sh macos artifacts/osx-arm64/*.app
+bash scripts/dev-sign.sh windows artifacts/win-x64/DeepSeek.Harness.Desktop_*_windows-x64-setup.exe
 # macOS：ad-hoc 或指定身份
 SELF_SIGN=1 bash scripts/package-macos.sh artifacts/publish-osx-arm64
 SELF_SIGN=1 MACOS_SIGN_IDENTITY="Developer ID Application: Name (ID)" bash scripts/package-macos.sh artifacts/publish-osx-arm64

@@ -9,6 +9,8 @@
 # 用法: release-preflight.sh <release-assets 目录>
 set -euo pipefail
 
+# shellcheck source=lib/common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 DIR="${1:?usage: release-preflight.sh <assets-dir>}"
 [[ -d "$DIR" ]] || { echo "error: 资产目录不存在: $DIR" >&2; exit 1; }
 cd "$DIR"
@@ -22,6 +24,7 @@ errors=()
 
 check_pattern() { # $1=glob 模式 $2=描述
   local pattern="$1" desc="$2"
+  # shellcheck disable=SC2206  # 故意的：$pattern 就是 glob，需就地展开成匹配集（上方已开 nullglob）
   local -a files=($pattern)
   if [[ ${#files[@]} -eq 0 ]]; then
     errors+=("缺 ${desc}（无匹配 ${pattern}）")
@@ -32,8 +35,7 @@ check_pattern() { # $1=glob 模式 $2=描述
     return
   fi
   local f="${files[0]}"
-  # 兼容 GNU/BSD stat
-  local mb; mb=$(( ($(stat -c%s "$f" 2>/dev/null || stat -f%z "$f") + 1024*1024 - 1) / (1024*1024) ))
+  local mb; mb=$(( ($(file_size "$f") + 1024 * 1024 - 1) / (1024 * 1024) ))
   if [[ "$mb" -lt "$FLOOR_MB" ]]; then
     errors+=("$desc 仅 ${mb}MB < 下限 ${FLOOR_MB}MB，疑似空壳/半截包：$f")
     return

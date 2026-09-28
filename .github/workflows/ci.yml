@@ -66,6 +66,30 @@ jobs:
           python3 scripts/verify-handoff-structure.py
           python3 scripts/verify-governance.py
           python3 scripts/verify-skill-format.py
+      # 脚本层静态检查工具：钉版 + sha256 校验（版本必须与本地同版，否则诊断集合漂移会
+      # 让「本地绿 CI 红」，见 docs/script-standards.md「工具版本」）。
+      - name: 装脚本层静态检查工具（shellcheck + actionlint）
+        run: |
+          bash scripts/install-linters.sh "$RUNNER_TEMP/linters"
+          echo "$RUNNER_TEMP/linters" >> "$GITHUB_PATH"
+      - name: 脚本规范门禁（S1-S6：errexit / 尺寸 / 库形态 / 旋钮声明 / 库单源 / shellcheck）
+        run: bash scripts/verify-shell-standards.sh
+      - name: "actionlint（工作流静态检查，对 run: 块跑 shellcheck -S warning）"
+        run: actionlint -shellcheck="shellcheck -S warning"
+      # 离线夹具全量接线：冒烟共用面（落定/裁决/看门狗/见证/等待循环）与三平台专属、
+      # 包布局三平台分支、三包脚本共用头部与 Inno 模板渲染——这些逻辑多数只在 tag/dispatch
+      # 的打包腿上跑，自测让它们每次 push 都被执行。
+      - name: 脚本自测（离线夹具，不碰网络与安装器）
+        run: |
+          bash scripts/verify-shell-standards.sh --self-test
+          bash scripts/verify-package-layout.sh --self-test
+          bash scripts/package-linux.sh --self-test
+          bash scripts/package-macos.sh --self-test
+          bash scripts/package-windows.sh --self-test
+          bash scripts/smoke-install-linux.sh --self-test
+          bash scripts/smoke-install-macos.sh --self-test
+          bash scripts/smoke-install-windows.sh --self-test
+          bash scripts/smoke-linux-rpm-inner.sh --self-test
       - name: UI 文案单一词典（批次 A）
         run: |
           python3 scripts/verify-ui-copy.py --self-test

@@ -3,6 +3,7 @@
 Status: implemented
 
 Erratum: 2026-09-28 — 正文「`package-macos.yml` 加 `brew install imagemagick`（见证执行面）」的落点已换家：合并为 `package.yml` 的 `build-macos` job。正文不动。
+Erratum: 2026-09-28 — 落点换家：正文所指 `scripts/smoke-settle-lib.sh` 已随「脚本层收口」拆并——等待与落定面迁至 `scripts/lib/smoke-wait-lib.sh`，判定/证据面（结论行/存活门/像素见证/证据打印）迁至 `scripts/lib/smoke-verdict-lib.sh`；同批三平台入口与 rpm 容器腿改为 source 共享库并拆出 `scripts/smoke-linux-rpm-inner.sh`（见 [script-layer-consolidation](../process/2026-09-28-script-layer-consolidation.md)）。正文不动。
 
 Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
 

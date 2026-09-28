@@ -1,6 +1,7 @@
 # Agent Note: 行为落定门（转发模型验证对齐新链路）
 
 Status: implemented
+Erratum: 2026-09-28 — 落点换家：正文所指 `scripts/smoke-settle-lib.sh` 已随「脚本层收口」拆并——等待与落定面迁至 `scripts/lib/smoke-wait-lib.sh`，判定/证据面（结论行/存活门/像素见证/证据打印）迁至 `scripts/lib/smoke-verdict-lib.sh`；同批三平台入口与 rpm 容器腿改为 source 共享库并拆出 `scripts/smoke-linux-rpm-inner.sh`（见 [script-layer-consolidation](../process/2026-09-28-script-layer-consolidation.md)）。正文不动。
 
 Related: `architecture/2026-09-27-loopback-forward-proxy`（转发模型）+ `bug-fix/2026-09-27-shell-mint-and-forward`（铸币）+ `testing/2026-09-26-page-verdict-gate`（裁决）+ 上游 `packages/client/connection/src/browser-auth.ts`（`authorizeIndex` 303 铸币，已验实）+ Ryn `saucer_webview_on` 导航回调 + dispatch `36300876224`（双腿同签名实证）。
 

@@ -1,0 +1,82 @@
+; installer.iss.in — Inno Setup 安装器模板（唯一家；ADR script-layer-consolidation）。
+; 由 scripts/package-windows.sh 的 render_iss_template 以 `@名字@` 占位替换后交给 ISCC 编译；
+; 占位清单与语义在渲染方（package-windows.sh）注释里——本文件不重复列，免得占位名在
+; 渲染产物里被替换成值、把注释搅成噪声。
+; 安装器链的唯一性（缺 ISCC / 编译失败即 fail loud，无 SFX/NSIS 回退）与
+; Git Bash 的 `/Q` 被当 POSIX 路径转换的坑位，见 package-windows.sh 注释与 cookbook。
+
+[Setup]
+AppId=@APP_ID@
+AppName=DeepSeek Harness Desktop
+AppVersion=@APP_VERSION@
+AppPublisher=ZK-Andy
+AppPublisherURL=https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop
+DefaultDirName={autopf}\DeepSeek Harness Desktop
+DefaultGroupName=DeepSeek Harness Desktop
+OutputDir=@OUT_DIR@
+OutputBaseFilename=@ISS_BASE@
+Compression=lzma
+SolidCompression=yes
+ArchitecturesInstallIn64BitMode=x64
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+LicenseFile=@LICENSE_WIN@
+@ICON_LINE@
+UninstallDisplayIcon={app}\DeepSeek.Harness.Desktop.exe
+DisableProgramGroupPage=yes
+WizardStyle=modern
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+@LANG_LINE@
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[Files]
+Source: "@STAGING_WIN@\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{group}\DeepSeek Harness Desktop"; Filename: "{app}\DeepSeek.Harness.Desktop.exe"
+Name: "{group}\{cm:UninstallProgram,DeepSeek Harness Desktop}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\DeepSeek Harness Desktop"; Filename: "{app}\DeepSeek.Harness.Desktop.exe"; Tasks: desktopicon
+
+; dsh:// 深度链接协议（对标 DSH 官方 electron-builder protocols + hairyf
+; deep-link schemes=["dsh"]）：per-user 注册，与 PrivilegesRequired=lowest 一致。
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\dsh"; ValueType: string; ValueName: ""; ValueData: "URL:dsh Protocol"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\dsh"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\dsh\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\DeepSeek.Harness.Desktop.exe,0"
+Root: HKCU; Subkey: "Software\Classes\dsh\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\DeepSeek.Harness.Desktop.exe"" ""%1"""
+
+[Run]
+Filename: "{app}\DeepSeek.Harness.Desktop.exe"; Description: "{cm:LaunchProgram,DeepSeek Harness Desktop}"; Flags: nowait postinstall skipifsilent
+
+; WebView2 缺失提示（对标 hairyf downloadBootstrapper 策略 + Ryn DoctorCommand
+; CheckWebView2 注册表探针）：不捆 212MB 离线运行时，缺时提示用户去微软拉
+; Evergreen；安装本身继续（per-user 探针先行，machine-wide 需提权则跳过）。
+[Code]
+function IsWebView2Available(): Boolean;
+var
+  Ver: String;
+begin
+  Result := False;
+  if RegQueryStringValue(HKCU, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Ver) then
+    if (Ver <> '') and (Ver <> '0.0.0.0') then Result := True;
+  if not Result then
+    if RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Ver) then
+      if (Ver <> '') and (Ver <> '0.0.0.0') then Result := True;
+  if not Result then
+    if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Ver) then
+      if (Ver <> '') and (Ver <> '0.0.0.0') then Result := True;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    if not IsWebView2Available() then
+      MsgBox('未检测到 Microsoft Edge WebView2 运行时。' + #13#10 +
+             'DeepSeek Harness Desktop 需要它渲染窗口，请前往微软官网安装 ' +
+             'Evergreen Standalone Installer 后再启动。',
+             mbInformation, MB_OK);
+end;
