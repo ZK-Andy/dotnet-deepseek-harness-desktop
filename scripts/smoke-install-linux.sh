@@ -192,4 +192,6 @@ if [[ -n "$DEB" ]]; then
 fi
 
 [[ $found -eq 1 ]] || die "$PKG_DIR 下未找到 deb/rpm 产物"
+# 退出前汇总（fail-loud）：静默翻红时唯一能区分「腿结论红」与「wrapper/trap 翻转」的行。
+echo "== [linux] 腿汇总：rc_total=$rc_total（0 即全绿；非零见上文 error 行）" >&2
 exit $rc_total
