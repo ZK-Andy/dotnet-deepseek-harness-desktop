@@ -152,16 +152,11 @@ public sealed class DshShellForward
         {
             foreach ((string name, string value) in headers)
             {
-                if (s_droppedRequestHeaders.Contains(name))
+                if (s_droppedRequestHeaders.Contains(name)
+                    || ProxyHeaderPolicy.IsPageSourceHeader(name))
                 {
-                    continue;
-                }
-
-                if (name.Equals("origin", StringComparison.OrdinalIgnoreCase)
-                    || name.Equals("referer", StringComparison.OrdinalIgnoreCase))
-                {
-                    // 源头不透传：页源是代理源，dsh 网关按自源鉴权（外源即 403，dispatch 实证），
-                    // 下方统一改写为 dsh 自源（与 dsh 直出形态一致）。
+                    // 黑名单头（Host/Cookie/Accept-Encoding）与页源头（Origin/Referer，安全不变量
+                    // 见 ProxyHeaderPolicy）一律剔除；源头由下方统一改写为 dsh 自源。
                     continue;
                 }
 
@@ -176,10 +171,13 @@ public sealed class DshShellForward
             }
         }
 
-        // 源头改写为 dsh 自源（标准反代语义；页源代理 URL 在此无意义且触发网关 403）。
+        // 源头改写为 dsh 自源（安全不变量，形态单源 ProxyHeaderPolicy；页源代理 URL 在此无意义且触发网关 403）。
+        // target 由调用方以同一路由 authority + 页面 path 拼装（DshLoopbackProxy），
+        // GetLeftPart 前缀恒成立，裁出的即原样 path/query。
         string authority = new Uri(target).GetLeftPart(UriPartial.Authority);
-        request.Headers.TryAddWithoutValidation("Origin", authority);
-        request.Headers.TryAddWithoutValidation("Referer", target);
+        (string origin, string referer) = ProxyHeaderPolicy.SelfSource(authority, target[authority.Length..]);
+        request.Headers.TryAddWithoutValidation("Origin", origin);
+        request.Headers.TryAddWithoutValidation("Referer", referer);
 
         if (!string.IsNullOrEmpty(cookie))
         {
