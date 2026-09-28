@@ -1,12 +1,13 @@
-namespace DeepSeek.Harness.Desktop;
+namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
-/// 运行时监督：dsh 子进程退出时自动恢复——先展示恢复屏，再重启 dsh，拿到新 URL 后导航 WebView 到新地址。
+/// 运行时监督（ADR runtime-supervisor-core-port：监督策略属 Core，宿主交互经 <see cref="IRuntimeHost"/> 端口）：
+/// dsh 子进程退出时自动恢复——先展示恢复屏，再重启 dsh，拿到新 URL 后由导航回调接回壳侧。
 /// 只重启子进程、不重启桌面进程（对应 proposed architecture ADR 的崩溃恢复）。
 /// </summary>
 public sealed class RuntimeSupervisor
 {
-    private readonly HarnessRuntimeHost _host;
+    private readonly IRuntimeHost _host;
     private readonly TimeSpan _restartTimeout;
     private readonly TimeSpan _recoveredRetryDelay;
     private readonly TimeSpan _failedRetryDelay;
@@ -15,7 +16,7 @@ public sealed class RuntimeSupervisor
     private readonly Action<string>? _log;
 
     /// <summary>创建监督器。</summary>
-    /// <param name="host">运行时宿主。</param>
+    /// <param name="host">运行时宿主端口。</param>
     /// <param name="restartTimeout">单次重启等待 URL 的时限。</param>
     /// <param name="recoveredRetryDelay">重启未给出 URL 后的重试延迟（可调参数，见 <c>Infrastructure.Runtime.RuntimeTimeouts</c>）。</param>
     /// <param name="failedRetryDelay">恢复失败后的重试延迟（可调参数，同上）。</param>
@@ -24,7 +25,7 @@ public sealed class RuntimeSupervisor
     /// <param name="navigate">导航 WebView 到新 URL。</param>
     /// <param name="log">日志回调（可选）。</param>
     public RuntimeSupervisor(
-        HarnessRuntimeHost host,
+        IRuntimeHost host,
         TimeSpan restartTimeout,
         TimeSpan recoveredRetryDelay,
         TimeSpan failedRetryDelay,

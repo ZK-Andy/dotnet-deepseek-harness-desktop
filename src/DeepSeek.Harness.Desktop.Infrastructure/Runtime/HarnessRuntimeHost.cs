@@ -9,7 +9,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// 插件树即应用运行时；产品态默认上游规范共享 home `~/.dsh`，专属 `profiles/dotnet-desktop` 承载插件装配
 /// （0.1.5-alpha.1 起上游 CLI 圈占字面名 desktop 给官方 Electron 端，故改名，见 ADR desktop-profile-rename）。
 /// 全局 dsh 模型（ADR simple-shell-single-global-dsh）：宿主恒以 PATH 上的 <c>dsh</c> 运行，无捆绑形态。</remarks>
-public sealed partial class HarnessRuntimeHost : IDisposable
+public sealed partial class HarnessRuntimeHost : IDisposable, IRuntimeHost
 {
     private const int StderrTailCapacity = 40;
 
