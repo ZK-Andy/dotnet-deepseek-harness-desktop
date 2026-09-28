@@ -280,15 +280,9 @@ public static partial class RuntimeBootstrap
             ?? throw new InvalidOperationException(UiCopy.BootstrapShasumsMissing(fileName, english));
     }
 
-    /// <summary>解析系统全局 node 安装前缀：<c>DSH_DESKTOP_NODE_GLOBAL_PREFIX</c> &gt; <see cref="RuntimeBootstrapOptions.NodeGlobalPrefix"/> &gt; <see cref="DefaultGlobalNodePrefix"/>。</summary>
+    /// <summary>解析系统全局 node 安装前缀：<see cref="RuntimeBootstrapOptions.NodeGlobalPrefix"/> &gt; <see cref="DefaultGlobalNodePrefix"/>。</summary>
     internal static string ResolveNodeGlobalPrefix(RuntimeBootstrapOptions options)
     {
-        string? fromEnv = Environment.GetEnvironmentVariable("DSH_DESKTOP_NODE_GLOBAL_PREFIX");
-        if (!string.IsNullOrWhiteSpace(fromEnv))
-        {
-            return Path.GetFullPath(fromEnv);
-        }
-
         return string.IsNullOrWhiteSpace(options.NodeGlobalPrefix)
             ? DefaultGlobalNodePrefix()
             : Path.GetFullPath(options.NodeGlobalPrefix);

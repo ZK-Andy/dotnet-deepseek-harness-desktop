@@ -184,7 +184,7 @@ public sealed class DshLoopbackProxy : IDisposable
         }
     }
 
-    /// <summary>升级请求判定（与 <c>RelayAsync</c> 的隧道分支同判据）：含非空 Upgrade 头即升级连接。</summary>
+    /// <summary>升级请求判定唯一家（升级隧道与 <c>RelayAsync</c> 隧道分支共用——双写收口，ADR architecture/2026-09-28-d4-cleanup-batch）：含非空 Upgrade 头即升级连接。</summary>
     private static bool IsUpgrade(ShellProxyFraming.PageRequest req) =>
         req.Headers.TryGetValue("Upgrade", out string? upgrade) && !string.IsNullOrWhiteSpace(upgrade);
 
@@ -230,9 +230,9 @@ public sealed class DshLoopbackProxy : IDisposable
             return;
         }
 
-        if (req.Headers.TryGetValue("Upgrade", out string? upgrade) && !string.IsNullOrWhiteSpace(upgrade))
+        if (IsUpgrade(req))
         {
-            await _tunnel.RelayUpgradeAsync(stream, req, upgrade, ct).ConfigureAwait(false);
+            await _tunnel.RelayUpgradeAsync(stream, req, req.Headers["Upgrade"], ct).ConfigureAwait(false);
             return;
         }
 
