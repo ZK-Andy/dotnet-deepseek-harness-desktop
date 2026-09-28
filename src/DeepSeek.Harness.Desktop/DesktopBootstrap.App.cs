@@ -24,15 +24,22 @@ public sealed partial class DesktopBootstrap
         var closeBehavior = new CloseBehaviorPreference(
             Path.Combine(HarnessRuntimeHost.ResolveDshHome(), CloseBehaviorPreference.FileName));
 
-        // 自更新协调器在此构造并装载（早于 BuildApp）：状态机装载/就绪横幅/后台检查从组合根下沉，
-        // HttpClient 构造随协调器迁出组合根（ADR composition-root-value-flow-pipeline 批次 1）。
-        // A 类启动配置经构造注入（批次 3）：协调器收类型化 LaunchOptions，不再收裸 bool（当前只消费 IsDev）。
+        // 自更新协调器在此构造并装载（早于 BuildApp）：Application 用例住 Core（ADR
+        // update-coordinator-core-port），栈协作经 UpdateStackAdapter 四端口注入（一个适配器同型实现），
+        // UI 交接以委托闭包接线（PagePump/横幅/关窗闸门/退出管道）——根只装配，编排策略随用例可单测。
+        var updateStack = new UpdateStackAdapter(HostLog.Write);
         var updates = new UpdateCoordinator(
-            preflight.Launch,
-            () => wiring.WindowAccessor,
-            closeGate,
-            _uiLocale,
+            preflight.Launch.IsDev,
+            updateStack,
+            updateStack,
+            updateStack,
+            updateStack,
             () => wiring.SupervisorToken,
+            state => PagePump.PushUpdateState(wiring.WindowAccessor, state),
+            (version, token) => PagePump.ShowBannerWhenReadyAsync(
+                wiring.WindowAccessor!, UpdateBanner.ReadyScript(version, _uiLocale), token),
+            closeGate.ApproveExit,
+            () => wiring.WindowAccessor?.Current?.Close(),
             ct => wiring.Exit!.ScheduleExitFallback(ct),
             HostLog.Write);
         updates.Load();

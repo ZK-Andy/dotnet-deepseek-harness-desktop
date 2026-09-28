@@ -19,8 +19,8 @@ internal readonly record struct Preflight(IFirstBootBootstrap Bootstrap, LaunchO
 internal readonly record struct HostSetup(HarnessRuntimeHost Host, RunMarkerResult Marker);
 
 /// <summary>自更新栈装配产出（协调器已构造并 <c>Load</c> 装载，早于 BuildApp 的命令路由注册）。</summary>
-/// <param name="Updates">自更新协调器（Machine 已按 dev 门禁装载定稿）。</param>
-internal readonly record struct UpdateSetup(Update.UpdateCoordinator Updates);
+/// <param name="Updates">自更新协调器（Machine 已按 dev 门禁装载定稿；Application 用例住 Core，ADR update-coordinator-core-port）。</param>
+internal readonly record struct UpdateSetup(UpdateCoordinator Updates);
 
 /// <summary>应用装配产出（组合根 <c>Build()</c> 的产物；编排后续阶段的窗口/Ryn 服务来源）。</summary>
 /// <param name="App">Ryn 应用实例（主循环宿主）。</param>

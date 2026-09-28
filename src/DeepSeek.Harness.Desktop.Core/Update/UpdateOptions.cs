@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
+namespace DeepSeek.Harness.Desktop.Core.Update;
 
 /// <summary>自更新的可调参数（appsettings.json 的 <c>Update</c> 节，禁止硬编码进逻辑）。</summary>
 public sealed record UpdateOptions
@@ -25,26 +25,6 @@ public sealed record UpdateOptions
 
     /// <summary>是否装载自更新栈：非 dev 恒真；dev 需显式 <c>DSH_DESKTOP_UPDATE_FORCE=1</c>（纯判定可单测）。</summary>
     public static bool IsEnabledFor(bool isDev, string? forceDevEnv) => !isDev || forceDevEnv == "1";
-
-    /// <summary>从应用旁的 appsettings.json 读取 <c>Update</c> 节；文件缺失或节缺失时全默认。</summary>
-    public static UpdateOptions Load(string baseDirectory)
-    {
-        string path = Path.Combine(baseDirectory, "appsettings.json");
-        if (!File.Exists(path))
-        {
-            return new UpdateOptions();
-        }
-
-        try
-        {
-            return Parse(File.ReadAllText(path));
-        }
-        catch (JsonException)
-        {
-            // 配置损坏不阻塞启动：回退全默认（fail-safe 而非 fail-loud——更新是增强功能）。
-            return new UpdateOptions();
-        }
-    }
 
     /// <summary>把 appsettings.json 全文解析为 <see cref="UpdateOptions"/>（纯函数，可单测）：
     /// 无 <c>Update</c> 节、节非对象或键缺失一律回退默认；损坏 JSON 由调用方转 fail-safe。</summary>
