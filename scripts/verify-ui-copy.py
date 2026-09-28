@@ -29,7 +29,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+from gate_common import repo_root
+
+REPO = repo_root()
 SRC = REPO / "src" / "DeepSeek.Harness.Desktop"
 CORE = REPO / "src" / "DeepSeek.Harness.Desktop.Core"
 INFRA = REPO / "src" / "DeepSeek.Harness.Desktop.Infrastructure"

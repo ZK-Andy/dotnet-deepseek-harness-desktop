@@ -66,27 +66,7 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
             throw new RynCommandNotFoundException(command);
         }
 
-        (string? Event, string? Data) payload = (null, null);
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(Encoding.UTF8.GetString(args.Span));
-            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
-            {
-                if (doc.RootElement.TryGetProperty("event", out JsonElement ev) && ev.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    payload.Event = ev.GetString();
-                }
-
-                if (doc.RootElement.TryGetProperty("data", out JsonElement d) && d.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    payload.Data = d.GetString();
-                }
-            }
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            // 坏载荷按未知事件处理：解析为 null 后走忽略分支
-        }
+        (string? Event, string? Data) payload = ParsePayload(args);
 
         // 事件到达性留痕（无论解析结果）：实机「托盘操作全无响应且无日志」证明到达阶段是
         // 排查盲区——先分清「事件到没到」再谈解析。载荷截断防长串刷爆 host.log。
@@ -103,30 +83,7 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
                 _log?.Invoke("[tray] 检查更新：已受理（后台进行）");
                 if (_updateMachine is { } machine)
                 {
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            UpdateState result = await machine.CheckAsync(cancellationToken);
-                            string? message = TrayCheckFeedback.Message(result, _uiLocale.IsEnglish);
-                            _log?.Invoke(
-                                message is not null
-                                    ? $"[tray] 检查更新完成：{result.Status} {result.Version ?? ""}（通知：{message}）"
-                                    : $"[tray] 检查更新完成：{result.Status}（中间态，不通知）");
-                            if (message is not null)
-                            {
-                                _notify?.Invoke(TrayCheckFeedback.Title, message);
-                            }
-                        }
-                        catch (OperationCanceledException)
-                        {
-                        }
-                        catch (Exception ex)
-                        {
-                            _log?.Invoke($"[tray] 更新检查失败：{ex.Message}");
-                            _notify?.Invoke(TrayCheckFeedback.Title, UiCopy.TrayCheckFailedPrefix(_uiLocale.IsEnglish) + ex.Message);
-                        }
-                    });
+                    _ = Task.Run(() => CheckUpdateInBackgroundAsync(machine, cancellationToken));
                 }
                 else
                 {
@@ -170,6 +127,61 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
             {
                 _log?.Invoke($"[tray] 显示主窗失败：{ex.Message}");
             }
+        }
+    }
+
+    /// <summary>解析 companion 中继的事件载荷；坏 JSON 按未知事件处理（解析为 null 后走忽略分支）。</summary>
+    private static (string? Event, string? Data) ParsePayload(ReadOnlyMemory<byte> args)
+    {
+        (string? Event, string? Data) payload = (null, null);
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(Encoding.UTF8.GetString(args.Span));
+            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                if (doc.RootElement.TryGetProperty("event", out JsonElement ev) && ev.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    payload.Event = ev.GetString();
+                }
+
+                if (doc.RootElement.TryGetProperty("data", out JsonElement d) && d.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    payload.Data = d.GetString();
+                }
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // 坏载荷按未知事件处理：解析为 null 后走忽略分支
+        }
+
+        return payload;
+    }
+
+    /// <summary>「检查更新」后台执行体：结论经托盘通知送达，中间态只留痕不通知。</summary>
+    private async Task CheckUpdateInBackgroundAsync(UpdateStateMachine machine, CancellationToken cancellationToken)
+    {
+        try
+        {
+            UpdateState result = await machine.CheckAsync(cancellationToken);
+            string? message = TrayCheckFeedback.Message(result, _uiLocale.IsEnglish);
+            _log?.Invoke(
+                message is not null
+                    ? $"[tray] 检查更新完成：{result.Status} {result.Version ?? ""}（通知：{message}）"
+                    : $"[tray] 检查更新完成：{result.Status}（中间态，不通知）");
+            if (message is not null)
+            {
+                _notify?.Invoke(TrayCheckFeedback.Title, message);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 取消不是失败：宿主关闭/会话结束时中止后台检查，无需留失败痕
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"[tray] 更新检查失败：{ex.Message}");
+            _notify?.Invoke(TrayCheckFeedback.Title, UiCopy.TrayCheckFailedPrefix(_uiLocale.IsEnglish) + ex.Message);
         }
     }
 }

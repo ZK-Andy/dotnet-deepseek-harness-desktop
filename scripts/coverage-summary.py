@@ -57,6 +57,8 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from gate_common import SelfTest
+
 SUMMARY_PREFIX = "coverage-summary:"
 DEFAULT_TOLERANCE_PP = 0.5
 BASELINE_COVERAGE_RE = re.compile(r"\d+(?:\.\d+)?%")
@@ -167,15 +169,7 @@ def _self_test() -> int:
     files, assembly-prefix normalization keeping one physical line on one key)
     and the fail-loud exit branches ci.yml relies on: 1/2 for the merge side,
     3 for a rate under the baseline floor, 4 for an unusable baseline file."""
-    failed = 0
-
-    def ok(cond: bool, msg: str) -> None:
-        nonlocal failed
-        if cond:
-            print(f"  ok: {msg}")
-        else:
-            print(f"  \u2717 {msg}", file=sys.stderr)
-            failed = 1
+    st = SelfTest()
 
     def cobertura(package: str, filename: str, lines: list[tuple[str, int]]) -> str:
         body = "".join(f'<line number="{n}" hits="{h}"/>' for n, h in lines)
@@ -202,16 +196,16 @@ def _self_test() -> int:
         b.write_text(cobertura("App", "Services/A.cs",
                                [("1", 0), ("2", 1), ("4", 1)]), encoding="utf-8")
         covered, valid, per_package = _merge([str(a), str(b)])
-        ok((covered, valid) == (4, 4), "prefix-normalized lines merge to one key set")
-        ok(per_package["App"] == [4, 4], "max hits per line: a 0-hit slice cannot erase a hit")
+        st.ok((covered, valid) == (4, 4), "prefix-normalized lines merge to one key set")
+        st.ok(per_package["App"] == [4, 4], "max hits per line: a 0-hit slice cannot erase a hit")
 
         c = Path(td) / "c" / "coverage.cobertura.xml"
         c.parent.mkdir(parents=True)
         c.write_text(cobertura("Lib", "Lib/Services/B.cs",
                                [("5", 0), ("6", 1)]), encoding="utf-8")
         covered, valid, per_package = _merge([str(a), str(b), str(c)])
-        ok((covered, valid) == (5, 6), "a separate package keeps its own lines")
-        ok(sorted(per_package) == ["App", "Lib"], "per-package breakdown is keyed by package")
+        st.ok((covered, valid) == (5, 6), "a separate package keeps its own lines")
+        st.ok(sorted(per_package) == ["App", "Lib"], "per-package breakdown is keyed by package")
 
         # The three fail-loud branches ci.yml depends on: malformed XML -> 2,
         # files with 0 instrumented lines -> 1, no files at all -> 1.
@@ -226,8 +220,8 @@ def _self_test() -> int:
             with contextlib.redirect_stderr(io.StringIO()):
                 return _report(paths)
 
-        ok(code_of([str(malformed)]) == 2, "malformed XML exits 2")
-        ok(code_of([str(empty)]) == 1, "0 instrumented lines exits 1")
+        st.ok(code_of([str(malformed)]) == 2, "malformed XML exits 2")
+        st.ok(code_of([str(empty)]) == 1, "0 instrumented lines exits 1")
 
         no_files = Path(td) / "none"
         no_files.mkdir()
@@ -238,7 +232,7 @@ def _self_test() -> int:
                 missing = main()
         finally:
             sys.argv = old_argv
-        ok(missing == 1, "no cobertura files exits 1")
+        st.ok(missing == 1, "no cobertura files exits 1")
 
         # Baseline gate: fixtures a+b+c merge to 5/6 = 83.33%. 83.83/83.84 are one
         # hundredth of a point apart, pinning where "on the floor" stops passing;
@@ -249,12 +243,12 @@ def _self_test() -> int:
                     contextlib.redirect_stderr(io.StringIO()):
                 return _report([str(a), str(b), str(c)], baseline_pct, tolerance)
 
-        ok(gate_code(83.00) == 0, "rate above the baseline passes")
-        ok(gate_code(83.80) == 0,
+        st.ok(gate_code(83.00) == 0, "rate above the baseline passes")
+        st.ok(gate_code(83.80) == 0,
            "rate 0.47pp under the baseline but inside the tolerance passes")
-        ok(gate_code(83.83) == 0, "rate sitting exactly on the floor passes")
-        ok(gate_code(83.84) == 3, "rate one hundredth under the floor exits 3")
-        ok(gate_code(83.834) == 0, "floor is compared at the baseline's own precision")
+        st.ok(gate_code(83.83) == 0, "rate sitting exactly on the floor passes")
+        st.ok(gate_code(83.84) == 3, "rate one hundredth under the floor exits 3")
+        st.ok(gate_code(83.834) == 0, "floor is compared at the baseline's own precision")
 
         def baseline_of(text: str) -> object:
             p = Path(td) / "baseline.json"
@@ -264,15 +258,15 @@ def _self_test() -> int:
             except (OSError, ValueError, json.JSONDecodeError) as exc:
                 return exc
 
-        ok(baseline_of('{"tests": "1/1", "coverage": "59.95%"}') == 59.95,
+        st.ok(baseline_of('{"tests": "1/1", "coverage": "59.95%"}') == 59.95,
            "baseline '<rate>%' parses to a percentage number")
-        ok(isinstance(baseline_of('{"coverage": "n/a"}'), ValueError),
+        st.ok(isinstance(baseline_of('{"coverage": "n/a"}'), ValueError),
            "non-percentage coverage value is rejected")
-        ok(isinstance(baseline_of('{"coverage": 59.95}'), ValueError),
+        st.ok(isinstance(baseline_of('{"coverage": 59.95}'), ValueError),
            "non-string coverage value is rejected")
-        ok(isinstance(baseline_of('{"tests": "1/1"}'), ValueError),
+        st.ok(isinstance(baseline_of('{"tests": "1/1"}'), ValueError),
            "baseline without a coverage key is rejected")
-        ok(isinstance(baseline_of('{"coverage": "59.95%",'), json.JSONDecodeError),
+        st.ok(isinstance(baseline_of('{"coverage": "59.95%",'), json.JSONDecodeError),
            "malformed JSON baseline is rejected")
 
         # main() maps an unusable baseline to exit 4 (the gate must never read a
@@ -286,13 +280,9 @@ def _self_test() -> int:
                 unusable = main()
         finally:
             sys.argv = old_argv
-        ok(unusable == 4, "unusable baseline exits 4")
+        st.ok(unusable == 4, "unusable baseline exits 4")
 
-    if failed == 0:
-        print("== coverage-summary self-test passed ==")
-    else:
-        print("== coverage-summary self-test failed ==", file=sys.stderr)
-    return failed
+    return st.finish('coverage-summary')
 
 
 def main() -> int:

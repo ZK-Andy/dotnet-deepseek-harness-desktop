@@ -12,8 +12,8 @@ CI `.github/workflows/governance.yml` 的「治理门禁」步与本地 `pre-com
    `runs.steps` 与 job 的 `steps` 同属可执行脚本体，判据同一份；两种 action 文件名后缀与
    任意嵌套层级都收，避免新增 action 静默落在门外）。
 """
-import pathlib, re, sys
-root = pathlib.Path(__file__).resolve().parents[1]
+import gate_common, re, sys
+root = gate_common.repo_root()
 ok = True
 
 # 检查 Issue 模板含 Owner/priority/class。

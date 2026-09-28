@@ -90,6 +90,15 @@ jobs:
           bash scripts/smoke-install-macos.sh --self-test
           bash scripts/smoke-install-windows.sh --self-test
           bash scripts/smoke-linux-rpm-inner.sh --self-test
+      # Python 门禁自测（F 批）：gate_common 共享模块（slug/C# 字面量扫描器/自测
+      # idiom 的离线夹具）+ 两道最薄门（md-links/doc-budgets）的补自测——两门
+      # pre-commit 与 CI 都跑，此前判据回归无离线夹具兜底
+      #（ADR process/2026-09-29-gate-common-shared-module）。
+      - name: Python 门禁自测（gate_common + md-links + doc-budgets）
+        run: |
+          python3 scripts/gate_common.py --self-test
+          python3 scripts/verify-md-links.py --self-test
+          python3 scripts/verify-doc-budgets.py --self-test
       - name: UI 文案单一词典（批次 A）
         run: |
           python3 scripts/verify-ui-copy.py --self-test

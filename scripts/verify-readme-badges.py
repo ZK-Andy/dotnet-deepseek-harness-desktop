@@ -37,6 +37,8 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+from gate_common import SelfTest
 from urllib.parse import unquote
 
 BASELINE_HOME = "scripts/test-baseline.json"
@@ -173,15 +175,7 @@ def _self_test() -> int:
     tree split; a missing baseline home; a missing README; two badges of one
     kind; an undecodable index blob; a non-object home; a repeated key; and the
     home's location rule."""
-    failed = 0
-
-    def ok(cond: bool, msg: str) -> None:
-        nonlocal failed
-        if cond:
-            print(f"  ok: {msg}")
-        else:
-            print(f"  \u2717 {msg}", file=sys.stderr)
-            failed = 1
+    st = SelfTest()
 
     baseline_json = '{\n  "tests": "569/569",\n  "coverage": "55.22%"\n}\n'
     readme = ('<p align="center">\n'
@@ -201,44 +195,44 @@ def _self_test() -> int:
         # 1) agreeing badges (url-encoded, as shipped) pass
         r = fixture("f1", baseline_json, readme)
         rows, _facts = _violations(r)
-        ok(rows == [], "agreeing badges pass")
+        st.ok(rows == [], "agreeing badges pass")
 
         # 2) coverage badge behind the baseline is reported
         r = fixture("f2", baseline_json, readme.replace("coverage-55.22", "coverage-55.37"))
         rows, _ = _violations(r)
-        ok(any("README.md: coverage badge" in x for x in rows),
+        st.ok(any("README.md: coverage badge" in x for x in rows),
            "coverage drift is reported")
 
         # 3) tests badge drift is reported on the mirrored README only
         r = fixture("f3", baseline_json, readme,
                     readme.replace("tests-569%2F569", "tests-568%2F569"))
         rows, _ = _violations(r)
-        ok(any(x.startswith("README.en.md: tests badge") for x in rows),
+        st.ok(any(x.startswith("README.en.md: tests badge") for x in rows),
            "tests drift is reported per README file")
 
         # 4) a missing badge fails loud instead of passing silently
         r = fixture("f4", baseline_json, readme.replace("coverage-55.22%25-yellowgreen", "x"))
         rows, _ = _violations(r)
-        ok(any("missing `coverage` badge" in x for x in rows),
+        st.ok(any("missing `coverage` badge" in x for x in rows),
            "missing badge fails loud")
 
         # 5) a home that is not valid JSON fails loud (no silent skip)
         r = fixture("f5", "> 测试基线见 README 徽章。\n", readme)
         rows, _ = _violations(r)
-        ok(any("invalid JSON" in x for x in rows),
+        st.ok(any("invalid JSON" in x for x in rows),
            "a non-JSON home fails loud")
 
         # 6) an extra key fails loud: the home carries the two facts only
         r = fixture("f6", baseline_json.replace('"coverage"', '"ci_run": "1",\n  "coverage"'),
                     readme)
         rows, _ = _violations(r)
-        ok(any("keys must be exactly" in x for x in rows),
+        st.ok(any("keys must be exactly" in x for x in rows),
            "an extra key in the home fails loud")
 
         # 7) a value outside its form fails loud
         r = fixture("f7", baseline_json.replace('"569/569"', '"569 of 569"'), readme)
         rows, _ = _violations(r)
-        ok(any('"tests" must look like' in x for x in rows),
+        st.ok(any('"tests" must look like' in x for x in rows),
            "a wrong-shaped value fails loud")
 
         # 8) --staged judges the index: a drifted baseline staged while the
@@ -258,27 +252,27 @@ def _self_test() -> int:
         (r / BASELINE_HOME).write_text(baseline_json, encoding="utf-8")
         rows_tree, _ = _violations(r)
         rows_index, _ = _violations(r, staged=True)
-        ok(rows_tree == [], "a restored working tree reads as consistent")
-        ok(any("coverage badge" in x for x in rows_index),
+        st.ok(rows_tree == [], "a restored working tree reads as consistent")
+        st.ok(any("coverage badge" in x for x in rows_index),
            "--staged catches the drifted baseline staged in the index")
 
         # 9) the fail-loud branches that do not depend on badge values
         r = fixture("f9", baseline_json, readme)
         (r / BASELINE_HOME).unlink()
         rows, facts = _violations(r)
-        ok(any(f"{BASELINE_HOME}: missing" in x for x in rows) and facts is None,
+        st.ok(any(f"{BASELINE_HOME}: missing" in x for x in rows) and facts is None,
            "a missing baseline home is a violation without facts")
 
         r = fixture("f10", baseline_json, readme)
         (r / "README.en.md").unlink()
         rows, _ = _violations(r)
-        ok(any(x.startswith("README.en.md: missing") for x in rows),
+        st.ok(any(x.startswith("README.en.md: missing") for x in rows),
            "a missing README is a violation")
 
         r = fixture("f11", baseline_json, readme.replace(
             '<a href="x">', '<a href="x"><img src="https://img.shields.io/badge/tests-569%2F569-brightgreen" alt="t2"></a><a href="x">'))
         rows, _ = _violations(r)
-        ok(any("ambiguous" in x for x in rows),
+        st.ok(any("ambiguous" in x for x in rows),
            "two badges of one kind are a violation")
 
         # 12) a non-UTF-8 baseline staged in the index is a violation, not a
@@ -292,13 +286,13 @@ def _self_test() -> int:
         (r / BASELINE_HOME).write_bytes(b"{\xff\xfe\x00 broken bytes}\n")
         git(r, "add", BASELINE_HOME)
         rows, facts = _violations(r, staged=True)
-        ok(any("not valid UTF-8" in x for x in rows) and facts is None,
+        st.ok(any("not valid UTF-8" in x for x in rows) and facts is None,
            "an undecodable index blob is a violation in --staged mode")
 
         # 13) a valid-JSON non-object fails loud instead of unpacking nothing
         r = fixture("f13", "[]\n", readme)
         rows, facts = _violations(r)
-        ok(any("top level must be a JSON object" in x for x in rows) and facts is None,
+        st.ok(any("top level must be a JSON object" in x for x in rows) and facts is None,
            "a non-object home fails loud")
 
         # 14) a repeated key fails loud: json.loads would silently keep the last
@@ -307,7 +301,7 @@ def _self_test() -> int:
         r = fixture("f14", baseline_json.replace(
             '"tests": "569/569",', '"tests": "569/569",\n  "tests": "1/1",'), readme)
         rows, _ = _violations(r)
-        ok(any("duplicate key" in x for x in rows),
+        st.ok(any("duplicate key" in x for x in rows),
            "a repeated key in the home fails loud")
 
         # 15) the home's location is a rule, not a convenience: under docs/** every
@@ -315,14 +309,10 @@ def _self_test() -> int:
         #     (scripts/verify-review-tier.py), the cost this home exists to avoid.
         #     The tier gate's fixture pins the bump path set; this pins the home
         #     itself, so moving it back goes red in the holder.
-        ok("docs" not in Path(BASELINE_HOME).parts,
+        st.ok("docs" not in Path(BASELINE_HOME).parts,
            "the machine baseline home stays outside docs/**")
 
-    if failed == 0:
-        print("== verify-readme-badges self-test passed ==")
-    else:
-        print("== verify-readme-badges self-test failed ==", file=sys.stderr)
-    return failed
+    return st.finish('verify-readme-badges')
 
 
 def main() -> int:

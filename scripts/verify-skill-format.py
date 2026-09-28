@@ -23,37 +23,13 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from gate_common import ANCHOR_RE, HEADING_RE, LINK_RE, heading_slugs, repo_root
+
+ROOT = repo_root()
 SKILLS_DIR = ROOT / ".agents" / "skills"
 
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 FRONTMATTER_RE = re.compile(r"^---\s*$")
-LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
-HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
-ANCHOR_RE = re.compile(r'<a\s+id="([^"]+)"')
-
-
-def slugify(text: str) -> str:
-    text = text.strip().lower()
-    text = re.sub(r"[^\w\u4e00-\u9fff \-]", "", text)
-    text = re.sub(r"\s+", "-", text)
-    return text
-
-
-def heading_slugs(path: Path) -> set[str]:
-    slugs: set[str] = set()
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return slugs
-    for line in lines:
-        m = HEADING_RE.match(line)
-        if m:
-            slugs.add(slugify(m.group(2)))
-        m = ANCHOR_RE.search(line)
-        if m:
-            slugs.add(m.group(1))
-    return slugs
 
 
 def parse_frontmatter(text: str) -> dict | None:

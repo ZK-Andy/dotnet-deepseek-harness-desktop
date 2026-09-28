@@ -28,15 +28,14 @@ import re
 import sys
 from pathlib import Path
 
+from gate_common import CSharpLineScanner
+
 DEFAULT_SRC = (
     "src/DeepSeek.Harness.Desktop",
     "src/DeepSeek.Harness.Desktop.Core",
     "src/DeepSeek.Harness.Desktop.Infrastructure",
 )
 IGNORE_MARK = "verify-code-conventions: ignore"
-
-# Console use is allowed only in the log sink and the entry diagnostics.
-D004_WHITELIST = {"HostLog.cs", "Program.cs"}
 
 # Console use is allowed only in the log sink and the entry diagnostics.
 D004_WHITELIST = {"HostLog.cs", "Program.cs"}
@@ -60,32 +59,6 @@ D005_RE = re.compile(
     r"\b(?:Process\.Start|new Process\b|new ProcessStartInfo|new HttpClient\b|"
     r"File\.|Directory\.|FileStream)\b")
 
-def _strip_comments_line(line: str, in_block: list[bool]) -> str:
-    """Return the code-only text of a line, tracking block-comment state."""
-    out: list[str] = []
-    i = 0
-    n = len(line)
-    while i < n:
-        c = line[i]
-        nxt = line[i + 1] if i + 1 < n else ""
-        if in_block[0]:
-            if c == "*" and nxt == "/":
-                in_block[0] = False
-                i += 2
-                continue
-            i += 1
-            continue
-        if c == "/" and nxt == "/":
-            break  # line comment
-        if c == "/" and nxt == "*":
-            in_block[0] = True
-            i += 2
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
-
-
 def _file_is_allowed_d005(project: str, rel: Path) -> bool:
     """B4 退役形态：豁免按工程推导——Infrastructure 整工程豁免（边界层本体）；
     Core 仅两个只读边界文件；主工程（Presentation/组合根）零豁免。"""
@@ -98,12 +71,15 @@ def _file_is_allowed_d005(project: str, rel: Path) -> bool:
 
 def _violations(abspath: Path, rel: Path, project: str) -> list[str]:
     text = abspath.read_text(encoding="utf-8")
-    in_block = [False]
+    raws = text.splitlines()
+    # shared scanner blanks string-literal contents (gate_common), so a `//`
+    # inside a string no longer truncates the line and a literal mentioning
+    # Console/Process is data, not a call
+    codes = list(CSharpLineScanner(raws).iter_cleaned())
     out: list[str] = []
     d004_hits = 0
     d005_hits = 0
-    for lineno, raw in enumerate(text.splitlines(), 1):
-        code = _strip_comments_line(raw, in_block)
+    for raw, code in zip(raws, codes):
         if IGNORE_MARK in code or IGNORE_MARK in raw:
             continue
         if D004_RE.search(code):
@@ -182,6 +158,19 @@ def _self_test() -> int:
             print("  ok: D005 ignore marker suppresses a line")
         else:
             print(f"  ✗ ignore marker not honored: {inf}")
+            failed = 1
+
+        # A `//` inside a string literal is data, not a comment: the D005 hit
+        # AFTER the string must still be found (the pre-F scanner truncated
+        # the line at the in-string `//` — false negative).
+        (root / "UrlInString.cs").write_text(
+            "public class U { string Url(string p) => \"http://\" + p; "
+            "bool F(string p) => File.Exists(p); }\n", encoding="utf-8")
+        inf = _scan(root)
+        if any("UrlInString.cs" in r and "D005" in r for r in inf):
+            print("  ok: code after an in-string `//` still scanned")
+        else:
+            print(f"  ✗ in-string `//` truncated the line: {inf}")
             failed = 1
 
     if failed == 0:

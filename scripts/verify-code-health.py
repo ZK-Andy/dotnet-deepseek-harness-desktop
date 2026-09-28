@@ -36,6 +36,8 @@ import re
 import sys
 from pathlib import Path
 
+from gate_common import CSharpLineScanner
+
 DEFAULT_FILE_LIMIT = 400
 DEFAULT_METHOD_LIMIT = 80
 DEFAULT_COMPOSE_METHOD_LIMIT = 60
@@ -60,110 +62,6 @@ def _classify_api(api: str) -> tuple[str, str]:
     """Split a two-segment `<kind>/<api>` path into (kind, api-path)."""
     parts = api.split("/", 1)
     return (parts[0], parts[1] if len(parts) > 1 else parts[0])
-
-
-class _LineScanner:
-    """Yield cleaned lines (comments/string-literal contents removed)."""
-
-    # States: code, line-comment, block-comment, string (normal), verbatim
-    # string, char. Used to drop braces that are inside a literal/comment so
-    # the brace-depth walker only sees real code braces.
-    def __init__(self, lines: list[str]):
-        self._lines = lines
-        self._block = False  # inside /* */ spanning lines
-
-    def _strip(self, line: str) -> tuple[str, bool]:
-        out: list[str] = []
-        i = 0
-        n = len(line)
-        in_block = self._block
-        while i < n:
-            c = line[i]
-            nxt = line[i + 1] if i + 1 < n else ""
-            if in_block:
-                if c == "*" and nxt == "/":
-                    in_block = False
-                    i += 2
-                    continue
-                i += 1
-                continue
-            # line comment
-            if c == "/" and nxt == "/":
-                break
-            # block comment opens
-            if c == "/" and nxt == "*":
-                in_block = True
-                i += 2
-                continue
-            # string literal
-            if c == '"':
-                i = self._skip_string(line, i, verbatim=False)
-                out.append(" ")
-                continue
-            # verbatim string @"  or $"  or $@" ...
-            if c == "@" and nxt == '"':
-                i = self._skip_string(line, i + 2, verbatim=True)
-                out.append(" ")
-                continue
-            if c == "$" and nxt == '"':
-                i = self._skip_string(line, i + 2, verbatim=False, raw=True)
-                out.append(" ")
-                continue
-            if c == "$" and i + 2 < n and line[i + 1] == "@" and line[i + 2] == '"':
-                i = self._skip_string(line, i + 3, verbatim=True)
-                out.append(" ")
-                continue
-            # char literal
-            if c == "'":
-                i = self._skip_char(line, i)
-                out.append(" ")
-                continue
-            out.append(c)
-            i += 1
-        self._block = in_block
-        return "".join(out), in_block
-
-    @staticmethod
-    def _skip_string(line: str, i: int, verbatim: bool, raw: bool = False) -> int:
-        n = len(line)
-        if not verbatim and not raw:
-            # escape sequences
-            while i < n:
-                if line[i] == "\\":
-                    i += 2
-                    continue
-                if line[i] == '"':
-                    return i + 1
-                i += 1
-            return n
-        # verbatim/interpolated: "" = escaped quote; ends at single ".
-        while i < n:
-            if line[i] == '"':
-                if i + 1 < n and line[i + 1] == '"':
-                    i += 2
-                    continue
-                return i + 1
-            i += 1
-        return n
-
-    @staticmethod
-    def _skip_char(line: str, i: int) -> int:
-        n = len(line)
-        # '\'' escape
-        if i + 1 < n and line[i + 1] == "\\":
-            i += 2
-            if i < n:
-                i += 1
-        else:
-            i += 1
-        if i < n and line[i] == "'":
-            return i + 1
-        return n
-
-    def iter_cleaned(self):
-        for line in self._lines:
-            cleaned, _ = self._strip(line.rstrip("\n"))
-            yield cleaned
 
 
 def _header_is_method(pending: list[str]) -> bool:
@@ -212,7 +110,7 @@ def _method_spans(lines: list[str]) -> list[tuple[int, int]]:
     opens the block and consumes it. This is robust to Allman braces and to
     signatures spanning multiple lines.
     """
-    scanner = _LineScanner(lines)
+    scanner = CSharpLineScanner(lines)
     cleaned = list(scanner.iter_cleaned())
     spans: list[tuple[int, int]] = []
     stack: list[tuple[bool, int | None]] = []  # (is_method, header_start_lineno)
