@@ -213,6 +213,14 @@ public static class UiCopy
         ? "A leftover runtime process is holding files/ports and cannot be safely reaped; restart is paused to avoid a collision. End the leftover process and recovery will resume on its own."
         : "检测到无法安全回收的残留运行时进程（占住文件/端口），已暂停自动重启以防冲突；手动结束残留进程后将自动恢复";
 
+    /// <summary>恢复页失败原因选择（域决策，ADR diag-masking-and-recovery-page）：残留锁死取锁文案，
+    /// 否则普通崩溃原因——选择口径单点，展示面（恢复页脚本）只消费。</summary>
+    /// <param name="isLockBlocked">是否因残留锁死而跳过重启。</param>
+    /// <param name="english">是否取英文分支。</param>
+    /// <returns>与原因分支对应的文案。</returns>
+    public static string RecoveryReason(bool isLockBlocked, bool english) =>
+        isLockBlocked ? ReasonDshResidueLocked(english) : ReasonRuntimeCrashed(english);
+
     // ======== 静态引导页登记（wwwroot/index.html；zh 常量 + EN 字典，被 verify-ui-copy 双向核对） ========
     // index.html 是静态文档，文案改动必须同步此登记（zh 字面量留在 HTML、英文收在 EN 字典），否则 verify-ui-copy 拦截。
 

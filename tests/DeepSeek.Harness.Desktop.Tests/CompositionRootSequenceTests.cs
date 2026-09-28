@@ -40,16 +40,16 @@ public class CompositionRootSequenceTests
 
         string[] chain =
         [
-            "EnsureDesktopProfile();",
+            "ProfileLifecycle.EnsureReady();",
             "SetupHostAndMarker()",
-            "InstallCompanionBeforeSpawn(host)",
+            "CompanionPreSpawn.EnsureInstalled(",
             "StartRuntime(host)",
             "RunBootstrapIfNeeded()",
             "ShowTray()",
             "SetupSupervisor(host)",
             "SetupHealthMonitor(supervisor)",
             "StartUpdateCheck()",
-            "SharedHomeBannerTask(host, supervisor)",
+            "StartupNoticeTask(host, supervisor)",
             "RunAppLoop(supervisor)",
         ];
 

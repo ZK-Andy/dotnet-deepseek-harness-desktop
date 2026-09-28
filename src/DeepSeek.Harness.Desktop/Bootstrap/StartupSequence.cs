@@ -51,16 +51,18 @@ internal sealed partial class StartupSequence : IStartupSequence
     {
         try
         {
-            EnsureDesktopProfile();
+            // profile 前置（migrate→recover→ensure→reconcile 用例编排住 Infrastructure.ProfileLifecycle）
+            ProfileLifecycle.EnsureReady();
             HostSetup host = SetupHostAndMarker();
-            InstallCompanionBeforeSpawn(host);
+            // 随包插件 spawn 前安装（策略谓词与安装住 Infrastructure.CompanionPreSpawn；偏序 = 宿主已建、spawn 前）
+            CompanionPreSpawn.EnsureInstalled(_preflight.Bootstrap.IsNeeded, _preflight.Launch);
             StartRuntime(host);
             RunBootstrapIfNeeded();
             ShowTray();
             SupervisorSetup supervisor = SetupSupervisor(host);
             SetupHealthMonitor(supervisor);
             StartUpdateCheck();
-            SharedHomeBannerTask(host, supervisor);
+            StartupNoticeTask(host, supervisor);
             return RunAppLoop(supervisor);
         }
         finally
@@ -69,40 +71,6 @@ internal sealed partial class StartupSequence : IStartupSequence
             // 代理资源不在此——代理在容器之前启动，释放留在组合根 Run 的 finally（ProxySetup.Dispose）。
             _wiring.Host?.Dispose();
             _wiring.SupervisorCts?.Dispose();
-        }
-    }
-
-    private void EnsureDesktopProfile()
-    {
-        // 桌面专属 profile 前置（ADR shared-home-desktop-profile / desktop-profile-rename）：
-        // 先迁移旧名目录（上游 0.1.5-alpha.1 起 CLI 圈占字面名 desktop），再自举——上游对自定义 profile 名
-        // 不自动初始化，缺清单直接拒启；必须在 spawn 前确保 profile 就绪（幂等，已存在则零写入）。
-        try
-        {
-            DesktopProfileBootstrap.MigrateLegacyProfileName(HarnessRuntimeHost.ResolveDshHome(), HostLog.Write);
-
-            // 事务管线 recover（ADR transactional-plugin-pipeline）：上轮插件事务被中断时按 journal
-            // 重放/回滚，并清扫 stray staging/rollback 目录。必须在 EnsureProfile/探针/spawn 之前——
-            // journal 损坏在此 fail loud（异常进入下方 catch 记日志，dsh 起不来的后果由降级链路兜底）。
-            PluginProfileTransaction.Recover(HarnessRuntimeHost.ResolveDshHome(), HostLog.Write);
-
-            if (DesktopProfileBootstrap.EnsureProfile(HarnessRuntimeHost.ResolveDshHome()))
-            {
-                HostLog.Write($"[host] 已初始化 profiles/{HarnessRuntimeHost.DesktopProfileName}（bundles 对齐 web 模板）");
-            }
-
-            // 启动前 reconcile 不可解析的 bundle 引用（ADR online-first-unbundled-runtime 批次三，
-            // 对齐 dsh-tauri-desk #177：退役随包种子后，存量 profile 可能残留指向已消失 tgz 的
-            // file:/link: 引用，dsh 启动时视作不可解析 → 卡死循环）。必须在 spawn 前清理。
-            int reconciled = DesktopProfileBootstrap.ReconcileProfile(HarnessRuntimeHost.ResolveDshHome(), HostLog.Write);
-            if (reconciled > 0)
-            {
-                HostLog.Write($"[host] 桌面 profile reconcile：移除 {reconciled} 个不可解析插件引用");
-            }
-        }
-        catch (Exception ex)
-        {
-            HostLog.Write($"[host] profiles/{HarnessRuntimeHost.DesktopProfileName} 初始化失败（dsh 可能拒启，详见后续降级链路）：{ex.Message}");
         }
     }
 
@@ -123,41 +91,6 @@ internal sealed partial class StartupSequence : IStartupSequence
         }
 
         return new HostSetup(host, marker);
-    }
-
-    private void InstallCompanionBeforeSpawn(HostSetup host)
-    {
-        // host 是顺序契约参数：随包插件安装必须发生在宿主已建、dsh spawn 之前（原 HostToken 的偏序承诺）。
-        // 对齐参照（dsh-tauri-desk launch.rs）：随包插件（companion）在 spawn dsh 前安装，绝不
-        // 「启动后 3s 装 → 重启」。全局 dsh 模型（ADR simple-shell-single-global-dsh）：dsh 在 PATH 上，
-        // nodeExe/dshEntry 传 null，EnsureBundledPluginsBeforeSpawnAsync 内回退到 PATH 上的 dsh 命令。
-        // dev 显式覆盖共享 home 时跳过（防串扰）。
-        if (!_preflight.Bootstrap.IsNeeded && !(_preflight.Launch.IsDev && !_preflight.Launch.DevAutoIsolated))
-        {
-            bool installed = false;
-            try
-            {
-                installed = MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
-                    nodeExe: null,
-                    dshEntry: null,
-                    HarnessRuntimeHost.ResolveDshHome(),
-                    Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
-                    HostLog.Write,
-                    PluginProcessRunner.RunAsync,
-                    PluginProcessRunner.RunProbeAsync,
-                    CancellationToken.None).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                HostLog.Write($"[host] 随包插件 spawn 前安装失败（跳过，不阻断启动）：{ex.Message}");
-            }
-
-            if (installed)
-            {
-                // 事务管线（ADR transactional-plugin-pipeline）：staged 体检在换入前已过，active 即新完整态
-                HostLog.Write("[host] 随包插件经事务管线换入 active（staged 体检已过）");
-            }
-        }
     }
 
     private void StartRuntime(HostSetup host)

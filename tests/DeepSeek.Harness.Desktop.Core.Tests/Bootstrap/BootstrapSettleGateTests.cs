@@ -1,4 +1,4 @@
-namespace DeepSeek.Harness.Desktop.Tests.Bootstrap;
+namespace DeepSeek.Harness.Desktop.Core.Tests.Bootstrap;
 
 /// <summary>引导落定握手记序（批次 0 安全网，ADR composition-root-value-flow-pipeline）：
 /// 钉住「引导落定先于监督器进入监视/横幅告知」的握手语义——批次 1 把 TCS 私有化为引导服务

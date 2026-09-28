@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
 /// <see cref="StartupSequence"/> 的监督与退出接线面：监督器装配（引导落定门控）、退出管道、
-/// 恢复屏、收养导航、页面健康观测与共享 home 横幅。启动主链在 <c>StartupSequence.cs</c>。
+/// 恢复屏、收养导航、页面健康观测与启动期告知接线。启动主链在 <c>StartupSequence.cs</c>。
 /// </summary>
 internal sealed partial class StartupSequence
 {
@@ -64,11 +64,11 @@ internal sealed partial class StartupSequence
         _wiring.LastRecoveryShownAtUtc = DateTimeOffset.UtcNow;
         // 恢复页三件套（ADR diag-masking-and-recovery-page）：失败原因 + stderr 尾部展示 +
         // 导出诊断/退出动作。desktop.* 走 Ryn 层 IPC 不依赖 dsh 存活；数据经 textContent
-        // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）
-        var tail = host.Host.StderrTail.TakeLast(12).ToList();
-        string reason = isLockBlocked
-            ? UiCopy.ReasonDshResidueLocked(_uiLocale.IsEnglish)
-            : UiCopy.ReasonRuntimeCrashed(_uiLocale.IsEnglish);
+        // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）。原因选择是域决策（UiCopy.RecoveryReason）；
+        // 尾部截断数是展示面（本地常量，不入配置）。
+        const int RecoveryTailLines = 12;
+        var tail = host.Host.StderrTail.TakeLast(RecoveryTailLines).ToList();
+        string reason = UiCopy.RecoveryReason(isLockBlocked, _uiLocale.IsEnglish);
         _ = _app.WindowAccessor.Current.EvaluateJavaScriptAsync(
             RecoveryPageBuilder.BuildScript(reason, tail, _uiLocale.IsEnglish));
         return ValueTask.CompletedTask;
@@ -120,48 +120,21 @@ internal sealed partial class StartupSequence
         _ = _wiring.HealthMonitor.RunAsync(TimeSpan.FromSeconds(_timeouts.HealthInitialDelaySeconds), supervisor.Cts.Token);
     }
 
-    private void SharedHomeBannerTask(HostSetup host, SupervisorSetup supervisor)
+    /// <summary>启动期告知任务接线（ADR shared-home-desktop-profile）：版本底线 + 旧 home 提示 +
+    /// 脏退横幅的用例编排住 <see cref="StartupNoticeService"/>（Infrastructure）；此处只接线
+    /// 展示面闭包（横幅构建与推送是 Presentation 面，与 UpdateCoordinator 的委托接线同型）。</summary>
+    private void StartupNoticeTask(HostSetup host, SupervisorSetup supervisor)
     {
-        // 共享 home 切换的启动期告知（ADR shared-home-desktop-profile）：版本底线检查 + 旧 home 一次性提示。
-        // 随包插件现于 spawn dsh 前安装（不再「启动后装 → 覆写页面并重启运行时」），横幅无需等安装收尾，
-        // 只需等首启引导落定——版本探针走 PATH 上全局 dsh（bundled=null），提前跑会探到空。
-        _ = Task.Run(async () =>
-        {
-            // 引导落定前横幅不抢跑；超时（BootstrapSettleTimeoutSeconds）按已定继续（降级语义在 BootstrapSettleGate 内），取消即放弃。
-            if (!await _preflight.Bootstrap.WaitSettledAsync(TimeSpan.FromSeconds(_timeouts.BootstrapSettleTimeoutSeconds), supervisor.Cts.Token))
-            {
-                return;
-            }
-
-            string home = HarnessRuntimeHost.ResolveDshHome();
-            string? detected = await RuntimeVersionGate.ProbeAsync(supervisor.Cts.Token);
-            if (detected is not null)
-            {
-                HostLog.Write($"[host] dsh 版本 {detected}（底线 {RuntimeVersionGate.MinimumVersion}）");
-                if (RuntimeVersionGate.IsBelowFloor(detected))
-                {
-                    HostLog.Write($"[host] 警告：dsh {detected} 低于支持底线 {RuntimeVersionGate.MinimumVersion}，已提示用户");
-                    await PagePump.ShowBannerWhenReadyAsync(_app.WindowAccessor, DesktopBanner.BuildVersionFloorBanner(detected, _uiLocale), supervisor.Cts.Token);
-                }
-            }
-            else
-            {
-                HostLog.Write("[host] dsh 版本探测失败，跳过底线检查");
-            }
-
-            // 旧 home 留痕仅进日志（界面横幅已按用户拍板去除，ADR companion-settings-consolidation）；
-            // 指回旧目录时不记「改用新目录」——自相矛盾且无信息量
-            if (LegacyHomeNotice.IsPresent() && !PathsEqual(home, LegacyHomeNotice.LegacyPrivateHome))
-            {
-                HostLog.Write($"[host] 检测到旧版桌面数据目录 {LegacyHomeNotice.LegacyPrivateHome}；新版使用 {home}（未迁移）");
-            }
-
-            // 上轮非受控退出：提示但不暗示应用故障（用户杀进程也属此类），引导导出诊断
-            if (host.Marker.PreviousRunUnclean)
-            {
-                await PagePump.ShowBannerWhenReadyAsync(_app.WindowAccessor, DesktopBanner.BuildUncleanExitBanner(_uiLocale), supervisor.Cts.Token);
-            }
-        });
+        var notices = new StartupNoticeService(
+            _preflight.Bootstrap,
+            TimeSpan.FromSeconds(_timeouts.BootstrapSettleTimeoutSeconds),
+            host.Marker.PreviousRunUnclean,
+            HostLog.Write,
+            (version, ct) => PagePump.ShowBannerWhenReadyAsync(
+                _app.WindowAccessor, DesktopBanner.BuildVersionFloorBanner(version, _uiLocale), ct),
+            ct => PagePump.ShowBannerWhenReadyAsync(
+                _app.WindowAccessor, DesktopBanner.BuildUncleanExitBanner(_uiLocale), ct));
+        _ = Task.Run(() => notices.RunAsync(supervisor.Cts.Token));
     }
 
     /// <summary>引导完成后的铸币收尾：覆盖式重铸（本方法是 bootstrap 路径的 epoch 起点）。
@@ -190,11 +163,4 @@ internal sealed partial class StartupSequence
 
         await SettleWebSessionAsync(url, ct);
     }
-
-    /// <summary>路径等值判定（Windows 不区分大小写）——旧 home 提示的指回守卫用。</summary>
-    private static bool PathsEqual(string a, string b) =>
-        string.Equals(
-            Path.GetFullPath(a),
-            Path.GetFullPath(b),
-            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 }

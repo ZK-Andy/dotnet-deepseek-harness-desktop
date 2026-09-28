@@ -6,7 +6,7 @@ namespace DeepSeek.Harness.Desktop.Core;
 /// 回收序（cancel 监督器 → 停宿主 → 释放 marker）先于关窗：hide-to-tray 拦截下未批准的 Close
 /// 会吞成隐藏，回收滞留会把「退出」变成托盘里的僵尸实例。
 /// </summary>
-internal sealed class ExitPipeline
+public sealed class ExitPipeline
 {
     private readonly Action _cancelSupervisor;
     private readonly Action _stopHost;

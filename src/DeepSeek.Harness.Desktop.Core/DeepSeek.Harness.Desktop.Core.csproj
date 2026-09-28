@@ -21,7 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="DeepSeek.Harness.Desktop" />
+    <!-- 收窄（ADR post-packaging-churn-restructure 余批）：src 外层只留 Infrastructure——它是 Core
+         端口的适配器层（信任边界内），消费面为序列化上下文与解析函数；摘除需把 IPC 帧契约类型转
+         public（AppJsonContext 同型仍 internal），API 面反而扩大。shell 侧唯一泄漏点 ExitPipeline
+         已转 public，对应条目摘除；internal 只对测试工程开放。 -->
     <InternalsVisibleTo Include="DeepSeek.Harness.Desktop.Infrastructure" />
     <InternalsVisibleTo Include="DeepSeek.Harness.Desktop.Core.Tests" />
     <InternalsVisibleTo Include="DeepSeek.Harness.Desktop.Infrastructure.Tests" />

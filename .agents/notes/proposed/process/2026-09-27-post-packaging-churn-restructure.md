@@ -28,7 +28,7 @@ Status: proposed
 
 已拍板决策：组合根取完整形态分离 (a)；冒烟 PR 只跑 Linux 腿 (b)；脚本命名保留 kebab-case、尺寸闸 250 行、shellcheck/actionlint 进 CI、action SHA 钉版暂不做；arm64 冻结直接解冻（冻结决策早于链路转向，承载 hang 的旧链路已删，退出条件已死）。预算侧：下调 `notes/README.md` 800→400、`coding-standards.md` 1000→700，给 architecture.md 腾空间；冒烟自测接线。
 
-**执行状态（2026-09-29）**：A、B-1、B-2、C、D1、D2、D3-a、D3-b、D4、E、F 已交付（各自 ADR 见 implemented/；F 见 `process/2026-09-29-gate-common-shared-module`）；G 待做。全部批次完成后本篇改写为 implemented。
+**执行状态（2026-09-29）**：A、B-1、B-2、C、D1–D4、E、F 已交付（各自 ADR 见 implemented/；F 见 `process/2026-09-29-gate-common-shared-module`）。余批按评审档经济学重排：**余批 1**（§4.1 细搬 #1–#3/#8/#9 + G 的 Core 测试归位与 IIV 收窄）已交付（`process/2026-09-29-restructure-fine-moves-and-test-relocation`；#6/#10 判已满足记账在彼）；余批 2 = §4.4 ProxyHeaderPolicy 去重（安全不变量，独立小批 + 行为钉回归）；余批 3 = #5/#7（组合根面，FULL 触发）+ G 仅余的 PayloadSmoke 移 `tools/`（workflows/scripts 面，FULL 触发）。全部批次完成后本篇改写为 implemented。
 
 ## Alternatives considered
 

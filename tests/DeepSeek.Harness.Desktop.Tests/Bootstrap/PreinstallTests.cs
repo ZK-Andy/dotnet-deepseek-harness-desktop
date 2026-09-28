@@ -4,59 +4,10 @@ using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.Bootstrap;
 
-/// <summary>插件引导（ADR reference-alignment 批次二）的决策闸门、命令路由、preset 判定与帧形状。</summary>
+/// <summary>插件引导的命令路由、帧形状与流式行泵（决策闸门与 preset 判定在 Core.Tests，按
+/// 「测谁归谁」拆归，ADR post-packaging-churn-restructure 余批 G）。</summary>
 public class PreinstallTests
 {
-    // —— PreinstallChoiceGate ——
-
-    /// <summary>验证 PreinstallChoiceGate 初始未决策（IsDecided=false）：首个 Set 之前闸门须处于未拍板态。</summary>
-    [Fact]
-    public void Gate_NotDecided_Initially()
-    {
-        var gate = new PreinstallChoiceGate();
-        Assert.False(gate.IsDecided);
-    }
-
-    /// <summary>验证 Set(Install) 使闸门转为已决策，且等待中的 Choice 返回 Install。</summary>
-    [Fact]
-    public async Task Gate_SetInstall_CompletesChoiceWithInstall()
-    {
-        var gate = new PreinstallChoiceGate();
-        gate.Set(PreinstallChoice.Install);
-        Assert.True(gate.IsDecided);
-        Assert.Equal(PreinstallChoice.Install, await gate.Choice);
-    }
-
-    /// <summary>验证 Set(Skip) 使闸门转为已决策，且等待中的 Choice 返回 Skip。</summary>
-    [Fact]
-    public async Task Gate_SetSkip_CompletesChoiceWithSkip()
-    {
-        var gate = new PreinstallChoiceGate();
-        gate.Set(PreinstallChoice.Skip);
-        Assert.True(gate.IsDecided);
-        Assert.Equal(PreinstallChoice.Skip, await gate.Choice);
-    }
-
-    /// <summary>验证一次拍板即锁定：先 Install 再 Set(Skip)，Choice 仍为 Install，第二次 Set 被忽略。</summary>
-    [Fact]
-    public async Task Gate_SecondSet_Ignored()
-    {
-        var gate = new PreinstallChoiceGate();
-        gate.Set(PreinstallChoice.Install);
-        gate.Set(PreinstallChoice.Skip);
-        Assert.Equal(PreinstallChoice.Install, await gate.Choice);
-    }
-
-    /// <summary>验证 Reset 清除已拍板决策，闸门回到未决策态，可重新走选择流程。</summary>
-    [Fact]
-    public void Gate_Reset_ClearsDecision()
-    {
-        var gate = new PreinstallChoiceGate();
-        gate.Set(PreinstallChoice.Install);
-        gate.Reset();
-        Assert.False(gate.IsDecided);
-    }
-
     // —— PreinstallCommandRouter ——
 
     /// <summary>验证路由只接受 own 命令 desktop.preinstall.choose，其它命令（如 desktop.bootstrap.retry）不可路由。</summary>
@@ -118,60 +69,6 @@ public class PreinstallTests
     }
 
     private static ReadOnlyMemory<byte> Args(string json) => new(Encoding.UTF8.GetBytes(json));
-
-    // —— PresetPluginCatalog ——
-
-    private static string WriteProfileJson(string content)
-    {
-        string p = Path.Combine(Path.GetTempPath(), "preinstall-" + Guid.NewGuid().ToString("N") + ".json");
-        File.WriteAllText(p, content);
-        return p;
-    }
-
-    /// <summary>验证 profile 文件缺失时首启待装列表为 dshmarket（按全新环境处理）而非报错。</summary>
-    [Fact]
-    public void Pending_ReturnsMarket_WhenFileMissing()
-    {
-        string missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Assert.Equal(["dshmarket"], PresetPluginCatalog.PendingForFirstBoot(missing));
-    }
-
-    /// <summary>验证 dependencies 与 bundles 均未含 dshmarket 时判定其为待装插件。</summary>
-    [Fact]
-    public void Pending_ReturnsMarket_WhenNotInstalled()
-    {
-        string p = WriteProfileJson("""{"dependencies":{},"dsh":{"profile":{"bundles":["web-app"]}}}""");
-        try
-        {
-            Assert.Equal(["dshmarket"], PresetPluginCatalog.PendingForFirstBoot(p));
-        }
-        finally { File.Delete(p); }
-    }
-
-    /// <summary>验证 dependencies 与 bundles 均已就位 dshmarket 时首启待装列表为空。</summary>
-    [Fact]
-    public void Pending_ReturnsEmpty_WhenMarketInstalled()
-    {
-        string p = WriteProfileJson("""{"dependencies":{"dshmarket":"^1.36.0"},"dsh":{"profile":{"bundles":["dshmarket","web-app"]}}}""");
-        try
-        {
-            Assert.Empty(PresetPluginCatalog.PendingForFirstBoot(p));
-        }
-        finally { File.Delete(p); }
-    }
-
-    /// <summary>验证「registry 已装但 bundles 未补写」的异常路径按未就位处理，引导页重新呈现 dshmarket。</summary>
-    [Fact]
-    public void Pending_ReturnsMarket_WhenDepButNoBundle()
-    {
-        // registry 安装后 bundles 未补写（异常路径）：按未就位处理，引导页重新呈现
-        string p = WriteProfileJson("""{"dependencies":{"dshmarket":"^1.36.0"},"dsh":{"profile":{"bundles":["web-app"]}}}""");
-        try
-        {
-            Assert.Equal(["dshmarket"], PresetPluginCatalog.PendingForFirstBoot(p));
-        }
-        finally { File.Delete(p); }
-    }
 
     // —— PreinstallFrame 形状 ——
 

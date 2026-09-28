@@ -2,21 +2,10 @@ using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.Bootstrap;
 
-/// <summary>RuntimeBootstrapGate 记序语义 + BootstrapCommandRouter 路由契约。</summary>
-public class BootstrapGateAndRouterTests
+/// <summary>BootstrapCommandRouter 路由契约（闸门记序语义在 Core.Tests.RuntimeBootstrapGateTests，
+/// 按「测谁归谁」拆归，ADR post-packaging-churn-restructure 余批 G）。</summary>
+public class BootstrapCommandRouterTests
 {
-    /// <summary>验证 RuntimeBootstrapGate 记序往返：Signal 后 IsSignaled=true，Reset 后回到 false。</summary>
-    [Fact]
-    public void Gate_SignalAndReset_RoundTrip()
-    {
-        var gate = new RuntimeBootstrapGate();
-        Assert.False(gate.IsSignaled);
-        gate.Signal();
-        Assert.True(gate.IsSignaled);
-        gate.Reset();
-        Assert.False(gate.IsSignaled);
-    }
-
     /// <summary>验证 desktop.bootstrap.retry 可路由且同步触发闸门信号，recovery.exit 不可路由。</summary>
     [Fact]
     public void Router_RetryCommand_SignalsGate()
