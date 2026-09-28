@@ -60,5 +60,5 @@ F 批第三项「覆盖率比对数」已由 B-1（`process/2026-09-28-ci-gate-h
 
 ## Related
 
-- 总纲：`proposed/process/2026-09-27-post-packaging-churn-restructure`（F 批落地记录；总纲随 G 批完成后迁 implemented）
+- 总纲：`implemented/process/2026-09-27-post-packaging-churn-restructure`（F 批落地记录；总纲随 G 批完成后迁 implemented）
 - 覆盖率比对数的家：`implemented/process/2026-09-28-ci-gate-honesty`

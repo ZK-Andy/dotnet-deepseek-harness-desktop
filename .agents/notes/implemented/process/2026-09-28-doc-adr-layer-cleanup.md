@@ -6,7 +6,7 @@ Review: FULL/2026-09-28/R1=ok R2=ok R3=ok
 
 三审收口（0 Blocker；Suggestion 16 条——R1 5 / R2 6 / R3 5，其中两路重复 1 条——逐条裁定：采纳 14 / 部分采纳 1 / 记账 1，修复一次收口进本批）：R1 5 条（--facts docstring 与实现对齐×2、退出码语义、argparse 显式化、注释瘦身为指针）；R2 6 条（md-links 排除面第三类入 docstring 唯一家、testing.md 门禁表补 compose-root、architecture.md `Classify`→`ClassifyDetail` 符号漂移、NSIS 回退过时陈述×2、--facts 去重 + corpus 跳过集对齐）；R3 5 条（spawn-unified run id 降级、吸收声明补指针、归档例外措辞加宽、bootstrap-window-ready-wait 弱判据记账、§7 节锚降级）。
 
-Related: 总纲 [proposed/process/2026-09-27-post-packaging-churn-restructure](../../proposed/process/2026-09-27-post-packaging-churn-restructure.md)（本批为其 §7 的执行）；各裁定对象散见 `implemented/` 与 `archived/`。
+Related: 总纲 [implemented/process/2026-09-27-post-packaging-churn-restructure](../../implemented/process/2026-09-27-post-packaging-churn-restructure.md)（本批为其 §7 的执行）；各裁定对象散见 `implemented/` 与 `archived/`。
 
 ## Problem
 

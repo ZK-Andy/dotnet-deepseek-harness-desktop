@@ -41,6 +41,6 @@ Review: LIGHT/2026-09-29/R2=ok（首轮 0 Blocker；1 Suggestion 已采纳：测
 
 ## Related
 
-- 总纲：`proposed/process/2026-09-27-post-packaging-churn-restructure`（本批为余批 1；总纲随余批 3 完成后改写 implemented）
+- 总纲：`implemented/process/2026-09-27-post-packaging-churn-restructure`（本批为余批 1；总纲随余批 3 完成后改写 implemented）
 - 编排形态分离：`implemented/architecture/2026-09-28-compose-root-form-separation`
 - UI 交接委托闭包先例：`implemented/architecture/2026-09-28-update-coordinator-core-port`

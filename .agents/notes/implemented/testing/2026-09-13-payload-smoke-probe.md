@@ -14,7 +14,7 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 ## Decision
 
-新增独立控制台工程 `tests/DeepSeek.Harness.Desktop.PayloadSmoke`（net10.0，随 slnx `/tests/`），**以 publish 产物目录为参数**对产物 native 面冒烟；`package-windows.yml` 与 `package-macos.yml` 在 `dotnet publish`（壳）之后、打包脚本之前接线：探针工程以产物同款 RID **自包含 publish**（apphost 直跑，保证探针进程架构 = 产物架构——macos-latest 为 ARM，osx-x64 腿经 Rosetta 以 x86_64 进程加载 x86_64 dylib）后执行。探针用例四件：
+新增独立控制台工程 `tools/DeepSeek.Harness.Desktop.PayloadSmoke`（net10.0，随 slnx `/tools/` 分组；误放 `tests/` 的形态已归位，见 `process/2026-09-29-restructure-compose-root-final-moves`），**以 publish 产物目录为参数**对产物 native 面冒烟；`package-windows.yml` 与 `package-macos.yml` 在 `dotnet publish`（壳）之后、打包脚本之前接线：探针工程以产物同款 RID **自包含 publish**（apphost 直跑，保证探针进程架构 = 产物架构——macos-latest 为 ARM，osx-x64 腿经 Rosetta 以 x86_64 进程加载 x86_64 dylib）后执行。探针用例四件：
 
 1. **native 清单存在性**：按 OS 断言预期原生库在产物目录（根或 `runtimes/<rid>/native`，同 Ryn `NativeLibraryResolver` 探测序）——win x64：`WebView2Loader.dll`+`saucer*.dll`；osx：`libsaucer*.dylib`+`libryn-pty.dylib`。
 2. **FFI 加载 + 导出解析**：逐库 `NativeLibrary.TryLoad`（绝对路径）+ 哨兵导出 `GetProcAddress`（`saucer-bindings`→`saucer_icon_new_from_file`（win/macos 两腿都断言）、`ryn-pty`→`ryn_pty_spawn`、`WebView2Loader`→`GetAvailableCoreWebView2BrowserVersionString`）；加载失败即缺依赖/rpath/执行位故障现形。`saucer`/`saucer-bindings-desktop` 无稳定哨兵名，只断言可加载。

@@ -36,6 +36,30 @@ public static class LauncherActivation
     public static string SocketPath(string runtimeDir, string appName, bool isDev) =>
         Path.Combine(runtimeDir, $"{appName}{(isDev ? ".dev" : string.Empty)}.sock");
 
+    /// <summary>单实例应用锁名（socket 文件名字面量单源；锁地址解析唯一消费点在 <see cref="ResolveInstanceSocketPath"/>）。</summary>
+    private const string SocketAppName = "deepseek-harness-desktop";
+
+    /// <summary>锁地址解析（平台策略单源，原组合根 <c>AcquireSingleInstance</c> 内联拼装随细搬下沉，ADR
+    /// restructure-compose-root-final-moves）：Linux/macOS 为 <c>XDG_RUNTIME_DIR</c>（缺失回退共享临时目录
+    /// 并掺 <see cref="FallbackUidSuffix"/> 防跨用户抢占）下应用名 socket；dev 与正式各持一把锁。
+    /// Windows 无验证环境不启用（返回 null，调用方直接放行为主实例）。</summary>
+    /// <param name="isDev">dev 隔离判定（单实例 socket 按 dev/正式分域）。</param>
+    /// <returns>锁地址；null = 平台不启用仲裁。</returns>
+    public static string? ResolveInstanceSocketPath(bool isDev)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return null; // Windows 无验证环境不启用互斥，行为维持现状（ADR 平台边界）
+        }
+
+        string? xdgRuntimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
+        bool hasXdg = xdgRuntimeDir is { Length: > 0 };
+        return SocketPath(
+            hasXdg ? xdgRuntimeDir! : Path.GetTempPath(),
+            SocketAppName + (hasXdg ? string.Empty : FallbackUidSuffix()),
+            isDev);
+    }
+
     /// <summary>XDG_RUNTIME_DIR 缺失回退到共享临时目录时的 socket 名后缀（<c>-&lt;uid&gt;</c>）。
     /// 临时目录跨用户可预测，无 uid 隔离时他用户可抢先把同名 socket 建好并监听，令本机启动
     /// 误判「已有主实例」而直接退出（零实例 DoS）；掺入 uid 后各用户锁地址互不相交。</summary>

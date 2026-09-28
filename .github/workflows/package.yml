@@ -197,7 +197,7 @@ jobs:
       - name: 载荷冒烟探针（publish 产物 native 面：FFI 加载/导出、图像解码、PTY）
         timeout-minutes: 5
         run: |
-          dotnet publish tests/DeepSeek.Harness.Desktop.PayloadSmoke -c Release -r ${{ matrix.rid }} --self-contained true -o artifacts/payload-smoke-${{ matrix.rid }}
+          dotnet publish tools/DeepSeek.Harness.Desktop.PayloadSmoke -c Release -r ${{ matrix.rid }} --self-contained true -o artifacts/payload-smoke-${{ matrix.rid }}
           artifacts/payload-smoke-${{ matrix.rid }}/DeepSeek.Harness.Desktop.PayloadSmoke artifacts/publish-${{ matrix.rid }}
 
       - name: 打 macOS 包（dmg，文件名含 macos 标识；不产独立 zip）
@@ -278,7 +278,7 @@ jobs:
         shell: bash
         timeout-minutes: 5
         run: |
-          dotnet publish tests/DeepSeek.Harness.Desktop.PayloadSmoke -c Release -r win-x64 --self-contained true -o artifacts/payload-smoke
+          dotnet publish tools/DeepSeek.Harness.Desktop.PayloadSmoke -c Release -r win-x64 --self-contained true -o artifacts/payload-smoke
           artifacts/payload-smoke/DeepSeek.Harness.Desktop.PayloadSmoke.exe artifacts/publish-win-x64
 
       - name: 打 Windows 包（安装器 exe，文件名含 windows 标识；不产独立 zip）

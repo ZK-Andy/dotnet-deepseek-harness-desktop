@@ -78,18 +78,12 @@ public sealed partial class DesktopBootstrap
     }
 
     /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：false = 已有主实例，调用方直接返回 0。
-    /// 依赖 <paramref name="preflight"/> 产出的 dev 判定（单实例 socket 按 dev/正式分域）。</summary>
+    /// 锁地址解析（XDG 回退/uid 隔离/dev 分域等平台策略）住 Infrastructure
+    /// <see cref="LauncherActivation.ResolveInstanceSocketPath"/>；此处只仲裁。</summary>
     private bool AcquireSingleInstance(Preflight preflight, StartupWiring wiring)
     {
         _uiLocale = new UiLocale(new DesktopUiLocaleStore(HostLog.Write));
-        string? xdgRuntimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
-        string? instanceSocketPath = OperatingSystem.IsWindows()
-            ? null // Windows 无验证环境不启用互斥，行为维持现状（ADR 平台边界）
-            : LauncherActivation.SocketPath(
-                xdgRuntimeDir is { Length: > 0 } ? xdgRuntimeDir : Path.GetTempPath(),
-                "deepseek-harness-desktop" +
-                (xdgRuntimeDir is { Length: > 0 } ? string.Empty : LauncherActivation.FallbackUidSuffix()),
-                preflight.Launch.IsDev);
+        string? instanceSocketPath = LauncherActivation.ResolveInstanceSocketPath(preflight.Launch.IsDev);
         if (instanceSocketPath is not null)
         {
             if (!LauncherActivation.TryBindPrimary(

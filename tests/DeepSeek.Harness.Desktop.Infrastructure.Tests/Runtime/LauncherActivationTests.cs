@@ -3,8 +3,66 @@ using System.Text;
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
 /// <summary>单实例仲裁契约：锁地址 dev 隔离、二启判定、通知应答、残留自愈、unlink 清理。</summary>
+[Collection("dsh-home-env")]
 public class LauncherActivationTests
 {
+    /// <summary>锁地址解析（平台策略单源）：Windows 恒 null（不启用仲裁）；Unix 上 XDG_RUNTIME_DIR
+    /// 在场即用之（不掺 uid 后缀），应用名固定、dev 后缀分域——原组合根内联拼装随细搬下沉后的行为钉。</summary>
+    [Fact]
+    public void ResolveInstanceSocketPath_PlatformPolicy()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Null(LauncherActivation.ResolveInstanceSocketPath(isDev: false));
+            return;
+        }
+
+        string dir = NewDir();
+        string? original = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", dir);
+            string prod = LauncherActivation.ResolveInstanceSocketPath(isDev: false)!;
+            string dev = LauncherActivation.ResolveInstanceSocketPath(isDev: true)!;
+
+            Assert.Equal(Path.Combine(dir, "deepseek-harness-desktop.sock"), prod);
+            Assert.Equal(Path.Combine(dir, "deepseek-harness-desktop.dev.sock"), dev);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", original);
+        }
+    }
+
+    /// <summary>XDG_RUNTIME_DIR 缺失的回退分支：临时目录 + 掺 uid 后缀的应用名（跨用户隔离），
+    /// dev 分域后缀不变——回退形态与在场形态互斥钉住。</summary>
+    [Fact]
+    public void ResolveInstanceSocketPath_XdgMissing_FallsBackToTempWithUid()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Null(LauncherActivation.ResolveInstanceSocketPath(isDev: false));
+            return;
+        }
+
+        string? original = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", null);
+            string prod = LauncherActivation.ResolveInstanceSocketPath(isDev: false)!;
+            string dev = LauncherActivation.ResolveInstanceSocketPath(isDev: true)!;
+            string uid = LauncherActivation.FallbackUidSuffix();
+
+            Assert.StartsWith(Path.GetTempPath(), prod);
+            Assert.EndsWith($"deepseek-harness-desktop{uid}.sock", prod);
+            Assert.EndsWith($"deepseek-harness-desktop{uid}.dev.sock", dev);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", original);
+        }
+    }
+
     /// <summary>验证 isDev 开关使 socket 路径带 .dev 后缀，开发与生产实例不争抢同一把锁。</summary>
     [Fact]
     public void SocketPath_DevSuffix_IsolatesDevFromProd()

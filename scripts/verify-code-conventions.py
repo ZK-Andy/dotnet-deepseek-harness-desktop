@@ -38,7 +38,7 @@ DEFAULT_SRC = (
 IGNORE_MARK = "verify-code-conventions: ignore"
 
 # Console use is allowed only in the log sink and the entry diagnostics.
-D004_WHITELIST = {"HostLog.cs", "Program.cs"}
+D004_WHITELIST = {"HostLog.cs", "Program.cs", "DiagnosticsCli.cs"}
 
 # B4 白名单退役（ADR official-clean-architecture-adoption）：物理分层后 D005 的豁免
 # 按工程推导——Infrastructure 整工程豁免（边界层本体，适配器定义上直触外部世界）；

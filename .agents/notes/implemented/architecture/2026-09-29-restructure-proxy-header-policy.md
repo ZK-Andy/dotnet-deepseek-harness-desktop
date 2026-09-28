@@ -38,6 +38,6 @@ Review: LIGHT/2026-09-29/R2=ok（首轮 0 Blocker 0 Suggestion；两出面等价
 
 ## Related
 
-- 总纲：`proposed/process/2026-09-27-post-packaging-churn-restructure`（§4.4 收尾）
+- 总纲：`implemented/process/2026-09-27-post-packaging-churn-restructure`（§4.4 收尾）
 - 升级判据收口先例：`implemented/architecture/2026-09-28-d4-cleanup-batch`
 - 代理面原始 ADR：`implemented/architecture/2026-09-27-loopback-forward-proxy`

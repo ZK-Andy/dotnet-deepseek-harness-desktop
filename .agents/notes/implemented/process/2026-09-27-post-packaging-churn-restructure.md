@@ -1,6 +1,6 @@
 # Agent Note: post-packaging-churn-restructure（三平台打包震荡后的结构清理总纲）
 
-Status: proposed
+Status: implemented
 
 ## Problem
 
@@ -14,9 +14,9 @@ Status: proposed
 
 完整诊断（每条论断带 `文件:行`）见方案原文：`整改方案-三平台震荡后结构清理-2026-09-27.md`（本地工作文档，未提交，与 HANDOFF 同层）。
 
-## Proposal
+## Decision
 
-分七批执行（每批携带自己的 ADR；本篇为总纲与被引用点）：
+分批执行（每批携带自己的 ADR；本篇为总纲与被引用点）：
 
 - **A** 冒烟口径单一事实源 + 发布门诚实化（§3）
 - **B** CI 三流合一 + 门禁诚实化 + actionlint/shellcheck 进 CI（§6）
@@ -28,7 +28,7 @@ Status: proposed
 
 已拍板决策：组合根取完整形态分离 (a)；冒烟 PR 只跑 Linux 腿 (b)；脚本命名保留 kebab-case、尺寸闸 250 行、shellcheck/actionlint 进 CI、action SHA 钉版暂不做；arm64 冻结直接解冻（冻结决策早于链路转向，承载 hang 的旧链路已删，退出条件已死）。预算侧：下调 `notes/README.md` 800→400、`coding-standards.md` 1000→700，给 architecture.md 腾空间；冒烟自测接线。
 
-**执行状态（2026-09-29）**：A、B-1、B-2、C、D1–D4、E、F 已交付（各自 ADR 见 implemented/；F 见 `process/2026-09-29-gate-common-shared-module`）。余批按评审档经济学重排：**余批 1**（§4.1 细搬 #1–#3/#8/#9 + G 的 Core 测试归位与 IIV 收窄）已交付（`process/2026-09-29-restructure-fine-moves-and-test-relocation`；#6/#10 判已满足记账在彼）；余批 2 = §4.4 ProxyHeaderPolicy 去重（安全不变量，独立小批 + 行为钉回归）；余批 3 = #5/#7（组合根面，FULL 触发）+ G 仅余的 PayloadSmoke 移 `tools/`（workflows/scripts 面，FULL 触发）。全部批次完成后本篇改写为 implemented。
+**执行状态（2026-09-29）**：A、B-1、B-2、C、D1–D4、E、F 已交付（各自 ADR 见 implemented/；F 见 `process/2026-09-29-gate-common-shared-module`）。余批按评审档经济学重排：**余批 1**（§4.1 细搬 #1–#3/#8/#9 + G 的 Core 测试归位与 IIV 收窄）已交付（`process/2026-09-29-restructure-fine-moves-and-test-relocation`；#6/#10 判已满足记账在彼）；**余批 2**（§4.4 源头改写策略单源 `ProxyHeaderPolicy` + 双面行为钉回归）已交付（`architecture/2026-09-29-restructure-proxy-header-policy`；§4.4 全部收口）；**余批 3**（#5 锁地址解析下沉 + #7 DiagnosticsCli 出根 + PayloadSmoke 移 `tools/`）已交付（`process/2026-09-29-restructure-compose-root-final-moves`；FULL 三审首轮收口）。至此全部批次交付，本篇随收官批改写为 implemented。
 
 ## Alternatives considered
 
@@ -37,10 +37,10 @@ Status: proposed
 - **给 Core 加 DI 容器依赖统一注册形态**：R3 端口构造注入即可，Core 零外层姿态（R2）不为此松动。落败。
 - **维持现状只调闸（放宽 F3 或收紧数值）**：判据本身错了（「文件多长」≠「根里放了什么」），调数值不改变增殖机制。落败。
 
-## Acceptance criteria
+## Consequences
 
-- 全部批次交付且各自 ADR implemented；本篇改写 implemented。
-- 组合根集合计 ≤500（F3 新闸）且根内形态过 `verify-compose-root.py` 四查。
+- 全部批次已交付且各自 ADR implemented；本篇随收官批（余批 3）改写 implemented。
+- 组合根集合计 ≤500（F3 新闸）且根内形态过 `verify-compose-root.py` 四查；组合根内不再有平台策略/CLI 用例/编排内联。
 - 每道 CI 门存在能失败的路径（门禁诚实化）；冒烟进 PR（Linux 腿）。
 - 文档层：事实单一家清账、归档死链清零、slop 清零、architecture.md 描述当前启动模型。
 
