@@ -75,8 +75,11 @@ APP_EXE="$INSTALL_DIR/$APP_NAME.exe"
 
 cleanup() {
   powershell -NoProfile -Command "Stop-Process -Name '$APP_NAME' -Force -ErrorAction SilentlyContinue" >/dev/null 2>&1 || true
-  # 安装目录与 home 也要收：只删 $OUT 会留下 mktemp 树（本批补）
-  rm -rf "$OUT" "$INSTALL_DIR" "$HOME_DIR"
+  # 安装目录与 home 也要收：只删 $OUT 会留下 mktemp 树（本批补）。
+  # 失败不判门：Stop-Process 与 kill 之后应用仍可能存活（git-bash 下 Windows GUI
+  # 进程常杀不掉），此时 INSTALL_DIR 忙删除失败；trap 末命令失败会把绿 verdict
+  # 翻成 exit 1（dispatch 36363806570 win 腿实证：full-chain + busy）。
+  rm -rf "$OUT" "$INSTALL_DIR" "$HOME_DIR" || true
 }
 trap cleanup EXIT
 

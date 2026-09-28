@@ -51,6 +51,9 @@ docker run --rm \
   -e DEEPSEEK_API_KEY \
   -e DSH_DESKTOP_PREINSTALL_AUTO \
   fedora:44 bash /smoke-inner.sh || docker_rc=$?
-# rc 传给调用方（`|| rc_total=1` 靠它判红）；一次性 tmp 在两条路径上都回收
+# rc 传给调用方（调用方记数判红）；一次性 tmp 在两条路径上都回收。
+# 非零留痕：docker 退出码是内外腿分界（inner 结论行在上文），哑巴 exit 让顶层
+# 分不清容器内红还是 docker 本体红。
 if [[ -z "${SMOKE_LOG_DIR:-}" ]]; then rm -rf "$rpm_log_host"; fi
+if [[ "$docker_rc" -ne 0 ]]; then error "[rpm] 容器退出码 $docker_rc（inner 结论行见上文）"; fi
 exit "$docker_rc"

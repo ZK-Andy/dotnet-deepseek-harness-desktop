@@ -153,7 +153,14 @@ smoke_deb() {
   fi
   # 日志落盘（W2）：SMOKE_LOG_DIR 由调用方注入稳定目录，CI 传 artifact。
   smoke_dump_logs "smoke-linux-deb" "$log" "$home/logs/host.log"
-  [[ $rc -eq 0 ]]
+  # 终态不断言哑巴：函数返回值即腿结论（调用方 `|| rc_total=1` 靠它判红），
+  # 裸 `[[ ]]` 失败无任何输出——红了只能靠 verdict 猜（dispatch 36363806570
+  # linux 双腿实证：full-chain + 15ms 后静默 exit 1）。
+  if [[ $rc -ne 0 ]]; then
+    error "[deb] 腿结论红（rc=$rc，判定证据见上文 PASS/FAIL 段）"
+    return 1
+  fi
+  return 0
 }
 
 common_tmp_trap
@@ -168,7 +175,14 @@ if [[ -n "$RPM" ]]; then
     error "需要 docker 运行 rpm 冒烟（GitHub ubuntu runner 预装；本地请自行安装）"
     rc_total=1
   else
-    SMOKE_PKG_DIR="$PKG_DIR" bash "$SCRIPT_DIR/smoke-linux-rpm.sh" "$RPM" || rc_total=1
+    # 退出码留痕：只 `|| rc_total=1` 不记数，deb/rpm 双腿时红了分不清谁（dispatch
+    # 36363806570 linux 双腿排查实证）；行为不变，非零仍只记 rc_total。
+    rpm_rc=0
+    SMOKE_PKG_DIR="$PKG_DIR" bash "$SCRIPT_DIR/smoke-linux-rpm.sh" "$RPM" || rpm_rc=$?
+    if [[ $rpm_rc -ne 0 ]]; then
+      error "[linux] rpm 容器腿退出码 $rpm_rc（结论行见上文；②收工亦须 0）"
+      rc_total=1
+    fi
   fi
 fi
 
