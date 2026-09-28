@@ -1,10 +1,11 @@
 # Agent Note: smoke-sw-render-probe（冒烟软件渲染探针）
 
 Status: implemented
+Archived: 2026-09-28
 
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 
-Related: 跟进 [`webkit-sandbox-userns-fallback`](../bug-fix/2026-09-26-webkit-sandbox-userns-fallback.md) 的重验证；dispatch 实证见本 ADR Testing。
+Related: 跟进 [`webkit-sandbox-userns-fallback`](../../implemented/bug-fix/2026-09-26-webkit-sandbox-userns-fallback.md) 的重验证；dispatch 实证见本 ADR Testing。
 
 ## Problem
 

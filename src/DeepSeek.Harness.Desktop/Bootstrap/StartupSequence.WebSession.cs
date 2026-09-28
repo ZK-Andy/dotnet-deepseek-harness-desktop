@@ -65,7 +65,7 @@ internal sealed partial class StartupSequence
     }
 
     /// <summary>探当前页采样（origin + 400 字可见文本，<see cref="Core.PageProbeSample"/> 形态）；
-    /// 有限重试后仍超时/异常返回 null（未知），调用方按放过启动处理（ADR settle-gate-and-probe-retry：
+    /// 有限重试后仍超时/异常返回 null（未知），调用方按放过启动处理（ADR page-verdict-gate，自 settle-gate-and-probe-retry 并入：
     /// 偶发 renderer 繁忙一次采样赌运气，成功即返，耗尽才 Unknown；快机器零变化）。</summary>
     private async Task<string?> ProbePageSampleAsync(CancellationToken ct)
     {

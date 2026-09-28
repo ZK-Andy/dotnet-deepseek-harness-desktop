@@ -4,13 +4,11 @@ Status: implemented
 
 Review: LIGHT/2026-09-27/R2=ok
 
-Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
+Review: FULL/2026-09-27/R1=ok R2=ok R3=ok（首轮 R1 2 Blocker + R3 3 Blocker、R2 修复轮 1 Blocker 全修；Suggestion 逐条处置留痕见评审记录，不占正文）
 
-FULL 三审处置（本轮留痕批）：R1 2 Blocker（ADR 重复 bullet、失效的「体积不变」）+ R3 3 Blocker（「三行留痕齐」被零字节路径证伪、cookbook 悬空解法指针、缺 FULL 证据行）+ R2 0 Blocker——全修；建议收 12 条（含 `IsPrintableAscii` 折叠为 BCL 调用、`n == 0` 补留痕与用例、半行标注、快照/n 强度标注、父篇手术清单同步、cookbook 补 ADR 链接），拒 3 条（合并 `reject` 判门、抽握手助手、退役条目迁出 cookbook——理由见各自处置），转待办 2 条。修复轮 R2 复审 0 Blocker、5 项处置逐条确认成立，其 4 条建议亦收（零字节分支用例、折叠边界 4 例、n=1 标确定性、三步留痕加限定）。
+Related: 前序 [`architecture/2026-09-27-loopback-forward-proxy`](../architecture/2026-09-27-loopback-forward-proxy.md)（本隧道面与其页源 Origin 改写同源；本篇更正其手术清单缺项）。
 
-R2 处置：首轮 1 Blocker（页源 `Referer` 透传）+ 5 Suggestion 全收——Blocker 的 403 机制经补探测**证伪**（`Referer` 不在 dsh 门上），但"页源源值零透传"不变量确不成立，按对齐普通转发面改写；修复轮复审 0 Blocker、6 条处置逐条确认成立，另 2 条文档面 Suggestion（证据标注强度、黑名单口径措辞）亦收。
-
-Related: 前序 [`architecture/2026-09-27-loopback-forward-proxy`](../architecture/2026-09-27-loopback-forward-proxy.md)（本隧道面与其页源 Origin 改写同源；本篇更正其手术清单缺项）+ [`bug-fix/2026-09-27-upgrade-tunnel-watcher-exemption`](2026-09-27-upgrade-tunnel-watcher-exemption.md)（同一条 `remote.mux` 线的上一轮；其"隧道存活回归泵两端自然收敛"在该轮未真达成，因隧道从未过门）
+> 吸收合并（2026-09-28，E 批 ADR 裁定）：`upgrade-tunnel-watcher-exemption` 并入本篇——其「升级连接不布页关闭哨兵」决定保留（见 Decision 首条），「收尾 loud 一行」已被本篇三步留痕吸收；该篇正文已删。
 
 ## Problem
 
@@ -33,6 +31,7 @@ Related: 前序 [`architecture/2026-09-27-loopback-forward-proxy`](../architectu
 
 ## Decision
 
+- **升级连接不布页关闭哨兵**（自 `upgrade-tunnel-watcher-exemption` 并入）：`WatchPageCloseAsync` 对每连接（含升级）并发读页 socket 首字节判页已走——升级连接上字节全是合法 WS 帧，哨兵偷走首字节即 corrupt 帧流又掐断中继泵，客户端循环重建。`IsUpgrade` 与中继分支同判据不布哨；`linked` 保留承接应用退出取消。
 - `BuildUpgradeHead` 写 `Host: <dsh authority>`（由路由 `Uri.Authority` 派生），与 `Origin`（`Uri` 的 authority 左部）**同源派生**。手术清单由此变为：`Host`→dsh authority + `Origin`/`Referer`→dsh 自源 + 贴 cookie + `sec-fetch-site: same-origin`，其余头原样。
 - `Referer` 与普通转发面同法处理（`DshShellForward` 构造请求时 `Origin`→authority、`Referer`→dsh 形目标）：页源值丢弃、改写为 dsh 自源 + 原目标路径。该头**不在** dsh 的门上（见探测表末行），改写只为"页源源值零透传"这条两个面共用的不变量——隧道面此前漏了它。
 - 页源 `Host`/`Origin`/`Referer` 三值零透传；其余头（`Sec-WebSocket-*` 等）仍原样透传。两传输面只在**源值改写**这一条上对齐，黑名单口径并不相同：隧道面额外丢 `sec-fetch-site`（重写为 `same-origin`），也不丢 `accept-encoding`（WS 握手不带该头；普通面丢它是为避免 gzip 字节直送页面）。
@@ -52,6 +51,7 @@ Related: 前序 [`architecture/2026-09-27-loopback-forward-proxy`](../architectu
 
 - 收益：`remote.mux` 可达 101 并与连接同寿；两传输面对源头的处理归一（`Host`/`Origin`/`Referer` 同源于 dsh authority），信任面不变——仍只贴 authority 值 + cookie；升级面**首读到应答即三步留痕齐**，上游拒答（403/401）、零字节即关与协议异常（非状态行首块）当场可读，同类排障不再只能靠同形探测或抓包。
 - 代价：两行头 + 首块一次读一次写（等价于泵的首读，无新增状态、计时器或线程；首块缓冲上限 8 KiB，超出部分照常直泵）。
+- 边界澄清（并入）：官方 `deepseek-account-login` 是 DeepSeek 平台 OAuth（模型凭据层），我方 `WebAuth` 是回环 token 会话自愈（传输会话层）——页面传输重连徽章与登录无关，不搬运官方登录面。
 
 ## Testing
 

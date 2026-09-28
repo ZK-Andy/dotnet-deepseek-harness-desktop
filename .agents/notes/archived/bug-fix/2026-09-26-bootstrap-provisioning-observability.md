@@ -1,6 +1,7 @@
 # Agent Note: bootstrap-provisioning-observability（供应链输出透传）
 
 Status: implemented
+Archived: 2026-09-28
 
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok（R1 5 Suggestion、R2 1 Blocker+3 Suggestion、R3 2 Suggestion 全收口）
 

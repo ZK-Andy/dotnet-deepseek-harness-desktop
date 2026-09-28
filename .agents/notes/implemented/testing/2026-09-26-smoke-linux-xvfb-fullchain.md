@@ -6,7 +6,7 @@ Erratum: 2026-09-28 — 正文「CI `package-linux.yml`」的落点已换家：�
 
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 
-Related: 兑现 [`smoke-runner-deepening`](2026-09-25-smoke-runner-deepening.md) 的"Linux Xvfb 全链下批事项"；[`smoke-settle-content-verdict`](2026-09-26-smoke-settle-content-verdict.md) 的落定等待在 Linux 腿的生效前提。
+Related: 兑现 [`smoke-runner-deepening`](2026-09-25-smoke-runner-deepening.md) 的"Linux Xvfb 全链下批事项"；[`page-verdict-gate`](2026-09-26-page-verdict-gate.md) 的落定/裁决门在 Linux 腿的生效前提（原 `smoke-settle-content-verdict` 已并入该篇后删除）。
 
 ## Problem
 

@@ -1,6 +1,6 @@
 # Architecture
 
-> 现状。`Ryn` 壳 + 依赖全局 dsh 的简单壳（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）+ 崩溃监督 + 首启引导装 dshmarket + 随包 companion 装配 + 安装器瘦身打包。
+> 现状。`Ryn` 壳 + 回环代理源承载全局 dsh Web UI（ADR `implemented/architecture/2026-09-27-loopback-forward-proxy`）+ Core/Infrastructure/壳三层与端口适配 + 崩溃监督 + 首启引导 + 随包 companion 装配。
 
 ## 概览
 
@@ -8,79 +8,58 @@
 >
 > [![全量架构图](../assets/architecture.svg)](architecture.html)
 >
-> 图源规约见 [architecture.diagram.json](architecture.diagram.json)（archify `architecture` 类型，`--quality showcase` 校验 9/9 后 `deliver` 生成本页 HTML 与缩略图 SVG；改图只改 JSON 并重新生成，不手改产物）。
-
-```
-┌─────────────┐ spawn --profile dotnet-desktop --port 0 ┌────────────────┐
-│ Ryn Shell   │ ─────────────────────────────▶  │ dsh web (Node)  │
-│ (C#/.NET)   │  ◀─ dsh web: http://127.0.0.1 ─ │ @deepseek-ai/dsh│
-│ WebView     │  opts.Url = webUrl             │ shared ~/.dsh   │
-└─────────────┘                                └─────────────────┘
-```
+> 图源规约见 [architecture.diagram.json](architecture.diagram.json)（archify `architecture` 类型，`--quality showcase` 校验后 `deliver` 生成 HTML 与缩略图 SVG；改图只改 JSON 并重新生成，不手改产物）。
 
 * 壳只管生命周期、窗口、恢复；`dsh` 的插件树即应用运行时。
-* **共享 home（B 形态）**：默认上游规范 `~/.dsh`，经 `HarnessRuntimeHost.ResolveDshHome()` 解析——优先级：`DSH_DESKTOP_DSH_HOME`（dev 隔离/用户回退）> 生态标准 `DSH_HOME` > `~/.dsh`；home 层数据（sessions/credentials/workspaces）与 CLI/TUI/Web 互通。桌面插件装配走专属 `profiles/dotnet-desktop`（`DesktopProfileBootstrap` 在首次 spawn 前按上游 `initProfile` 同款三件套自举，bundles 对齐 web 模板；不用字面名 `desktop`——上游 dsh 0.1.5-alpha.1 起 CLI 将其圈占给官方 Electron 桌面端，见 ADR `implemented/architecture/2026-09-09-desktop-profile-rename`）。
-* 运行时 = 全机唯一一份全局 dsh（用户 PATH，`@deepseek-ai/dsh@alpha`）；桌面不运输行时闭包、不自备运行时目录（见「运行时定位与启动」）。
-* **可观测性**（ADR `2026-08-24-shell-observability-diagnostics`）：全部壳侧诊断经 `HostLog` 双写 stdout 与 `<home>/logs/host.log`（超 5MB 滚动 .old）；supervisor 恢复时落子进程 stderr 尾部、自更新状态机每次变化留痕；`RunMarker` 启动占位/owner 清理判定非受控退出（横幅提示）；`desktop.diagnostics.export` + CLI `--export-diagnostics` 导出白名单诊断 zip 到用户文档目录。
-* 启动期告知（ADR `implemented/architecture/2026-08-23-shared-home-desktop-profile`）：`RuntimeVersionGate` 只读探测 dsh 版本低于底线仅横幅提示不阻断；检测到 v0.2.x 私有 home 残留则在 host.log 留痕（界面横幅已去除，见 ADR `implemented/bug-fix/2026-08-24-companion-settings-consolidation`）。
-* **系统托盘与 hide-to-tray**（ADR `implemented/architecture/2026-08-24-shell-tray-hide-to-tray`）：`Ryn.Plugins.Tray` 注册图标 + 菜单（显示主窗/检查更新/退出）；点击事件经 companion 中继（`__ryn.on` → `desktop.tray.event`）回宿主解析——`TrayService.EmitEvent` 是插件内部属性，AOT 下反射不可用。关窗默认取消并隐藏（`CloseGate` 唯一放行通道：托盘退出与自更新安装路径先批准再 Close）；托盘初始化失败时拦截不同步生效，关窗保持直退。
+* **共享 home**：默认上游规范 `~/.dsh`（优先级 `DSH_DESKTOP_DSH_HOME` > 生态 `DSH_HOME` > `~/.dsh`），home 层数据与 CLI/TUI/Web 互通；桌面插件装配走专属 `profiles/dotnet-desktop`（ADR `2026-09-09-desktop-profile-rename`）。
+* **可观测性**：壳侧诊断经 `HostLog` 双写 stdout 与 `<home>/logs/host.log`（超限滚动）；`RunMarker` 判定非受控退出；`desktop.diagnostics.export` 导出白名单诊断 zip（ADR `2026-08-24-shell-observability-diagnostics`）。
+* **托盘与 hide-to-tray**（ADR `2026-08-24-shell-tray-hide-to-tray`）：`Ryn.Plugins.Tray` + companion 事件中继；关窗默认隐藏，`CloseGate` 唯一放行通道。
 
-## 壳与窗口
+## 分层与组合根
 
-* 组合根（ADR `implemented/architecture/2026-09-15-composition-root-value-flow-pipeline`）= `Program.cs`（薄壳）+ `DesktopBootstrap.cs`（启动主链与阶段编排）+ 唯一 dot 分部 `DesktopBootstrap.App.cs`（应用装配、后台接线与 WebView 导航原语）；`Run()` 的阶段方法返回类型化产出（`Preflight`/`HostSetup`/`RuntimeSetup`/`UpdateSetup`/`AppSetup`/`SupervisorSetup`）、消费段收参数。`HarnessRuntimeHost.StartAsync(60s)` → `dsh web:` → `RynApplication.CreateBuilder().ConfigureOptions(opts.Url = webUrl)`。`ryn.json:identifier=io.github.ZK-Andy.dotnet-deepseek-harness-desktop` 与 `StartupWMClass` 同值，`Wayland/X11` 任务栏正确关联；`icon.png` 进 `AppContext.BaseDirectory` 并上 `hicolor/pixmaps`。
-* `CurrentWindowAccessor`（Ryn.Core）供 `RuntimeSupervisor`、`PageHealthMonitor` 与后台随包插件任务做 `EvaluateJavaScriptAsync`/`NavigateAsync`。
-* **宿主 UI 文案单点** = `Core/Localization/UiCopy`（强类型中/英双参入口）与语言单点 `UiLocale`；宿主自绘面（托盘/横幅/恢复页/首启引导页）与引导失败文案随该语言，语言来源、持久化与门禁不变量见 ADR `implemented/feature/2026-09-16-ui-copy-bilingual-completion`。
+* 三工程：`Core`（纯逻辑，零外层引用）/ `Infrastructure`（Ryn、dsh 进程、文件/网络、更新适配器）/ 壳工程（Presentation + 组合根）。
+* **组合根只装配**（ADR `2026-09-28-compose-root-form-separation`；规范见 [architecture-standards.md](architecture-standards.md) R1，语义闸 `verify-compose-root.py`）：`Program.cs` 薄壳 + `DesktopBootstrap.cs` 只保留容器之前的启动头部（WebKit 沙箱降级 / 运行时与 dev 解析 / 单实例仲裁 / 回环代理启动）+ 唯一 dot 分部 `DesktopBootstrap.App.cs` 按域 `AddXxx()` 注册。启动编排搬出根成容器解析的 `Core.Bootstrap.IStartupSequence`（实现在 `Bootstrap/StartupSequence*`，阶段产出为正式类型：`Preflight`/`UpdateSetup`/`AppSetup` 等）。
+* **端口在 Core，实现在 Infrastructure**：`IRuntimeHost`（监督，ADR `2026-09-28-runtime-supervisor-core-port`）、`IReleaseFeed`/`IPackageDownloader`/`IPackageInstaller`/`IUpdateEnvironment`（自更新，ADR `2026-09-28-update-coordinator-core-port`）、`IFirstBootBootstrap` 等；`Core.RuntimeSupervisor`/`Core.Update.UpdateCoordinator` 构造注入消费。跨界 ID 强类型，IPC 帧经源生成上下文（`AppJsonContext`/`UpdateJsonContext`）。
 
-## 运行时定位与启动
+## 启动模型：回环代理源
 
-* **运行时来源 = 系统全局 node + 全局 dsh**（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）：安装器不携带运行时；dsh 版本探测走 PATH（`RuntimeVersionGate.ProbeAsync`，无独立 RuntimeLocator）。PATH 上无全局 dsh 时进入**首启引导**：`RuntimeBootstrap` 确保**系统全局 node**（复用 PATH 上用户 node/npm；无则桌面下载最新官方 node 装到系统全局前缀——默认 `~/.local`、写系统位需 sudo 时提示手动命令，不自备私有 node），用其 npm `npm install -g @deepseek-ai/dsh@alpha`（装/更新到 alpha 预发布通道，落到系统全局位），验证 `dsh --version` 可解析；dsh `npm install -g` 因权限需 sudo 时提示手动命令。失败进度页可见、可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
-* dsh 版本只读探测：`Infrastructure/Runtime/RuntimeVersionGate.ProbeAsync` 直跑 PATH `dsh --version`（全局 dsh 模型无捆绑形态），不维护任何下载运行时目录。
-* `Infrastructure/Runtime/HarnessRuntimeHost`：`ProcessStartInfo` 设 `DSH_HOME`、血统标记 `HARNESS_DESKTOP_LINEAGE`/`_HOME`（跨上游 `scrubbedParentEnv()` 清洗存活，dsh 全部后代可见；旧名 `DSH_DESKTOP_SPAWN_TOKEN` 只读回退用于升级窗口）、`pnpm_config_store_dir/cache_dir`（`DSH_HOME/.pnpm-store`）、`WorkingDirectory=AppContext.BaseDirectory`；`OutputDataReceived` 抓 `dsh web:` 的 `HarnessUrlParser`；`ErrorDataReceived` 留 `StderrTail` 8 行。`port 0` 首次 OS 分配并记忆，重启复用同端口保 `origin`。首选端口失败（stderr `EADDRINUSE` 签名或子进程早退，失败尝试即时整树回收）由 `Core/RuntimeLineage` 的血统判据处置（ADR `implemented/bug-fix/2026-09-12-runtime-handoff-adoption`）：新生续任者 → 收养（登记 pid＋token、退出整树收割）；更早血统残留 → 收割后重试首选端口；占用者非我方血统 → 回退 OS 分配并写漂移告警（**窗口已按 dsh URL 建好之后**再换端口——监督器崩溃重启漂移——会让「页面→壳」命令通道本次会话失效：Ryn IPC 的 CORS 允许源按建窗时的 `opts.Url` 钉死，见 ADR `implemented/bug-fix/2026-09-12-port-drift-ipc-origin-mismatch`；非引导冷启动漂移不失效——窗口随后才按漂移后的 origin 创建；无 PATH dsh 的首启引导路径先以占位页建窗，不在该告警面。设置页据此把「无自更新栈」与「命令通道失效」分成两种降级文案）。冷启动并用 `.dsh-pid` 记录复验与血统扫描收敛残留。
-* `Infrastructure/Platform/HarnessUrlParser`：单行解析 `dsh web: http://127.0.0.1:<port>`。
+* **窗口 URL 恒为回环代理源**（ADR `loopback-forward-proxy`）：`DshLoopbackProxy`（`TcpListener` 纯 loopback、端口 OS 分配）在 `BuildApp` 前启动，逐请求向 dsh authority 转发；绑定失败 loud 后降级 wwwroot。**启动链零 host 导航**——dsh 未就绪时代理本地端点出 holder 页（自 `fetch` 就绪后自 `reload`），绕开 saucer `set_url` 同步原生挂家族；`/__shell_ready` 长轮询铸币门、`/__shell_guide/*` 磁盘指南页。
+* **铸币与转发**：`DshShellForward.MintAsync` 用 token 铸 cookie（`redirect: manual`）；代理贴壳 cookie 转发、`Set-Cookie` 永不回页面、SSE 流式直通、POST content 头保真；WS 升级走裸 TCP 隧道 + 头手术（`Host`/`Origin`/`Referer` 同源 dsh authority，页源三值零透传，ADR `2026-09-27-upgrade-tunnel-host-authority`）。日志只记状态码/头名/字节数，token/cookie 值不落盘。
+* **落定与裁决**：`SettleWebSessionAsync` 探针采 `location.origin` + 可见文本，`Core.WebAuthRecovery.ClassifyDetail` 三态裁决（`PageVerdict`：healthy/auth/unknown）；holder 标记排除、探针有限重试（`RuntimeTimeouts.AuthProbeAttempts`）。三处宿主导航点（收养恢复/健康 reload/鉴权重载）以 `Task.Run` 隔离同步原生 `set_url`（ADR `2026-09-26-page-verdict-gate`，吸收合并三篇）。
 
-## 单实例与退出
+## 运行时来源（系统全局 node + 全局 dsh）
 
-* `Infrastructure/Runtime/LauncherActivation`：UDS 单实例仲裁（`$XDG_RUNTIME_DIR` 锁地址，dev 隔离同源）——首实例 `bind/listen` 持锁，launcher 二启发 `show` 命令请主实例显示主窗后退出；残留 socket 探活自愈，清理失败降级无监听主实例（绝不挡启动）。Windows 不启用。
-* 托盘「退出」走有序编排：取消监督器 → `host.Stop()` 整树回收在管运行时（本进程子进程或收养的续任者）→ marker Release → 关窗 → 8s 看门狗强制终结；端口被非血统进程占而回退 OS 分配时写漂移告警。
+* **运行时 = 全机唯一一份全局 dsh**（用户 PATH，`@deepseek-ai/dsh@alpha`；ADR `2026-08-31-simple-shell-single-global-dsh`）：安装器不携带运行时闭包，dsh 版本只读探测走 PATH（`RuntimeVersionGate.ProbeAsync`）。
+* PATH 上无全局 dsh 时进入**首启引导**（`RuntimeBootstrap`，spawn dsh 前完成）：确保系统全局 node（复用 PATH 上用户 node/npm；无则下载官方 node 装到系统全局前缀，写系统位需 sudo 时提示手动命令）→ `npm install -g @deepseek-ai/dsh@alpha` → 验证 `dsh --version`。进度页可见、失败可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
 
-## 崩溃监督
+## 监督、单实例与退出
 
-* `RuntimeSupervisor`：`WaitForExitAsync` + `CancellationToken` 循环；退出→`showRecovery`（`RecoveryScript` 覆写文档为“重连中”）→`host.RestartAsync(60s)`→`navigate(newUrl)`。仅重启子进程，不重启桌面进程；`supervisorCts` 随 `app.Run()` 结束取消。
+* `Core.RuntimeSupervisor` 经 `IRuntimeHost` 端口监督子进程：退出 → 恢复页 → `RestartAsync` → 同端口导航（重启复用记忆端口保 `origin`）。
+* 端口漂移判据（`Core.RuntimeLineage`，ADR `2026-09-12-runtime-handoff-adoption`）：新生续任者收养、更早血统残留收割重试、非我方血统回退 OS 分配并告警（建窗后换端口会使「页面→壳」命令通道失效，见 ADR `2026-09-12-port-drift-ipc-origin-mismatch`）。
+* `LauncherActivation` UDS 单实例仲裁（Windows 不启用）；托盘「退出」走有序编排：取消监督 → 整树回收 → marker Release → 关窗 → 8s 看门狗。
 
-## 插件装配与引导
+## 插件装配（spawn dsh 前就位）
 
-* 随包插件清单：`dsh-desktop-companion`（桌面伴生：更新/诊断/设置 UI 与托盘事件中继，仅随包分发）——成员登记于 `Core/Plugins/BundledPluginCatalog`；dshmarket 不再随包，改由首启引导经 registry 安装（`MarketInstallHelper.EnsureMarketFromRegistryAsync`，见下）。
-* 首启引导（`RuntimeBootstrap`）：PATH 上无全局 dsh 时，在 spawn dsh **之前**完成「确保系统全局 node（复用 PATH 用户 node/npm；无则下载最新官方 node 装到系统全局前缀）→ 用其 `npm install -g @deepseek-ai/dsh@alpha`（系统全局位）→ 验证 `dsh --version`」，node/dsh 写系统位需 sudo 时给手动命令；全程进度页可见、失败可重试（`desktop.bootstrap.retry`）。
-* **插件引导（ADR reference-alignment 批次二）**：运行时就位后、spawn dsh 前，若存在待装可选插件（现仅 `dshmarket` 预设），进度页呈现「插件准备」步（推荐 chip + 确认/跳过 + 安装日志回流）。用户确认才安装、跳过则该次不装（可经应用内市场补装）、5 分钟无决策默认跳过；companion（internal）不在勾选清单，保持 spawn 前静默自愈。
-* 启动前 reconcile（`DesktopProfileBootstrap.ReconcileProfile`）：扫描 desktop profile，移除解析目标已不存在的本地 `file:`/`link:` bundle 引用（退役随包种子属之），对齐 dsh-tauri-desk #177——不允许不可解析 bundle 引用残留。
-* **插件安装均在 spawn dsh 前完成**（对齐参照 `launch.rs`「所有插件内核前就位、绝不安装后重启」）：companion 经 `EnsureBundledPluginsBeforeSpawnAsync`——`BundledPluginCatalog.AssemblePending` 组装待装清单：未装即装（安装器资源 `resources/plugins` tgz，`ResolveCompanionSpec` `>1K` 校验）、已装则 `PluginVersionCheck` 版本感知升级（来源 > 已装副本即入列，同版/更高跳过；spec 缺失、解析器异常或脏版本串按单插件记日志跳过；见 ADR `implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog` + `implemented/feature/2026-08-29-plugin-surface-consolidation`）；dshmarket 经 `EnsureMarketFromRegistryAsync`（`plugin add dshmarket@latest`）。安装前 `EnsureWorkspaceAllowBuilds` 放行 `allowBuilds` 6 项（`@deepseek-ai/dsh-subprocess-local/@google/genai/koffi/node-pty/protobufjs/esbuild`）、`CleanupBogusAppDependencyAsync` 清理 `0.1.10` 残留 `dependencies.app=file:...dshmarket.tgz`；装后 `EnsureBundlesContainsAsync` 兜底并补回桌面必需 bundle（`dsh-base`/`dsh-web-app`）。dev 运行且 DSH_HOME 显式覆盖指回真实 home 时整体跳过（防把 dev 依赖写进共享 profile）。
-* `dsh` 的 `reconcilePlugins` 在 `plugin add` 后自动把包名追加到 `dsh.profile.bundles`（`pilot-harness` 同款）。
-* **CLI shim 注册（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）**：dsh 已全局在 PATH，`CliShimRegistrar.TryRegister` 只注册内容恒定的 `pnpm` shim——Windows `%LOCALAPPDATA%\deepseek-harness\bin` 写 `pnpm.cmd`/`pnpm.ps1` + `HKCU\Environment\Path` 幂等合并 + `WM_SETTINGCHANGE` 广播；mac/linux `~/.local/bin` 写 POSIX sh（`pnpm`）+ 既有 `.bashrc`/`.zshrc`/`.profile`/`.bash_profile` 幂等 rc 块。shim 不烘焙运行时/DSH_HOME；`pnpm` 优先转发用户自装的同名命令（排除本 shim 目录），绝不覆盖用户配置（目标为本应用生成的 shim 才覆盖、悬空符号链接先移除、用户文件保留）。best-effort——任一步失败仅告警不阻启动。本分布不捆绑独立 pnpm（dsh 的 `plugin` 子命令经 `spawnSync("pnpm")` 从 PATH 调用），故 pnpm shim 只转发用户自家 pnpm、缺则诚实提示（参照项目 `dependencies/pnpm` 属有意差异）。
+* 随包 `dsh-desktop-companion`（internal）spawn 前静默自愈：`EnsureBundledPluginsBeforeSpawnAsync` 按 `Core/Plugins/BundledPluginCatalog` 清单未装即装（安装器资源 tgz）、已装则版本感知升级；dshmarket（preset）经引导页「插件准备」步确认/跳过（`desktop.preinstall.choose`，5 分钟无决策默认跳过）。
+* 启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用；`EnsureWorkspaceAllowBuilds` 放行 `allowBuilds` 6 项。
+* **CLI shim**：`CliShimRegistrar.TryRegister` 只注册内容恒定的 `pnpm` shim（Windows `%LOCALAPPDATA%\deepseek-harness\bin` + HKCU Path；Unix `~/.local/bin` + rc 幂等块），优先转发用户自装 pnpm，best-effort 不阻启动。
 
 ## 外部链接接管
 
-* 宿主侧 `PageBridge/RynNavigationCallbacks`（`Ryn.Callbacks`，Ryn 0.32.0）在导航边界统一裁决——`[RynCallback(WebViewNavigating)]`：**用户发起**（`IsUserInitiated`）的站外绝对 http(s) → `NavigationDecision.Block` + 经共享 `SystemBrowser` 开系统浏览器；同源 SPA 路由 / `ryn://` / `data:` / 非 http(s) / 宿主导航（崩溃恢复）放行。`[RynCallback(WebViewNavigated)]` 把当前 origin 刷新为实际到达 URL 的 origin、留痕并回调「页面已到达」信号（供启动横幅门控）。`ConfigureServices` 注册 `AddRynCallbacks()` + `AddRynNavigationCallbacks()`（源生成）。相较旧点击层 hack，**覆盖一切导航**（`window.location`/`window.open()`/`<form>` 等非点击路径），不再依赖前端注入捕获脚本。打开失败（`SystemBrowser` 返回 false/抛异常）时经 `EmitEvent("desktop.externalLinkOpenerFailed")` 推事件给页面，companion 渲染 toast（ADR `implemented/feature/2026-08-28-external-link-opener-failure-toast`；外部链接拦截本体见 `implemented/feature/2026-08-28-ryn-navigation-callbacks`）。
-* 宿主侧 `PageBridge/ExternalLinkCommandRouter`（`ICommandRouter`）收 `app.openExternal` 命令，经 `ExternalLinkPolicy.IsExternalHttpLink` 复核后经 `SystemBrowser`（Linux 经 `systemd-run --user --scope --collect --quiet` 把 `xdg-open` 承载在独立 transient scope 里——浏览器整棵树不落进本壳 app scope，探不到 launcher 或启动失败时回退直启 `xdg-open` / 其余 `Process.Start(UseShellExecute)`）开系统浏览器——给已发布旧版 companion 与 Ryn 命令面保留的落地点。
-* companion `client.js` 不再注入 capture 点击监听（外链接管已迁宿主导航层）；`__ryn_externalLinkCatcher` / `__dshDesktopCompanionLinks` 双旗认领机制退役。
+* 宿主侧 `RynNavigationCallbacks` 在导航边界统一裁决：用户发起的站外 http(s) 拦截开系统浏览器，覆盖 `window.location`/`window.open()`/`<form>` 等一切路径；`ExternalLinkCommandRouter` 收 `app.openExternal` 复核后经 `SystemBrowser`（Linux 承载在独立 transient scope）打开；打开失败经事件推给 companion 渲染 toast。
 
 ## 自更新
 
-* 状态机 `Core/Update/UpdateStateMachine`（移植 opencode updater-controller）：`idle→checking→downloading→ready→installing` + up-to-date/error；检查/下载/安装委托注入 + ready 持久化接口，纯逻辑可单测。启动对账（记录版本不高于当前或损坏 → 清记录）后自动检查一次，失败静默转 error；并发检查互斥。
-* Feed：`releases.atom` 最新稳定 tag + `expanded_assets/<tag>` 抓资产 href（绕 api 限流）；`ReleaseMeta.Pick` 按 RID 后缀挑资产。下载 `.part` 原子改名 + SHA256SUMS 强校验（**release 未附校验文件或 HTTP 非 2xx 时 fail loud 拒装**）→ `<DSH_HOME>/updates/`。
-* 安装：Linux pkexec 脚本（等本进程退出→dpkg/rpm→runuser 降权拉起新版）；Windows Inno `/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`；macOS v1 报错引导手动。
-* UI：伴生插件注册 `sidebar.footer.action`（侧栏底部设置入口上方动作行）；**仅 ready 渲染**圆形下载钮，hover 展开版本文字，点击即装+重启；installing 转圈禁点。伴生插件另注册单一 `settings.section`「桌面设置」页（order 50，市场之后；ADR `implemented/bug-fix/2026-08-24-companion-settings-consolidation`）：更新块（当前版本 + 手动检查按钮 + 完整状态行，error 显宿主传回原因，无自更新栈降级为页内不可用提示）+ 诊断导出块 + 开机自启开关三块合一页。状态经宿主 CustomEvent `dsh-desktop-update` 推送，初值走 `ryn.invoke('desktop.update.getState')`；状态帧含 `current`（当前版本）与 error 态 `message` 字段。伴生插件客户端文案已接入 dsh client i18n（`@deepseek-ai/dsh-client-locale` 的 `zh`/`en` 字典），随 dsh 语言切换中⇄英（ADR `implemented/feature/2026-08-28-companion-client-i18n`）。
-* 参数：appsettings.json `Update` 节（Repository/超时/目录）；当前版本 = csproj `<Version>`（发布 CI 以 `-p:Version=` 覆盖；版本来源优先级与 fail loud 判据的唯一实现见 [`scripts/package-version.sh`](../scripts/package-version.sh)）。**dev 运行时不装载自更新栈**（除非 `DSH_DESKTOP_UPDATE_FORCE=1` 显式开启）。
+* `Core.Update.UpdateCoordinator` 四端口（feed/下载器/安装器/环境）+ `UpdateStateMachine`（`idle→checking→downloading→ready→installing` + up-to-date/error）；启动对账后自动检查一次，并发互斥。
+* Feed 走 `releases.atom` + 资产页抓取（绕 api 限流）；下载 `.part` 原子改名 + SHA256SUMS 强校验（缺校验文件或非 2xx fail loud 拒装）；安装：Linux pkexec 脚本、Windows Inno 静默重装、macOS v1 报错引导手动。
+* UI 经伴生插件 `sidebar.footer.action`（仅 ready 渲染下载钮）与「桌面设置」页推送；参数在 `appsettings.json` `Update` 节，当前版本 = csproj `<Version>`（CI `-p:Version` 覆盖，判据唯一实现 `scripts/package-version.sh`）。**dev 运行不装载自更新栈**（`DSH_DESKTOP_UPDATE_FORCE=1` 显式开启除外）。
 
 ## 打包
 
-* 依赖全局 dsh（ADR `implemented/architecture/2026-08-31-simple-shell-single-global-dsh`）：安装器**不捆绑运行时闭包**，只带壳（publish 全量，实测 ~26-36MB 压缩后）+ 安装器自带插件资源 `resources/plugins/dsh-desktop-companion.tgz`（`scripts/build-companion-tgz.sh` 打包时从仓库源码现打并校验）；运行时 = 用户 PATH 上的全局 dsh（无则首启引导 `npm install -g @alpha` 装，见「运行时定位与启动」）。
-* `scripts/package-linux.sh`：`dotnet publish -r linux-x64|linux-arm64`（arm64 自 Ryn.Interop 0.30.4 供给 linux-arm64 native 起恢复发布，2026-08-25）→ `staging` 现打 companion tgz 进 `resources/plugins`，随后统一走内容布局断言（闭包残留/插件资源/主程序与可执行位，见下）→ `deb (Depends: libwebkitgtk-6.0-4, libadwaita-1-0, arch amd64/arm64)` / `rpm (AutoReqProv:no, Requires: libwebkitgtk-6.0.so.4()(64bit), libadwaita-1.so.0()(64bit), BuildArch x86_64/aarch64)`。
-* `scripts/package-macos.sh` / `package-windows.sh`：`dotnet publish -r osx-(x64|arm64)/win-x64` → `staging` 校验 → 单一安装产物：mac `dmg`（`hdiutil`，含 `.app`）/ win `exe` 安装器（`Inno Setup` **唯一链**——模板在 `packaging/windows/installer.iss.in`，缺 ISCC 或编译失败即 fail loud，无 NSIS/SFX 回退；`…-setup.exe`），文件名含 `…_macos-*/…_windows-*` 标识。默认不签名；`SELF_SIGN=1` 时转 [dev-sign.sh](../scripts/dev-sign.sh)（自签/ad-hoc 仅内部验证）。**不单独产出便携 zip**（对齐 pilot-harness 每平台单产物的思路）。
-* 安装器资源一律 **exe 目录相对**（`AppContext.BaseDirectory/resources/plugins`，Linux `usr/lib/<app>` / mac `Contents/MacOS` / win 安装根三平台同构）；`verify-package-layout.sh --platform <linux|macos|windows>`（平台必填）断言内容根无闭包残留 + 插件 tgz 名称/体积关 + 主程序在位且带可执行位（Windows 另断托管程序集/原生库/runtimes/wwwroot）；`CI`：三平台打包与发布走 [`.github/workflows/package.yml`](../.github/workflows/package.yml)（三条腿出包 + 上传 `7 天 Artifacts`）与 [`.github/workflows/release.yml`](../.github/workflows/release.yml)（`tag v*` 同一 run 内聚合三平台产物 → 合并 `SHA256SUMS` → 用 `scripts/release-notes.sh` 生成结构化正文，幂等创建单个 `Release`）。流水线形态与执行点见 [testing.md](testing.md)。
+* 安装器只带壳（publish 全量）+ 安装器自带 companion tgz（`build-companion-tgz.sh` 现打现校验）；`package-linux.sh`（deb/rpm，`Depends: libwebkitgtk-6.0-4, libadwaita-1-0`）、`package-macos.sh`（dmg）、`package-windows.sh`（Inno 唯一链，`packaging/windows/installer.iss.in`）。默认不签名，`SELF_SIGN=1` 转 `dev-sign.sh`（仅内部验证）。
+* `verify-package-layout.sh --platform <…>` 断言内容布局；CI 三平台出包与发布走 `package.yml`/`release.yml`（tag 聚合三平台产物创建单个 Release）。流水线形态见 [testing.md](testing.md)。
 
 ## 配置与扩展
 
-* `appsettings.json`：`DevTools:false`（`DSH_DEVTOOLS=1` 开启）；`Update` 节（自更新仓库/超时/目录）。
-* `ryn.json`：`identifier/capabilities`。
-* 扩展点：`DSH_DESKTOP_RUNTIME_DIR` / `DSH_DESKTOP_DSH_HOME` / `DSH_DESKTOP_UPDATE_FORCE`（dev 下显式开启自更新）覆盖。
-* **开发运行时隔离**：`DSH_DESKTOP_RUNTIME_DIR` 或 `DSH_DESKTOP_DEV=1` 显式标记即进入 dev 模式（判定不探测闭包存在性）——ApplicationId 自动加 `.dev` 后缀（与已装正式版可同时开窗，避开 GTK 同 id 单实例互斥），DSH_HOME 未显式覆盖时自动指向 `<仓库>/.cache/dev-home`；显式指回真实 home 时随包插件安装自动跳过防串扰。判定与隔离结论由 `Infrastructure/LaunchOptions.Resolve` 单点解析为类型化配置，组合根与更新协调器经构造注入消费。
+* `appsettings.json`：`DevTools:false`（`DSH_DEVTOOLS=1` 开启）；`Update` 节。`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
+* dev 隔离（`DSH_DESKTOP_DEV=1` / `DSH_DESKTOP_RUNTIME_DIR`：ApplicationId 加 `.dev` 后缀、DSH_HOME 自动指向 `<仓库>/.cache/dev-home`、显式指回真实 home 时随包插件安装跳过）由 `Infrastructure/LaunchOptions.Resolve` 单点解析——运行步骤见 [development.md](development.md)。

@@ -22,15 +22,11 @@ packaging/windows/installer.iss.in  Inno 安装器模板（package-windows.sh �
 ```
 
 * `appsettings.json`：`DevTools:false`；`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
-* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（dev 信号之一；全局 dsh 模型下不再解析运行时目录）、`DSH_DESKTOP_DEV=1`（显式 dev 声明——dev 判定只认这两个显式标记，不探测闭包存在性）、`DSH_DESKTOP_DSH_HOME`（桌面专属覆盖，默认共享 `~/.dsh`；dev 自动隔离到 `<仓库>/.cache/dev-home`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。CLI shim 注册的测试隔离覆盖：`DSH_DESKTOP_CLI_BIN_DIR`（覆盖 shim 落盘目录）、`DSH_DESKTOP_CLI_RC_HOME`（覆盖 shell rc 基目录）——**仅在设置这两个变量时** shim 注册不写用户真实路径；未设置时（正常运行）shim 写用户真实路径（`%LOCALAPPDATA%\deepseek-harness\bin` / `~/.local/bin` + HKCU Path / shell rc），此即产品行为。
+* 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（dev 信号之一；全局 dsh 模型下不解析运行时目录）、`DSH_DESKTOP_DEV=1`（显式 dev 声明——dev 判定只认这两个显式标记，不探测闭包存在性）、`DSH_DESKTOP_DSH_HOME`（桌面专属覆盖，默认共享 `~/.dsh`；dev 自动隔离到 `<仓库>/.cache/dev-home`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。CLI shim 注册的测试隔离覆盖：`DSH_DESKTOP_CLI_BIN_DIR`（覆盖 shim 落盘目录）、`DSH_DESKTOP_CLI_RC_HOME`（覆盖 shell rc 基目录）——**仅在设置这两个变量时** shim 注册不写用户真实路径；未设置时（正常运行）shim 写用户真实路径（`%LOCALAPPDATA%\deepseek-harness\bin` / `~/.local/bin` + HKCU Path / shell rc），此即产品行为。
 
-## 运行时来源（系统全局 node + 全局 dsh）
+## 运行时来源与插件装配
 
-安装器/仓库不再捆绑运行时闭包（ADR simple-shell-single-global-dsh）：桌面依赖用户 PATH 上全局 dsh
-（`@deepseek-ai/dsh@alpha`）+ 系统全局 node。PATH 上无全局 dsh 时，首启引导：确保系统全局 node（复用
-PATH 上用户 node/npm；无则下载最新官方 node 装到系统全局前缀——默认 `~/.local`、写系统位需 sudo 时给手动命令，
-不自备私有 node）→ 用其 `npm install -g @deepseek-ai/dsh@alpha`（装/更新到 alpha 通道，系统全局位）；
-dsh 装全局因权限需 sudo 时提示手动命令。
+运行时来源（系统全局 node + 全局 dsh、首启引导）与插件装配（spawn 前就位、CLI shim）的**单一事实源**在 [architecture.md](architecture.md)「运行时来源」「插件装配」两节；本文件只保留运行步骤与开发面配置。
 
 ## 运行与调试
 
@@ -44,24 +40,18 @@ DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ```
 
-* `HarnessRuntimeHost` 抓 `dsh web:` 日志；`RuntimeSupervisor` 崩溃自动重启（端口复用保 `origin`）。
-* PATH 上无全局 dsh 时，首启经 `RuntimeBootstrap` 引导（确保系统全局 node → `npm install -g @deepseek-ai/dsh@alpha`；需 sudo 时提示手动命令），在 spawn dsh 前一次就位。
-* 插件面均在 spawn dsh 前就位：companion（internal）静默自愈（`EnsureBundledPluginsBeforeSpawnAsync`，`BundledPluginCatalog` 清单单条 `plugin add`，版本感知升级），dshmarket（preset）经引导页「插件准备」步确认/跳过（`desktop.preinstall.choose` 决策）；`pnpm-workspace.yaml` 的 `allowBuilds` 6 项由壳自愈（companion 与市场用），不再「装后 `host.Stop()` 重启」。启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用。
+* `HarnessRuntimeHost` 抓 `dsh web:` 日志；`Core.RuntimeSupervisor`（经 `IRuntimeHost` 端口）崩溃自动重启（端口复用保 `origin`）。
+* 启动编排、回环代理与落定模型见 [architecture.md](architecture.md)「启动模型」；插件面均在 spawn dsh 前就位（见 [architecture.md](architecture.md)「插件装配」）。
 
 ## 测试与门禁
+
+文档门禁全集（verify-* 各脚本与三档执行点）的**单一事实源**是 [testing.md](testing.md)「门禁」表（规则面在根 `AGENTS.md` 质量门节），此处不重复清单。本地开发最短路径：
 
 ```sh
 export DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget
 dotnet build dotnet-deepseek-harness-desktop.slnx -c Release
 dotnet test dotnet-deepseek-harness-desktop.slnx -c Release
-
-python3 scripts/verify-adr-format.py
-python3 scripts/verify-cookbook.py
-python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json
-python3 scripts/verify-md-links.py
-python3 scripts/verify-handoff-structure.py
-python3 scripts/verify-governance.py
-bash scripts/verify-shell-standards.sh   # 脚本规范 S1-S6（需 shellcheck；规范见 docs/script-standards.md）
+python3 scripts/verify-adr-format.py          # 其余 verify-* 按 testing.md 门禁表按需跑
 scripts/change-scope.sh origin/main HEAD
 ```
 
@@ -74,6 +64,7 @@ bash scripts/package-linux.sh --self-test           # 三包脚本共用头部 +
 bash scripts/verify-package-layout.sh --self-test   # 包布局三平台分支（离线假内容根）
 bash scripts/smoke-install-linux.sh --self-test     # 冒烟判定面（共用夹具 + Linux 截图工具级联）
 # macos/windows 冒烟同法；CI docs job 每次 push 跑全集
+```
 
 ## 打包
 
@@ -83,7 +74,7 @@ bash scripts/package-linux.sh --stage-only artifacts/publish-linux-x64
 ARCH=arm64 bash scripts/package-linux.sh --stage-only artifacts/publish-linux-arm64
 bash scripts/package-macos.sh --stage-only artifacts/publish-osx-arm64
 bash scripts/package-windows.sh --stage-only artifacts/publish-win-x64
-# 全量（需 dpkg-deb/rpmbuild；mac 需 hdiutil，win 需 Inno Setup/NSIS —— CI 走此路）
+# 全量（需 dpkg-deb/rpmbuild；mac 需 hdiutil，win 需 Inno Setup（唯一链，缺 ISCC 即 fail loud）—— CI 走此路）
 dotnet publish src/DeepSeek.Harness.Desktop -c Release -r linux-x64 --self-contained true -o artifacts/publish-linux-x64
 VERSION=<csproj 版本> bash scripts/package-linux.sh artifacts/publish-linux-x64
 ARCH=arm64 VERSION=<csproj 版本> bash scripts/package-linux.sh artifacts/publish-linux-arm64

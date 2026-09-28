@@ -58,7 +58,7 @@ Review: FULL/2026-09-28#5/R1=ok R2=ok R3=ok
 
 五、**`probe-gui-freeze.sh` 退役**：210 行、零调用点（workflow/hook/其他脚本全无引用）、7 个 `FREEZE_*` 旋钮在 CI 与文档里都无设置点、唯一价值是一次已归档的真机排查。判别知识留 cookbook（条目改写为手工抽样动作），退役事实记在[取证探针 ADR](2026-08-28-gui-freeze-forensics-probe.md)。
 
-六、**A3 的裁定与本方案原判不同：保留 mac 的 `wait_verdict`**（连同 `SMOKE_VERDICT_SECONDS`、`echo_verdict_lines`），但迁进共享库并把「进程已死即跳过静默等待」写进调用点。方案原判是删（判为「用完即删」残留），删不得的理由：**截图是像素见证门的输入**，而应用侧 grace 重载会改写终页——撤掉这层时序对齐，绿跑的截图会更常拍到重载前旧页，**证据保真度下降**（本仓「证据诚实」是 [page-verdict-gate](../testing/2026-09-26-page-verdict-gate.md)、[verdict-honesty-repair](../bug-fix/2026-09-26-verdict-honesty-repair.md) 一路的硬约束）。A3 真正该修的是「无人跑 + 时序不可复现」：现由共用夹具把「增长后稳定才返」「grace 触发重置静默」两侧钉住。
+六、**A3 的裁定与本方案原判不同：保留 mac 的 `wait_verdict`**（连同 `SMOKE_VERDICT_SECONDS`、`echo_verdict_lines`），但迁进共享库并把「进程已死即跳过静默等待」写进调用点。方案原判是删（判为「用完即删」残留），删不得的理由：**截图是像素见证门的输入**，而应用侧 grace 重载会改写终页——撤掉这层时序对齐，绿跑的截图会更常拍到重载前旧页，**证据保真度下降**（本仓「证据诚实」是 [page-verdict-gate](../testing/2026-09-26-page-verdict-gate.md) 一路的硬约束（verdict-honesty-repair 已并入该篇））。A3 真正该修的是「无人跑 + 时序不可复现」：现由共用夹具把「增长后稳定才返」「grace 触发重置静默」两侧钉住。
 
 七、**A4/A5 收口（含一处对方案判断的更正）**：三处 `|| echo "plugins 缺失"` 删除，但**方案称其「不可达」不成立**——`set -o pipefail` 下 `ls … 2>&1 | head -3` 的管道状态取 `ls` 的非零值，`||` 会触发（实测打印 `plugins 缺失`）：它与已被 `2>&1` 送进管道的 `ls` 错误行重复，属**冗余诊断而非死代码**。`wait_url` 提升进库后，容器腿的外层循环与宿主腿同实现（A5 记的「容器内手抄等待循环」至此真正去重）。
 
@@ -106,7 +106,7 @@ Review: FULL/2026-09-28#5/R1=ok R2=ok R3=ok
 - [ci-package-workflow-unification](2026-09-28-ci-package-workflow-unification.md)：B-2 三流合一，其 §6.4 残余（actionlint/shellcheck）在本批收口。
 - [artifact-verification-chain](2026-08-24-artifact-verification-chain.md)：`verify-package-layout.sh` 与三平台冒烟的立项 ADR；本批改其调用形态（`--platform` 必填）与实现分层。
 - [shell-settle-behavior-gate](../bug-fix/2026-09-27-shell-settle-behavior-gate.md)：落定门语义的来源；本批只搬实现（等待/判定入共享库），语义一字不动。
-- [macos-cookie-grace-reload-and-witness-gate](../bug-fix/2026-09-27-macos-cookie-grace-reload-and-witness-gate.md)：`wait_verdict` 与像素见证的由来，即 Decision 六的取舍对象。
+- [macos-cookie-grace-reload-and-witness-gate](../../archived/bug-fix/2026-09-27-macos-cookie-grace-reload-and-witness-gate.md)：`wait_verdict` 与像素见证的由来，即 Decision 六的取舍对象。
 - [gui-freeze-forensics-probe](2026-08-28-gui-freeze-forensics-probe.md)：被退役探针的立项 ADR（Consequences 已记退役指针）。
 - [smoke-trap-exit-status-flip](../bug-fix/2026-09-28-smoke-trap-exit-status-flip.md)：本批引入的缺陷与其修复（linux 冒烟双腿静默翻红 + 临时路径漏回收）；其三平台自测的计数已按修后现实回写本段。
 - `.plan/整改方案-三平台震荡后结构清理-2026-09-27.md` §5（本地工作文档，未入库）：本批的编排来源。

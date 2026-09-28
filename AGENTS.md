@@ -6,8 +6,7 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 ## 协作模式（AI + 人）
 
 - 本仓库由 coding agent（DeepSeek Harness）+ 人协作开发；agent 先读本文件与本仓库技能再动手。
-- 每次动手前说清变更范围；**非平凡变更必须同变更携带 Agent Note（ADR）**（见 `.agents/notes/README.md`）。
-- 讨论与取舍落成 ADR，不散在会话里；ADR 强制 `## Alternatives considered`（不记录比赢过什么的决定，必然招致重新辩论）。
+- 每次动手前说清变更范围；**非平凡变更必须同变更携带 Agent Note（ADR）**。ADR 的路径/生命周期/格式/维护细则（含强制 `## Alternatives considered`、`rejected`/`archived` 纪律、Erratum 通道）的**单一事实源**是 [.agents/notes/README.md](.agents/notes/README.md)。
 
 ## 流程卡（索引）
 
@@ -19,9 +18,8 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 
 ## 文档纪律
 
-- **每个事实只有一个家**：rationale → Agent Notes；procedure → cookbook；contract → README；规则 → 本文件 + 链接。
+- **每个事实只有一个家**：rationale → Agent Notes；procedure → cookbook；contract → README；规则 → 本文件 + 链接。当前已知单一家分配：架构/启动模型、运行时来源、插件装配 → [docs/architecture.md](docs/architecture.md)；运行/门禁操作步骤 → [docs/development.md](docs/development.md) + [docs/testing.md](docs/testing.md)；测试基线数字 → `scripts/test-baseline.json`（ADR 只引用不复制）。
 - durable 文档**写当前状态，不写变更历史**（"previously / now / no longer / renamed" 是 slop）。
-- ADR 路径即元数据：`{lifecycle}/{class}/yyyy-mm-dd-<topic>.md`；`rejected` 仅当理由能防重蹈覆辙才保留；`archived` 永久冻结。
 - 相对 Markdown 链接 + 机器可校验；禁裸文件名引用。
 
 ## 编码约定
@@ -70,7 +68,7 @@ web 检索一律 anysearch 插件（唯一搜索后端，已 Provider 级接管�
 python3 scripts/verify-adr-format.py     # ADR 头/骨架/状态-目录一致性
 python3 scripts/verify-cookbook.py       # 踩坑记录格式/阶段标签封闭集（缺省校验主档 + 冷归档层）
 python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json # 字数预算
-python3 scripts/verify-md-links.py       # 相对链接/锚点（skills/、archived/、.plan/ 排除）
+python3 scripts/verify-md-links.py       # 相对链接/锚点（skills/ 与 .plan/ 排除；archived/ 已纳入校验——排除面唯一家是脚本 docstring）
 bash scripts/install-linters.sh          # 装 shellcheck + actionlint（钉版 + sha256 校验；下两条的前置）
 actionlint -shellcheck="shellcheck -S warning" # 工作流静态检查（对 run: 块跑 shellcheck）
 bash scripts/verify-shell-standards.sh   # 脚本规范 S1-S6（含 shellcheck -S warning；规范见 docs/script-standards.md）
@@ -93,16 +91,21 @@ scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 |---|---|
 | 本文件（AGENTS.md） | ≤ 800 词 |
 | .agents/AGENTS.md | ≤ 300 词 |
-| .agents/notes/README.md | ≤ 800 词 |
+| .agents/notes/README.md | ≤ 400 词 |
 | docs/cookbook.md | ≤ 2700 词 |
 | docs/cookbook-archive.md（冻结冷归档层） | ≤ 300 词 |
-| docs/coding-standards.md | ≤ 1000 词 |
+| docs/coding-standards.md | ≤ 700 词 |
 | docs/architecture-standards.md | ≤ 600 词 |
 | docs/script-standards.md | ≤ 500 词 |
+| docs/architecture.md | ≤ 950 词 |
+| docs/testing.md | ≤ 850 词 |
+| docs/development.md | ≤ 550 词 |
+
+上限清单与判据的唯一实现在 `scripts/doc-budgets.manifest.json`（本表为其视图；改额走 manifest 并附 `_justify_bump`）。
 
 超限：迁移到其他层（留一行链接）→ 精简 → 才允许提额度（PR 说明理由）。
 
 ## 参考
 
-- 体系方法论文档在 `.plan/`（本地工作文档，未纳入 git 提交）：`适配方案.md`、`适配经验总结.md`、`dsh.txt`；交接主文档在仓库根 `HANDOFF.md`（同为本地工作文档，不提交）。
-- 本项目 `.agents/skills/` 为自研技能（方法论吸取上游 deepseek-harness）；原版 11 技能备份于 `.plan/种子/skills/`（git 之外）。技能规范见 `.agents/AGENTS.md`。
+- 体系方法论文档与交接文档家庭（入口/待办/冷归档卷/journal 卷）均为**本地工作文档，未纳入 git 提交**（由 verify-handoff-structure 在存在时校验）；克隆后无这些文件属预期，会话开收尾按语义步骤执行，不依赖路径可达。
+- 本项目 `.agents/skills/` 为自研技能（方法论吸取上游 deepseek-harness）；原版 11 技能备份于 git 之外的本地备份目录。技能规范见 `.agents/AGENTS.md`。

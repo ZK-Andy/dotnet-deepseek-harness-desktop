@@ -1,10 +1,11 @@
 # Agent Note: webauth-token-reentry（鉴权页自愈重进）
 
 Status: implemented
+Archived: 2026-09-28
 
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 
-Related: 兑现 [`smoke-settle-content-verdict`](../testing/2026-09-26-smoke-settle-content-verdict.md) 的"内容断言留产品侧跟进"。
+Related: 兑现 [`smoke-settle-content-verdict`](../../implemented/testing/2026-09-26-page-verdict-gate.md) 的"内容断言留产品侧跟进"。
 
 ## Problem
 

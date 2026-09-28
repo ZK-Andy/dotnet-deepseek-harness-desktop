@@ -36,6 +36,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-skill-format.py` | 技能格式（frontmatter/目录束/内链/结构，`.agents/skills/*/SKILL.md`） | `python3 scripts/verify-skill-format.py` |
 | `verify-shell-standards.sh` | 脚本规范 S1-S6（errexit / 尺寸 ≤250 行 / 库不可执行且不自设选项 / 旋钮声明 / 共享库单源 / `shellcheck -S warning`），规范见 [script-standards](script-standards.md) | `bash scripts/verify-shell-standards.sh`（`--self-test` 夹具） |
 | `install-linters.sh` + `actionlint` | 脚本层静态检查工具（shellcheck + actionlint，版本与 sha256 双钉）与工作流静态检查（对 `run:` 块跑 `shellcheck -S warning`） | `bash scripts/install-linters.sh` → `actionlint -shellcheck="shellcheck -S warning"` |
+| `verify-compose-root.py` | 组合根语义闸（根只装配：方法清单封闭 / new 自有类型 ≤16 / 单 dot 分部 / 禁同步编排；`--enforce` 才 fail） | `python3 scripts/verify-compose-root.py` |
 | `verify-review-brief.py` | 评审简报形状 + 评审对象冻结 + 轮次纪律（轮次上限、标题↔文件名互校、处置段与条目、验轮 `base` 须为上一轮冻结 tree 且增量非空）（`--enforce`；简报是 gitignore 本地文档） | `python3 scripts/verify-review-brief.py --enforce` |
 | `change-scope.sh` | `push` 前最小证据（`merge-base` diff） | `scripts/change-scope.sh` |
 
@@ -68,7 +69,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 * **本机冒烟**：`dotnet run --project src/DeepSeek.Harness.Desktop` 起 `Ryn` 窗口加载 `dsh web:`（需 `DEEPSEEK_API_KEY` 与 `WebKitGTK`）。`DSH_DEVTOOLS=1` 开 `WebView` 调试。
 * **打包自检**：`verify-package-layout.sh --platform <linux|macos|windows>`（平台必填，判据不再按内容根隐式推断）断言内容根无闭包残留、插件 tgz 过名称/体积关、主程序在位且带可执行位（Windows 追加托管程序集/原生库/runtimes/wwwroot）（`build-companion-tgz.sh` 打包时现打现校验，新鲜度由「现打直进 staging」结构性保证）；`release-preflight.sh` 发布前复核资产矩阵/体积下限（15MB）/SHA256SUMS；`smoke-install-{linux,windows,macos}.sh` 三平台「静默安装/拷装 → 启动 → 双信号」（Linux 全链/安装链、win/mac runner 有桌面会话应达全链）。
 * **打包与发布流水线**：三平台打包的唯一家是 [`.github/workflows/package.yml`](../.github/workflows/package.yml)（`workflow_call` + `workflow_dispatch`，三平台 job 共用 [`.github/actions/package-setup`](../.github/actions/package-setup/action.yml) 前置；版本解析与 tag/输入一致性判据的唯一实现在 [`scripts/package-version.sh`](../scripts/package-version.sh)）。tag 发布走 [`release.yml`](../.github/workflows/release.yml)：先把三个包腿作为 reusable workflow 调用，再以 `needs:` 在**同一 run** 内 `download-artifact` 聚合 → preflight → 创建单个 Release（包腿失败即发布作业不启动）。
-* **插件面**：首启引导（`RuntimeBootstrap`）全局 dsh 就位后、spawn dsh **前**装插件——companion（internal）静默自愈（`EnsureBundledPluginsBeforeSpawnAsync`，`BundledPluginCatalog` 清单 + 版本感知升级，自安装器 `resources/plugins`）、dshmarket（preset）经引导页「插件准备」步确认/跳过（`desktop.preinstall.choose` 决策 + `dsh-desktop-preinstall` 日志回流，5 分钟超时默认跳过），全部 `plugin add` 就位后 `StartAsync`（不再「装后 `host.Stop()` 重启」）；启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用（见 [architecture.md](architecture.md)）。
+* **插件面**：装配机制与 spawn 前就位的单一事实源在 [architecture.md](architecture.md)「插件装配」；测试关注点：`MarketInstallHelperTests`/`BundledPluginCatalogTests`/`DesktopProfileBootstrapTests`（见「单测」覆盖面）。
 
 ## 行为级回归要求
 

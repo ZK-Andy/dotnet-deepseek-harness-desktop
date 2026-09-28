@@ -1,12 +1,53 @@
 {
   "budgets": [
-    { "path": "AGENTS.md", "max_words": 800 },
-    { "path": ".agents/AGENTS.md", "max_words": 300 },
-    { "path": ".agents/notes/README.md", "max_words": 800 },
-    { "path": "docs/cookbook.md", "max_words": 2700, "_justify_bump": "2026-08-31 提额 2565->2700：pnpm-store-alignment-with-terminal 行为级变更新增一条上游/踩坑诊断（终端 dsh plugin 与桌面 pnpm store 不一致的判别 + 解法），baseline 已贴预算，仅提额容纳该净增量" },
-    { "path": "docs/cookbook-archive.md", "max_words": 300, "_justify_bump": "2026-09-27 新增冻结冷归档层：承载机制已从仓库移除的 cookbook 条目（迁出时为 272 词）；该层只减不增，上限仅作回归围栏" },
-    { "path": "docs/coding-standards.md", "max_words": 1000 },
-    { "path": "docs/architecture-standards.md", "max_words": 600 },
-    { "path": "docs/script-standards.md", "max_words": 500 }
+    {
+      "path": "AGENTS.md",
+      "max_words": 800
+    },
+    {
+      "path": ".agents/AGENTS.md",
+      "max_words": 300
+    },
+    {
+      "path": ".agents/notes/README.md",
+      "max_words": 400
+    },
+    {
+      "path": "docs/cookbook.md",
+      "max_words": 2700,
+      "_justify_bump": "2026-08-31 提额 2565->2700：pnpm-store-alignment-with-terminal 行为级变更新增一条上游/踩坑诊断（终端 dsh plugin 与桌面 pnpm store 不一致的判别 + 解法），baseline 已贴预算，仅提额容纳该净增量"
+    },
+    {
+      "path": "docs/cookbook-archive.md",
+      "max_words": 300,
+      "_justify_bump": "2026-09-27 新增冻结冷归档层：承载机制已从仓库移除的 cookbook 条目（迁出时为 272 词）；该层只减不增，上限仅作回归围栏"
+    },
+    {
+      "path": "docs/coding-standards.md",
+      "max_words": 700
+    },
+    {
+      "path": "docs/architecture-standards.md",
+      "max_words": 600
+    },
+    {
+      "path": "docs/script-standards.md",
+      "max_words": 500
+    },
+    {
+      "path": "docs/architecture.md",
+      "max_words": 950,
+      "_justify_bump": "2026-09-28 E 批登记：架构/启动模型/插件装配的单一事实源（重写后 809 词），上限给决策杠杆留余量"
+    },
+    {
+      "path": "docs/testing.md",
+      "max_words": 850,
+      "_justify_bump": "2026-09-28 E 批登记：测试与门禁表单一事实源（716 词）"
+    },
+    {
+      "path": "docs/development.md",
+      "max_words": 550,
+      "_justify_bump": "2026-09-28 E 批登记：运行/打包步骤（423 词）"
+    }
   ]
 }

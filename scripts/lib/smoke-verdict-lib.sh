@@ -115,7 +115,7 @@ smoke_dump_logs() {
 }
 
 # ── 证据打印（唯一家）─────────────────────────────────────────────────────
-# 绿跑也留尾（ADR verdict-honesty-repair）：绿跑的导航/探针/自愈行此前随日志删除，
+# 绿跑也留尾（ADR page-verdict-gate，自 verdict-honesty-repair 并入）：绿跑的导航/探针/自愈行此前随日志删除，
 # "绿即无证"致 401 绿 verdict 无从复核；失败分支只打 tail 会被代理行为日志淹没关键行。
 # $1=stdout $2=host.log $3=full|tail——full 打整段 stdout（应用秒退时 stderr 是唯一定位
 # 线索，arm64 首跑实证，linux 腿用）；tail 打 5/30 行尾巴（mac/win 腿用）。

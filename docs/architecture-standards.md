@@ -6,7 +6,7 @@
 
 - 官方权威：Microsoft [.NET Application Architecture guides](https://dotnet.microsoft.com/en-us/learn/dotnet/architecture-guides) 与《[Architect modern web applications with ASP.NET Core and Azure](https://learn.microsoft.com/en-us/dotnet/architecture/modern-web-apps-azure/common-web-application-architectures/)》第 2 章：单项目 + 文件夹分层随规模增长退化为意大利面（官方点名）；Clean Architecture 是**非平凡单体的标准解组织**。
 - 官方参考实现：[dotnet/eShopOnWeb](https://github.com/dotnet/eShopOnWeb)（单体主链 ＝ `src/{ApplicationCore, Infrastructure, Web}`，另有 BlazorAdmin/PublicApi 等独立宿主），测试项目按层镜像。程序集/命名空间命名按 [Framework Design Guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/names-of-assemblies-and-dlls)。
-- **物理分层是硬要求**：只有多项目才能让依赖方向被编译器强制（命名空间扫描与白名单类补丁的退役路径见「强制与迁移」）。
+- **物理分层是硬要求**：只有多项目才能让依赖方向被编译器强制（命名空间扫描与白名单类补丁的替代强制面见「强制与迁移」）。
 
 ## 目标解组织（官方三项目单体形态）
 
@@ -45,7 +45,7 @@
 
 ## 强制与迁移
 
-- 机器强制优先级：项目引用（编译期）> `ArchitectureTests` 项目引用断言（引用图形状 csproj + 程序集两级互证）> D005 契约扫描（B4 起豁免按工程推导：Infrastructure 整工程豁免、Core 仅两个只读边界文件、主工程零豁免——文件名白名单已退役）。
+- 机器强制优先级：项目引用（编译期）> `ArchitectureTests` 项目引用断言（引用图形状 csproj + 程序集两级互证）> D005 契约扫描（B4 起豁免按工程推导：Infrastructure 整工程豁免、Core 仅两个只读边界文件、主工程零豁免；豁免不设文件名白名单）。
 - 三项目解组织已完成（B1–B4 台账见 ADR [2026-09-14-official-clean-architecture-adoption](../.agents/notes/implemented/architecture/2026-09-14-official-clean-architecture-adoption.md)）；命名空间随程序集（FDG）且域目录即命名空间 1:1：Core/Infrastructure 类型居 `…Core[*]`/`…Infrastructure[*]`，主工程 Presentation 类型居 `…Desktop[*]`；测试工程按层镜像（Core 单测 / Infrastructure 边界集成测 / Ryn 宿主壳归 Presentation），并按域镜像同名目录（ADR [services-umbrella-retirement](../.agents/notes/implemented/architecture/2026-09-15-services-umbrella-retirement.md)）。
 
 ## 相关

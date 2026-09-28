@@ -108,7 +108,7 @@ wait_settled() {
   local pid="${1:-}" i state=""
   for i in $(seq 1 "$SETTLE_WAIT"); do
     state="$(page_verdict_state)"
-    # 裁决 auth 即终页确认是鉴权页，任何腿都判 FAIL（ADR verdict-honesty-repair 的机器可判门）。
+    # 裁决 auth 即终页确认是鉴权页，任何腿都判 FAIL（ADR page-verdict-gate 的机器可判门，verdict-honesty-repair 已并入）。
     if [[ "$state" == "auth" ]]; then
       error "终页裁决=auth（鉴权页），按失败计"
       return 1

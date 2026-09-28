@@ -9,9 +9,21 @@ Checks, for every .md file under the given root (default: current directory):
   - `](https://…)` / `](mailto:…)` / `](<…>)` -> skipped (external)
   - bare filenames or absolute paths are NOT validated here
 
-By default, `skills/` directories are excluded: vendored skill sources keep
-their upstream path references, which only resolve after path mapping (see
-docs/ADAPTATION.md section 3). Pass --include-skills to check them anyway.
+The exclusion set has three classes (this docstring is their single source of
+truth; the code constant EXCLUDED_DIR_PARTS below is its executable form):
+  - `skills/` directories: vendored skill sources keep their upstream path
+    references, which only resolve after path mapping. Pass --include-skills
+    to check them anyway.
+  - `.plan/` (incl. journal): gitignored local-only narrative; its relative
+    resolution base differs from committed docs, so per discipline its links
+    are not validated.
+  - third-party / generated trees (`.dotnet-cache`, `.cache`, `.noogenesis`,
+    `resources`, `bin`, `obj`, `node_modules`): vendored copies and build
+    outputs carry foreign repo-relative links that never resolve here.
+Archived notes (`.agents/notes/archived/`) are NOT excluded: content is frozen,
+but their relative links are machine-checked — since the E-batch doc/ADR
+cleanup repaired the historical dead links, frozen content with silently dead
+pointers is a gap this gate now covers (ADR post-packaging-churn-restructure).
 
 Usage: python3 verify-md-links.py [root_dir] [--include-skills]
 Exit code 0 = pass, 1 = violations.
@@ -23,6 +35,7 @@ import sys
 from pathlib import Path
 
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+EXCLUDED_DIR_PARTS = (".dotnet-cache", ".cache", ".noogenesis", "resources", "bin", "obj", "node_modules")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
 ANCHOR_RE = re.compile(r'<a\s+id="([^"]+)"')
 
@@ -62,18 +75,14 @@ def main() -> int:
     for md in sorted(root.rglob("*.md")):
         if not args.include_skills and "skills" in md.parts:
             continue
-        # 第三方/生成物目录：NuGet 包缓存、本地工作缓存（竞品 README 等外部文档带仓库相对链接）、
-        # 捆绑运行时（README 带仓库相对链接）、构建产物
-        if any(seg in md.parts for seg in (".dotnet-cache", ".cache", "resources", "bin", "obj", "node_modules")):
+        if any(seg in md.parts for seg in EXCLUDED_DIR_PARTS):
             continue
-        # 本地工作文档：.plan/（含 journal）为 gitignore 纯本地叙事，条目自 HANDOFF 归档后
-        # 相对路径解析面改变（仓库根→.plan/journal/），其外链按纪律不校验（见 AGENTS 质量门注释）
+        # .plan/ 排除的 rationale 唯一家在本 docstring
         if ".plan" in md.parts:
             continue
-        # 归档笔记：冻结历史，其外链按纪律不校验（见 .agents/notes/README.md archived 规则）；
-        # 限定 .agents/notes/ 下的 archived，避免未来误伤无关目录
-        if ".agents" in md.parts and "notes" in md.parts and "archived" in md.parts:
-            continue
+        # 归档笔记不排除（排除面的唯一家是本 docstring）：内容冻结，但相对链接自 E 批
+        # 文档/ADR 清理起由本门禁校验（历史死链已修）；冻结指正文与决定不再改写，
+        # 指针移动类纯链接修复除外（见 .agents/notes/README.md 归档纪律）。
         text = md.read_text(encoding="utf-8")
         for target in LINK_RE.findall(text):
             target = target.strip()

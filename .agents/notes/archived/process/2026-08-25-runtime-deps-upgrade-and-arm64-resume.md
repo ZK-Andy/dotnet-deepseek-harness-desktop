@@ -9,7 +9,7 @@ Archived: 2026-08-27
 
 ## Decision
 
-1. **Ryn 三包 bump 至 0.30.4**：`Ryn` / `Ryn.Plugins.Tray` / `Ryn.Ipc.Generator` 统一对齐同 tag 版本；`IRynWindow.IsMaximized` 成为托盘唤回最大化的数据源（见 [tray-recall-maximize-and-check-feedback](../bug-fix/2026-08-24-tray-recall-maximize-and-check-feedback.md)）。
+1. **Ryn 三包 bump 至 0.30.4**：`Ryn` / `Ryn.Plugins.Tray` / `Ryn.Ipc.Generator` 统一对齐同 tag 版本；`IRynWindow.IsMaximized` 成为托盘唤回最大化的数据源（见 [tray-recall-maximize-and-check-feedback](../../implemented/bug-fix/2026-08-24-tray-recall-maximize-and-check-feedback.md)）。
 2. **linux-arm64 打包复发**：`package-linux.yml` matrix 补回 `linux-arm64`（`ubuntu-24.04-arm`）；`release-preflight.sh` 资产矩阵补回 `*_linux-arm64.deb` 与 `*_linux-aarch64.rpm` 两行；原「x64 job 探测位」步骤完成使命删除；README 双语与 user-guide 双语平台表、architecture 打包节同步。
 3. **闭包升级**：Node `22.23.1 → 24.19.0 LTS`（Krypton）；`dshmarket 1.15.0 → 1.29.2`（pnpm 安装、官方 tgz 直拉、本地回退 find 路径三处同步）。本地 `bundle-runtime-ci.sh linux-x64` 全链路重建 + `dsh web:` 自检通过为合入门槛。
 
@@ -28,7 +28,7 @@ Archived: 2026-08-27
 
 ## Related
 
-- [产物验证链](2026-08-24-artifact-verification-chain.md)：arm64 停发/恢复的原始记录位。
-- [tray-recall-maximize-and-check-feedback](../bug-fix/2026-08-24-tray-recall-maximize-and-check-feedback.md)：Ryn bump 的主要消费方。
-- [随包插件版本感知目录](../feature/2026-08-25-bundled-plugin-version-aware-catalog.md)：钉版落后问题的机制面分析。
+- [产物验证链](../../implemented/process/2026-08-24-artifact-verification-chain.md)：arm64 停发/恢复的原始记录位。
+- [tray-recall-maximize-and-check-feedback](../../implemented/bug-fix/2026-08-24-tray-recall-maximize-and-check-feedback.md)：Ryn bump 的主要消费方。
+- [随包插件版本感知目录](../../implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog.md)：钉版落后问题的机制面分析。
 - [pnpm 11.7.0 钉版](2026-08-21-pin-pnpm-1170-for-bundled-closure.md)：维持不动的理由。

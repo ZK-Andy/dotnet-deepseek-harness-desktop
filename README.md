@@ -75,21 +75,7 @@
 
 ## 工作原理
 
-```text
-┌──────────────────────────────────────────────────────┐
-│ Ryn 壳（C#，系统 WebView）                            │
-│   拉起 dsh → 解析 dsh web: URL → 加载 Web UI           │
-│   崩溃监督 → 稳定端口重启 → 回到之前对话                 │
-└─────────────────────────┬────────────────────────────┘
-                          │ spawn + 共享 ~/.dsh · desktop profile
-┌─────────────────────────▼────────────────────────────┐
-│ 运行时（全局 dsh，简单壳）                               │
-│   PATH 上的 @deepseek-ai/dsh@alpha（无则装/落后则更新） │
-│   dsh web（localhost）                                │
-└──────────────────────────────────────────────────────┘
-```
-
-（详细架构见 [docs/architecture.md](docs/architecture.md)。）
+Ryn 壳（C# + 系统 WebView）经回环代理承载 PATH 上全局 dsh 的 Web UI：崩溃监督同端口重启、首启自动引导全局 node/dsh、插件 spawn 前就位。启动模型与分层见 [docs/architecture.md](docs/architecture.md)（单一事实源）。
 
 [![全量架构图](assets/architecture.svg)](docs/architecture.html)
 
@@ -99,7 +85,7 @@
 
 ```sh
 # 前置：.NET 10 SDK；Linux 需 WebKitGTK
-# 运行（开发环境必须带 DSH_DESKTOP_DEV=1——dev 隔离 home 与单实例后缀；无 PATH dsh 时走首启引导，需网络）
+# 运行（开发环境必须带 DSH_DESKTOP_DEV=1——dev 隔离见 docs/development.md；无 PATH dsh 时走首启引导，需网络）
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 # 测试
@@ -119,7 +105,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ├── src/DeepSeek.Harness.Desktop.Infrastructure/  # 适配器（Ryn/native、dsh 进程、文件/网络、更新）
 ├── tests/DeepSeek.Harness.Desktop.Tests/          # xunit：壳/组合根
 ├── tests/DeepSeek.Harness.Desktop.Core.Tests/     # xunit：Core
-├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit：Infrastructure（三工程计数见 scripts/test-baseline.json）
+├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit：Infrastructure
 ├── scripts/                                    # 门禁 + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```

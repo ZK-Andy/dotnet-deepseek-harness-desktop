@@ -10,7 +10,7 @@ Related: 兑现 [`smoke-linux-xvfb-fullchain`](../testing/2026-09-26-smoke-linux
 
 ## Problem
 
-`workflow_dispatch` 跑 package-linux（run `36227897598`，本批 ADR 合入后）：Xvfb 生效（窗口创建、两腿均命中① `dsh web =`），但两腿 FAIL——WebKitGTK 的 bwrap 渲染沙箱在 hosted runner 的无特权 userns 下起不来即整进程 core（amd64：`bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`；arm64：`bwrap: setting up uid map: Permission denied`；随后 `timeout: the monitored command dumped core`），导航 0 到达，落定 FAIL（fail loud 符合设计，不是误报）。同跑实证通过三项：P1 npm-bin 暴露（`npm 全局 bin 已暴露` + `VerifyDsh` 过 `dsh 0.1.7-alpha.2`）、P2 无人值守跳过行、截图 artifact 开火。
+`workflow_dispatch` 跑 package-linux（本批 ADR 合入后）：Xvfb 生效（窗口创建、两腿均命中① `dsh web =`），但两腿 FAIL——WebKitGTK 的 bwrap 渲染沙箱在 hosted runner 的无特权 userns 下起不来即整进程 core（amd64：`bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`；arm64：`bwrap: setting up uid map: Permission denied`；随后 `timeout: the monitored command dumped core`），导航 0 到达，落定 FAIL（fail loud 符合设计，不是误报）。同跑实证通过三项：P1 npm-bin 暴露（`npm 全局 bin 已暴露` + `VerifyDsh` 过 `dsh 0.1.7-alpha.2`）、P2 无人值守跳过行、截图 artifact 开火。
 
 真机分层（证据分级）：Fedora/Debian/Arch 系不会——userns 默认开，且本机多次实机验收导航正常即反证；Ubuntu 24.04+ 真机有可能——AppArmor 默认限制非特权 userns，Electron 系在该平台已有 `--no-sandbox` 先例，WebKitGTK 是否在例外名单无证据；容器/加固内核会。CI 与部分真机同病，须产品侧条件降级 + CI 逃生舱双轨。
 
@@ -35,6 +35,8 @@ Related: 兑现 [`smoke-linux-xvfb-fullchain`](../testing/2026-09-26-smoke-linux
 - Ubuntu 24.04 真机证据仍缺（跟进：待社区/实机取 `apparmor_restrict_unprivileged_userns` 值与禁用后导航证据）。
 
 ## Testing
+
+- 历程 dispatch 痕迹：run `36227897598` 为 Problem 现象的实证 run。
 
 - `WebkitSandboxPolicyTests` 矩阵：非 Linux 全 Keep；userns `0/1`/缺失/脏串；apparmor `1/0`/缺失；双阳性。
 - 接线薄层沿既有先例不单测；真验证 = 重 dispatch package-linux（预期 full-chain 或仅真实问题 fail loud）。

@@ -74,21 +74,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 ## How it works
 
-```text
-┌──────────────────────────────────────────────────────┐
-│ Ryn shell (C#, OS webview)                           │
-│   spawn dsh → parse dsh web: URL → load the Web UI    │
-│   crash supervision → stable-port restart → back      │
-└─────────────────────────┬────────────────────────────┘
-                          │ spawn + shared ~/.dsh · desktop profile
-┌─────────────────────────▼────────────────────────────┐
-│ Runtime (global dsh, simple shell)                    │
-│   PATH @deepseek-ai/dsh@alpha (install/update as needed)│
-│   dsh web (localhost)                                │
-└──────────────────────────────────────────────────────┘
-```
-
-(Full architecture: [docs/architecture.md](docs/architecture.md).)
+The Ryn shell (C# + OS webview) serves the Web UI of the global `dsh` on `PATH` through a loopback proxy: crash supervision restarts on the same port, first launch bootstraps global node/dsh automatically, and plugins are in place before spawn. Startup model and layering: [docs/architecture.md](docs/architecture.md) (single source of truth).
 
 [![Full architecture diagram](assets/architecture.svg)](docs/architecture.html)
 
@@ -119,7 +105,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ├── src/DeepSeek.Harness.Desktop.Infrastructure/  # adapters (Ryn/native, dsh process, file/network, updates)
 ├── tests/DeepSeek.Harness.Desktop.Tests/          # xunit: shell / composition root
 ├── tests/DeepSeek.Harness.Desktop.Core.Tests/     # xunit: Core
-├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit: Infrastructure (three-project counts in scripts/test-baseline.json)
+├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit: Infrastructure
 ├── scripts/                                    # gates + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```

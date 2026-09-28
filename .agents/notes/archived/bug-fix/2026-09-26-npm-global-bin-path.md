@@ -1,6 +1,7 @@
 # Agent Note: npm-global-bin-path（装机 npm 前缀补 PATH）
 
 Status: implemented
+Archived: 2026-09-28
 
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 

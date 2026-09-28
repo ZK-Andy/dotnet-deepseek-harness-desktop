@@ -93,9 +93,9 @@ export pnpm_config_cache_dir="$HOME/.dsh/.pnpm-cache"
 
 ## Related
 
-- [simple-shell-single-global-dsh](../architecture/2026-08-31-simple-shell-single-global-dsh.md)（implemented）：
+- [simple-shell-single-global-dsh](../../implemented/architecture/2026-08-31-simple-shell-single-global-dsh.md)（implemented）：
   本 ADR 落实其"dsh 已全局在 PATH，仅 pnpm shim + PATH 注册"里未覆盖的 pnpm store 一致性面。
-- [reference-alignment](../architecture/2026-08-29-reference-alignment.md)（implemented）：CLI shim / shell rc
+- [reference-alignment](../../implemented/architecture/2026-08-29-reference-alignment.md)（implemented）：CLI shim / shell rc
   幂等块机制的出处。
 - [cookbook（docs/cookbook.md）](../../../../docs/cookbook.md) [上游] dsh `plugin` 经 `spawnSync("pnpm")` 从 PATH 调 pnpm，无捆绑——本 ADR 的
   实证依据之一，恢复终端与桌面一致正是对这一上游行为的桌面对齐。

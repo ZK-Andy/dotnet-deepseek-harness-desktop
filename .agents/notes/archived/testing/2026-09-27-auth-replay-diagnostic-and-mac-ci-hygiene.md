@@ -1,6 +1,7 @@
 # Agent Note: 认证链 HTTP 复演诊断与 mac CI 止血
 
 Status: implemented
+Archived: 2026-09-28
 
 Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
 

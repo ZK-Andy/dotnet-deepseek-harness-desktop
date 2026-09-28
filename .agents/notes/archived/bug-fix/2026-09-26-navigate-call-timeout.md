@@ -1,6 +1,7 @@
 # Agent Note: navigate-call-timeout（导航调用超时）
 
 Status: implemented
+Archived: 2026-09-28
 
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 

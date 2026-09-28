@@ -6,9 +6,11 @@ Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
 
 三审结论：R1 组合根未碰；R2 依赖方向不变（同程序集内引用，Plugins 对 Runtime 的既有边不变）；R3 新增 cmd.exe 外部交互收敛在纯 helper 内，环境净化/重定向语义沿用既有 psi 构造；D001/D002 命名合规，catch 均具名收口；0 Blocker。
 
+> 吸收合并（2026-09-28，E 批 ADR 裁定）：`windows-bootstrap-dsh-path-and-stall-watchdog` 并入本篇。仍成立的部分：VerifyDsh 双通道回退（PATH `dsh --version` 失败 → npm 全局 bin 垫片绝对路径直验，文件存在性先行，垫片可跑才 `PrependPathToProcessEnv`，两通道各报一行进度）与 npm 安装进度进 host.log（`--progress=true` 经 `PumpAsync` 以 `[bootstrap] npm>` 前缀留痕；CI 非 TTY 下 gauge 不可靠是本篇补的实证）。已被本篇取代的部分：其「三体积零增长看门狗」改判内容标记（见 Decision）。其脚本面 Erratum（`smoke-settle-lib.sh` 拆并至 `scripts/lib/smoke-wait-lib.sh`/`smoke-verdict-lib.sh`，见 [script-layer-consolidation](../process/2026-09-28-script-layer-consolidation.md)）随之由本篇承接。
+
 ## Problem
 
-run `36310235841`（09:50:14）实证：npm exit 0（512 包 5 分钟）+ 前缀解析正常 + PATH 已暴露，`run: dsh --version` 抛 `Win32Exception`（系统找不到文件），引导失败耗时 304s。根因不在 PATH 内容，在启动语义：`UseShellExecute=false` 的 CreateProcess 对裸名只试本名 + `.exe`（不走 PATHEXT），npm 在 Windows 只生成 `dsh`/`dsh.cmd`/`dsh.ps1`（无 `.exe`）——裸名永远起不来。同病五处：VerifyDsh 主通道（异常未捕获，fallback 永不执行）、F1 垫片直跑（`dsh.cmd` 报 193）、`HarnessRuntimeHost.BuildStartPsi`（真正的 `dsh web` 位，修完 Verify 的下一堵墙）、`RuntimeVersionGate.BuildProbePsi`（catch 保命，仅跳过底线检查）、`MarketInstallHelper.BuildPsi`（nodeExe 为 null 分支）。附带两实证：`--progress=true` 在 CI 非 TTY 下 5 分钟零行（gauge 不可靠）；体积看门狗被 315s 杂项字节清零（量错了东西）。
+dispatch 实证（09:50:14）：npm exit 0（512 包 5 分钟）+ 前缀解析正常 + PATH 已暴露，`run: dsh --version` 抛 `Win32Exception`（系统找不到文件），引导失败耗时 304s。根因不在 PATH 内容，在启动语义：`UseShellExecute=false` 的 CreateProcess 对裸名只试本名 + `.exe`（不走 PATHEXT），npm 在 Windows 只生成 `dsh`/`dsh.cmd`/`dsh.ps1`（无 `.exe`）——裸名永远起不来。同病五处：VerifyDsh 主通道（异常未捕获，fallback 永不执行）、F1 垫片直跑（`dsh.cmd` 报 193）、`HarnessRuntimeHost.BuildStartPsi`（真正的 `dsh web` 位，修完 Verify 的下一堵墙）、`RuntimeVersionGate.BuildProbePsi`（catch 保命，仅跳过底线检查）、`MarketInstallHelper.BuildPsi`（nodeExe 为 null 分支）。附带两实证：`--progress=true` 在 CI 非 TTY 下 5 分钟零行（gauge 不可靠）；体积看门狗被 315s 杂项字节清零（量错了东西）。
 
 ## Decision
 
@@ -32,5 +34,6 @@ Windows 首启：npm 装完即经 cmd 垫片自验自愈，`dsh web` 启动位�
 
 ## Testing
 
+- 历程 dispatch 痕迹：run `36310235841` 为 Problem 现象的实证 run。
 - 新增 `DshCommandTests` 四态（Unix/Windows/空格前缀/映射）+ fake 抛 Win32Exception 复刻本跑 + 存活循环取消单测；Infrastructure 全套件 491/491。
 - 三冒烟脚本 `--self-test` 全 PASS（看门狗改标记行回归）。

@@ -49,11 +49,10 @@ CI 的 Linux 冒烟门上有两处「为让红变绿」而生的机制，其依�
 
 ## Related
 
-- [2026-09-26-settle-per-arch-window](2026-09-26-settle-per-arch-window.md)：本批 supersede——其「amd64 180 / arm64 300 分腿」论据早已被两腿同值推翻，矩阵列随本批删除；同变更已按其勘误纪律补 `Erratum:` 行（正文不动）。
-- [2026-09-26-smoke-witness-real-and-eval-first-hop](2026-09-26-smoke-witness-real-and-eval-first-hop.md)：本批 supersede 其冻结面（`frozen` 矩阵 + `SMOKE_FROZEN` + `frozen-native-hang` 放行 + 正文提及的 120s 上限）；该篇的 eval 首跳主体已由转向退役。同变更已补 `Erratum:` 行。
+- `2026-09-26-settle-per-arch-window`（已删，E 批 ADR 裁定）：本批 supersede——其「amd64 180 / arm64 300 分腿」论据早已被两腿同值推翻，矩阵列随本批删除；唯一论据无安全/契约不变量，不保留。
+- [2026-09-26-smoke-witness-real-and-eval-first-hop](../../archived/testing/2026-09-26-smoke-witness-real-and-eval-first-hop.md)（已归档）：本批 supersede 其冻结面（`frozen` 矩阵 + `SMOKE_FROZEN` + `frozen-native-hang` 放行 + 正文提及的 120s 上限）；该篇的 eval 首跳主体已由转向退役。
 - [2026-09-27-loopback-forward-proxy](../architecture/2026-09-27-loopback-forward-proxy.md)：转向 owning 笔记，「启动链零 host 导航」的出处，本批的直接前提。
-- [2026-09-26-page-verdict-gate](2026-09-26-page-verdict-gate.md)：落定门 owning 笔记。
-- [2026-09-26-verdict-honesty-repair](../bug-fix/2026-09-26-verdict-honesty-repair.md)：`Ryn#101` 关闭认错的出处。
+- [2026-09-26-page-verdict-gate](2026-09-26-page-verdict-gate.md)：落定门 owning 笔记（吸收合并 `verdict-honesty-repair`，`Ryn#101` 关闭认错的现行出处）。
 
 ## Testing
 

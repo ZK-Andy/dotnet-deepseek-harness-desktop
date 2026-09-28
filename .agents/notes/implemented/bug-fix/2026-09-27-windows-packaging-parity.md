@@ -5,7 +5,7 @@ Status: implemented
 Review: FULL/2026-09-27/R1=ok R2=ok R3=ok
 Review: FULL/2026-09-27#2/R1=ok R2=ok R3=ok
 
-三审结论：R1/R2 无触达；R3 新增注册表读写收敛安装器脚本内、HKCU 与 lowest 提权一致、`uninsdeletekey` 清理；PS 空 catch 为探针 miss 路径、收敛至 `::warning`；无 Blocker。
+三审结论：R1/R2 无触达；R3 注册表读写收敛安装器脚本内（HKCU 与 lowest 提权一致、`uninsdeletekey` 清理）、PS 空 catch 收敛至 `::warning`；0 Blocker。
 
 ## Problem
 

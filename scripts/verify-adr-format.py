@@ -22,7 +22,18 @@ Checks, for every .md under .agents/notes/ (excluding archived/ and .zh.md files
 
 Usage: python3 verify-adr-format.py [notes_root]
        python3 verify-adr-format.py --self-test   # offline fixture self-check
+       python3 verify-adr-format.py --facts [notes_root]   # format scan + fact-liveness advisory
 Exit code 0 = pass, 1 = violations found.
+
+--facts (advisory): for every implemented note, backticked tokens that look
+repo-local (paths under known repo-local roots, `DeepSeek.*` identifiers) are
+searched in the working tree; zero hits prints a WARN line (deduplicated per
+note x token). The advisory itself never fails; format violations still make
+the run exit 1. Catches "落点换家" — a note's referenced
+file/symbol deleted or renamed after implementation (the gap behind 3 pre-E notes
+whose core artifacts were gone while still active). Advisory by design: upstream-only
+symbols and archival prose make hard failing too noisy; warnings route to the Erratum
+discipline in .agents/notes/README.md.
 """
 
 import datetime
@@ -212,17 +223,87 @@ def _self_test(root: Path) -> int:
         return failed
 
 
+# --- facts advisory (落点换家 liveness check) ---
+BACKTICK_RE = re.compile(r"`([^`\n]+)`")
+FACTS_SCAN_EXTS = {".cs", ".sh", ".py", ".yml", ".yaml", ".json", ".md", ".props", ".targets"}
+FACTS_SCAN_SKIP_DIRS = {".git", ".plan", ".dotnet-cache", ".cache", ".noogenesis", "resources", "bin", "obj", "node_modules", "notes"}
+# Repo-local path prefixes / namespace heads a cited token must match to be probed.
+FACTS_PATH_PREFIXES = ("src/", "tests/", "scripts/", "docs/", ".github/", ".agents/")
+FACTS_NS_HEADS = ("Services/", "Bootstrap/", "Core/", "Infrastructure/", "Presentation/")
+
+
+def _facts_tokens(text: str) -> list[str]:
+    """Repo-local backticked tokens worth a liveness probe (precise over recall:
+    globs, home-relative paths, upstream trees and pseudo-code chains are skipped)."""
+    out = []
+    for tok in BACKTICK_RE.findall(text):
+        if len(tok) < 4 or ".." in tok or any(c in tok for c in " <>*→?~{}[]|:"):
+            continue
+        if tok.startswith(FACTS_PATH_PREFIXES) or tok.startswith("DeepSeek.") \
+                or tok.startswith(FACTS_NS_HEADS):
+            out.append(tok)
+    return out
+
+
+def _build_corpus(repo_root: Path) -> list[Path]:
+    files = []
+    for p in repo_root.rglob("*"):
+        if not p.is_file() or p.suffix not in FACTS_SCAN_EXTS:
+            continue
+        if any(part in FACTS_SCAN_SKIP_DIRS for part in p.parts):
+            continue
+        files.append(p)
+    return files
+
+
+def _facts_scan(root: Path, repo_root: Path) -> list[str]:
+    """Advisory warnings: implemented notes citing repo-local tokens with zero hits."""
+    warnings = []
+    corpus = None
+    for note in sorted(root.rglob("*.md")):
+        rel = note.relative_to(root)
+        if rel.parts[0] != "implemented" or note.name.endswith(".zh.md"):
+            continue
+        text = note.read_text(encoding="utf-8")
+        tokens = sorted(set(_facts_tokens(text)))
+        if not tokens:
+            continue
+        if corpus is None:
+            corpus = [(p, p.read_text(encoding="utf-8", errors="ignore")) for p in _build_corpus(repo_root)]
+        for tok in tokens:
+            exists = (repo_root / tok).exists() or (repo_root / tok).is_dir()
+            if exists or any(tok in content for _, content in corpus):
+                continue
+            warnings.append(f"{rel}: cited token `{tok}` has zero hits in the working tree "
+                            "(file deleted/renamed? add an Erratum per notes/README.md)")
+    return warnings
+
+
 def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1] == "--self-test":
+    import argparse
+    ap = argparse.ArgumentParser(description="Verify Agent Note (ADR) format")
+    ap.add_argument("notes_root", nargs="?", default=".agents/notes")
+    ap.add_argument("--self-test", action="store_true", help="offline fixture self-check")
+    ap.add_argument("--facts", action="store_true",
+                    help="also run the fact-liveness advisory (WARN-only)")
+    args = ap.parse_args()
+
+    if args.self_test:
+        if args.facts:
+            ap.error("--facts does not combine with --self-test (self-test uses a temp tree)")
         return _self_test(Path("."))
 
-    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".agents/notes")
+    root = Path(args.notes_root)
     if not root.is_dir():
         print(f"SKIP: {root} does not exist (no Agent Notes tree)")
         return 0
 
     checked, errors = _scan(root)
     print(f"Checked {checked} Agent Notes")
+    if args.facts:
+        for w in _facts_scan(root, Path(".")):
+            print(f"WARN: {w}")
+        print("facts advisory: warnings never fail the run; see notes/README.md Erratum discipline")
     if errors:
         for e in errors:
             print(f"FAIL: {e}")

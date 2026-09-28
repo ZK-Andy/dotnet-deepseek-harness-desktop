@@ -32,5 +32,5 @@ Archived: 2026-08-29
 
 ## Related
 
-- [随包插件版本感知清单](../feature/2026-08-25-bundled-plugin-version-aware-catalog.md)：B 线——本决策只补 A 线检测面，送达机制已在彼处落地。
-- [产物验证链](2026-08-24-artifact-verification-chain.md)：release-preflight.sh 的出处与阻断语义边界。
+- [随包插件版本感知清单](../../implemented/feature/2026-08-25-bundled-plugin-version-aware-catalog.md)：B 线——本决策只补 A 线检测面，送达机制已在彼处落地。
+- [产物验证链](../../implemented/process/2026-08-24-artifact-verification-chain.md)：release-preflight.sh 的出处与阻断语义边界。

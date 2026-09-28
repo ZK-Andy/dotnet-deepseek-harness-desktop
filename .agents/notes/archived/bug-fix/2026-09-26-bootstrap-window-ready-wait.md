@@ -1,10 +1,11 @@
 # Agent Note: bootstrap-window-ready-wait（引导等窗口可用）
 
 Status: implemented
+Archived: 2026-09-28
 
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 
-Related: 根因由 [`smoke-sw-render-probe`](../testing/2026-09-26-smoke-sw-render-probe.md) 的 deep-dive 定位（Ryn 源码对读 + dispatch 全量日志时序）；承接 [`webkit-sandbox-userns-fallback`](../bug-fix/2026-09-26-webkit-sandbox-userns-fallback.md)（沙箱修好后暴露本问题）。
+Related: 根因由 [`smoke-sw-render-probe`](../testing/2026-09-26-smoke-sw-render-probe.md) 的 deep-dive 定位（Ryn 源码对读 + dispatch 全量日志时序）；承接 [`webkit-sandbox-userns-fallback`](../../implemented/bug-fix/2026-09-26-webkit-sandbox-userns-fallback.md)（沙箱修好后暴露本问题）。
 
 ## Problem
 

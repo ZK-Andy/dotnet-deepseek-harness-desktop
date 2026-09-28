@@ -6,7 +6,7 @@
 
 - `.agents/skills/` 由 DSH 自动发现（skill 工具按需加载），无需注册。
 - 本项目技能为**我们自己的**（方法论吸收上游 deepseek-harness 的通用实践，引用/命令/实现语言对齐本项目：.NET 单项目、XML doc、中文单语 + `.en.md` 镜像、`dotnet` 命令、`scripts/verify-*.py` 门禁）。技能格式由 `scripts/verify-skill-format.py` 机器强制（frontmatter/目录束/内链/结构，违约即 FAIL）。
-- 原版 11 技能完整备份在 `.plan/种子/skills/`（本地，git 之外，供参考/复用），不进 `.agents/skills/` 活跃区。
+- 原版 11 技能完整备份在 git 之外的本地备份目录（供参考/复用），不进 `.agents/skills/` 活跃区。
 - 用不上的技能不写（避免预铺空目录、避免上游断链踩坑）。
 
 ## ADR（Agent Notes）
@@ -24,7 +24,7 @@
 
 ## 出处声明（MIT）
 
-- 原版 `.agents/skills/` 11 技能：© deepseek-ai，MIT License，来自 `deepseek-ai/deepseek-harness`（https://github.com/deepseek-ai/deepseek-harness）。2026-08-20 自本机上游克隆原样拷贝（逐字节一致），**现备份于 `.plan/种子/skills/`**（git 之外，未被修改）。
+- 原版 `.agents/skills/` 11 技能：© deepseek-ai，MIT License，来自 `deepseek-ai/deepseek-harness`（https://github.com/deepseek-ai/deepseek-harness）。2026-08-20 自本机上游克隆原样拷贝（逐字节一致），**现备份于 git 之外的本地备份目录**（未被修改）。
 - 本项目当前 8 个技能为**自研**（在 `.agents/skills/`）：方法论吸取上游，但写法/引用/命令为本项目版，故非上游逐字节一致。
 - `.agents/notes` 骨架、`templates/`：来自 devops-template / deepseek-harness，MIT。搬运保留出处。
 - 搬运修复：`scripts/verify-adr-format.py` 头部校验已按 deepseek 真实笔记约定修正（允许标题后空行再接 Status）——模板 Python 移植版原与他人为"标题/Status/空行"，与上游实际笔记（标题/空行/Status）冲突。2026-08-20 修正。

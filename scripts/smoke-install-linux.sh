@@ -147,7 +147,7 @@ smoke_deb() {
     error "[deb] 冒烟失败"
     smoke_evidence_fail "$log" "$log" full
   else
-    # 成功也留尾（ADR verdict-honesty-repair）：绿跑的导航/探针/自愈行此前随日志删除，
+    # 成功也留尾（ADR page-verdict-gate，自 verdict-honesty-repair 并入）：绿跑的导航/探针/自愈行此前随日志删除，
     # "绿即无证"致 401 绿 verdict 无从复核；本腿取 30 行覆盖导航段（仓内尾部惯例）。
     smoke_evidence_pass "$log" "$log" "" 30
   fi

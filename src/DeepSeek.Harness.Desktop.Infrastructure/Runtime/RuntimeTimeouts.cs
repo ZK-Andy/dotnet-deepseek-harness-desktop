@@ -66,7 +66,7 @@ public sealed record RuntimeTimeouts
     public int AuthProbeTimeoutSeconds { get; init; } = 15;
 
     /// <summary>鉴权探针总尝试次数（含初次）：偶发 renderer 繁忙一次采样赌运气，耗尽回未知放行
-    /// （ADR settle-gate-and-probe-retry；默认 2 即初次 + 1 次重试；≤1 按单次，与既有键同哲学无钳制）。</summary>
+    /// （ADR page-verdict-gate，自 settle-gate-and-probe-retry 并入；默认 2 即初次 + 1 次重试；≤1 按单次，与既有键同哲学无钳制）。</summary>
     public int AuthProbeAttempts { get; init; } = 2;
 
     /// <summary>进入主界面前等主窗口可用超时（秒）：原生建窗可能慢于 dsh 就位（CI 无 D-Bus 会话实证 30s+），
