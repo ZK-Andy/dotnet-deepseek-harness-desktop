@@ -2,6 +2,10 @@
 
 Status: implemented
 
+Archived: 2026-09-30
+
+Erratum: 2026-09-30 — 决定中「整 App 冷启动：加载上次端口 → 同 origin → dsh.sessions.current 命中 → 恢复上一会话」的恢复链被证伪：2026-09-27 起页面 origin 换家到回环代理源（architecture/2026-09-27-loopback-forward-proxy），dsh 端口稳定不再等于页面 origin 稳定；origin 稳定性与会话恢复由 architecture/2026-09-30-shell-proxy-port-persistence 的代理端口记忆承接。保留服役的部分：.dsh-web-port 端口记忆本身（run 内重启同端口语义、交接处置首选端口判据）与「被占回退 OS 分配并回写」语义不变。
+
 ## Problem
 
 桌面端每次整 App 冷启动都回到新会话，用户上一次打开的会话不恢复。根因不在会话数据（正文服务端持久于 DSH_HOME，未丢），而在壳对 dsh Web 端口的管理：HarnessRuntimeHost._port 只是进程内内存字段，冷启动时为 null，StartCoreAsync(null, ...) 走 --port 0 由 OS 随机分配，每次启动 origin（http://127.0.0.1:<新端口>）都不同。dsh Web 端把「当前选中哪个会话」持久在 localStorage 键 dsh.sessions.current（上游 packages/client/runtime/src/client/sessions/service.ts：createSnapshotStore({}, {persist:{name:'dsh.sessions.current'}})，构造时 restored.sessionId 恢复选中；localStorage 按 origin（scheme+host+port）隔离），新 origin 读不到，restored.sessionId 为空，新开会话。既有的崩溃重启修复（80b6c0c）只覆盖进程内崩溃重启（内存 _port 复用同端口、origin 不变），对整 App 重启无效。

@@ -50,8 +50,9 @@ public sealed partial class HarnessRuntimeHost : IDisposable, IRuntimeHost
     /// <param name="ct">取消令牌。</param>
     /// <returns>dsh web UI 的 URL；未在时限内给出、或启动在生命周期门等待期即被取消则为 null
     /// （门内 spawn 后的取消仍会抛 <see cref="OperationCanceledException"/>，由消费方按退出处理）。</returns>
-    /// <remarks>端口需跨 App 冷启动保持稳定：origin 不变 → dsh Web 端"当前会话"localStorage（dsh.sessions.current，按 origin 隔离）
-    /// 仍命中 → 恢复上一会话。进程内崩溃重启复用 <paramref name="ct"/> 前记忆的 <c>_port</c>；冷启动从磁盘加载上次端口并回写。</remarks>
+    /// <remarks>端口记忆服务 run 内重启同端口语义与交接处置判据（收养/收割，见 Handoff）；页面会话恢复的
+    /// origin 稳定性由代理端口记忆承担（<c>.dsh-shell-port</c>，ADR shell-proxy-port-persistence）。
+    /// 进程内崩溃重启复用 <paramref name="ct"/> 前记忆的 <c>_port</c>；冷启动从磁盘加载上次端口并回写。</remarks>
     public async Task<Uri?> StartAsync(TimeSpan timeout, CancellationToken ct = default)
     {
         // 生命周期串行化门：随包插件安装任务与崩溃监督器的重启可并发进入，无门时
@@ -134,7 +135,7 @@ public sealed partial class HarnessRuntimeHost : IDisposable, IRuntimeHost
         if (url is not null)
         {
             _port = url.Port;
-            // 跨进程持久化：冷启动复用同端口（origin 不变）才能恢复 dsh Web 端的上一会话
+            // 跨进程持久化：冷启动复用同端口避免 dsh 端口重排，并为交接处置提供首选端口判据
             PersistPort(url.Port);
             // 启动成功后收敛一次：抢端口输给我们的市场 helper/续任者此刻正等端口空出，就地收割。
             // 冷启动那次已在 spawn 前全量收敛，且此刻市场 UI 尚未起来，不重复扫描。

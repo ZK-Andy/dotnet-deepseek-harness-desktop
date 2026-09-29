@@ -294,6 +294,59 @@ public class HarnessRuntimeHostTests
         }
     }
 
+    /// <summary>验证代理端口记忆文件读写往返（ADR shell-proxy-port-persistence）：初始无文件时 TryLoadShellPort 为 null，
+    /// PersistShellPort 写入后按原值读回；与 dsh 端口文件互不串读。</summary>
+    [Fact]
+    public void ShellPort_ThenLoad_RoundTripsUnderDshHome()
+    {
+        string home = Path.Combine(Path.GetTempPath(), "dsh-shell-port-" + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
+        try
+        {
+            Assert.Null(HarnessRuntimeHost.TryLoadShellPort());
+
+            HarnessRuntimeHost.PersistPort(4242); // dsh 端口记忆在场也不串读
+            Assert.Null(HarnessRuntimeHost.TryLoadShellPort());
+
+            HarnessRuntimeHost.PersistShellPort(5001);
+            Assert.Equal(5001, HarnessRuntimeHost.TryLoadShellPort());
+            Assert.Equal("5001", File.ReadAllText(HarnessRuntimeHost.ResolveShellPortFilePath()));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>验证代理端口记忆文件损坏时 TryLoadShellPort 返回 null（回退 OS 分配），随后的 PersistShellPort 能覆盖修复。</summary>
+    [Fact]
+    public void TryLoadShellPort_CorruptFile_ReturnsNull()
+    {
+        string home = Path.Combine(Path.GetTempPath(), "dsh-shell-port-" + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", home);
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName));
+            File.WriteAllText(HarnessRuntimeHost.ResolveShellPortFilePath(), "not-a-number");
+            Assert.Null(HarnessRuntimeHost.TryLoadShellPort());
+
+            HarnessRuntimeHost.PersistShellPort(5002);
+            Assert.Equal(5002, HarnessRuntimeHost.TryLoadShellPort()); // 覆盖修复
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", null);
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, recursive: true);
+            }
+        }
+    }
+
     /// <summary>验证全新实例（端口缓存为空）冷启动时从磁盘加载上次端口，两次实例解析出相同 URL，origin 保持不变。</summary>
     [Fact]
     public async Task StartAsync_PersistsPort_AcrossFreshInstances_WhenEnabled()

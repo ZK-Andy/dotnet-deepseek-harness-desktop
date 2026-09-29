@@ -26,6 +26,10 @@ public sealed partial class HarnessRuntimeHost
 
     private const string PortFileName = ".dsh-web-port";
 
+    /// <summary>回环代理源端口记忆文件名（与 dsh 端口文件同族、同 profile 目录）：页面 origin = 代理 origin，
+    /// 跨 App 冷启动复用同端口才能保 dsh Web 端按 origin 隔离的「当前会话」localStorage 存活（ADR shell-proxy-port-persistence）。</summary>
+    private const string ShellPortFileName = ".dsh-shell-port";
+
     /// <summary>在管运行时 PID 记忆文件名（落于当前 profile 目录）：记录当前服务中的那个 dsh——
     /// 本进程子进程，或收养的市场接力续任者（非子进程，ADR runtime-handoff-adoption）。宿主异常死亡时
     /// dsh 成孤儿被 systemd 收养、继续占住首选端口（ADR self-update-exit-reaps-dsh-child，v0.3.11 实机
@@ -82,9 +86,10 @@ public sealed partial class HarnessRuntimeHost
     /// <summary>旧版端口记忆位置（home 根）：仅作迁移回读，不再写入。</summary>
     internal static string ResolveLegacyPortFilePath() => Path.Combine(ResolveDshHome(), PortFileName);
 
-    /// <summary>读取上次成功端口：跨 App 冷启动复用同端口 → WebView origin 不变 → dsh Web 端"当前会话"localStorage
-    /// （<c>dsh.sessions.current</c>，按 origin 隔离）仍命中 → 恢复上次会话。新位置缺失时回读旧版 home 根文件
-    /// （存量升级零感知）；两处均缺失/损坏/不可读 → null（回退 OS 分配）。</summary>
+    /// <summary>读取上次成功端口（dsh 子进程）：冷启动复用同端口避免无谓的 dsh 端口重排，并为交接处置
+    /// 提供首选端口判据（收养续任者/收割残留）；页面会话恢复的 origin 稳定性由代理端口记忆
+    /// （<see cref="TryLoadShellPort"/>）承担。新位置缺失时回读旧版 home 根文件（存量升级零感知）；
+    /// 两处均缺失/损坏/不可读 → null（回退 OS 分配）。</summary>
     internal static int? TryLoadPersistedPort()
     {
         string newPath = ResolvePortFilePath();
@@ -117,13 +122,29 @@ public sealed partial class HarnessRuntimeHost
         }
     }
 
-    /// <summary>持久化最近一次成功端口（尽力而为；写失败仅导致下次冷启动换端口→新会话，不阻断本次运行，故不 fail loud）。
-    /// 只写当前 profile 路径——绝不回写旧版 home 根文件，避免跨 profile 争抢延续。</summary>
-    internal static void PersistPort(int port)
+    /// <summary>持久化最近一次成功端口（dsh 子进程，尽力而为；写失败仅导致下次冷启动 dsh 换端口重排，
+    /// 不阻断本次运行，故不 fail loud）。只写当前 profile 路径——绝不回写旧版 home 根文件，避免跨 profile 争抢延续。</summary>
+    internal static void PersistPort(int port) =>
+        WritePortFile(ResolvePortFilePath(), port, "写端口状态失败（下次冷启动 dsh 将换端口）");
+
+    /// <summary>代理源端口状态文件路径（落于当前 profile 目录，与 dsh 端口文件同族按 profile 隔离）。</summary>
+    internal static string ResolveShellPortFilePath() => ResolveProfileStatePath(ShellPortFileName);
+
+    /// <summary>读取上次代理源端口：跨 App 冷启动复用同端口 → 窗口页面 origin（= 代理 origin）不变 → dsh Web 端
+    /// 「当前会话」localStorage（<c>dsh.sessions.current</c>，按 origin 隔离）仍命中 → 恢复上次会话
+    /// （ADR shell-proxy-port-persistence）。缺失/损坏/不可读 → null（回退 OS 分配）；无旧版位置。</summary>
+    internal static int? TryLoadShellPort() => TryReadPortFile(ResolveShellPortFilePath());
+
+    /// <summary>持久化代理源端口（尽力而为；写失败仅导致下次冷启动 origin 漂移 → 丢一次会话恢复，
+    /// 不阻断本次运行，故不 fail loud）。绑定成功且端口与记忆一致时不写（见代理绑定序列）。</summary>
+    internal static void PersistShellPort(int port) =>
+        WritePortFile(ResolveShellPortFilePath(), port, "写代理端口状态失败（下次冷启动 origin 将漂移）");
+
+    /// <summary>端口状态文件写入单点（dsh/代理两族共用）：建目录 + 写入；失败按尽力而为语义记 loud 不上抛。</summary>
+    private static void WritePortFile(string path, int port, string failLog)
     {
         try
         {
-            string path = ResolvePortFilePath();
             string? dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir))
             {
@@ -134,8 +155,7 @@ public sealed partial class HarnessRuntimeHost
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // 写失败仅导致下次冷启动换端口→新会话，不阻断本次运行，故不 fail loud
-            HostLog.Write($"[host] 写端口状态失败（下次冷启动将换端口）：{ex.Message}");
+            HostLog.Write($"[host] {failLog}：{ex.Message}");
         }
     }
 

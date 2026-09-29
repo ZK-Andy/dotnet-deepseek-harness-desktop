@@ -737,7 +737,8 @@ public class DshLoopbackProxyTests
 
     /// <summary>TryCreate 结果对象（组合根值流产出，ADR compose-root-form-separation）：绑定成功产出
     /// 非空代理（http 回环 URL）与 CTS；Dispose 先 cancel 受理循环再放代理（顺序与组合根尾部一致）。
-    /// 绑定失败路径（Proxy null → 降级 wwwroot）无法稳定注入端口级故障，属组合根消费方语义。</summary>
+    /// 绑定失败路径（Proxy null → 降级 wwwroot）无法稳定注入端口级故障，属组合根消费方语义。
+    /// 端口记忆缝注入密闭（缺省静态对会触真实 DSH_HOME）。</summary>
     [Fact]
     public void TryCreate_BindsAndDisposeCancelsToken()
     {
@@ -745,7 +746,7 @@ public class DshLoopbackProxyTests
         var lines = new List<string>();
 
         DshLoopbackProxy.ProxySetup setup =
-            DshLoopbackProxy.TryCreate(forward, AppContext.BaseDirectory, lines.Add);
+            DshLoopbackProxy.TryCreate(forward, AppContext.BaseDirectory, lines.Add, () => null, _ => { });
         try
         {
             Assert.NotNull(setup.Proxy);
@@ -760,6 +761,94 @@ public class DshLoopbackProxyTests
 
         Assert.True(setup.Cts.IsCancellationRequested);
         Assert.Throws<ObjectDisposedException>(() => setup.Cts.Token.Register(() => { }));
+    }
+
+    /// <summary>代理端口记忆·冷启动复用（ADR shell-proxy-port-persistence）：记忆端口空闲即绑原端口
+    /// （页面 origin 稳定，会话恢复链闭合），值不变不写盘。</summary>
+    [Fact]
+    public void Proxy_PreferredPortFree_BindsItWithoutPersisting()
+    {
+        var forward = new DshShellForward(new StubDshHandler());
+        var lines = new List<string>();
+        int remembered = LoopbackHttpResponder.ReserveFreePort();
+        int? persisted = null;
+
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, new StubDshHandler(),
+            preferredPort: remembered, persistPort: p => persisted = p);
+
+        Assert.Equal(remembered, proxy.Url.Port);
+        Assert.Null(persisted);
+    }
+
+    /// <summary>代理端口记忆·TIME_WAIT 重绑（R2 定向核）：有序退出时壳侧主动关闭的页连接留 TIME_WAIT，
+    /// 非 Windows 试绑记忆端口须凭 <c>SO_REUSEADDR</c> 成功（否则 60s 内快速重启假性漂移）。Windows 不设
+    /// REUSEADDR（劫持语义，TIME_WAIT 边缘为已知局限），此测跳过。</summary>
+    [Fact]
+    public async Task Proxy_PreferredPort_TimeWaitRebind()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var forward = new DshShellForward(new StubDshHandler());
+        var lines = new List<string>();
+        int port = LoopbackHttpResponder.ReserveFreePort();
+
+        // 服务端（壳侧）先主动关一条连接：本端在该端口留 TIME_WAIT。
+        var listener = new TcpListener(IPAddress.Loopback, port);
+        listener.Start();
+        using (var client = new TcpClient())
+        {
+            await client.ConnectAsync(IPAddress.Loopback, port, cts.Token);
+            using TcpClient serverSide = await listener.AcceptTcpClientAsync(cts.Token);
+            serverSide.Dispose();
+        }
+
+        listener.Stop();
+
+        int? persisted = null;
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, new StubDshHandler(),
+            preferredPort: port, persistPort: p => persisted = p);
+
+        Assert.Equal(port, proxy.Url.Port);
+        Assert.Null(persisted);
+    }
+
+    /// <summary>代理端口记忆·被占漂移：记忆端口被占即 loud 降级 OS 分配，新端口立即持久化
+    /// （下次起点即新端口；本次重启 origin 漂移丢一次恢复，与 dsh 端口漂移同口径）。</summary>
+    [Fact]
+    public void Proxy_PreferredPortOccupied_FallsBackAndRepersists()
+    {
+        var forward = new DshShellForward(new StubDshHandler());
+        var lines = new List<string>();
+        using var occupier = new TcpListener(IPAddress.Loopback, 0);
+        occupier.Start();
+        int occupied = ((IPEndPoint)occupier.LocalEndpoint).Port;
+        int? persisted = null;
+
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, new StubDshHandler(),
+            preferredPort: occupied, persistPort: p => persisted = p);
+
+        Assert.NotEqual(occupied, proxy.Url.Port);
+        Assert.Equal(proxy.Url.Port, persisted);
+        Assert.Contains(lines, l => l.Contains("已被占") && l.Contains(occupied.ToString(), StringComparison.Ordinal));
+    }
+
+    /// <summary>代理端口记忆·无记忆（首启/文件损坏读出 null）：OS 分配并立即持久化。</summary>
+    [Fact]
+    public void Proxy_NoMemory_AssignsAndPersists()
+    {
+        var forward = new DshShellForward(new StubDshHandler());
+        var lines = new List<string>();
+        int? persisted = null;
+
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, new StubDshHandler(),
+            preferredPort: null, persistPort: p => persisted = p);
+
+        Assert.True(proxy.Url.Port > 0);
+        Assert.Equal(proxy.Url.Port, persisted);
     }
 
     /// <summary>桩 dsh（内存传输）：token 跳 303 + 铸 cookie；/events 永不结束的 SSE；
