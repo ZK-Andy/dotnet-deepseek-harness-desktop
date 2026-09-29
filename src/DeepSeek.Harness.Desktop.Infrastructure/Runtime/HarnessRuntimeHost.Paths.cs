@@ -59,24 +59,8 @@ public sealed partial class HarnessRuntimeHost
 
     /// <summary>记录在管运行时的 PID + 血统 token（本次 spawn 的子进程，或收养的续任者；尽力而为：
     /// 写失败仅导致下次冷启动清扫落空，端口漂移告警兜底）。</summary>
-    internal static void PersistSpawn(int pid, string token)
-    {
-        try
-        {
-            string path = ResolvePidFilePath();
-            string? dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-
-            File.WriteAllText(path, $"{pid}\n{token}");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            HostLog.Write($"[host] 写 dsh PID 失败（下次冷启动清扫将落空）：{ex.Message}");
-        }
-    }
+    internal static void PersistSpawn(int pid, string token) =>
+        WriteStateFile(ResolvePidFilePath(), $"{pid}\n{token}", "写 dsh PID 失败（下次冷启动清扫将落空）");
 
     /// <summary>端口状态文件路径（落于当前 profile 目录）。桌面端与 web 会话共享同一 DSH_HOME，
     /// home 根的全局端口记忆会让两类 dsh 实例互相抢占端口——v0.3.5 实机事故：自更新拉起后
@@ -125,7 +109,7 @@ public sealed partial class HarnessRuntimeHost
     /// <summary>持久化最近一次成功端口（dsh 子进程，尽力而为；写失败仅导致下次冷启动 dsh 换端口重排，
     /// 不阻断本次运行，故不 fail loud）。只写当前 profile 路径——绝不回写旧版 home 根文件，避免跨 profile 争抢延续。</summary>
     internal static void PersistPort(int port) =>
-        WritePortFile(ResolvePortFilePath(), port, "写端口状态失败（下次冷启动 dsh 将换端口）");
+        WriteStateFile(ResolvePortFilePath(), port.ToString(), "写端口状态失败（下次冷启动 dsh 将换端口）");
 
     /// <summary>代理源端口状态文件路径（落于当前 profile 目录，与 dsh 端口文件同族按 profile 隔离）。</summary>
     internal static string ResolveShellPortFilePath() => ResolveProfileStatePath(ShellPortFileName);
@@ -138,10 +122,11 @@ public sealed partial class HarnessRuntimeHost
     /// <summary>持久化代理源端口（尽力而为；写失败仅导致下次冷启动 origin 漂移 → 丢一次会话恢复，
     /// 不阻断本次运行，故不 fail loud）。绑定成功且端口与记忆一致时不写（见代理绑定序列）。</summary>
     internal static void PersistShellPort(int port) =>
-        WritePortFile(ResolveShellPortFilePath(), port, "写代理端口状态失败（下次冷启动 origin 将漂移）");
+        WriteStateFile(ResolveShellPortFilePath(), port.ToString(), "写代理端口状态失败（下次冷启动 origin 将漂移）");
 
-    /// <summary>端口状态文件写入单点（dsh/代理两族共用）：建目录 + 写入；失败按尽力而为语义记 loud 不上抛。</summary>
-    private static void WritePortFile(string path, int port, string failLog)
+    /// <summary>profile 状态文件写入单点（PID/dsh 端口/代理端口三族共用）：建目录 + 写文本；
+    /// 失败按尽力而为语义记 loud 不上抛。</summary>
+    private static void WriteStateFile(string path, string content, string failLog)
     {
         try
         {
@@ -151,7 +136,7 @@ public sealed partial class HarnessRuntimeHost
                 Directory.CreateDirectory(dir);
             }
 
-            File.WriteAllText(path, port.ToString());
+            File.WriteAllText(path, content);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

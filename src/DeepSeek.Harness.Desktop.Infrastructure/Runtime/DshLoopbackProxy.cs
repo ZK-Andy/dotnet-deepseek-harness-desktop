@@ -25,18 +25,9 @@ public sealed partial class DshLoopbackProxy : IDisposable
     /// <summary>代理 origin（authority 形；Ryn dev-server 分支的 CORS 信任单位）。</summary>
     public string Origin => Url.GetLeftPart(UriPartial.Authority);
 
-    /// <summary>构造并绑定回环代理（读代理端口记忆 → 试绑 → 冲突降级 OS 分配；dsh 通道另配，见重载）。</summary>
-    /// <param name="forward">壳转发器（铸币态家）。</param>
-    /// <param name="log">日志回调（入口/终态 loud；值永不落盘）。</param>
-    /// <param name="contentRoot">引导页静态根（wwwroot；null 即无指南面，指南请求 502）。</param>
-    public DshLoopbackProxy(DshShellForward forward, Action<string> log, string? contentRoot)
-        : this(forward, log, new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, contentRoot,
-            HarnessRuntimeHost.TryLoadShellPort(), HarnessRuntimeHost.PersistShellPort)
-    {
-    }
-
     /// <summary>启动回环代理源并返回结果对象（组合根值流：消费段收参，不再借组合根字段回填——
-    /// ADR compose-root-form-separation）。绑定失败 loud 后降级（Proxy 为 null，窗口走 wwwroot，
+    /// ADR compose-root-form-separation）。生产唯一构造入口：缺省端口记忆接线（读 <c>.dsh-shell-port</c> →
+    /// 试绑 → 冲突降级 OS 分配并重记）只落此处。绑定失败 loud 后降级（Proxy 为 null，窗口走 wwwroot，
     /// 行为与 dsh 未起一致，不挡启动）；绑定异常类型清单（协议/平台策略）住本类，不散在组合根。</summary>
     /// <param name="forward">壳转发器（铸币态家）。</param>
     /// <param name="contentRoot">引导页静态根（wwwroot；未铸币时本地 holder/指南面）。</param>
