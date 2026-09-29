@@ -22,7 +22,8 @@ internal sealed partial class StartupSequence
             failedRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorFailedRetryDelaySeconds),
             showRecovery: isLockBlocked => ShowRecoveryPageAsync(host, isLockBlocked),
             navigate: url => NavigateAfterAdoptAsync(navCallbacks, url),
-            log: HostLog.Write);
+            log: HostLog.Write,
+            blockedLogEveryRounds: _timeouts.SupervisorBlockedLogEveryRounds);
         // 引导期门控：宿主尚无 dsh 进程时 WaitForExitAsync 立即完成，监督器会空转进恢复循环
         // 并用恢复屏覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
         var supervisorTask = Task.Run(async () =>

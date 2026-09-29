@@ -49,6 +49,10 @@ public sealed record RuntimeTimeouts
     /// <summary>恢复失败后的重试延迟（秒）。</summary>
     public int SupervisorFailedRetryDelaySeconds { get; init; } = 1;
 
+    /// <summary>残留锁死同因重试的日志留痕步长（轮）：首轮必留痕，此后每隔该轮数留痕一次；
+    /// 重探本身仍按失败延迟每轮执行。默认 60（失败延迟 1s 时 ≈ 每分钟一条）。</summary>
+    public int SupervisorBlockedLogEveryRounds { get; init; } = 60;
+
     /// <summary>页面健康监视首拍延迟（秒）：避开启动空窗。</summary>
     public int HealthInitialDelaySeconds { get; init; } = 10;
 
@@ -144,6 +148,7 @@ public sealed record RuntimeTimeouts
         options = options with { SupervisorRestartTimeoutSeconds = GetInt(section, nameof(SupervisorRestartTimeoutSeconds), options.SupervisorRestartTimeoutSeconds) };
         options = options with { SupervisorRecoveredRetryDelaySeconds = GetInt(section, nameof(SupervisorRecoveredRetryDelaySeconds), options.SupervisorRecoveredRetryDelaySeconds) };
         options = options with { SupervisorFailedRetryDelaySeconds = GetInt(section, nameof(SupervisorFailedRetryDelaySeconds), options.SupervisorFailedRetryDelaySeconds) };
+        options = options with { SupervisorBlockedLogEveryRounds = GetInt(section, nameof(SupervisorBlockedLogEveryRounds), options.SupervisorBlockedLogEveryRounds) };
         options = options with { HealthInitialDelaySeconds = GetInt(section, nameof(HealthInitialDelaySeconds), options.HealthInitialDelaySeconds) };
         options = options with { BootstrapSettleTimeoutSeconds = GetInt(section, nameof(BootstrapSettleTimeoutSeconds), options.BootstrapSettleTimeoutSeconds) };
         options = options with { NavCommitTimeoutSeconds = GetInt(section, nameof(NavCommitTimeoutSeconds), options.NavCommitTimeoutSeconds) };

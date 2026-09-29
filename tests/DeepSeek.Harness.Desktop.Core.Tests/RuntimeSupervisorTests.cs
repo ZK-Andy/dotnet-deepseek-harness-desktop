@@ -61,14 +61,15 @@ public class RuntimeSupervisorTests
         }
     }
 
-    /// <summary>消费面记序：order 记恢复屏/导航事件序，navigated 记导航靶点。</summary>
-    private sealed record SupervisorTrace(List<string> Order, List<Uri> Navigated);
+    /// <summary>消费面记序：order 记恢复屏/导航事件序，navigated 记导航靶点，logs 记宿主日志。</summary>
+    private sealed record SupervisorTrace(List<string> Order, List<Uri> Navigated, List<string> Logs);
 
     private static (RuntimeSupervisor Supervisor, SupervisorTrace Trace) Supervisor(
-        IRuntimeHost host, TimeSpan? delays = null)
+        IRuntimeHost host, TimeSpan? delays = null, int blockedLogEveryRounds = 60)
     {
         var order = new List<string>();
         var navigated = new List<Uri>();
+        var logs = new List<string>();
         TimeSpan d = delays ?? TimeSpan.FromMilliseconds(1);
         var supervisor = new RuntimeSupervisor(
             host,
@@ -86,8 +87,9 @@ public class RuntimeSupervisorTests
                 navigated.Add(url);
                 return ValueTask.CompletedTask;
             },
-            log: _ => { });
-        return (supervisor, new SupervisorTrace(order, navigated));
+            log: logs.Add,
+            blockedLogEveryRounds: blockedLogEveryRounds);
+        return (supervisor, new SupervisorTrace(order, navigated, logs));
     }
 
     private static Uri Url(string name) => new($"http://127.0.0.1/{name}", UriKind.Absolute);
@@ -123,6 +125,25 @@ public class RuntimeSupervisorTests
         Assert.Contains("recovery:lock", trace.Order);
         Assert.DoesNotContain(trace.Order, o => o.StartsWith("navigate:"));
         Assert.DoesNotContain(trace.Order, o => o == "recovery");
+    }
+
+    /// <summary>锁死同因重试的日志节流（ADR pid-reuse-foreign-cmdline-clear）：重探每轮照跑（恢复屏轮数
+    /// 随轮次增长），但同因留痕首轮一次 + 按步长再现，同文日志远少于锁死轮数。</summary>
+    [Fact]
+    public async Task RunAsync_LockBlocked_LogsThrottledByStride()
+    {
+        using var cts = new CancellationTokenSource(500);
+        var host = new FakeHost { Residue = true, ExitSignals = 100 };
+        (RuntimeSupervisor supervisor, SupervisorTrace trace) =
+            Supervisor(host, TimeSpan.FromMilliseconds(20), blockedLogEveryRounds: 3);
+
+        await supervisor.RunAsync(cts.Token);
+
+        int lockRounds = trace.Order.Count(o => o == "recovery:lock");
+        int blockedLogs = trace.Logs.Count(l => l.Contains("残留无法安全回收"));
+        Assert.True(lockRounds >= 5, $"节流不得减少重探轮数：{lockRounds}");
+        Assert.True(blockedLogs >= 2, $"首轮与步长轮都应留痕：{blockedLogs}");
+        Assert.True(blockedLogs < lockRounds, $"同因留痕须被节流（{blockedLogs} < {lockRounds}）");
     }
 
     /// <summary>重启未给出 URL：不导航，走 recoveredRetryDelay 重试（恢复屏先于重试）。</summary>

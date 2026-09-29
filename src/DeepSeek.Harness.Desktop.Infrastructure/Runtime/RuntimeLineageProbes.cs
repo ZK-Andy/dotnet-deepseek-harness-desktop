@@ -103,6 +103,29 @@ public static class RuntimeLineageProbes
     /// <summary>空值折算为「不存在」——否则一个空串新名会遮蔽有效的旧名（零误杀方向要求「读不到即不匹配」）。</summary>
     private static string? NonEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
+    /// <summary>读某进程的命令行（Linux <c>/proc/&lt;pid&gt;/cmdline</c>，NUL 折空格；cmdline 全局可读，
+    /// 他人进程也能读——与 environ 的属主限制不同，故可作 PID 复用的他者甄别面）。</summary>
+    /// <param name="pid">进程 id。</param>
+    /// <returns>空格连接的命令行；进程已死/非 Linux/读取失败返回 null（调用方按「不可证他者」处理，保守不放行）。</returns>
+    public static string? ReadCommandLine(int pid)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return null;
+        }
+
+        try
+        {
+            string commandLine = File.ReadAllText($"/proc/{pid}/cmdline").Replace('\0', ' ').Trim();
+            return commandLine.Length > 0 ? commandLine : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 进程已死/读取失败：证不了他者 → 不放行（零误杀同向）
+            return null;
+        }
+    }
+
     /// <summary>读某进程的父进程 id（<c>/proc/&lt;pid&gt;/stat</c> 第 4 字段，comm 含空格故从最后一个 ')' 起切）。</summary>
     /// <param name="pid">进程 id。</param>
     /// <returns>父 pid；读不到返回 null（调用方按父链断裂处理）。</returns>

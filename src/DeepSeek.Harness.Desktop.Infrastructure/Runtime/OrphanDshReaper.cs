@@ -12,7 +12,9 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// 安全核心理念：**零误杀**。绝不裸用 PID 匹配——PID 复用会指向完全无关的进程，误杀不可逆。
 /// 记录 spawn 时注入的 <see cref="RuntimeLineage.TokenEnv"/>（唯一 GUID，经进程环境变量携带），清扫时
 /// 复验该 PID 的进程环境里是否带同一个 token：匹配才是我们记录的 dsh（安全杀其进程树），
-/// 不匹配/读不到（PID 复用/非 Linux 可读环境）则只记日志、绝不杀——端口漂移告警兜底。
+/// 不匹配/读不到则只记日志、绝不杀——若命令行可证该 PID 已被无关进程复用（<see cref="PlausiblyOwnRuntime"/>
+/// 甄别），记录判过期按 Clear 收敛；其余情形（Windows/macOS 无 /proc 复验等）fail loud 挡 spawn，
+/// 端口漂移告警兜底。
 ///
 /// 跨平台可测：核心判定 <see cref="Reap"/> 接受注入的 <c>readToken</c>（pid→token）与
 /// <c>killTree</c>（pid→void）委托，纯逻辑可 xunit 单测；生产由组合点直接注入
@@ -42,13 +44,18 @@ public static class OrphanDshReaper
     /// <param name="isAlive">判某 PID 是否仍活（注入；生产用 <c>RuntimeLineageProbes.TryIsAlive</c>）。</param>
     /// <param name="killTree">杀某 PID 的整棵进程树（注入；生产用 <c>RuntimeLineageProbes.KillTree</c>）。</param>
     /// <param name="log">日志（可选；Unreapable 分支必留痕，fail loud）。</param>
+    /// <param name="readCommandLine">读某 PID 的命令行（注入；生产用 <c>RuntimeLineageProbes.ReadCommandLine</c>，
+    /// 可选——缺省时「活着但验不明」恒 Unreapable，即补丁前行为）。仅用于 PID 复用的他者甄别：
+    /// 命令行明显不是自家 runtime 形态时判记录过期、按 Clear 收敛（见 <see cref="PlausiblyOwnRuntime"/>），
+    /// 绝不据此杀进程。</param>
     /// <returns>收敛结论（<see cref="ResidueState"/>）。</returns>
     internal static ResidueState EnsureNoResidue(
         string pidPath,
         Func<int, string?> readToken,
         Func<int, bool> isAlive,
         Action<int> killTree,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        Func<int, string?>? readCommandLine = null)
     {
         (int Pid, string Token)? record = ReadSpawnRecord(pidPath);
         if (record is null)
@@ -113,10 +120,89 @@ public static class OrphanDshReaper
             return ResidueState.Clear;
         }
 
-        // 活着但验不明归属（Windows/macOS 无 /proc 复验，或 pid 复用指向无关进程）：绝不杀，
-        // 调用方 fail loud（用户手动确认清理后下轮自动恢复）
+        return ResolveUnverifiedAlive(pid, pidPath, log, readCommandLine);
+    }
+
+    /// <summary>「活着但验不明」的收敛：先做 PID 复用甄别（ADR pid-reuse-foreign-cmdline-clear）——命令行
+    /// 可读且明显不是自家 runtime 形态，说明原记录的 dsh 早已不在（PID 被无关进程复用，跨重启实测：
+    /// stale 记录 pid 撞上 GNOME localsearch-3），记录本身才是脏数据，清掉脏记录按 Clear 放行（绝不杀）；
+    /// 甄别不了（cmdline 不可读/形态存疑/委托异常）保持 fail loud 不放行。</summary>
+    /// <param name="pid">记录中的残留 pid。</param>
+    /// <param name="pidPath">PID 文件路径（清脏记录用）。</param>
+    /// <param name="log">日志（可选）。</param>
+    /// <param name="readCommandLine">命令行探针（注入；null = 不甄别，恒 fail loud）。</param>
+    /// <returns>Clear（已证记录过期）或 Unreapable（甄别不出）。</returns>
+    private static ResidueState ResolveUnverifiedAlive(
+        int pid,
+        string pidPath,
+        Action<string>? log,
+        Func<int, string?>? readCommandLine)
+    {
+        if (readCommandLine is null)
+        {
+            return UnreapableLoud(pid, log);
+        }
+
+        string? commandLine;
+        try
+        {
+            commandLine = readCommandLine(pid);
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke($"[host] 残留甄别读命令行异常（按验不明处理）：pid {pid} {ex.Message}");
+            commandLine = null;
+        }
+
+        if (commandLine is not null && !PlausiblyOwnRuntime(commandLine))
+        {
+            log?.Invoke($"[host] 残留记录过期收敛：pid {pid} 已被无关进程复用（命令行：{commandLine}），清脏记录放行");
+            TryClearStaleRecord(pidPath);
+            return ResidueState.Clear;
+        }
+
+        return UnreapableLoud(pid, log);
+    }
+
+    /// <summary>验不明且不可放行的 fail-loud 留痕：绝不杀，调用方挡 spawn（用户手动确认清理后下轮自动恢复）。</summary>
+    private static ResidueState UnreapableLoud(int pid, Action<string>? log)
+    {
         log?.Invoke($"[host] 残留无法安全回收：pid {pid} 仍活但归属验不明，不敢杀、不 spawn（fail loud，请确认后手动结束该进程）");
         return ResidueState.Unreapable;
+    }
+
+    /// <summary>命令行是否形似自家 runtime（保守白名单：dsh 本体，或 node——dsh 经 shebang 由 node
+    /// 执行，argv[0] 恒为 node）。只在「是否放行」上消费：形似自家或无法判定一律保持 Unreapable
+    /// （fail loud 方向），即本谓词为 false 才是放行依据——把「像」误判成自家只是放弃一次放行，
+    /// 把「不像」误判成他者则会跳过真实残留，故白名单取窄不取宽。</summary>
+    /// <param name="commandLine">空格连接的命令行（<c>/proc/&lt;pid&gt;/cmdline</c> 折叠形）。</param>
+    /// <returns>形似自家 runtime 返回 true。</returns>
+    internal static bool PlausiblyOwnRuntime(string commandLine)
+    {
+        string[] argv = commandLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (argv.Length == 0)
+        {
+            // 空形（内核线程等）不可证他者：按自家处理（保守不放行）
+            return true;
+        }
+
+        string exe = Path.GetFileName(argv[0]);
+        return exe is "node" or "dsh"
+            || argv.Skip(1).Any(arg => Path.GetFileName(arg) is "dsh" or "dsh.cmd" or "dsh.exe");
+    }
+
+    /// <summary>清掉已被证伪的过期 PID 记录（尽力而为：删除失败不阻断放行，下轮重走同一甄别再收敛）。</summary>
+    /// <param name="pidPath">PID 文件路径。</param>
+    private static void TryClearStaleRecord(string pidPath)
+    {
+        try
+        {
+            File.Delete(pidPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            HostLog.Write($"[host] 清过期 dsh PID 记录失败（忽略，下轮重收敛）：{ex.Message}");
+        }
     }
     /// <summary>读取一次 spawn 的 (pid, token)：PID 文件不存在/损坏 → null（无可清扫，静默）。</summary>
     /// <param name="pidPath">PID 文件路径（profiles/<see cref="HarnessRuntimeHost.DesktopProfileName"/>/.dsh-pid）。</param>
