@@ -85,7 +85,7 @@ public class SpawnEnvironmentHygieneTests
     public async Task BuildCapturePsi_NpmCli_ReplacesNodeOptions() => await WithNoiseAsync(() =>
     {
         ProcessStartInfo psi = RuntimeBootstrap.BuildCapturePsi(
-            "node", ["/usr/lib/node_modules/npm/bin/npm-cli.js", "install", "-g", "@deepseek-ai/dsh@alpha"]);
+            "node", ["/usr/lib/node_modules/npm/bin/npm-cli.js", "install", "-g", "@deepseek-ai/dsh@next"]);
 
         Assert.Equal("inherited", psi.Environment["DSH_TEST_INHERIT_MARKER"]);
         Assert.False(psi.Environment.ContainsKey("npm_config_registry"));

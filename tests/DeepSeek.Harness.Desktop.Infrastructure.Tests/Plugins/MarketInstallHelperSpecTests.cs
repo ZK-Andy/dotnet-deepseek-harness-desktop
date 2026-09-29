@@ -15,7 +15,7 @@ public class MarketInstallHelperSpecTests
     [InlineData("pkg@next")]
     [InlineData("@scope/name")]
     [InlineData("@deepseek-ai/dsh-mcp-client@0.1.1-rc.2")]
-    [InlineData("@deepseek-ai/dsh@alpha")]
+    [InlineData("@deepseek-ai/dsh@next")]
     public void IsValidRegistrySpec_AcceptsRegistryShapes(string spec) =>
         Assert.True(MarketInstallHelper.IsValidRegistrySpec(spec, out string reason), reason);
 

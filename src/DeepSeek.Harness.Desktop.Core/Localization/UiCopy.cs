@@ -61,8 +61,8 @@ public static class UiCopy
 
     /// <summary>引导：DshSpec 非 registry 形态（caret range 等 pnpm 不支持形，ADR pnpm-caret-spec-rejection）。</summary>
     public static string BootstrapInvalidDshSpec(string dshSpec, string reason, bool english) => english
-        ? $"Invalid DshSpec ({dshSpec}): {reason}. Use a registry spec like @deepseek-ai/dsh@alpha."
-        : $"DshSpec 非法（{dshSpec}）：{reason}。请用 registry 形态，如 @deepseek-ai/dsh@alpha。";
+        ? $"Invalid DshSpec ({dshSpec}): {reason}. Use a registry spec like @deepseek-ai/dsh@next."
+        : $"DshSpec 非法（{dshSpec}）：{reason}。请用 registry 形态，如 @deepseek-ai/dsh@next。";
 
     /// <summary>引导：当前平台无 Node 发行包坐标。</summary>
     public static string BootstrapUnsupportedPlatform(bool english) => english
@@ -167,10 +167,10 @@ public static class UiCopy
 
     /// <summary>dsh 版本底线横幅正文（检测版本低于底线）。</summary>
     public static string VersionFloorBannerText(string detectedVersion, string minimumVersion, bool english) => english
-        ? $"Current dsh version {detectedVersion} is below the minimum supported by this desktop ({minimumVersion}); data or behavior may be incompatible. Upgrade dsh to the alpha channel."
+        ? $"Current dsh version {detectedVersion} is below the minimum supported by this desktop ({minimumVersion}); data or behavior may be incompatible. Upgrade dsh to the next channel."
         : "当前 dsh 版本 " + detectedVersion +
           " 低于桌面支持的最低版本 " + minimumVersion +
-          "，可能出现数据或行为不兼容；请升级 dsh 至 alpha 通道。";
+          "，可能出现数据或行为不兼容；请升级 dsh 至 next 通道。";
 
     /// <summary>非受控退出横幅正文。</summary>
     public static string UncleanExitBannerText(bool english) => english

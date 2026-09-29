@@ -8,7 +8,7 @@ public class BootstrapNodeEnvCollectionDefinition;
 
 /// <summary>
 /// RuntimeBootstrap 行为（ADR simple-shell-single-global-dsh）：系统全局 node + 全局 dsh。
-/// 有系统 node → 用它 <c>npm install -g @alpha</c>（系统全局位）→ 验证 PATH `dsh --version`；没系统 node →
+/// 有系统 node → 用它 <c>npm install -g @next</c>（系统全局位）→ 验证 PATH `dsh --version`；没系统 node →
 /// 下载最新官方 node（SHA256 校验 + 多源回落）装到系统全局前缀（需 sudo 提示手动命令）→ 再装全局 dsh。
 /// npm 因权限需 sudo 时给出可手动执行的命令。hook 注入端到端状态机（对齐 OrphanDshReaper 委托注入风格）。
 /// </summary>
@@ -191,7 +191,7 @@ public class RuntimeBootstrapTests
         (RuntimeBootstrapHooks hooks, List<string> calls) = GlobalNodeHooks();
         var progress = new List<BootstrapProgress>();
         BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@alpha" },
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" },
             progress.Add,
             hooks,
             english: false,
@@ -205,13 +205,13 @@ public class RuntimeBootstrapTests
         Assert.DoesNotContain(calls, c => c.StartsWith("run:tar", StringComparison.Ordinal));
     }
 
-    /// <summary>验证 npm install -g 参数含全局标志与 @alpha spec（装/更新到 alpha 预发布通道）。</summary>
+    /// <summary>验证 npm install -g 参数含全局标志与 @next spec（装/更新到 next 预发布通道）。</summary>
     [Fact]
-    public async Task RunAsync_InstallArgs_ContainGlobalAndAlphaSpec()
+    public async Task RunAsync_InstallArgs_ContainGlobalAndNextSpec()
     {
         (RuntimeBootstrapHooks hooks, List<string> calls) = GlobalNodeHooks();
         BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@alpha" },
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" },
             _ => { },
             hooks,
             english: false,
@@ -220,7 +220,7 @@ public class RuntimeBootstrapTests
         Assert.True(outcome.Success, outcome.Error);
         string installCall = calls.Single(c => c.Contains("install", StringComparison.Ordinal));
         Assert.Contains("install -g", installCall);
-        Assert.Contains("@deepseek-ai/dsh@alpha", installCall);
+        Assert.Contains("@deepseek-ai/dsh@next", installCall);
         Assert.Contains("npm-cli.js", installCall);
     }
 
@@ -241,10 +241,10 @@ public class RuntimeBootstrapTests
     {
         (RuntimeBootstrapHooks hooks, _) = GlobalNodeHooks(installResult: (1, "npm error code EACCES: permission denied"));
         BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@alpha" }, _ => { }, hooks, english: false, CancellationToken.None);
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" }, _ => { }, hooks, english: false, CancellationToken.None);
         Assert.False(outcome.Success);
         Assert.Equal(BootstrapStep.InstallDsh, outcome.Step);
-        Assert.Contains("sudo npm install -g @deepseek-ai/dsh@alpha", outcome.Error);
+        Assert.Contains("sudo npm install -g @deepseek-ai/dsh@next", outcome.Error);
     }
 
     /// <summary>验证 DshSpec 含 caret range 时秒级 fail loud：停在 InstallDsh 步，一次 npm 都不跑，中英文案分支（ADR pnpm-caret-spec-rejection）。</summary>
@@ -416,15 +416,15 @@ public class RuntimeBootstrapTests
     {
         (RuntimeBootstrapHooks hooks, _) = GlobalNodeHooks(installResult: (1, "E404: not found"));
         BootstrapOutcome npm = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@alpha" }, _ => { }, hooks, english: true, CancellationToken.None);
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" }, _ => { }, hooks, english: true, CancellationToken.None);
         Assert.Contains("npm install failed with exit=1", npm.Error);
         Assert.DoesNotContain("失败", npm.Error);
 
         (RuntimeBootstrapHooks permHooks, _) = GlobalNodeHooks(installResult: (1, "npm error code EACCES: permission denied"));
         BootstrapOutcome perm = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@alpha" }, _ => { }, permHooks, english: true, CancellationToken.None);
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" }, _ => { }, permHooks, english: true, CancellationToken.None);
         Assert.Contains("elevated permissions", perm.Error);
-        Assert.Contains("sudo npm install -g @deepseek-ai/dsh@alpha", perm.Error);
+        Assert.Contains("sudo npm install -g @deepseek-ai/dsh@next", perm.Error);
     }
 
     /// <summary>验证无系统 node 时下载最新官方 node 装到全局前缀、暴露该 node 的 bin 到 PATH、再装全局 dsh 成功。</summary>
@@ -595,7 +595,7 @@ public class Utf8TextStreamsTests
 /// <summary>RuntimeBootstrapOptions 配置装载（ADR simple-shell-single-global-dsh）。</summary>
 public class RuntimeBootstrapOptionsTests
 {
-    /// <summary>验证 appsettings 缺 RuntimeBootstrap 节时返回默认值（dsh @alpha、步超时 10m、官方 dist、取文本 30s、轮询 200ms、决策 5m）。</summary>
+    /// <summary>验证 appsettings 缺 RuntimeBootstrap 节时返回默认值（dsh @next、步超时 10m、官方 dist、取文本 30s、轮询 200ms、决策 5m）。</summary>
     [Fact]
     public void Load_MissingSection_ReturnsDefaults()
     {
@@ -605,7 +605,7 @@ public class RuntimeBootstrapOptionsTests
         {
             File.WriteAllText(Path.Combine(dir, "appsettings.json"), """{"Update":{}}""");
             var options = RuntimeBootstrapOptions.Load(dir);
-            Assert.Equal("@deepseek-ai/dsh@alpha", options.DshSpec);
+            Assert.Equal("@deepseek-ai/dsh@next", options.DshSpec);
             Assert.Equal(10, options.StepTimeoutMinutes);
             Assert.Equal("https://nodejs.org/dist", options.NodeDistBaseUrl);
             Assert.Equal(30, options.FetchTextTimeoutSeconds);
@@ -655,7 +655,7 @@ public class RuntimeBootstrapOptionsTests
         {
             File.WriteAllText(Path.Combine(dir, "appsettings.json"), "{not json");
             var options = RuntimeBootstrapOptions.Load(dir);
-            Assert.Equal("@deepseek-ai/dsh@alpha", options.DshSpec);
+            Assert.Equal("@deepseek-ai/dsh@next", options.DshSpec);
         }
         finally
         {

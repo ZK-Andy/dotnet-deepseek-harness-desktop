@@ -97,7 +97,7 @@ public class NpmPrefixExposeTests
                 },
                 ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((Path.Combine("/fake", "node"), Path.Combine("/fake", "npm-cli.js"))));
             BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(
-                new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@alpha" },
+                new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" },
                 _ => { },
                 hooks,
                 english: false,

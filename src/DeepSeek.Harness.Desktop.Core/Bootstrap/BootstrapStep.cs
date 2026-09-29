@@ -6,7 +6,7 @@ public enum BootstrapStep
     /// <summary>确保系统全局 Node（PATH）可用；无则下载装到系统全局位。</summary>
     EnsureNode,
 
-    /// <summary>经全局 npm 把 dsh 装到系统全局位（装 / 更新到 @alpha）。</summary>
+    /// <summary>经全局 npm 把 dsh 装到系统全局位（装 / 更新到 @next）。</summary>
     InstallDsh,
 
     /// <summary>验证 <c>dsh --version</c> 可解析（全局 dsh 就位）。</summary>

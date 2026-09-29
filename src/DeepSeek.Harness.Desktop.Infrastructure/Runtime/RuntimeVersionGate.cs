@@ -5,14 +5,14 @@ using System.Text.RegularExpressions;
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 /// <summary>
-/// 启动版本底线检查（只读探测，ADR shared-home-desktop-profile）：桌面依赖全局 dsh（alpha 通道），
+/// 启动版本底线检查（只读探测，ADR shared-home-desktop-profile）：桌面依赖全局 dsh（next 通道），
 /// 与用户自管 CLI 写同一 home，版本偏斜的唯一防线——探测即将执行的 dsh 版本，低于底线仅明确提示，
 /// 不阻断、不做迁移管控。探测失败（超时/进程失败/不可解析）视为未知：只记日志，不用横幅打扰。
 /// </summary>
 public static class RuntimeVersionGate
 {
     /// <summary>
-    /// 桌面支持的最低 dsh 版本（跟随 @alpha 预发布通道，本底线是对上游缺陷/破坏性变更的唯一兜底：
+    /// 桌面支持的最低 dsh 版本（跟随 @next 预发布通道，本底线是对上游缺陷/破坏性变更的唯一兜底：
     /// 出问题立即抬升）。协议级兼容底线，固定在代码不入 appsettings。
     /// 低于即横幅提示（全局 dsh 更新失败或用户自装极旧版的兜底）。
     /// </summary>

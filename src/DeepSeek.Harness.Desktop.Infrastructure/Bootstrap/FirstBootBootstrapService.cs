@@ -53,14 +53,14 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
         // 若系统全局 node 已由桌面装好（此前安装/用户手动），把它暴露到进程 PATH，让宿主 spawn 与探测能解析。
         EnsureRuntimeNodeOnPath();
 
-        // 启动只读探测 PATH 上全局 dsh——没有 → 走首启引导（npm install -g 装/更新到 @alpha）。
+        // 启动只读探测 PATH 上全局 dsh——没有 → 走首启引导（npm install -g 装/更新到 @next）。
         // dev 判定只认显式环境标记（DSH_DESKTOP_RUNTIME_DIR / DSH_DESKTOP_DEV=1）——绝不以
         // 捆绑闭包存在性探测（打包新装同样没有闭包，探测会误判全部新装用户）。
         string? pathVersion = RuntimeVersionGate.ProbeAsync(CancellationToken.None)
             .GetAwaiter().GetResult();
-        // 没有 → 装；落后 alpha 兼容底线（低于底部）→ 经引导更新到 @alpha；否则直接用。
-        // 引导内 npm install -g @alpha 幂等（安装或更新）；检测"落后"以兼容底线（MinimumVersion）为
-        // 廉价代理——精确对齐 @alpha 需启动时查询 npm dist-tag（见实现受阻点/决策点）。
+        // 没有 → 装；落后 next 兼容底线（低于底部）→ 经引导更新到 @next；否则直接用。
+        // 引导内 npm install -g @next 幂等（安装或更新）；检测"落后"以兼容底线（MinimumVersion）为
+        // 廉价代理——精确对齐 @next 需启动时查询 npm dist-tag（见实现受阻点/决策点）。
         _needed = pathVersion is null || RuntimeVersionGate.IsBelowFloor(pathVersion);
         _log.Invoke(_needed
             ? $"[bootstrap] 全局 dsh 未检出或落后（{pathVersion ?? "(无)"}），进入首启引导"

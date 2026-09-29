@@ -2,7 +2,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 /// <summary>
 /// 首启引导状态机（ADR simple-shell-single-global-dsh）：桌面是简单壳，依赖全机唯一的系统全局 node +
-/// 全局 dsh（都在 PATH 上）。有系统 node → 用它执行 <c>npm install -g @deepseek-ai/dsh@alpha</c>；没系统
+/// 全局 dsh（都在 PATH 上）。有系统 node → 用它执行 <c>npm install -g @deepseek-ai/dsh@next</c>；没系统
 /// node → 下载最新官方 node 发行包（SHA256 校验 + 多源回落）并**装到系统全局前缀**（用户可写优先，避免需
 /// sudo；要 sudo 则提示用户手动命令），再装全局 dsh。装好的 node 落到系统全局位，桌面+终端共用同一份。
 /// <c>npm install -g</c> 因权限需 sudo 时给出可手动执行的命令（不静默失败）。
@@ -46,7 +46,7 @@ public static partial class RuntimeBootstrap
             ProbeLocalNodeAsync: ct => ProbeLocalNodeAsync(log, english, ct));
     }
 
-    /// <summary>执行一次引导尝试（确保系统全局 node + 全局 dsh 就位到 alpha）。</summary>
+    /// <summary>执行一次引导尝试（确保系统全局 node + 全局 dsh 就位到 next）。</summary>
     /// <param name="options">引导配置（node 全局前缀/超时/发行源）。</param>
     /// <param name="report">进度回调（步骤 + 中文诊断行，页面仅在失败时展示）。</param>
     /// <param name="hooks">IO 与子进程注入面。</param>
@@ -67,7 +67,7 @@ public static partial class RuntimeBootstrap
             // ① 确保系统全局 node（复用 PATH / 复用已装全局 / 下载装到系统全局）
             NodeResult node = await EnsureGlobalNodeAsync(options, report, hooks, english, ct).ConfigureAwait(false);
 
-            // ② 经该 node 的 npm 把 dsh 装到系统全局位（装 / 更新到 @alpha）
+            // ② 经该 node 的 npm 把 dsh 装到系统全局位（装 / 更新到 @next）
             step = BootstrapStep.InstallDsh;
             // DshSpec 合约 = registry 形态（ADR pnpm-caret-spec-rejection）：appsettings 可配，
             // 配错（caret range 等 pnpm 不支持形）必须秒级 fail loud，不能等 npm 跑数分钟才失败

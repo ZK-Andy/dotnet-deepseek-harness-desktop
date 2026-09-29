@@ -5,13 +5,13 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// <summary>
 /// 首启引导的可调参数（appsettings.json 的 <c>RuntimeBootstrap</c> 节，禁止硬编码进逻辑）。
 /// ADR simple-shell-single-global-dsh：桌面是简单壳，依赖全机唯一的系统全局 node + 全局 dsh
-/// （都在 PATH 上）：有系统 node 就用其 npm 执行 <c>npm install -g @deepseek-ai/dsh@alpha</c>；没有则
+/// （都在 PATH 上）：有系统 node 就用其 npm 执行 <c>npm install -g @deepseek-ai/dsh@next</c>；没有则
 /// 下载最新官方 node 发行包并装到系统全局前缀（需 sudo 时提示手动命令），再装全局 dsh。
 /// </summary>
 public sealed record RuntimeBootstrapOptions
 {
-    /// <summary>dsh 的安装 spec（跟随 alpha 预发布通道，见 ADR simple-shell-single-global-dsh）。</summary>
-    public string DshSpec { get; init; } = "@deepseek-ai/dsh@alpha";
+    /// <summary>dsh 的安装 spec（跟随 next 预发布通道，见 ADR simple-shell-single-global-dsh）。</summary>
+    public string DshSpec { get; init; } = "@deepseek-ai/dsh@next";
 
     /// <summary>单个下载/安装步骤的超时（分钟）。</summary>
     public int StepTimeoutMinutes { get; init; } = 10;
