@@ -4909,8 +4909,8 @@
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" x="180" y="270" width="800" height="268" rx="12" class="c-region" stroke-width="1"/>
-        <text x="188" y="288" class="t-cloud" font-size="9" font-weight="600">桌面进程</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" x="180" y="110" width="800" height="428" rx="12" class="c-region" stroke-width="1"/>
+        <text x="188" y="128" class="t-cloud" font-size="9" font-weight="600">桌面进程</text>
 
         <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" x="970" y="110" width="210" height="428" rx="12" class="c-region" stroke-width="1"/>
         <text x="978" y="128" class="t-cloud" font-size="9" font-weight="600">共享运行时 ~/.dsh</text>
@@ -4927,6 +4927,8 @@
         <path data-edge-from="infraup" data-edge-to="sys" data-edge-label="资产 SHA256" data-edge-key="8" data-edge-id="fetch-assets" data-composition-points="600,488;530,488" d="M 600 488 L 530 488" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="dsh" data-edge-to="companion" data-edge-label="托管" data-edge-key="9" data-edge-id="host-plugin" data-composition-points="1075,364;1075,458" d="M 1075 364 L 1075 458" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="companion" data-edge-to="shell" data-edge-label="托盘事件中继" data-edge-key="10" data-edge-id="relay-events" data-composition-points="1075,518;1075,572;280,572;280,364" d="M 1075 518 L 1075 564 Q 1075 572 1067 572 L 288 572 Q 280 572 280 564 L 280 364" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="shell" data-edge-to="proxy" data-edge-label="页面加载" data-edge-key="11" data-edge-id="page-load" data-composition-points="280,300;280,276;301,276;301,224;285,224;285,200" d="M 280 300 L 280 284 Q 280 276 288 276 L 293 276 Q 301 276 301 268 L 301 232 Q 301 224 293 224 L 293 224 Q 285 224 285 216 L 285 200" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="proxy" data-edge-to="dsh" data-edge-label="转发+WS隧道" data-edge-key="12" data-edge-id="proxy-forward" data-composition-points="360,170;976,170;976,332;1000,332" d="M 360 170 L 968 170 Q 976 170 976 178 L 976 324 Q 976 332 984 332 L 1000 332" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
 
         <!-- Components -->
         <g id="node-user" data-node-id="user" data-node-label="用户" tabindex="0" role="button" aria-label="Focus 用户, 启动器/托盘/终端, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="启动器/托盘/终端" data-node-context="Architecture component">
@@ -4990,8 +4992,8 @@
         <text data-detail="context" x="875" y="346" class="t-muted" font-size="8.7" text-anchor="middle">HarnessRuntimeHost/端口记忆</text>
         </g>
 
-        <g id="node-dsh" data-node-id="dsh" data-node-label="全局 dsh" tabindex="0" role="button" aria-label="Focus 全局 dsh, PATH @alpha, dsh web, 共享运行时 ~/.dsh" aria-pressed="false" data-node-kind="external" data-node-sublabel="PATH @alpha, dsh web" data-node-context="共享运行时 ~/.dsh">
-          <title>全局 dsh · PATH @alpha, dsh web · 共享运行时 ~/.dsh</title>
+        <g id="node-dsh" data-node-id="dsh" data-node-label="全局 dsh" tabindex="0" role="button" aria-label="Focus 全局 dsh, PATH @next, dsh web, 共享运行时 ~/.dsh" aria-pressed="false" data-node-kind="external" data-node-sublabel="PATH @next, dsh web" data-node-context="共享运行时 ~/.dsh">
+          <title>全局 dsh · PATH @next, dsh web · 共享运行时 ~/.dsh</title>
           <rect x="1000" y="300" width="150" height="64" rx="6" class="c-mask"/>
           <rect x="1000" y="300" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(1006 306) scale(0.6875)">
@@ -4999,7 +5001,7 @@
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
           <text data-detail-anchor x="1075" y="330" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">全局 dsh</text>
-        <text data-detail="context" x="1075" y="346" class="t-muted" font-size="9" text-anchor="middle">PATH @alpha, dsh web</text>
+        <text data-detail="context" x="1075" y="346" class="t-muted" font-size="9" text-anchor="middle">PATH @next, dsh web</text>
         </g>
 
         <g id="node-home" data-node-id="home" data-node-label="~/.dsh 共享 home" tabindex="0" role="button" aria-label="Focus ~/.dsh 共享 home, 会话/凭据/dotnet-desktop, 共享运行时 ~/.dsh" aria-pressed="false" data-node-kind="database" data-node-sublabel="会话/凭据/dotnet-desktop" data-node-context="共享运行时 ~/.dsh">
@@ -5048,6 +5050,17 @@
         <text data-detail="context" x="455" y="502" class="t-muted" font-size="9" text-anchor="middle">全局 node/原生/更新资产</text>
         </g>
 
+        <g id="node-proxy" data-node-id="proxy" data-node-label="回环代理源" tabindex="0" role="button" aria-label="Focus 回环代理源, localhost 页源/转发+隧道, 桌面进程" aria-pressed="false" data-node-kind="backend" data-node-sublabel="localhost 页源/转发+隧道" data-node-context="桌面进程">
+          <title>回环代理源 · localhost 页源/转发+隧道 · 桌面进程</title>
+          <rect x="210" y="140" width="150" height="60" rx="6" class="c-mask"/>
+          <rect x="210" y="140" width="150" height="60" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(216 146) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-detail-anchor x="285" y="168" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">回环代理源</text>
+        <text data-detail="context" x="285" y="184" class="t-muted" font-size="9" text-anchor="middle">localhost 页源/转发+隧道</text>
+        </g>
+
         <!-- Connection labels -->
         <g data-detail="context" data-edge-from="user" data-edge-to="shell" data-edge-label="交互" data-edge-key="0" data-edge-id="use-shell">
           <rect x="165" y="310" width="30" height="14" rx="3" class="c-mask"/>
@@ -5066,8 +5079,8 @@
           <text x="775" y="380" class="t-muted" font-size="8" text-anchor="middle">经端口调用</text>
         </g>
         <g data-detail="context" data-edge-from="infrart" data-edge-to="dsh" data-edge-label="spawn + 监督" data-edge-key="4" data-edge-id="spawn-supervise">
-          <rect x="941.2" y="286" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="975" y="296" class="t-backend" font-size="8" text-anchor="middle">spawn + 监督</text>
+          <rect x="941.2" y="368" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="975" y="378" class="t-backend" font-size="8" text-anchor="middle">spawn + 监督</text>
         </g>
         <g data-detail="context" data-edge-from="dsh" data-edge-to="home" data-edge-label="读写" data-edge-key="5" data-edge-id="dsh-home">
           <rect x="1060" y="280" width="30" height="14" rx="3" class="c-mask"/>
@@ -5092,6 +5105,14 @@
         <g data-detail="context" data-edge-from="companion" data-edge-to="shell" data-edge-label="托盘事件中继" data-edge-key="10" data-edge-id="relay-events">
           <rect x="643.7" y="552" width="67.6" height="14" rx="3" class="c-mask"/>
           <text x="677.5" y="562" class="t-messagebus" font-size="8" text-anchor="middle">托盘事件中继</text>
+        </g>
+        <g data-detail="context" data-edge-from="shell" data-edge-to="proxy" data-edge-label="页面加载" data-edge-key="11" data-edge-id="page-load">
+          <rect x="266.3" y="256" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="290.5" y="266" class="t-muted" font-size="8" text-anchor="middle">页面加载</text>
+        </g>
+        <g data-detail="context" data-edge-from="proxy" data-edge-to="dsh" data-edge-label="转发+WS隧道" data-edge-key="12" data-edge-id="proxy-forward">
+          <rect x="944.6" y="231" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="976" y="241" class="t-backend" font-size="8" text-anchor="middle">转发+WS隧道</text>
         </g>
 
         <!-- Legend -->
