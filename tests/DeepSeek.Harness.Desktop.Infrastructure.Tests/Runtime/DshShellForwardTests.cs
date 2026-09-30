@@ -34,11 +34,11 @@ public class DshShellForwardTests
         bool minted = await forward.MintAsync(url, lines.Add, cts.Token);
 
         Assert.True(minted);
-        Assert.True(server.ProbeCookieSeen, "稳定化探活应携带铸得的 cookie");
+        Assert.True(server.ProbeCookieSeen, "稳定化探活应携带铸得的 cookie（POST /api/session/list）");
         Assert.DoesNotContain(lines, l => l.Contains(GoodToken));
         Assert.DoesNotContain(lines, l => l.Contains(CookieValue));
         Assert.Contains(lines, l => l.Contains("303") && l.Contains(CookieName));
-        Assert.Contains(lines, l => l.Contains("就绪稳定化：web 面 Ready"));
+        Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面 Ready"));
         Assert.DoesNotContain(lines, l => l.Contains("预算耗尽"));
     }
 
@@ -60,7 +60,7 @@ public class DshShellForwardTests
         Assert.DoesNotContain(lines, l => l.Contains("WRONG"));
     }
 
-    /// <summary>稳定化不通过不放行：303 已铸到 cookie 但 web 面恒 401，route/TCS 在预算耗尽前不得可见
+    /// <summary>稳定化不通过不放行：303 已铸到 cookie 但会话面恒 401，route/TCS 在预算耗尽前不得可见
     /// （holder 不得提前 reload 进半成品页面，ADR holder-mint-gate-deepening）。</summary>
     [Fact]
     public async Task Mint_RouteInvisibleUntilStabilized()
@@ -99,11 +99,11 @@ public class DshShellForwardTests
 
         Assert.True(minted);
         Assert.True(forward.TryGetRoute(out _, out _));
-        Assert.Contains(lines, l => l.Contains("就绪稳定化：web 面 Ready"));
+        Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面 Ready"));
         Assert.DoesNotContain(lines, l => l.Contains("预算耗尽"));
     }
 
-    /// <summary>web 面恒不就绪：预算耗尽 fail-open——仍铸币（返回 true）且日志留痕预算耗尽标记。</summary>
+    /// <summary>会话面恒不就绪：预算耗尽 fail-open——仍铸币（返回 true）且日志留痕预算耗尽标记。</summary>
     [Fact]
     public async Task Mint_WebFaceNeverReady_FailOpenAfterBudget()
     {
@@ -198,19 +198,19 @@ public class DshShellForwardTests
         Assert.Null(DshShellForward.ResolveFollowTarget("nota-url-:::", authority));
     }
 
-    /// <summary>dsh 门摹拟应答者：正确 token 303 + 铸 cookie；铸币后的 web 面探活（GET / 携带该 cookie）
-    /// 按就绪时延配置回 200 有体（<see cref="ReadyDelayMilliseconds"/>：-1 = 恒不就绪；0 = 即刻）；
-    /// 其余 401（铸币面最小形态；转发执行面的桩见 <c>DshLoopbackProxyTests.StubDshHandler</c>）。</summary>
+    /// <summary>dsh 门摹拟应答者：正确 token 303 + 铸 cookie；铸币后的会话面探活（POST /api/session/list
+    /// 携带该 cookie）按就绪时延配置回 200 有体（<see cref="ReadyDelayMilliseconds"/>：-1 = 恒不就绪；
+    /// 0 = 即刻）；其余 401（铸币面最小形态；转发执行面的桩见 <c>DshLoopbackProxyTests.StubDshHandler</c>）。</summary>
     private sealed class DshMimicResponder : IDisposable
     {
         private readonly TcpListener _listener;
         private readonly CancellationTokenSource _cts = new();
         private readonly Task _serving;
 
-        /// <summary>web 面就绪时延（毫秒）：0 即刻 200；&gt;0 延迟后 200；-1 恒 401（模拟静态面永不挂载）。</summary>
+        /// <summary>会话面就绪时延（毫秒）：0 即刻 200；&gt;0 延迟后 200；-1 恒 401（模拟会话服务永不激活）。</summary>
         public int ReadyDelayMilliseconds { get; init; }
 
-        /// <summary>是否观察到携带铸得 cookie 的 web 面探活（GET /）。</summary>
+        /// <summary>是否观察到携带铸得 cookie 的会话面探活（POST /api/session/list）。</summary>
         public bool ProbeCookieSeen { get; private set; }
 
         public DshMimicResponder(int port, CancellationToken ct)
@@ -253,7 +253,41 @@ public class DshShellForwardTests
                         return;
                     }
 
-                    string head = Encoding.ASCII.GetString(buf, 0, read);
+                    // POST 带体：HttpClient 的头与体可能分两次写——按 Content-Length 读满再应答（只读一次会把体落在下一写里）。
+                    int total = read;
+                    while (true)
+                    {
+                        string soFar = Encoding.ASCII.GetString(buf, 0, total);
+                        int headEnd = soFar.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+                        int contentLength = 0;
+                        int bodyStart = -1;
+                        if (headEnd >= 0)
+                        {
+                            bodyStart = headEnd + 4;
+                            foreach (string headerLine in soFar[..headEnd].Split("\r\n"))
+                            {
+                                if (headerLine.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    _ = int.TryParse(headerLine["Content-Length:".Length..].Trim(), out contentLength);
+                                }
+                            }
+
+                            if (total - bodyStart >= contentLength)
+                            {
+                                break;
+                            }
+                        }
+
+                        int more = await stream.ReadAsync(buf.AsMemory(total, buf.Length - total), ct);
+                        if (more == 0)
+                        {
+                            break;
+                        }
+
+                        total += more;
+                    }
+
+                    string head = Encoding.ASCII.GetString(buf, 0, total);
                     string requestLine = head.Split("\r\n")[0];
                     byte[] bytes;
                     if (requestLine.StartsWith("GET /?token=" + GoodToken + " ", StringComparison.Ordinal))
@@ -263,7 +297,7 @@ public class DshShellForwardTests
                             "",
                             $"Location: ./\r\nSet-Cookie: {CookieName}={CookieValue}; Max-Age=99; Path=/; HttpOnly; SameSite=Strict\r\n"));
                     }
-                    else if (requestLine.StartsWith("GET / ", StringComparison.Ordinal)
+                    else if (requestLine.StartsWith("POST /api/session/list ", StringComparison.Ordinal)
                         && head.Contains($"Cookie: {CookieName}={CookieValue}", StringComparison.Ordinal))
                     {
                         ProbeCookieSeen = true;
@@ -280,7 +314,7 @@ public class DshShellForwardTests
                             }
 
                             bytes = Encoding.ASCII.GetBytes(LoopbackHttpResponder.Response(
-                                "HTTP/1.1 200 OK", "dsh web document\n"));
+                                "HTTP/1.1 200 OK", "{\"type\":\"server-response\",\"rpcId\":\"00000000-0000-0000-0000-000000000000\",\"result\":{\"ok\":true,\"value\":{\"items\":[]}}}\n"));
                         }
                     }
                     else

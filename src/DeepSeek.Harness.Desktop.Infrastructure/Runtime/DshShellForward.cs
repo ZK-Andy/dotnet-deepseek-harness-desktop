@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
@@ -70,9 +72,9 @@ public sealed class DshShellForward
     }
 
     /// <summary>用 token URL 铸币并记住 authority + cookie（覆盖式；失败 loud 返回 false，不抛）。
-    /// 303 铸到 cookie 后先做就绪稳定化（cookie 探活 origin `GET /`，Ready 连续维持达稳定窗才放行；
-    /// 预算耗尽 fail-open），route 写入与就绪放行同时落定——holder reload 落地时 dsh 前端静态面必然
-    /// 已挂载（ADR holder-mint-gate-deepening）。</summary>
+    /// 303 铸到 cookie 后先做就绪稳定化（cookie 探活 <c>POST /api/session/list</c>，Ready 连续维持达
+    /// 稳定窗才放行；预算耗尽 fail-open），route 写入与就绪放行同时落定——holder reload 落地时
+    /// dsh 会话服务必然已就绪（ADR holder-mint-gate-deepening）。</summary>
     /// <param name="url">dsh 完整端点（含 token，仅发请求，值永不记日志）。</param>
     /// <param name="log">日志回调（只记状态/头名，值永不落盘）。</param>
     /// <param name="ct">取消令牌。</param>
@@ -137,9 +139,11 @@ public sealed class DshShellForward
     }
 
     /// <summary>铸币后的就绪稳定化（ADR holder-mint-gate-deepening）：303 只证认证行挂载，前端静态面
-    /// 由更晚挂载的行提供，此刻放行只会让 holder reload 落进半成品页面。以铸得 cookie 对 origin
-    /// `GET /` 轮询探活，Ready（200 + 响应体非空）连续维持达稳定窗即通过；总预算封顶，到期未稳定
-    /// fail-open（dsh 挂死由监督器/恢复面兜底，铸币不得无界等待）。取消（ct）即上抛——与铸币语义同源。</summary>
+    /// 与会话服务由更晚挂载的行提供，此刻放行只会让 holder reload 落进「UI 框架在、会话树不在」的
+    /// 渐进渲染。以铸得 cookie 对 origin <c>POST /api/session/list</c>（真实 wire 路径，host.log 实证）
+    /// 轮询探活，Ready（200 + 响应体非空）连续维持达稳定窗即通过——门控位置钉在会话服务就绪，
+    /// 首屏回到「UI + 树一次出全」（两跳时代的渲染形态）；总预算封顶，到期未稳定 fail-open
+    /// （dsh 挂死由监督器/恢复面兜底，铸币不得无界等待）。取消（ct）即上抛——与铸币语义同源。</summary>
     private async Task WaitWebFaceStableAsync(string origin, string cookie, Action<string> log, CancellationToken ct)
     {
         ReadyStabilization settings = _stabilization ?? s_defaultStabilization;
@@ -152,13 +156,13 @@ public sealed class DshShellForward
             // 单次探活钉进剩余预算：半死 dsh 挂住单连接也不得把 fail-open 拖过预算（对齐
             // ProbeLoopbackWebAsync 的「实际单次等待取较小者」口径）。
             TimeSpan remaining = settings.Budget - Stopwatch.GetElapsedTime(started);
-            bool ready = await ProbeWebFaceReadyAsync(
+            bool ready = await ProbeSessionListReadyAsync(
                 origin, cookie, ct, remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining).ConfigureAwait(false);
             if (gate.Observe(
                     ready ? RuntimeLineageProbes.LoopbackWebProbe.Ready : RuntimeLineageProbes.LoopbackWebProbe.ServingNotReady,
                     DateTimeOffset.UtcNow))
             {
-                log($"[shell] 就绪稳定化：web 面 Ready 连续维持满稳定窗（探活{samples}次；{origin}）");
+                log($"[shell] 就绪稳定化：会话面 Ready 连续维持满稳定窗（探活{samples}次；{origin}）");
                 return;
             }
 
@@ -172,32 +176,48 @@ public sealed class DshShellForward
         }
     }
 
-    /// <summary>单次 web 面探活：cookie 附带走 <see cref="BuildForwardRequest"/> 单源构造；
-    /// Ready = 200 + 响应体非空，其余（非 200/空体/超时/应答异常）一律未就绪。调用方取消（ct）即上抛，
-    /// 探活自身超时按未就绪折算不外抛。</summary>
-    private async Task<bool> ProbeWebFaceReadyAsync(string origin, string cookie, CancellationToken ct, TimeSpan timeout)
+    /// <summary>单次会话面探活：镜像 dsh 0.2.0 客户端 <c>call()</c> 的 wire 语义（dsh-client-connection：
+    /// 信封 <c>{type:"client-request",rpcId,method,payload}</c> POST 到 <c>/api/&lt;method&gt;</c>，成功回包为
+    /// <c>result.ok === true</c> 的 server-response）——payload <c>{}</c> 即合法（<c>SessionListRequest = {cursor?}</c>）。
+    /// Ready = 200 + 回包为 <c>result.ok:true</c> 的 server-response 信封；网关校验失败/服务未激活/超时/
+    /// 应答异常一律未就绪。调用方取消（ct）即上抛，探活自身超时按未就绪折算不外抛。</summary>
+    private async Task<bool> ProbeSessionListReadyAsync(string origin, string cookie, CancellationToken ct, TimeSpan timeout)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(timeout);
         try
         {
-            using HttpRequestMessage request = BuildForwardRequest("GET", origin + "/", null, null, cookie);
+            // 信封为固定形状（method/payload 是常量，rpcId 是 GUID——皆无转义风险），手工拼装避免为此开源生成注册面。
+            string envelope =
+                "{\"type\":\"client-request\",\"rpcId\":\"" + Guid.NewGuid().ToString("D") +
+                "\",\"method\":\"session/list\",\"payload\":{}}";
+            using HttpRequestMessage request = BuildForwardRequest(
+                "POST", origin + "/api/session/list", Encoding.UTF8.GetBytes(envelope),
+                new Dictionary<string, string> { ["Content-Type"] = "application/json" }, cookie);
             using HttpResponseMessage response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
             if ((int)response.StatusCode != 200)
             {
-                return false;
+                    return false;
             }
 
             await using Stream body = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-            return await body.ReadAsync(new byte[1], cts.Token).ConfigureAwait(false) > 0;
+            using var buffer = new MemoryStream();
+            await body.CopyToAsync(buffer, cts.Token).ConfigureAwait(false);
+            buffer.Position = 0;
+            using var document = await JsonDocument.ParseAsync(buffer, cancellationToken: cts.Token).ConfigureAwait(false);
+            JsonElement root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("type", out JsonElement type) && type.ValueEquals("server-response")
+                && root.TryGetProperty("result", out JsonElement result) && result.ValueKind == JsonValueKind.Object
+                && result.TryGetProperty("ok", out JsonElement ok) && ok.ValueKind == JsonValueKind.True;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or IOException or ObjectDisposedException)
+        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or IOException
+            or ObjectDisposedException or JsonException)
         {
-            // 探活失败/超时即「未就绪」语义（对应答中断/连接拒绝不判死）；ct 取消已在上分支放行。
             return false;
         }
     }

@@ -567,6 +567,10 @@ public class DshLoopbackProxyTests
 
         Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
         Assert.Contains("\"ready\":true", body, StringComparison.Ordinal);
+        // 探活体镜像 0.2.0 客户端 wire 语义：client-request 信封 + 斜杠 method（host.log 实证形态）。
+        Assert.Contains("\"type\":\"client-request\"", stub.LastProbeBody, StringComparison.Ordinal);
+        Assert.Contains("\"method\":\"session/list\"", stub.LastProbeBody, StringComparison.Ordinal);
+        Assert.Contains("\"rpcId\":\"", stub.LastProbeBody, StringComparison.Ordinal);
         await runCts.CancelAsync();
     }
 
@@ -873,6 +877,8 @@ public class DshLoopbackProxyTests
 
         public string? LastOrigin { get; private set; }
 
+        public string? LastProbeBody { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             string path = (request.RequestUri?.AbsolutePath ?? "/").TrimEnd('/');
@@ -904,6 +910,19 @@ public class DshLoopbackProxyTests
             if (!hasCookie)
             {
                 return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+            }
+
+            if (path == "/api/session/list")
+            {
+                // 会话面探活靶点（铸币稳定化门）：200 + result.ok:true 的 server-response 信封即「会话服务就绪」形态。
+                // 记录探活体：信封语义（client-request + session/list）在此钉死，防桩与被测物同错。
+                LastProbeBody = request.Content is null ? string.Empty : request.Content.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"type\":\"server-response\",\"rpcId\":\"00000000-0000-0000-0000-000000000000\"," +
+                        "\"result\":{\"ok\":true,\"value\":{\"items\":[]}}}", Encoding.UTF8, "application/json"),
+                };
             }
 
             if (path == "/events")
