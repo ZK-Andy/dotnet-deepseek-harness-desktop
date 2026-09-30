@@ -6,7 +6,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// </summary>
 /// <remarks>
 /// 堆叠偏移在注入时按「已存在的已知横幅数量」运行时计算（每张 44px）——
-/// 多横幅同现时依次下移，不再互相压叠；新增横幅只需登记 id 并给配色，无需改动其他横幅的守卫链。
+/// 多横幅同现时依次下移，不再互相压叠；新增横幅只需登记 id 并声明 <see cref="BannerTone"/>，无需改动其他横幅的守卫链。
 /// </remarks>
 public static class DesktopBanner
 {
@@ -18,15 +18,40 @@ public static class DesktopBanner
         "dsh-desktop-update-ready-banner",
     };
 
-    /// <summary>横幅配色组（底色 / 前景 / 分隔线 / 按钮底色）。</summary>
-    public sealed record Palette(string Background, string Foreground, string Border, string Button);
+    /// <summary>横幅语义色调：只决定确认按钮的语义填充色；表面（底/字/分隔线）恒中性，
+    /// 随 dsh 主题自适应。横幅生于 dsh 页面之上、主题 CSS 必然在场。</summary>
+    public enum BannerTone
+    {
+        /// <summary>警示（如版本底线）：琥珀色按钮（<c>state-warn-primary</c>）。</summary>
+        Warn,
 
-    /// <summary>生成横幅注入脚本（纯函数可单测）：幂等 id 守卫 + 运行时堆叠偏移。</summary>
+        /// <summary>中性确认（如非受控退出）：反色填充按钮（label-primary ↔ bg-overlay 镜像）。</summary>
+        Neutral,
+
+        /// <summary>成功（如更新就绪）：绿色按钮（<c>state-success-primary</c>）。</summary>
+        Success,
+    }
+
+    /// <summary>生成横幅注入脚本（纯函数可单测）：幂等 id 守卫 + 运行时堆叠偏移。
+    /// 配色单点映射：表面消费 <c>--dsw-alias-bg-overlay/label-primary/border-l2</c> 随主题，
+    /// 按钮按 <paramref name="tone"/> 取语义 token；硬编码值仅为主题 CSS 不在场时的防御性回退。</summary>
+    /// <param name="id">横幅 id（须在 <see cref="KnownIds"/> 登记语义，幂等守卫依据）。</param>
+    /// <param name="text">横幅文案（经 JsString 管线转义注入）。</param>
+    /// <param name="tone">语义色调（决定按钮填充色）。</param>
     /// <param name="okLabel">确认按钮文案（宿主按注入时刻 locale 选择，ADR host-ui-locale；
     /// 缺省中文「知道了」，单一事实源在 <see cref="UiCopy"/>）。</param>
-    public static string Build(string id, string text, Palette palette, string? okLabel = null)
+    public static string Build(string id, string text, BannerTone tone, string? okLabel = null)
     {
         okLabel ??= UiCopy.OkLabel(english: false);
+        string buttonBackground = tone switch
+        {
+            BannerTone.Warn => "var(--dsw-alias-state-warn-primary,#b45309)",
+            BannerTone.Success => "var(--dsw-alias-state-success-primary,#16a34a)",
+            _ => "var(--dsw-alias-label-primary,#0f1111)",
+        };
+        string buttonText = tone == BannerTone.Neutral
+            ? "var(--dsw-alias-bg-overlay,#fff)"
+            : "#fff";
         string known = string.Join(",", KnownIds.Select(k => "'" + k + "'"));
         return "(function(){" +
                "var id='" + id + "';" +
@@ -36,11 +61,11 @@ public static class DesktopBanner
                "for(var i=0;i<known.length;i++)if(document.getElementById(known[i]))n++;" +
                "var b=document.createElement('div');" +
                "b.id=id;" +
-               "b.style.cssText='position:fixed;top:'+(n*44)+'px;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 16px 8px 40px;background:" + palette.Background + ";color:" + palette.Foreground + ";font:13px/1.5 system-ui,sans-serif;border-bottom:1px solid " + palette.Border + "';" +
+               "b.style.cssText='position:fixed;top:'+(n*44)+'px;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 16px 8px 40px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#0f1111);font:13px/1.5 system-ui,sans-serif;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.1))';" +
                "b.textContent=" + AppJsonContext.JsString(text) + ";" +
                "var x=document.createElement('button');" +
                "x.textContent=" + AppJsonContext.JsString(okLabel) + ";" +
-               "x.style.cssText='flex:none;padding:2px 10px;background:" + palette.Button + ";color:#fff;border:0;border-radius:6px;cursor:pointer;font-size:12px';" +
+               "x.style.cssText='flex:none;padding:2px 10px;background:" + buttonBackground + ";color:" + buttonText + ";border:0;border-radius:6px;cursor:pointer;font-size:12px';" +
                "x.onclick=function(){b.remove()};" +
                "b.appendChild(x);" +
                "(document.body||document.documentElement).appendChild(b);" +
@@ -57,7 +82,7 @@ public static class DesktopBanner
         return Build(
             "dsh-desktop-version-floor-banner",
             UiCopy.VersionFloorBannerText(detectedVersion, RuntimeVersionGate.MinimumVersion, english),
-            new Palette("#3a1d1d", "#ffe6e6", "#5a2a2a", "#a13a3a"),
+            BannerTone.Warn,
             uiLocale?.OkLabel);
     }
 
@@ -70,7 +95,7 @@ public static class DesktopBanner
         return Build(
             "dsh-desktop-run-marker-banner",
             UiCopy.UncleanExitBannerText(english),
-            new Palette("#1b1b26", "#e6e6ea", "#2a2a3a", "#7c3aed"),
+            BannerTone.Neutral,
             uiLocale?.OkLabel);
     }
 }

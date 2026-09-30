@@ -14,7 +14,7 @@ public static class UpdateBanner
         return DesktopBanner.Build(
             "dsh-desktop-update-ready-banner",
             text,
-            new DesktopBanner.Palette("#14251b", "#d9f2e3", "#1f3a2a", "#2f855a"),
+            DesktopBanner.BannerTone.Success,
             uiLocale?.OkLabel);
     }
 }
