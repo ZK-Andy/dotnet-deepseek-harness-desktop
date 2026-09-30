@@ -4,75 +4,121 @@
     <meta charset="utf-8" />
     <title>DeepSeek Harness Desktop</title>
     <style>
+        /* 壳自有页面在 dsh Web 层加载前渲染，拿不到 dsh 主题 CSS——采用官方 boot-page 同款
+           回退策略（deepseek-harness packages/client/web/src/boot-page.module.css）：本地
+           调色板亮色为基、暗色经 prefers-color-scheme 覆盖，墨色单色系 + 语义色点缀；
+           语义色取值与 companion（--dsw-alias-state-success/error-primary）同源。 */
+        :root {
+            color-scheme: light dark;
+            --dshdt-label-primary: #0f1115;
+            --dshdt-label-secondary: #61666b;
+            --dshdt-label-tertiary: #81858c;
+            --dshdt-border: rgb(0 0 0 / 10%);
+            --dshdt-brand: #0f1115;
+            --dshdt-surface: rgb(0 0 0 / 4%);
+            --dshdt-success: #15803d;
+            --dshdt-error: #dc2626;
+            --dshdt-error-bg: rgb(220 38 38 / 6%);
+            --dshdt-error-border: rgb(220 38 38 / 25%);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --dshdt-label-primary: #f9fafb;
+                --dshdt-label-secondary: #cfd3d6;
+                --dshdt-label-tertiary: #adb2b8;
+                --dshdt-border: rgb(255 255 255 / 12%);
+                --dshdt-brand: #f9fafb;
+                --dshdt-surface: rgb(255 255 255 / 6%);
+                --dshdt-success: #22c55e;
+                --dshdt-error: #ef4444;
+                --dshdt-error-bg: rgb(239 68 68 / 10%);
+                --dshdt-error-border: rgb(239 68 68 / 35%);
+            }
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-            background: #0f0f13; color: #e6e6ea;
+            background: Canvas; color: var(--dshdt-label-primary);
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             height: 100vh; gap: 16px; text-align: center;
         }
-        h1 { font-size: 1.8em; color: #7c3aed; }
-        p { color: #a1a1b5; max-width: 520px; line-height: 1.6; }
-        code { background: #1a1a24; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+        /* wordmark 沿官方 boot 页规格：16px/600 + 字距 */
+        h1 { font-size: 16px; line-height: 24px; font-weight: 600; letter-spacing: 0.08em; color: var(--dshdt-label-primary); }
+        p { color: var(--dshdt-label-tertiary); max-width: 520px; line-height: 1.6; font-size: 13px; }
+        code { background: var(--dshdt-surface); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
         /* —— 首启引导（ADR online-first-unbundled-runtime）—— */
         #bootstrap { display: none; flex-direction: column; align-items: center; gap: 14px; max-width: 560px; }
         #bootstrap.visible { display: flex; }
-        .step { display: flex; align-items: center; gap: 10px; color: #a1a1b5; font-size: 0.95em; }
+        .step { display: flex; align-items: center; gap: 10px; color: var(--dshdt-label-secondary); font-size: 13px; }
         .step .dot {
-            width: 10px; height: 10px; border-radius: 50%; flex: none;
-            background: #2a2a38; transition: background 0.3s;
+            width: 8px; height: 8px; border-radius: 50%; flex: none;
+            background: var(--dshdt-border); transition: background 0.3s;
         }
-        .step.active { color: #e6e6ea; }
-        .step.active .dot { background: #7c3aed; animation: pulse 1.2s ease-in-out infinite; }
-        .step.done { color: #6ee7a0; }
-        .step.done .dot { background: #22c55e; animation: none; }
-        .step.failed { color: #ff8f8f; }
-        .step.failed .dot { background: #ef4444; animation: none; }
+        .step.active { color: var(--dshdt-label-primary); }
+        .step.active .dot { background: var(--dshdt-brand); animation: pulse 1.2s ease-in-out infinite; }
+        .step.done { color: var(--dshdt-label-secondary); }
+        .step.done .dot { background: var(--dshdt-success); animation: none; }
+        .step.failed { color: var(--dshdt-error); }
+        .step.failed .dot { background: var(--dshdt-error); animation: none; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
         #bootError {
-            display: none; color: #ff8f8f; background: #2a1414; border: 1px solid #5a2a2a;
+            display: none; color: var(--dshdt-error); background: var(--dshdt-error-bg);
+            border: 1px solid var(--dshdt-error-border);
             border-radius: 8px; padding: 10px 16px; max-width: 520px; word-break: break-all;
-            font-size: 0.9em; line-height: 1.5;
+            font-size: 12px; line-height: 1.6;
         }
         #bootError.visible { display: block; }
+        /* 按钮主态 = 反色填充（与 companion 设置页 .ovn-btn 同规格），次态 = 描边幽灵 */
         #bootRetry {
-            display: none; background: #7c3aed; color: #fff; border: none; border-radius: 8px;
-            padding: 10px 32px; font-size: 1em; cursor: pointer;
+            display: none; background: var(--dshdt-label-primary); color: Canvas;
+            border: 1px solid transparent; border-radius: 8px;
+            padding: 8px 24px; font-size: 13px; line-height: 1.5; cursor: pointer;
         }
         #bootRetry.visible { display: inline-block; }
-        #bootRetry:hover { background: #8b5cf6; }
+        #bootRetry:hover { opacity: 0.92; }
         .spinner {
-            width: 28px; height: 28px; border: 3px solid #2a2a38; border-top-color: #7c3aed;
-            border-radius: 50%; animation: spin 0.9s linear infinite; display: none;
+            position: relative; width: 20px; height: 20px; display: none;
+            border: 2px solid var(--dshdt-border); border-radius: 50%;
+            animation: spin 0.8s linear infinite;
         }
         .spinner.visible { display: block; }
+        .spinner::after {
+            content: ''; position: absolute; inset: -2px; border-radius: inherit;
+            background: conic-gradient(var(--dshdt-brand) 72deg, transparent 0);
+            -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
+            mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
+        }
         @keyframes spin { to { transform: rotate(360deg); } }
         /* —— 插件引导（ADR reference-alignment 批次二）—— */
         #preinstall { display: none; flex-direction: column; align-items: center; gap: 14px; max-width: 560px; }
         #preinstall.visible { display: flex; }
-        #preinstall h2 { font-size: 1.2em; color: #e6e6ea; }
-        #preinstall p { color: #a1a1b5; max-width: 480px; font-size: 0.9em; }
+        #preinstall h2 { font-size: 14px; line-height: 1.5; font-weight: 600; color: var(--dshdt-label-primary); }
+        #preinstall p { color: var(--dshdt-label-tertiary); max-width: 480px; font-size: 12px; }
         #preinstallChips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
         .chip {
             display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px;
-            background: #1a1a24; border: 1px solid #2a2a38; border-radius: 20px; color: #e6e6ea;
-            font-size: 0.92em; cursor: pointer;
+            background: var(--dshdt-surface); border: 1px solid var(--dshdt-border);
+            border-radius: 9999px; color: var(--dshdt-label-primary);
+            font-size: 12px; cursor: pointer;
         }
-        .chip input { accent-color: #7c3aed; }
+        .chip input { accent-color: var(--dshdt-brand); }
         #preinstallActions { display: flex; gap: 12px; }
         #preinstallActions button {
-            background: #7c3aed; color: #fff; border: none; border-radius: 8px;
-            padding: 10px 28px; font-size: 1em; cursor: pointer;
+            background: var(--dshdt-label-primary); color: Canvas;
+            border: 1px solid transparent; border-radius: 8px;
+            padding: 8px 24px; font-size: 13px; line-height: 1.5; cursor: pointer;
         }
-        #preinstallActions button:hover { background: #8b5cf6; }
-        #preinstallActions button:disabled { opacity: 0.5; cursor: default; }
-        #preinstallActions .ghost { background: #2a2a38; }
-        #preinstallActions .ghost:hover { background: #3a3a48; }
+        #preinstallActions button:hover:not(:disabled) { opacity: 0.92; }
+        #preinstallActions button:disabled { opacity: 0.4; cursor: default; }
+        #preinstallActions .ghost {
+            background: transparent; border-color: var(--dshdt-border); color: var(--dshdt-label-secondary);
+        }
+        #preinstallActions .ghost:hover:not(:disabled) { color: var(--dshdt-label-primary); filter: none; }
         #preinstallLog {
             display: none; width: 100%; max-height: 180px; overflow-y: auto; text-align: left;
-            background: #0a0a10; border: 1px solid #2a2a38; border-radius: 8px; padding: 10px 12px;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.82em;
-            color: #a1a1b5; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+            background: var(--dshdt-surface); border: 1px solid var(--dshdt-border); border-radius: 8px; padding: 10px 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+            color: var(--dshdt-label-secondary); line-height: 1.5; white-space: pre-wrap; word-break: break-all;
         }
         #preinstallLog.visible { display: block; }
         #preinstallLog pre { margin: 0; }

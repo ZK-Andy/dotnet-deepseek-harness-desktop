@@ -587,8 +587,11 @@
               toastStyle.id = 'dsh-desktop-companion-linkfail-css'
               toastStyle.textContent =
                 '#ddc-linkfail-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);' +
-                'max-width:640px;padding:10px 16px;border-radius:10px;background:#22222e;border:1px solid #3a3a4a;' +
-                'color:#e6e6ea;font:13px/1.5 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);' +
+                'max-width:640px;padding:10px 16px;border-radius:10px;' +
+                // toast 生于 dsh 页面内，--dsw-alias-* 必然已定义；回退值仅防御性兜底，随主题自适应
+                'background:var(--dsw-alias-bg-layer-3,#22222e);border:1px solid var(--dsw-alias-border-l2,#3a3a4a);' +
+                'color:var(--dsw-alias-label-primary,#e6e6ea);' +
+                'font:13px/1.5 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);' +
                 'opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:2147483646}' +
                 '#ddc-linkfail-toast.ddc-linkfail-show{opacity:1;transform:translateX(-50%) translateY(0)}'
               document.head.appendChild(toastStyle)
