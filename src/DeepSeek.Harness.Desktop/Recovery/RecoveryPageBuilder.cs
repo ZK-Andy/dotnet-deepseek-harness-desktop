@@ -38,20 +38,32 @@ public static class RecoveryPageBuilder
 
     private static string Skeleton(bool english) =>
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>DeepSeek Harness Desktop</title><style>" +
-        "body{font-family:system-ui,sans-serif;background:#0f0f13;color:#e6e6ea;display:flex;flex-direction:column;" +
+        // 与 boot 页（wwwroot/index.html）同一套 --dshdt-* 回退调色板：亮基暗覆 + Canvas 底 +
+        // 墨色单色系；两处各自内联自足（骨架是编译期常量，不外链、不依赖 dsh 主题 CSS）。
+        ":root{color-scheme:light dark;--dshdt-label-primary:#0f1115;--dshdt-label-secondary:#61666b;--dshdt-label-tertiary:#81858c;" +
+        "--dshdt-border:rgb(0 0 0/10%);--dshdt-brand:#0f1115;--dshdt-surface:rgb(0 0 0/4%)}" +
+        "@media (prefers-color-scheme:dark){:root{--dshdt-label-primary:#f9fafb;--dshdt-label-secondary:#cfd3d6;--dshdt-label-tertiary:#adb2b8;" +
+        "--dshdt-border:rgb(255 255 255/12%);--dshdt-brand:#f9fafb;--dshdt-surface:rgb(255 255 255/6%)}}" +
+        "body{font-family:system-ui,sans-serif;background:Canvas;color:var(--dshdt-label-primary);display:flex;flex-direction:column;" +
         "align-items:center;justify-content:center;height:100vh;gap:14px;margin:0}" +
-        ".spin{width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#7c3aed;border-radius:50%;animation:r 1s linear infinite}" +
+        ".spin{position:relative;width:20px;height:20px;border:2px solid var(--dshdt-border);border-radius:50%;animation:r .8s linear infinite}" +
+        ".spin::after{content:'';position:absolute;inset:-2px;border-radius:inherit;background:conic-gradient(var(--dshdt-brand) 72deg,transparent 0);" +
+        "-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 0);mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 0)}" +
         "@keyframes r{to{transform:rotate(360deg)}}" +
-        "h2{margin:0;font-size:18px}p{margin:0;color:#b9b9c6}" +
-        "#ddc-tail{max-width:720px;max-height:180px;overflow:auto;background:#17171f;border:1px solid #2a2a3a;border-radius:8px;" +
-        "padding:10px 14px;font:12px/1.5 ui-monospace,monospace;color:#9a9aa8;white-space:pre-wrap;word-break:break-all;display:none}" +
-        ".row{display:flex;gap:12px}button{font:14px system-ui,sans-serif;padding:8px 18px;border-radius:8px;cursor:pointer;" +
-        "border:1px solid #3a3a4a;background:#22222e;color:#e6e6ea}button:hover{background:#2a2a38}" +
-        "#ddc-status{color:#7c8cff;min-height:1.2em}</style></head>" +
+        "h2{margin:0;font-size:16px;line-height:24px;font-weight:600;letter-spacing:.08em}" +
+        "p{margin:0;color:var(--dshdt-label-tertiary);font-size:13px;line-height:1.6}" +
+        "#ddc-tail{max-width:720px;max-height:180px;overflow:auto;background:var(--dshdt-surface);border:1px solid var(--dshdt-border);border-radius:8px;" +
+        "padding:10px 14px;font:12px/1.5 ui-monospace,monospace;color:var(--dshdt-label-secondary);white-space:pre-wrap;word-break:break-all;display:none}" +
+        ".row{display:flex;gap:12px}button{font:13px system-ui,sans-serif;padding:8px 24px;border-radius:8px;cursor:pointer;line-height:1.5;" +
+        "border:1px solid var(--dshdt-border);background:transparent;color:var(--dshdt-label-secondary)}" +
+        "button:hover:not(:disabled){color:var(--dshdt-label-primary);opacity:.92}" +
+        "button:disabled{opacity:.4;cursor:default}" +
+        "#ddc-export{background:var(--dshdt-label-primary);color:Canvas;border-color:transparent}" +
+        "#ddc-status{color:var(--dshdt-label-secondary);min-height:1.2em}</style></head>" +
         "<body><div class=\"spin\"></div><h2>DeepSeek Harness Desktop</h2>" +
         "<p id=\"ddc-reason\"></p><div id=\"ddc-tail\"></div><p id=\"ddc-status\"></p>" +
         "<div class=\"row\"><button id=\"ddc-export\">" + UiCopy.RecoveryExportButton(english) + "</button><button id=\"ddc-exit\">" + UiCopy.RecoveryExitButton(english) + "</button></div>" +
-        "<p style=\"font-size:12px;color:#6a6a78\">" + UiCopy.RecoveryAutoRetryNote(english) + "</p></body></html>";
+        "<p style=\"font-size:12px;color:var(--dshdt-label-tertiary)\">" + UiCopy.RecoveryAutoRetryNote(english) + "</p></body></html>";
 
     private static string Wire(bool english) =>
         "document.getElementById('ddc-reason').textContent=D.reason;" +
