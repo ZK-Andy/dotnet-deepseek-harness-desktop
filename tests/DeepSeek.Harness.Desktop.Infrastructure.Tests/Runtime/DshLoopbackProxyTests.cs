@@ -12,6 +12,13 @@ public class DshLoopbackProxyTests
     private const string CookieName = "test-proxy-auth";
     private const string CookieValue = "PROXYSECRET456";
 
+    /// <summary>铸币稳定化测试快参（ADR holder-mint-gate-deepening）：稳定窗/节拍 1ms（两拍即稳）、
+    /// 预算 250ms——桩不满足探活面时秒级 fail-open，全文件铸币点不再吃生产默认 2s 稳定窗。</summary>
+    private static readonly DshShellForward.ReadyStabilization s_fast = new(
+        StableWindow: TimeSpan.FromMilliseconds(1),
+        PollInterval: TimeSpan.FromMilliseconds(1),
+        Budget: TimeSpan.FromMilliseconds(250));
+
     /// <summary>SSE 首块渐进到达：后端流永不结束时，页侧首行仍须到达（缓冲实现恒等不到首行；
     /// dsh 插件 graph 靠此推送激活，mac 54 entries 实证）。</summary>
     [Fact]
@@ -19,7 +26,7 @@ public class DshLoopbackProxyTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
-        var forward = new DshShellForward(stub);
+        var forward = new DshShellForward(stub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -47,7 +54,7 @@ public class DshLoopbackProxyTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
-        var forward = new DshShellForward(stub);
+        var forward = new DshShellForward(stub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -76,7 +83,7 @@ public class DshLoopbackProxyTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
-        var forward = new DshShellForward(stub);
+        var forward = new DshShellForward(stub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -102,7 +109,7 @@ public class DshLoopbackProxyTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
-        var forward = new DshShellForward(stub);
+        var forward = new DshShellForward(stub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -129,7 +136,7 @@ public class DshLoopbackProxyTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
-        var forward = new DshShellForward(stub);
+        var forward = new DshShellForward(stub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -151,7 +158,7 @@ public class DshLoopbackProxyTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
-        var forward = new DshShellForward(stub);
+        var forward = new DshShellForward(stub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -172,7 +179,7 @@ public class DshLoopbackProxyTests
     public async Task Proxy_WithoutMint_Returns502WithoutThrowing()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        var forward = new DshShellForward(new StubDshHandler());
+        var forward = new DshShellForward(new StubDshHandler(), s_fast);
         var lines = new List<string>();
         using var proxy = new DshLoopbackProxy(forward, lines.Add, new StubDshHandler());
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
@@ -192,7 +199,7 @@ public class DshLoopbackProxyTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
-        var forward = new DshShellForward(stub);
+        var forward = new DshShellForward(stub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -220,7 +227,7 @@ public class DshLoopbackProxyTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
-        var forward = new DshShellForward(stub);
+        var forward = new DshShellForward(stub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -251,7 +258,7 @@ public class DshLoopbackProxyTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using var wsStub = new StubWebSocketServer();
         var httpStub = new StubDshHandler();
-        var forward = new DshShellForward(httpStub);
+        var forward = new DshShellForward(httpStub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -293,7 +300,7 @@ public class DshLoopbackProxyTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using var wsStub = new StubWebSocketServer(reject: true);
         var httpStub = new StubDshHandler();
-        var forward = new DshShellForward(httpStub);
+        var forward = new DshShellForward(httpStub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -329,7 +336,7 @@ public class DshLoopbackProxyTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         using var wsStub = new StubWebSocketServer();
         var httpStub = new StubDshHandler();
-        var forward = new DshShellForward(httpStub);
+        var forward = new DshShellForward(httpStub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -397,7 +404,7 @@ public class DshLoopbackProxyTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using var wsStub = new StubWebSocketServer(silentClose: true);
         var httpStub = new StubDshHandler();
-        var forward = new DshShellForward(httpStub);
+        var forward = new DshShellForward(httpStub, s_fast);
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
@@ -500,7 +507,7 @@ public class DshLoopbackProxyTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
-        var forward = new DshShellForward(stub);
+        var forward = new DshShellForward(stub, s_fast);
         var lines = new List<string>();
         using var proxy = new DshLoopbackProxy(forward, lines.Add, stub);
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
@@ -515,6 +522,11 @@ public class DshLoopbackProxyTests
         Assert.Contains("location.reload()", heldBody, StringComparison.Ordinal);
         // holder 首行即裁决排除用的标记常量（改文案必同步改常量，否则误判健康）。
         Assert.Contains(WebAuthRecovery.HolderMarker, heldBody, StringComparison.Ordinal);
+        // 过渡屏与恢复页同款：--dshdt-* 回退调色板 + conic-gradient spinner（ADR holder-mint-gate-deepening）。
+        Assert.Contains("--dshdt-label-primary", heldBody, StringComparison.Ordinal);
+        Assert.Contains("prefers-color-scheme:dark", heldBody, StringComparison.Ordinal);
+        Assert.Contains("class=\"spin\"", heldBody, StringComparison.Ordinal);
+        Assert.Contains("conic-gradient", heldBody, StringComparison.Ordinal);
         // 自恢复无计时器：失败只由事件驱动重试（online/可见性恢复/手动链），禁 setTimeout/setInterval。
         Assert.Contains("addEventListener('online'", heldBody, StringComparison.Ordinal);
         Assert.Contains("addEventListener('visibilitychange'", heldBody, StringComparison.Ordinal);
@@ -537,7 +549,7 @@ public class DshLoopbackProxyTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
-        var forward = new DshShellForward(stub);
+        var forward = new DshShellForward(stub, s_fast);
         var lines = new List<string>();
         using var proxy = new DshLoopbackProxy(forward, lines.Add, stub);
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
@@ -571,7 +583,7 @@ public class DshLoopbackProxyTests
             await File.WriteAllTextAsync(Path.Combine(root, "index.html"), "<html>GUIDE</html>", cts.Token);
             await File.WriteAllTextAsync(Path.Combine(root, "js", "app.js"), "var x = 1;", cts.Token);
             var stub = new StubDshHandler();
-            var forward = new DshShellForward(stub);
+            var forward = new DshShellForward(stub, s_fast);
             var lines = new List<string>();
             using var proxy = new DshLoopbackProxy(forward, lines.Add, stub, root);
             using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
@@ -742,7 +754,7 @@ public class DshLoopbackProxyTests
     [Fact]
     public void TryCreate_BindsAndDisposeCancelsToken()
     {
-        var forward = new DshShellForward(new StubDshHandler());
+        var forward = new DshShellForward(new StubDshHandler(), s_fast);
         var lines = new List<string>();
 
         DshLoopbackProxy.ProxySetup setup =
@@ -768,7 +780,7 @@ public class DshLoopbackProxyTests
     [Fact]
     public void Proxy_PreferredPortFree_BindsItWithoutPersisting()
     {
-        var forward = new DshShellForward(new StubDshHandler());
+        var forward = new DshShellForward(new StubDshHandler(), s_fast);
         var lines = new List<string>();
         int remembered = LoopbackHttpResponder.ReserveFreePort();
         int? persisted = null;
@@ -792,7 +804,7 @@ public class DshLoopbackProxyTests
         }
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        var forward = new DshShellForward(new StubDshHandler());
+        var forward = new DshShellForward(new StubDshHandler(), s_fast);
         var lines = new List<string>();
         int port = LoopbackHttpResponder.ReserveFreePort();
 
@@ -821,7 +833,7 @@ public class DshLoopbackProxyTests
     [Fact]
     public void Proxy_PreferredPortOccupied_FallsBackAndRepersists()
     {
-        var forward = new DshShellForward(new StubDshHandler());
+        var forward = new DshShellForward(new StubDshHandler(), s_fast);
         var lines = new List<string>();
         using var occupier = new TcpListener(IPAddress.Loopback, 0);
         occupier.Start();
@@ -840,7 +852,7 @@ public class DshLoopbackProxyTests
     [Fact]
     public void Proxy_NoMemory_AssignsAndPersists()
     {
-        var forward = new DshShellForward(new StubDshHandler());
+        var forward = new DshShellForward(new StubDshHandler(), s_fast);
         var lines = new List<string>();
         int? persisted = null;
 

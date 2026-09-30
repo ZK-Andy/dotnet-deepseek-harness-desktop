@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 /// <summary>壳路由家 + dsh 请求共享策略（铸币对齐上游
@@ -11,6 +13,19 @@ public sealed class DshShellForward
 {
     // 回环调用上限：dsh 同机响应毫秒级，30s 只防挂死（非用户可调行为，不进 RuntimeTimeouts）。
     private static readonly TimeSpan s_rpcTimeout = TimeSpan.FromSeconds(30);
+
+    // 铸币稳定化默认参数：稳定窗/节拍与收养链探测同参（RelayWebReadinessGate 文档：节拍 1s 下
+    // 2s 窗即 ≥3 拍连续 Ready）；预算封顶后 fail-open。非用户可调行为，不进 RuntimeTimeouts。
+    private static readonly ReadyStabilization s_defaultStabilization = new(
+        StableWindow: TimeSpan.FromSeconds(2),
+        PollInterval: TimeSpan.FromSeconds(1),
+        Budget: TimeSpan.FromSeconds(30));
+
+    /// <summary>铸币稳定化参数（internal 测试缝：经构造注入覆写以压缩时长；null = 生产默认）。</summary>
+    /// <param name="StableWindow">Ready 须连续维持的时长（<see cref="RelayWebReadinessGate"/>）。</param>
+    /// <param name="PollInterval">探活轮询节拍。</param>
+    /// <param name="Budget">稳定化总预算；到期未稳定即 fail-open 放行。</param>
+    internal sealed record ReadyStabilization(TimeSpan StableWindow, TimeSpan PollInterval, TimeSpan Budget);
 
     // 转发体上限：与 Ryn 本地 IPC 服务同口径（32MB），超限 loud 502（不抛，页面看错误体）。
     internal const long MaxBodyBytes = 32L * 1024 * 1024;
@@ -27,6 +42,7 @@ public sealed class DshShellForward
 
     private readonly HttpClient _client;
     private readonly object _gate = new();
+    private readonly ReadyStabilization? _stabilization;
     private string _authority = string.Empty;
     private string _cookieHeader = string.Empty;
 
@@ -42,15 +58,25 @@ public sealed class DshShellForward
 
     /// <summary>测试缝：注入传输（回环夹具）。</summary>
     internal DshShellForward(HttpMessageHandler handler)
+        : this(handler, null)
     {
-        _client = new HttpClient(handler) { Timeout = s_rpcTimeout };
     }
 
-    /// <summary>用 token URL 铸币并记住 authority + cookie（覆盖式；失败 loud 返回 false，不抛）。</summary>
+    /// <summary>测试缝：注入传输与稳定化参数（回环夹具压缩时长用）。</summary>
+    internal DshShellForward(HttpMessageHandler handler, ReadyStabilization? stabilization)
+    {
+        _client = new HttpClient(handler) { Timeout = s_rpcTimeout };
+        _stabilization = stabilization;
+    }
+
+    /// <summary>用 token URL 铸币并记住 authority + cookie（覆盖式；失败 loud 返回 false，不抛）。
+    /// 303 铸到 cookie 后先做就绪稳定化（cookie 探活 origin `GET /`，Ready 连续维持达稳定窗才放行；
+    /// 预算耗尽 fail-open），route 写入与就绪放行同时落定——holder reload 落地时 dsh 前端静态面必然
+    /// 已挂载（ADR holder-mint-gate-deepening）。</summary>
     /// <param name="url">dsh 完整端点（含 token，仅发请求，值永不记日志）。</param>
     /// <param name="log">日志回调（只记状态/头名，值永不落盘）。</param>
     /// <param name="ct">取消令牌。</param>
-    /// <returns>true = 铸到 cookie；false = 链断（日志已留痕，调用方按降级走）。</returns>
+    /// <returns>true = 铸到 cookie（含稳定化 fail-open）；false = 链断（日志已留痕，调用方按降级走）。</returns>
     public async Task<bool> MintAsync(DshWebUrl url, Action<string> log, CancellationToken ct)
     {
         string origin = url.Authority;
@@ -78,10 +104,12 @@ public sealed class DshShellForward
                 return false;
             }
 
+            string cookie = string.Join("; ", pairs);
+            await WaitWebFaceStableAsync(origin, cookie, log, ct).ConfigureAwait(false);
             lock (_gate)
             {
                 _authority = origin;
-                _cookieHeader = string.Join("; ", pairs);
+                _cookieHeader = cookie;
             }
 
             _mintedTcs.TrySetResult();
@@ -104,6 +132,72 @@ public sealed class DshShellForward
             }
 
             log($"[shell] 铸币失败（降级走既有路径）：{ex.GetType().Name} {message}");
+            return false;
+        }
+    }
+
+    /// <summary>铸币后的就绪稳定化（ADR holder-mint-gate-deepening）：303 只证认证行挂载，前端静态面
+    /// 由更晚挂载的行提供，此刻放行只会让 holder reload 落进半成品页面。以铸得 cookie 对 origin
+    /// `GET /` 轮询探活，Ready（200 + 响应体非空）连续维持达稳定窗即通过；总预算封顶，到期未稳定
+    /// fail-open（dsh 挂死由监督器/恢复面兜底，铸币不得无界等待）。取消（ct）即上抛——与铸币语义同源。</summary>
+    private async Task WaitWebFaceStableAsync(string origin, string cookie, Action<string> log, CancellationToken ct)
+    {
+        ReadyStabilization settings = _stabilization ?? s_defaultStabilization;
+        var gate = new RelayWebReadinessGate(settings.StableWindow);
+        long started = Stopwatch.GetTimestamp();
+        int samples = 0;
+        while (true)
+        {
+            samples++;
+            // 单次探活钉进剩余预算：半死 dsh 挂住单连接也不得把 fail-open 拖过预算（对齐
+            // ProbeLoopbackWebAsync 的「实际单次等待取较小者」口径）。
+            TimeSpan remaining = settings.Budget - Stopwatch.GetElapsedTime(started);
+            bool ready = await ProbeWebFaceReadyAsync(
+                origin, cookie, ct, remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining).ConfigureAwait(false);
+            if (gate.Observe(
+                    ready ? RuntimeLineageProbes.LoopbackWebProbe.Ready : RuntimeLineageProbes.LoopbackWebProbe.ServingNotReady,
+                    DateTimeOffset.UtcNow))
+            {
+                log($"[shell] 就绪稳定化：web 面 Ready 连续维持满稳定窗（探活{samples}次；{origin}）");
+                return;
+            }
+
+            if (Stopwatch.GetElapsedTime(started) >= settings.Budget)
+            {
+                log($"[shell] 就绪稳定化预算耗尽（实际等待{Stopwatch.GetElapsedTime(started).TotalSeconds:F1}s，探活{samples}次）——fail-open 放行，页面健康交探针/恢复面");
+                return;
+            }
+
+            await Task.Delay(settings.PollInterval, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>单次 web 面探活：cookie 附带走 <see cref="BuildForwardRequest"/> 单源构造；
+    /// Ready = 200 + 响应体非空，其余（非 200/空体/超时/应答异常）一律未就绪。调用方取消（ct）即上抛，
+    /// 探活自身超时按未就绪折算不外抛。</summary>
+    private async Task<bool> ProbeWebFaceReadyAsync(string origin, string cookie, CancellationToken ct, TimeSpan timeout)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(timeout);
+        try
+        {
+            using HttpRequestMessage request = BuildForwardRequest("GET", origin + "/", null, null, cookie);
+            using HttpResponseMessage response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
+            if ((int)response.StatusCode != 200)
+            {
+                return false;
+            }
+
+            await using Stream body = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+            return await body.ReadAsync(new byte[1], cts.Token).ConfigureAwait(false) > 0;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or IOException or ObjectDisposedException)
+        {
+            // 探活失败/超时即「未就绪」语义（对应答中断/连接拒绝不判死）；ct 取消已在上分支放行。
             return false;
         }
     }

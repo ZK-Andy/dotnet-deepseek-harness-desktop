@@ -74,18 +74,36 @@ internal sealed class DshLoopbackLocal
         return q >= 0 ? target[..q] : target;
     }
 
-    // holder 页（英文极简；中文指南在 /__shell_guide/，词典零负担见 ADR）：
-    // 就绪轮询无计时器：单次 fetch 即长轮询（服务端等铸币），200 即自 reload。
+    // holder 过渡屏（英文极简；中文指南在 /__shell_guide/，词典零负担见 ADR）：视觉与恢复页
+    // （RecoveryPageBuilder.Skeleton）同套 --dshdt-* 内嵌回退调色板——亮基暗覆 + Canvas 底 +
+    // conic-gradient spinner（boot/恢复/holder 壳内自有页面一套 token 家族，ADR holder-mint-gate-deepening）。
+    // 就绪轮询无计时器：单次 fetch 即长轮询（服务端等铸币+稳定化），200 即自 reload。
     // 自恢复无计时器（禁祈祷式加时）：失败（长轮询正常持有，不断即异常）先有界即时重 poll
     // 3 次，再只由事件驱动——`online`/可见性恢复/手动重试链；`busy` 守卫防多路并发 poll
     // 在铸币瞬间各回 200 致重复 reload。`display:none` 的重试链不进 innerText，不污染探针。
     // 首行文本即 Core.WebAuthRecovery.HolderMarker（裁决据此排除 holder，改文案必同步改常量）。
     private const string HolderPage =
         "<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\">" +
-        "<title>DeepSeek Harness Desktop</title></head>\n<body>\n" +
-        "<p>" + WebAuthRecovery.HolderMarker + "…</p>\n" +
+        "<title>DeepSeek Harness Desktop</title><style>" +
+        ":root{color-scheme:light dark;--dshdt-label-primary:#0f1115;--dshdt-label-secondary:#61666b;--dshdt-label-tertiary:#81858c;" +
+        "--dshdt-border:rgb(0 0 0/10%);--dshdt-brand:#0f1115;--dshdt-surface:rgb(0 0 0/4%)}" +
+        "@media (prefers-color-scheme:dark){:root{--dshdt-label-primary:#f9fafb;--dshdt-label-secondary:#cfd3d6;--dshdt-label-tertiary:#adb2b8;" +
+        "--dshdt-border:rgb(255 255 255/12%);--dshdt-brand:#f9fafb;--dshdt-surface:rgb(255 255 255/6%)}}" +
+        "body{font-family:system-ui,sans-serif;background:Canvas;color:var(--dshdt-label-primary);display:flex;flex-direction:column;" +
+        "align-items:center;justify-content:center;height:100vh;gap:14px;margin:0}" +
+        ".spin{position:relative;width:20px;height:20px;border:2px solid var(--dshdt-border);border-radius:50%;animation:r .8s linear infinite}" +
+        ".spin::after{content:'';position:absolute;inset:-2px;border-radius:inherit;background:conic-gradient(var(--dshdt-brand) 72deg,transparent 0);" +
+        "-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 0);mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 0)}" +
+        "@keyframes r{to{transform:rotate(360deg)}}" +
+        "h2{margin:0;font-size:16px;line-height:24px;font-weight:600;letter-spacing:.08em}" +
+        "p{margin:0;color:var(--dshdt-label-tertiary);font-size:13px;line-height:1.6}" +
+        "a{color:var(--dshdt-label-secondary);font-size:13px;text-decoration:none;border-bottom:1px solid var(--dshdt-border)}" +
+        "a:hover{color:var(--dshdt-label-primary)}" +
+        "</style></head>\n<body>\n" +
+        "<div class=\"spin\"></div>\n" +
+        "<h2>" + WebAuthRecovery.HolderMarker + "…</h2>\n" +
         "<p><a href=\"/__shell_guide/\">Troubleshooting</a></p>\n" +
-        "<p><a id=\"retry\" href=\"/__shell_ready\" style=\"display:none\">Retry</a></p>\n" +
+        "<a id=\"retry\" href=\"/__shell_ready\" style=\"display:none\">Retry</a>\n" +
         "<script>\n(function () {\n" +
         "  var link = document.getElementById('retry');\n" +
         "  var busy = false, failed = 0;\n" +

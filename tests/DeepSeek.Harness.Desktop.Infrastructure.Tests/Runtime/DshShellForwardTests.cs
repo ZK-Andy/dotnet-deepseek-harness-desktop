@@ -13,23 +13,33 @@ public class DshShellForwardTests
     private const string CookieName = "test-shell-auth";
     private const string CookieValue = "SHELLSECRET456";
 
-    /// <summary>铸币存 cookie：303 + 名值记住；日志无秘密。</summary>
+    /// <summary>测试快参：稳定窗/节拍 1ms（两拍即稳）、预算 250ms（fail-open 路径测试秒级返回）。</summary>
+    private static readonly DshShellForward.ReadyStabilization s_fast = new(
+        StableWindow: TimeSpan.FromMilliseconds(1),
+        PollInterval: TimeSpan.FromMilliseconds(1),
+        Budget: TimeSpan.FromMilliseconds(250));
+
+    /// <summary>铸币存 cookie：303 + 名值记住；稳定化探活（携带铸得 cookie）即 Ready；日志无秘密。</summary>
     [Fact]
     public async Task Mint_ValidToken_StoresCookieWithoutSecretsInLog()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
         using var server = new DshMimicResponder(port, cts.Token);
-        var forward = new DshShellForward();
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
         bool minted = await forward.MintAsync(url, lines.Add, cts.Token);
 
         Assert.True(minted);
+        Assert.True(server.ProbeCookieSeen, "稳定化探活应携带铸得的 cookie");
         Assert.DoesNotContain(lines, l => l.Contains(GoodToken));
         Assert.DoesNotContain(lines, l => l.Contains(CookieValue));
         Assert.Contains(lines, l => l.Contains("303") && l.Contains(CookieName));
+        Assert.Contains(lines, l => l.Contains("就绪稳定化：web 面 Ready"));
+        Assert.DoesNotContain(lines, l => l.Contains("预算耗尽"));
     }
 
     /// <summary>错 token 铸币失败 loud 返回 false，不抛。</summary>
@@ -39,7 +49,8 @@ public class DshShellForwardTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
         using var server = new DshMimicResponder(port, cts.Token);
-        var forward = new DshShellForward();
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token=WRONG"));
 
@@ -47,6 +58,68 @@ public class DshShellForwardTests
 
         Assert.False(minted);
         Assert.DoesNotContain(lines, l => l.Contains("WRONG"));
+    }
+
+    /// <summary>稳定化不通过不放行：303 已铸到 cookie 但 web 面恒 401，route/TCS 在预算耗尽前不得可见
+    /// （holder 不得提前 reload 进半成品页面，ADR holder-mint-gate-deepening）。</summary>
+    [Fact]
+    public async Task Mint_RouteInvisibleUntilStabilized()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var server = new DshMimicResponder(port, cts.Token) { ReadyDelayMilliseconds = 400 };
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+        var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
+
+        Task<bool> minting = forward.MintAsync(url, _ => { }, cts.Token);
+        await Task.Delay(100, cts.Token);
+
+        Assert.False(minting.IsCompleted);
+        Assert.False(forward.TryGetRoute(out _, out _), "稳定化未通过前 route 不得可见");
+
+        Assert.True(await minting);
+        Assert.True(forward.TryGetRoute(out _, out _));
+    }
+
+    /// <summary>延迟就绪（0 &lt; 时延 &lt; 预算）：稳定化真正走「探活 Ready 达稳定窗」放行而非 fail-open
+    /// 兜底——日志含稳定化成功标记、无预算耗尽标记（评审补强：区分门控放行与预算兜底放行两条路径）。</summary>
+    [Fact]
+    public async Task Mint_WebFaceReadyAfterDelay_PassesGateWithoutFailOpen()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var server = new DshMimicResponder(port, cts.Token) { ReadyDelayMilliseconds = 100 };
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+        var lines = new List<string>();
+        var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
+
+        bool minted = await forward.MintAsync(url, lines.Add, cts.Token);
+
+        Assert.True(minted);
+        Assert.True(forward.TryGetRoute(out _, out _));
+        Assert.Contains(lines, l => l.Contains("就绪稳定化：web 面 Ready"));
+        Assert.DoesNotContain(lines, l => l.Contains("预算耗尽"));
+    }
+
+    /// <summary>web 面恒不就绪：预算耗尽 fail-open——仍铸币（返回 true）且日志留痕预算耗尽标记。</summary>
+    [Fact]
+    public async Task Mint_WebFaceNeverReady_FailOpenAfterBudget()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var server = new DshMimicResponder(port, cts.Token) { ReadyDelayMilliseconds = -1 };
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+        var lines = new List<string>();
+        var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
+
+        bool minted = await forward.MintAsync(url, lines.Add, cts.Token);
+
+        Assert.True(minted);
+        Assert.True(forward.TryGetRoute(out _, out _));
+        Assert.Contains(lines, l => l.Contains("预算耗尽") && l.Contains("fail-open"));
     }
 
     /// <summary>取消即上抛（R2 B1）：预取消的令牌使铸币抛，不吞。</summary>
@@ -125,13 +198,20 @@ public class DshShellForwardTests
         Assert.Null(DshShellForward.ResolveFollowTarget("nota-url-:::", authority));
     }
 
-    /// <summary>dsh 门摹拟应答者：正确 token 303 + 铸 cookie；其余 401（铸币面最小形态；
-    /// 转发执行面的桩见 <c>DshLoopbackProxyTests.StubDshHandler</c>）。</summary>
+    /// <summary>dsh 门摹拟应答者：正确 token 303 + 铸 cookie；铸币后的 web 面探活（GET / 携带该 cookie）
+    /// 按就绪时延配置回 200 有体（<see cref="ReadyDelayMilliseconds"/>：-1 = 恒不就绪；0 = 即刻）；
+    /// 其余 401（铸币面最小形态；转发执行面的桩见 <c>DshLoopbackProxyTests.StubDshHandler</c>）。</summary>
     private sealed class DshMimicResponder : IDisposable
     {
         private readonly TcpListener _listener;
         private readonly CancellationTokenSource _cts = new();
         private readonly Task _serving;
+
+        /// <summary>web 面就绪时延（毫秒）：0 即刻 200；&gt;0 延迟后 200；-1 恒 401（模拟静态面永不挂载）。</summary>
+        public int ReadyDelayMilliseconds { get; init; }
+
+        /// <summary>是否观察到携带铸得 cookie 的 web 面探活（GET /）。</summary>
+        public bool ProbeCookieSeen { get; private set; }
 
         public DshMimicResponder(int port, CancellationToken ct)
         {
@@ -159,7 +239,7 @@ public class DshShellForwardTests
             }
         }
 
-        private static async Task HandleAsync(TcpClient client, CancellationToken ct)
+        private async Task HandleAsync(TcpClient client, CancellationToken ct)
         {
             using (client)
             {
@@ -175,8 +255,40 @@ public class DshShellForwardTests
 
                     string head = Encoding.ASCII.GetString(buf, 0, read);
                     string requestLine = head.Split("\r\n")[0];
-                    string response = Route(requestLine);
-                    byte[] bytes = Encoding.ASCII.GetBytes(response);
+                    byte[] bytes;
+                    if (requestLine.StartsWith("GET /?token=" + GoodToken + " ", StringComparison.Ordinal))
+                    {
+                        bytes = Encoding.ASCII.GetBytes(LoopbackHttpResponder.Response(
+                            "HTTP/1.1 303 See Other",
+                            "",
+                            $"Location: ./\r\nSet-Cookie: {CookieName}={CookieValue}; Max-Age=99; Path=/; HttpOnly; SameSite=Strict\r\n"));
+                    }
+                    else if (requestLine.StartsWith("GET / ", StringComparison.Ordinal)
+                        && head.Contains($"Cookie: {CookieName}={CookieValue}", StringComparison.Ordinal))
+                    {
+                        ProbeCookieSeen = true;
+                        if (ReadyDelayMilliseconds < 0)
+                        {
+                            bytes = Encoding.ASCII.GetBytes(LoopbackHttpResponder.Response(
+                                "HTTP/1.1 401 Unauthorized", "dsh web authentication required\n"));
+                        }
+                        else
+                        {
+                            if (ReadyDelayMilliseconds > 0)
+                            {
+                                await Task.Delay(ReadyDelayMilliseconds, ct);
+                            }
+
+                            bytes = Encoding.ASCII.GetBytes(LoopbackHttpResponder.Response(
+                                "HTTP/1.1 200 OK", "dsh web document\n"));
+                        }
+                    }
+                    else
+                    {
+                        bytes = Encoding.ASCII.GetBytes(LoopbackHttpResponder.Response(
+                            "HTTP/1.1 401 Unauthorized", "dsh web authentication required\n"));
+                    }
+
                     await stream.WriteAsync(bytes, ct);
                 }
                 catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException or IOException)
@@ -184,19 +296,6 @@ public class DshShellForwardTests
                     // 单连接收尾：继续服务下一条。
                 }
             }
-        }
-
-        private static string Route(string requestLine)
-        {
-            if (requestLine.StartsWith("GET /?token=" + GoodToken + " ", StringComparison.Ordinal))
-            {
-                return LoopbackHttpResponder.Response(
-                    "HTTP/1.1 303 See Other",
-                    "",
-                    $"Location: ./\r\nSet-Cookie: {CookieName}={CookieValue}; Max-Age=99; Path=/; HttpOnly; SameSite=Strict\r\n");
-            }
-
-            return LoopbackHttpResponder.Response("HTTP/1.1 401 Unauthorized", "dsh web authentication required\n");
         }
 
         public void Dispose()
