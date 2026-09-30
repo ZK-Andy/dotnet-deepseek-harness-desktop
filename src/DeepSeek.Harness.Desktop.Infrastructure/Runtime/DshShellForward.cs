@@ -197,14 +197,14 @@ public sealed class DshShellForward
             using HttpResponseMessage response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
             if ((int)response.StatusCode != 200)
             {
-                    return false;
+                return false;
             }
 
             await using Stream body = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
             using var buffer = new MemoryStream();
             await body.CopyToAsync(buffer, cts.Token).ConfigureAwait(false);
             buffer.Position = 0;
-            using var document = await JsonDocument.ParseAsync(buffer, cancellationToken: cts.Token).ConfigureAwait(false);
+            using JsonDocument document = await JsonDocument.ParseAsync(buffer, cancellationToken: cts.Token).ConfigureAwait(false);
             JsonElement root = document.RootElement;
             return root.ValueKind == JsonValueKind.Object
                 && root.TryGetProperty("type", out JsonElement type) && type.ValueEquals("server-response")
