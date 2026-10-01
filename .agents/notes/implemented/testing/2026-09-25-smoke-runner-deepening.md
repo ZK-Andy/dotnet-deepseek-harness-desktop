@@ -4,6 +4,8 @@ Status: implemented
 
 Erratum: 2026-09-28 — 正文「Windows Evergreen 实验（硬步骤）」的落点已换家：三份 `package-*.yml` 合并为 `package.yml`，该步仍在 windows 腿冒烟之前（`build-windows` job）。正文不动。
 
+Erratum: 2026-10-01 — 该步再换家并加了先探后装：Evergreen 下载/安装收进 `scripts/prepare-windows-smoke.sh`（`build-windows` 腿在冒烟前调用；`pv` 已登记即跳过）。正文不动。
+
 Review: FULL/2026-09-25/R1=ok R2=ok R3=ok
 
 ## Problem

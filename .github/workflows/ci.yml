@@ -86,6 +86,7 @@ jobs:
           bash scripts/package-linux.sh --self-test
           bash scripts/package-macos.sh --self-test
           bash scripts/package-windows.sh --self-test
+          bash scripts/prepare-windows-smoke.sh --self-test
           bash scripts/smoke-install-linux.sh --self-test
           bash scripts/smoke-install-macos.sh --self-test
           bash scripts/smoke-install-windows.sh --self-test
