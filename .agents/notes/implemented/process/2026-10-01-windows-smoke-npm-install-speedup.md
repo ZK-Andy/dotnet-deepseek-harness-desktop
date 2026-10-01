@@ -119,10 +119,13 @@ env）、`--self-test`（`pv` 四态判定夹具）已接进 `ci.yml` 的自测�
 
 - 本地：`bash scripts/prepare-windows-smoke.sh --self-test`（`pv` 四态）；`verify-shell-standards.sh`
   （27 文件 S1–S6）；`actionlint -shellcheck="shellcheck -S warning"`；`verify-governance.py`。
-- CI（run 36831059163，`release.yml` 分支 ref dispatch）：`冒烟前置` 4s——该步读数含当时尚未撤回的
-  Defender 排除段（约 3s），WebView2 探测段本身约 1s（对照改前该步的下载+静默安装 ≈63s）；
-  `解析 dsh 跟版线版本` 7s（`@deepseek-ai/dsh@next` → `0.2.0-rc.2`）、缓存步 `Cache restored
-  from key: npm-cache-windows-x64`（经前缀回退）→ job 末 `Cache saved with key:
-  npm-cache-windows-x64-dsh-0.2.0-rc.2`、`安装冒烟` 217s（改前 252–570s）、win 腿 8m53s → 5m40s；
-  同 run 引导 188s（538 包）落在改前 195–539s 内。`pv=153.0.4234.48` 命中行与
-  `DisableRealtimeMonitoring=True` 留痕即本篇撤回 Defender 的依据。
+- CI（两轮 `release.yml` 分支 ref dispatch）：
+  - run 36833047506（shipped head，Defender 半已撤）：`冒烟前置` 3s（只余 `pv` 探测）、
+    `解析 dsh 跟版线版本` 7s、缓存步精确命中 `Cache restored from key:
+    npm-cache-windows-x64-dsh-0.2.0-rc.2`（上一 run 存下的跟版键）、`安装冒烟` 219s、win 腿 5m26s；
+    `WebView2 已由 runner 镜像提供（pv=153.0.4234.48）` 即跳过行。
+  - run 36831059163（含当时未撤回的 Defender 段）：`冒烟前置` 4s（其中排除段约 3s）、缓存步经
+    前缀回退命中旧常量键 `npm-cache-windows-x64` → job 末 `Cache saved with key:
+    npm-cache-windows-x64-dsh-0.2.0-rc.2`、`安装冒烟` 217s（改前 252–570s）、win 腿 8m53s → 5m40s、
+    引导 188s（538 包，落在改前 195–539s 内）；该 run 的
+    `DisableRealtimeMonitoring=True` 与排除面含 `C:\`、`D:\` 留痕即本篇撤回 Defender 的依据。
