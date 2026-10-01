@@ -289,16 +289,6 @@ jobs:
         shell: bash
         run: bash scripts/verify-package-layout.sh --platform windows --target artifacts/win-x64/stage/DeepSeek.Harness.Desktop
 
-      # 冒烟腿的 runner 前置（唯一家 = scripts/prepare-windows-smoke.sh），排在 npm 缓存步之前：
-      #   ① Defender 实时防护排除——**失败即红**：本步产出即「首启 npm 装包不再被逐文件扫描拖慢」
-      #      （量测见 ADR process/2026-10-01-windows-smoke-npm-install-speedup），排除没生效却
-      #      继续＝这轮提速悄悄不发生；先排除再谈缓存恢复，缓存那 189MB 的落盘也在排除面内。
-      #   ② WebView2 先探后装——镜像自带运行时（注册表 pv 命中）即跳过 Evergreen 的下载+安装；
-      #      未注册才装，失败仍 fail loud。目录枚举与 pv 只留痕，不判门。
-      - name: 冒烟前置（Defender 排除 + WebView2 先探后装）
-        shell: bash
-        run: bash scripts/prepare-windows-smoke.sh
-
       # 解析 dsh 跟版线当前版本，供 npm 缓存键「跟版」。规格单一来源 = appsettings.json 的
       # DshSpec（不在工作流里复写通道名）。解析失败**不判门**（留 `::warning::` 可见），此时键
       # 退化为常量后缀 `unknown`：本次仍由 `restore-keys` 命中旧条目，但该键一旦建立就不再更新
@@ -327,6 +317,14 @@ jobs:
           # （未变依赖的 tarball 仍复用）并在 job 末存下新键；该前缀同时命中更早的常量键条目。
           key: ${{ env.DSH_CACHE_KEY }}
           restore-keys: npm-cache-windows-x64
+
+      # 冒烟腿的 runner 前置（唯一家 = scripts/prepare-windows-smoke.sh）：
+      #   WebView2 先探后装——镜像自带运行时（注册表 pv 命中）即跳过 Evergreen 的下载+静默安装
+      #   （读数见 ADR process/2026-10-01-windows-smoke-npm-install-speedup）；未注册才装，失败
+      #   fail loud。目录枚举与 pv 只留痕，不判门。
+      - name: 冒烟前置（WebView2 先探后装）
+        shell: bash
+        run: bash scripts/prepare-windows-smoke.sh
 
       - name: 安装冒烟（静默安装→启动→等 dsh web URL 行或引导启动行）
         id: smoke

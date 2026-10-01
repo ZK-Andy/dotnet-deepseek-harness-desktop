@@ -37,7 +37,7 @@ CI 全绿，但绿得没有语义：一批被当成「门」的步骤没有任�
 **一、死门二选一：变真断言，或改名成显式「不判门」的取证。**
 
 - Linux「校验产物」拆成两步：「包内容布局断言」（真门，调 `verify-package-layout.sh --target <staging>/usr/lib/deepseek-harness-desktop`，与 win/mac 腿同判据）+「包可解析断言 + 打包取证」（`dpkg-deb -I`、`rpm -qp --requires` 的解析成功是不带管道的真断言，内容清单仍带 `|| true` 留痕——`| head` 下生产者收 SIGPIPE 会把留痕行变成红）。
-- Windows 注册表探针：步骤「冒烟前置（Defender 排除 + WebView2 先探后装）」（落点 `scripts/prepare-windows-smoke.sh`）——`pv` 探针只决定装不装，安装器退出码是判门者，探针只留痕。
+- Windows 注册表探针：步骤「冒烟前置（WebView2 先探后装）」（落点 `scripts/prepare-windows-smoke.sh`）——`pv` 探针只决定装不装，安装器退出码是判门者，探针只留痕。
 - `governance.yml`：第一步跑 `python3 scripts/verify-governance.py`（退出码即结论，与 `pre-commit` 同一份实现，语义分叉随之消失）；正文形状检查降为显式的「提示：…（不判门，仅日志留痕）」步。
 - 冒烟证据上传：`if-no-files-found` 按冒烟步 outcome 分档——`${{ steps.smoke.outcome == 'failure' && 'error' || 'warn' }}`。冒烟跑过且失败时证据缺失判 `error`（尸检材料丢了）；其余情形（冒烟绿，或被前置步失败跳过）判 `warn`——跳过时真因在别处，不该再添一条无证据的红来掩埋它。
 - `release.yml` 的 SHA256SUMS 生成步：步骤名注明「准备，非校验门」；错包检测的家是 `release-preflight.sh` 的资产矩阵 + 体积下限。

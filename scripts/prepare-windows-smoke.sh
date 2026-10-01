@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 # prepare-windows-smoke.sh — Windows 冒烟腿的 runner 前置（唯一家）。
-# 调用点：package.yml 的 build-windows 腿「冒烟前置」步；本脚本不碰产物，只备 runner 状态。
+# 调用点：package.yml 的 build-windows 腿「冒烟前置」步（「安装冒烟」之前）；本脚本不碰产物。
 #
-# 1｜Defender 实时防护排除 —— **判门**（失败即红）。冒烟首启要 `npm install -g` 装 dsh 闭包，
-#   runner 的实时防护逐文件扫描是这条腿的主要成本（量测与判别见 ADR
-#   process/2026-10-01-windows-smoke-npm-install-speedup）。排除面 = npm 下载缓存 +
-#   npm 全局前缀 + node 安装目录。判门是刻意的：本步的产出就是「扫描不再拖慢」，排除没生效
-#   却继续走，等于这轮提速悄悄不发生。
-# 2｜WebView2 运行库先探后装 —— 已登记（注册表 `pv` 非空非 `0.0.0.0`，判据与仓内
-#   packaging/windows/installer.iss.in 的 IsWebView2Available 同源）即跳过 Evergreen 的
-#   下载+静默安装；未登记才装，下载 3 次重试、失败即红。目录枚举与 `pv` 结论只留痕不判门。
+# WebView2 运行库先探后装：已登记（注册表 `pv` 非空非 `0.0.0.0`，判据与仓内
+# packaging/windows/installer.iss.in 的 IsWebView2Available 同源）即跳过 Evergreen 的
+# 下载+静默安装（镜像自带运行时；读数见 ADR process/2026-10-01-windows-smoke-npm-install-speedup）；
+# 未登记才装，下载 3 次重试、以 curl 退出码判定成败，失败即红。目录枚举与 `pv` 结论只留痕不判门。
 #
 # 环境：RUNNER_TEMP（Evergreen 安装器落点；GitHub Actions 注入）。
 # 用法: prepare-windows-smoke.sh
-# 自测: prepare-windows-smoke.sh --self-test（纯判定夹具，不碰注册表/网络/Defender）
+# 自测: prepare-windows-smoke.sh --self-test（纯判定夹具，不碰注册表/网络）
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,26 +55,6 @@ PS
   printf '%s' "${out//[[:space:]]/}"
 }
 
-# 对 npm 首启路径加 Defender 实时防护排除并打印生效面（留痕）。失败即红（die），不吞。
-apply_defender_exclusions() {
-  local script
-  script="$(cat <<'PS'
-$ErrorActionPreference = 'Stop'
-$dirs = @(
-  (Join-Path $env:LOCALAPPDATA 'npm-cache'),
-  (Join-Path $env:APPDATA 'npm'),
-  'C:\Program Files\nodejs'
-)
-foreach ($d in $dirs) { Add-MpPreference -ExclusionPath $d -ErrorAction Stop }
-'== Defender 实时防护排除面（留痕） =='
-(Get-MpPreference).ExclusionPath
-'== 实时防护开关（False=开；本步只排除，不改它） =='
-(Get-MpPreference).DisableRealtimeMonitoring
-PS
-)"
-  powershell -NoProfile -Command "$script"
-}
-
 # WebView2 未注册时的安装支路：Evergreen standalone，下载 3 次重试 + /silent /install。
 install_webview2_evergreen() {
   local exe="${RUNNER_TEMP:-/tmp}/MicrosoftEdgeWebview2Setup.exe" i ok=0
@@ -112,7 +88,7 @@ webview2_evidence() { # $1=已登记 pv（可空）
 
 # ---------------------------------------------------------------- 入口
 
-prepare_self_test() { # 纯判定夹具（不碰注册表/网络/Defender）
+prepare_self_test() { # 纯判定夹具（不碰注册表/网络）
   local fails=0
   _pv_assert() { # $1=描述 $2=pv $3=期望 missing|present
     local want="$3" got=present
@@ -138,11 +114,6 @@ prepare_self_test() { # 纯判定夹具（不碰注册表/网络/Defender）
 
 main() {
   local pv
-  log "[win] Defender 实时防护排除（npm 首启装包提速）：应用中"
-  apply_defender_exclusions \
-    || die "[win] Defender 排除应用失败（Add-MpPreference：runner 镜像变更 / tamper protection？）——排除没生效＝本轮提速没发生"
-  log "[win] Defender 排除已生效"
-
   pv="$(webview2_registered_pv)"
   if webview2_missing "$pv"; then
     log "[win] WebView2 未注册，安装 Evergreen"

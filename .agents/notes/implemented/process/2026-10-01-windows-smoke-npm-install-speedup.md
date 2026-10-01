@@ -1,8 +1,10 @@
-# Agent Note: Windows 冒烟腿 npm 首启装包提速（Defender 排除 / WebView2 先探后装 / 缓存键跟版）
+# Agent Note: Windows 冒烟腿 runner 前置——WebView2 先探后装与 npm 缓存键跟版
 
 Status: implemented
 
-Review: FULL/2026-10-01/R1=ok R2=ok R3=ok
+Erratum: 2026-10-01 — 「Defender 实时防护逐文件扫描是首启装包慢的主因」这一依据被同批 dispatch（run 36831059163：该镜像 `(Get-MpPreference).DisableRealtimeMonitoring=True`、排除面本就含 `C:\` 与 `D:\`）证伪，随之撤回了 npm 路径排除及其判门；正文只写现存现实，被撤回方案记在 Alternatives 的「对 npm 相关路径加 Defender 实时防护排除」条。本篇其余决定（WebView2 先探后装、npm 缓存键跟版）不受影响。
+
+Review: FULL/2026-10-01#2/R1=ok R2=ok R3=ok
 
 ## Problem
 
@@ -24,9 +26,9 @@ step 时间戳与 `smoke-logs` artifact 内的引导日志）：
 依赖，即 Windows 侧装的包更**少**、用时是 7 倍。Windows 腿的下载缓存反而命中并恢复了 189MB
 （`Cache restored from key: npm-cache-windows-x64`）。故差距不来自下载——**Windows 侧是本地
 落盘成本**（跨平台对照仅该 run 一次，Windows 六次引导耗时为 Linux 44s 的 4.4–12×
-【探索性：对照 n=1】）。成因【推断 · 未证】：runner 的 Defender 实时防护逐文件扫描
-（~500 包/数万小文件）；Windows 无法像 Linux 那样从 cacache 硬链接，退化为整份拷贝，放大了
-扫描面。最慢一次引导尝试 539s（该行计整条 `RuntimeBootstrap.RunAsync`，见
+【探索性：对照 n=1】）。具体机制**仍未证**：Defender 逐文件扫描这一候选已被 runner 自身状态
+排除（见 Status 下的 Erratum），Windows 无法像 Linux 那样从 cacache 硬链接而退化为整份拷贝是
+另一候选【推断 · 未证】。最慢一次引导尝试 539s（该行计整条 `RuntimeBootstrap.RunAsync`，见
 `FirstBootBootstrapService` 的成功分支；npm 单步 ≤ 该值），而冒烟等待窗 720s 正是从单步默认
 `RuntimeBootstrapOptions.StepTimeoutMinutes=10`（=600s）推出来的——539s 与窗余量 181s、
 与单步上限余量 ≥61s（按上界估，【推演】），再慢一档就红成「步骤超时」或「等待窗耗尽」，
@@ -53,12 +55,8 @@ created_at 2026-09-27T11:52Z / last_accessed_at 2026-10-01T06:01Z / 189MB），�
 **1｜Windows 冒烟腿前置收进一个脚本（唯一家）**：新增
 [prepare-windows-smoke.sh](../../../../scripts/prepare-windows-smoke.sh)，由 `package.yml` 的
 `build-windows` 腿在「安装冒烟」前调用；原先内联在 workflow 里的 WebView2 步随之删除。
-脚本做两件事，各自判门语义明确：
+脚本只做一件事，判门语义明确：
 
-- **Defender 实时防护排除（判门，失败即红）**：`Add-MpPreference -ExclusionPath` 三条——
-  `%LOCALAPPDATA%\npm-cache`、`%APPDATA%\npm`、`C:\Program Files\nodejs`；打印生效排除面与
-  `DisableRealtimeMonitoring` 当前值留痕。失败即红是刻意的：本步的产出就是「扫描不再拖慢」，
-  静默退化等价于门禁不诚实（ADR [ci-gate-honesty](2026-09-28-ci-gate-honesty.md) 的判据）。
 - **WebView2 先探后装（先探不判门，安装失败判红）**：以注册表 `pv` 探针（HKCU + HKLM 两处
   EdgeUpdate client 键；判据与仓内 [installer.iss.in](../../../../packaging/windows/installer.iss.in)
   的 `IsWebView2Available` 同源——`pv` 非空且非 `0.0.0.0`）判定运行库是否已登记；
@@ -86,12 +84,15 @@ env）、`--self-test`（`pv` 四态判定夹具）已接进 `ci.yml` 的自测�
 ## Alternatives considered
 
 - **缓存 `%APPDATA%\npm` 全局安装树**：落败（本批不做）——直接消除首启装包成本，但 Windows 腿
-  就不再演练冷装这条产品路径，本类回归（装包变慢/失败）会被缓存命中掩盖。若下面的排除法被
-  runner 拒绝或提速不足，这是下一手。
-- **`Set-MpPreference -DisableRealtimeMonitoring $true`**：落败——比路径排除更钝（整机失防护），
-  增量收益未证；先只做排除，量测不足再升级。
-- **Defender 排除失败只 warn 不判门**：落败——本步产出即「扫描不再拖慢」，不判门＝一个读起来
-  像生效实则可能空转的步。
+  就不再演练冷装这条产品路径，本类回归（装包变慢/失败）会被缓存命中掩盖。首启装包本身在本批
+  没有拿到提速手段（见 Consequences），故这是下一手。
+- **对 npm 相关路径加 Defender 实时防护排除（曾作为本篇 Decision 落地，同批撤回）**：撤回——首个
+  dispatch（run 36831059163）的留痕显示该镜像 `DisableRealtimeMonitoring=True` 且排除面本就含
+  `C:\`、`D:\`，再加 `%LOCALAPPDATA%\npm-cache` / `%APPDATA%\npm` / `C:\Program Files\nodejs`
+  三条是空操作；同 run 引导耗时 188s 落在改前分布（195–539s）内，也支持「无效果」。故该机制连同
+  其判门一并删除：一个在目标 runner 上不产生效果的门，正是 ADR
+  [ci-gate-honesty](2026-09-28-ci-gate-honesty.md) 所禁止的形态。更钝的
+  `Set-MpPreference -DisableRealtimeMonitoring $true` 同样不取（整机失防护，且该镜像本就关闭）。
 - **直接删掉 Evergreen 步（不先探）**：落败——镜像自带运行时的版本可能旧于 Edge，一旦冒烟从
   全链退化为安装链，本腿就失去「起得来」覆盖；先探后装在命中时省 60s，未命中时保留原兜底。
 - **`hashFiles` 组缓存键**：落败——通道是移动靶，`appsettings.json` 内容不变而 registry 指向已变，
@@ -107,18 +108,21 @@ env）、`--self-test`（`pv` 四态判定夹具）已接进 `ci.yml` 的自测�
 
 ## Consequences
 
-- 买到：Windows 冒烟腿的主要成本项（首启 npm 装包）有了机制性提速手段；镜像自带 WebView2 时
-  省下 ~60s 的下载+安装；npm 缓存条目不再永久冻结在建立时的闭包。
-- 代价：Windows 冒烟腿新增一处 runner 环境依赖（Defender 模块可用、`Add-MpPreference` 未被
-  tamper protection 拒绝）；排除未生效时该腿**会红**而不是慢——有意，回落方案见上（改 warn
-  或转缓存安装树）。
-- 未证：Defender 是主因属【推断 · 未证】；提速幅度待首个 dispatch 实测（改前基线见 Problem 表）。
-  若排除后仍显著慢于 Linux 同量工作，主因推断被证伪，按 Erratum 通道补行。
+- 买到：镜像自带 WebView2 时该步（下载+静默安装）整步省掉（读数见 Testing）；npm 缓存条目不再
+  永久冻结在建立时的闭包（跟版键每次换版重存，读数见 Testing）。
+- 未买到：首启装包本身没被加速——Defender 排除撤回后这个成本项回到无手段状态；真要砍它只剩
+  「缓存 `%APPDATA%\npm` 安装树」（首条 Alternatives，需先接受冷装覆盖的损失）。
+- 代价：Windows 冒烟腿新增一处 runner 状态依赖（镜像是否自带 WebView2）；未自带时行为回落到
+  本步引入前的 Evergreen 安装链（fail loud），不新增红面。
 
 ## Testing
 
 - 本地：`bash scripts/prepare-windows-smoke.sh --self-test`（`pv` 四态）；`verify-shell-standards.sh`
   （27 文件 S1–S6）；`actionlint -shellcheck="shellcheck -S warning"`；`verify-governance.py`。
-- CI：Windows 腿走一次真包（`release`/`package` 的 dispatch）——对照同一根时间轴读数：
-  `安装冒烟` 步时长、引导日志里的 `第 1 次尝试成功（耗时 Ns）`、`== WebView2 ... ==` 留痕与
-  WebView2 跳过行、缓存步的键与命中方式。
+- CI（run 36831059163，`release.yml` 分支 ref dispatch）：`冒烟前置` 4s——该步读数含当时尚未撤回的
+  Defender 排除段（约 3s），WebView2 探测段本身约 1s（对照改前该步的下载+静默安装 ≈63s）；
+  `解析 dsh 跟版线版本` 7s（`@deepseek-ai/dsh@next` → `0.2.0-rc.2`）、缓存步 `Cache restored
+  from key: npm-cache-windows-x64`（经前缀回退）→ job 末 `Cache saved with key:
+  npm-cache-windows-x64-dsh-0.2.0-rc.2`、`安装冒烟` 217s（改前 252–570s）、win 腿 8m53s → 5m40s；
+  同 run 引导 188s（538 包）落在改前 195–539s 内。`pv=153.0.4234.48` 命中行与
+  `DisableRealtimeMonitoring=True` 留痕即本篇撤回 Defender 的依据。
