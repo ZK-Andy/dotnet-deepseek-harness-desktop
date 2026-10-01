@@ -30,3 +30,4 @@ v0.3.0 Linux rpm 实机验收中，companion 两个新区块同时失效：①�
 - [shell 首启加固](2026-08-24-shell-firstboot-hardening.md)：同轮实机验收批次，托盘顺序/横幅门控/导出回退三项壳侧修复。
 - [companion 更新设置页](../feature/2026-08-22-companion-update-settings-section.md)与[开机自启](../architecture/2026-08-24-shell-convenience-autostart-ready-notify.md)：两个失效区块的落地笔记。
 - [桌面伴生插件](../process/2026-08-21-desktop-shell-companion-plugin.md)：插件工程形态与「必须 bump version」约定的出处。
+- [companion 开关降级恢复](2026-10-01-companion-switch-degradation-recovery.md)：设置页开关行三态处置与失败留痕的后续。
