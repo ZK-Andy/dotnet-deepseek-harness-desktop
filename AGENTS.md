@@ -77,6 +77,7 @@ python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/
 python3 scripts/verify-governance.py     # Issue/PR 模板治理字段 + 工作流/composite action 的 run: 禁插值事件载荷/env 回读
 python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（F3=组合根集合计 ≤500；report 默认；--enforce 才 fail）
 python3 scripts/verify-compose-root.py   # 组合根语义闸（根只装配：方法清单封闭/new 自有类型 ≤16/单 dot 分部/禁同步编排；--enforce 才 fail）
+python3 scripts/verify-registration-discipline.py # 注册点纪律闸（R1：基础设施具体类型只许出现在注册处：Presentation 注册外直接 new ≤1/静态调用 ≤15；--enforce 才 fail）
 python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）
 python3 scripts/verify-ui-copy.py    # UI 文案单一词典（UiCopy.cs 为唯一家；四条不变量：消费文件零 CJK 字面量 + index.html 登记 + EN 字典↔`*En` 常量全等 + client.js zh/en 键集相等）
 python3 scripts/verify-skill-format.py    # 技能格式（frontmatter/目录束/内链/结构）

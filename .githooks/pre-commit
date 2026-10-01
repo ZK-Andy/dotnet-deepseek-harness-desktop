@@ -50,6 +50,11 @@ python3 scripts/verify-code-conventions.py --enforce
 echo "-> verify-compose-root.py"
 python3 scripts/verify-compose-root.py --enforce
 
+# 9a2) 注册点纪律闸（R1：基础设施具体类型只许出现在注册处——Presentation 工程
+#      注册外直接 new/静态调用冻结计数；与 9a 同口，C3 只计根内，此处计根外）
+echo "-> verify-registration-discipline.py"
+python3 scripts/verify-registration-discipline.py --enforce
+
 # 9b) 脚本规范门禁（docs/script-standards.md 的机器强制面 S1-S6，含 shellcheck -S warning）。
 #     执行点与 CI 的 docs job 同源；缺 shellcheck 判红并提示 scripts/install-linters.sh
 #     （门禁悄悄不执行 = 假绿，故宁可挡住提交）。
