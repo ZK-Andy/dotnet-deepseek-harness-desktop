@@ -1,23 +1,35 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
 /// <summary>壳铸币与跟进目标解析（对齐上游 web-document.ts）：条件回环模拟 dsh 门
 /// （正确 token 303 + 铸 cookie；错 token 401），断言铸币/零泄漏/取消语义/跟进纯函数。
+/// 稳定化判据为复合面（会话面 + 通道面 mux 升级，ADR mint-epoch-mux-gate）；
 /// 转发执行面在 <c>DshLoopbackProxy</c>（见 <c>DshLoopbackProxyTests</c>）。</summary>
 public class DshShellForwardTests
 {
     private const string GoodToken = "SHELLTOKEN123";
     private const string CookieName = "test-shell-auth";
     private const string CookieValue = "SHELLSECRET456";
+    private const string WebSocketMagic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-    /// <summary>测试快参：稳定窗/节拍 1ms（两拍即稳）、预算 250ms（fail-open 路径测试秒级返回）。</summary>
+    /// <summary>测试快参：稳定窗 1ms、节拍 10ms（两三拍即稳）、预算 250ms（fail-open 路径测试秒级返回）。
+    /// 节拍不宜再小：复合探活的通道面每次 ConnectAsync 在被掐断时会派生数条内核重试连接（实测 ~4×），
+    /// 1ms 节拍在 250ms 预算里是数百连接的探活风暴，足以灌满桩的 accept 队列。</summary>
     private static readonly DshShellForward.ReadyStabilization s_fast = new(
         StableWindow: TimeSpan.FromMilliseconds(1),
-        PollInterval: TimeSpan.FromMilliseconds(1),
+        PollInterval: TimeSpan.FromMilliseconds(10),
         Budget: TimeSpan.FromMilliseconds(250));
+
+    /// <summary>复合门测试宽参：预算放宽到 1s——夹具通道面 100ms 时延 × 3 拍探活在全量并行下
+    /// 仍稳在预算内（判据走「稳定窗达成」而非 fail-open）。</summary>
+    private static readonly DshShellForward.ReadyStabilization s_wide = new(
+        StableWindow: TimeSpan.FromMilliseconds(1),
+        PollInterval: TimeSpan.FromMilliseconds(10),
+        Budget: TimeSpan.FromSeconds(1));
 
     /// <summary>铸币存 cookie：303 + 名值记住；稳定化探活（携带铸得 cookie）即 Ready；日志无秘密。</summary>
     [Fact]
@@ -38,7 +50,7 @@ public class DshShellForwardTests
         Assert.DoesNotContain(lines, l => l.Contains(GoodToken));
         Assert.DoesNotContain(lines, l => l.Contains(CookieValue));
         Assert.Contains(lines, l => l.Contains("303") && l.Contains(CookieName));
-        Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面 Ready"));
+        Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面与通道面 Ready"));
         Assert.DoesNotContain(lines, l => l.Contains("预算耗尽"));
     }
 
@@ -101,7 +113,7 @@ public class DshShellForwardTests
 
         Assert.True(minted);
         Assert.True(forward.TryGetRoute(out _, out _));
-        Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面 Ready"));
+        Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面与通道面 Ready"));
         Assert.DoesNotContain(lines, l => l.Contains("预算耗尽"));
     }
 
@@ -144,6 +156,133 @@ public class DshShellForwardTests
         Assert.Contains(
             "\"method\":\"session/list\",\"payload\":{\"args\":{\"_request\":{}}}",
             server.LastProbeBody, StringComparison.Ordinal);
+    }
+
+    /// <summary>复合门钉通道面（ADR mint-epoch-mux-gate）：会话面先就绪、通道面 100ms 后才挂载时，
+    /// route 在通道面就绪前不得可见（页面树数据钉在 mux 连上之后，提前放行即「UI 先出、树后到」）；
+    /// 通道面就绪后复合判据达稳定窗正常放行（非 fail-open）。</summary>
+    [Fact]
+    public async Task Mint_CompositeGate_WaitsForMuxFace()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var server = new DshMimicResponder(port, cts.Token) { MuxReadyDelayMilliseconds = 100 };
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_wide);
+        var lines = new List<string>();
+        var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
+
+        Task<bool> minting = forward.MintAsync(url, lines.Add, cts.Token);
+        await Task.Delay(50, cts.Token);
+
+        Assert.False(minting.IsCompleted, "通道面未就绪时铸币不得完成");
+        Assert.False(forward.TryGetRoute(out _, out _), "通道面未就绪前 route 不得可见");
+
+        Assert.True(await minting);
+        Assert.True(forward.TryGetRoute(out _, out _));
+        Assert.True(server.MuxCookieSeen, "通道面探活应携带 cookie 完成 WebSocket 升级");
+        Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面与通道面 Ready"));
+        Assert.DoesNotContain(lines, l => l.Contains("预算耗尽"));
+    }
+
+    /// <summary>通道面恒不就绪（零字节销毁形态）：预算耗尽 fail-open——仍铸币且日志留痕，
+    /// 与会话面恒不就绪同 degradation 语义。</summary>
+    [Fact]
+    public async Task Mint_MuxNeverReady_FailOpenAfterBudget()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var server = new DshMimicResponder(port, cts.Token) { MuxReadyDelayMilliseconds = -1 };
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+        var lines = new List<string>();
+        var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
+
+        bool minted = await forward.MintAsync(url, lines.Add, cts.Token);
+
+        Assert.True(minted);
+        Assert.True(forward.TryGetRoute(out _, out _));
+        Assert.True(server.MuxProbeDestroyed, "通道面探活应命中零字节销毁形态");
+        Assert.Contains(lines, l => l.Contains("预算耗尽") && l.Contains("fail-open"));
+    }
+
+    /// <summary>epoch 失效（ADR mint-epoch-mux-gate）：铸币后失效翻转 route（代理 `/` 回落 holder）、
+    /// 就绪门重武装（后续铸币放行）；重复失效幂等 no-op——不得翻转留痕、不得动新门上未决的等待
+    /// （监督器残留锁死分支逐轮重入的形态）；未铸币首态失效同为 no-op。</summary>
+    [Fact]
+    public async Task InvalidateRoute_IsIdempotentAndRearmsGate()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var server = new DshMimicResponder(port, cts.Token);
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+        var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
+
+        // 未铸币首态：失效 no-op，不翻转、不动未决等待。
+        Task freshWaiter = forward.WaitMintedAsync(CancellationToken.None);
+        Assert.False(freshWaiter.IsCompleted, "未铸币时长轮询应阻塞");
+        Assert.False(forward.InvalidateRoute(), "未铸币首态失效应为 no-op");
+        Assert.False(freshWaiter.IsCanceled);
+
+        // 铸币 → 失效：route 翻转清空、门重武装；重复失效幂等，新门上的等待不受扰。
+        Assert.True(await forward.MintAsync(url, _ => { }, cts.Token));
+        Assert.True(forward.InvalidateRoute());
+        Assert.False(forward.TryGetRoute(out _, out _));
+        Task rearmed = forward.WaitMintedAsync(CancellationToken.None);
+        Assert.False(rearmed.IsCompleted, "失效后新门应重新武装");
+        Assert.False(forward.InvalidateRoute(), "重复失效应幂等 no-op");
+        Assert.False(rearmed.IsCanceled, "幂等 no-op 不得取消新门上的等待");
+
+        // 再铸币：新门放行、route 恢复。
+        Assert.True(await forward.MintAsync(url, _ => { }, cts.Token));
+        Assert.True(rearmed.IsCompleted);
+        Assert.True(forward.TryGetRoute(out _, out _));
+    }
+
+    /// <summary>收养重验 token-free（ADR mint-epoch-mux-gate）：存 cookie 在手时不走 303 铸币
+    /// （续任者 per-process token 壳拿不到，旧 token URL 恒 401），复合探活稳定即重指 route。</summary>
+    [Fact]
+    public async Task Revalidate_WithStoredCookie_RepointsRouteWithoutToken()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var server = new DshMimicResponder(port, cts.Token);
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+        var lines = new List<string>();
+        var tokenUrl = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
+
+        Assert.True(await forward.MintAsync(tokenUrl, _ => { }, cts.Token));
+        Assert.Equal(1, server.TokenMintCount);
+        forward.InvalidateRoute();
+
+        var bareOrigin = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/"));
+        Assert.True(await forward.RevalidateAsync(bareOrigin, lines.Add, cts.Token));
+
+        Assert.True(forward.TryGetRoute(out _, out _));
+        Assert.Equal(1, server.TokenMintCount); // 重验不得再走 token 铸币（裸 origin 无 token 可用）
+        Assert.True(server.MuxCookieSeen);
+        Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面与通道面 Ready"));
+    }
+
+    /// <summary>收养重验无存 cookie 即回落 token 铸币（壳自 spawn 的 URL 带新 token 仍可用）。</summary>
+    [Fact]
+    public async Task Revalidate_NoCookie_FallsBackToTokenMint()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var server = new DshMimicResponder(port, cts.Token);
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+        var lines = new List<string>();
+        var tokenUrl = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
+
+        Assert.True(await forward.RevalidateAsync(tokenUrl, lines.Add, cts.Token));
+
+        Assert.True(forward.TryGetRoute(out _, out _));
+        Assert.Equal(1, server.TokenMintCount);
+        Assert.Contains(lines, l => l.Contains("收养重验无存 cookie"));
     }
 
     /// <summary>取消即上抛（R2 B1）：预取消的令牌使铸币抛，不吞。</summary>
@@ -225,7 +364,9 @@ public class DshShellForwardTests
     /// <summary>dsh 门摹拟应答者：正确 token 303 + 铸 cookie；铸币后的会话面探活（POST /api/session/list
     /// 携带该 cookie）先过实机网关形状闸——payload 未含 <c>{"args":{"_request":{}}}</c> 即回
     /// <c>200</c> + gateway 错误信封（<c>ok:false</c>；形状漂移不随时延），通过后才按
-    /// <see cref="ReadyDelayMilliseconds"/> 回 200 就绪体（-1 = 恒 401 不就绪；0 = 即刻）；其余 401
+    /// <see cref="ReadyDelayMilliseconds"/> 回 200 就绪体（-1 = 恒 401 不就绪；0 = 即刻）；通道面
+    /// （GET /api/remote.mux 升级，ADR mint-epoch-mux-gate）按 <see cref="MuxReadyDelayMilliseconds"/>
+    /// 完成 101 握手（-1 = 零字节销毁即实机 appReady 前形态；无 cookie 401）；其余 401
     /// （铸币面最小形态；转发执行面的桩见 <c>DshLoopbackProxyTests.StubDshHandler</c>）。</summary>
     private sealed class DshMimicResponder : IDisposable
     {
@@ -236,6 +377,9 @@ public class DshShellForwardTests
         /// <summary>会话面就绪时延（毫秒）：0 即刻 200；&gt;0 延迟后 200；-1 恒 401（模拟会话服务永不激活）。</summary>
         public int ReadyDelayMilliseconds { get; init; }
 
+        /// <summary>通道面就绪时延（毫秒）：0 即刻 101；&gt;0 延迟后 101；-1 零字节销毁（模拟 appReady 前无升级路由）。</summary>
+        public int MuxReadyDelayMilliseconds { get; init; }
+
         /// <summary>是否观察到携带铸得 cookie 的会话面探活（POST /api/session/list）。</summary>
         public bool ProbeCookieSeen { get; private set; }
 
@@ -244,6 +388,15 @@ public class DshShellForwardTests
 
         /// <summary>是否发生「payload 未包 args」的形状拒绝（实机网关语义：200 + ok:false 错误信封）。</summary>
         public bool ProbeArgumentsRejected { get; private set; }
+
+        /// <summary>是否观察到携带 cookie 的通道面升级（101 握手完成）。</summary>
+        public bool MuxCookieSeen { get; private set; }
+
+        /// <summary>是否观察到零字节销毁形态的通道面升级。</summary>
+        public bool MuxProbeDestroyed { get; private set; }
+
+        /// <summary>已发出的 303 铸币次数（重验 token-free 断言用）。</summary>
+        public int TokenMintCount { get; private set; }
 
         public DshMimicResponder(int port, CancellationToken ct)
         {
@@ -326,10 +479,44 @@ public class DshShellForwardTests
                     byte[] bytes;
                     if (requestLine.StartsWith("GET /?token=" + GoodToken + " ", StringComparison.Ordinal))
                     {
+                        TokenMintCount++;
                         bytes = Encoding.ASCII.GetBytes(LoopbackHttpResponder.Response(
                             "HTTP/1.1 303 See Other",
                             "",
                             $"Location: ./\r\nSet-Cookie: {CookieName}={CookieValue}; Max-Age=99; Path=/; HttpOnly; SameSite=Strict\r\n"));
+                    }
+                    else if (requestLine.StartsWith("GET /api/remote.mux ", StringComparison.Ordinal))
+                    {
+                        if (!head.Contains($"Cookie: {CookieName}={CookieValue}", StringComparison.Ordinal))
+                        {
+                            // 实机 rejectRemoteStreamUpgrade 语义：未认证升级回 401（带字节）。
+                            bytes = Encoding.ASCII.GetBytes(LoopbackHttpResponder.Response(
+                                "HTTP/1.1 401 Unauthorized", "unauthorized\n"));
+                        }
+                        else if (MuxReadyDelayMilliseconds < 0)
+                        {
+                            // 实机 appReady 前形态（ADR mint-epoch-mux-gate 根因）：无升级路由即零字节销毁。
+                            MuxProbeDestroyed = true;
+                            return;
+                        }
+                        else
+                        {
+                            if (MuxReadyDelayMilliseconds > 0)
+                            {
+                                await Task.Delay(MuxReadyDelayMilliseconds, ct);
+                            }
+
+                            MuxCookieSeen = true;
+                            string key = head.Split("\r\n")
+                                .First(l => l.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase))[
+                                    "Sec-WebSocket-Key:".Length..].Trim();
+                            string accept = Convert.ToBase64String(
+                                SHA1.HashData(Encoding.ASCII.GetBytes(key + WebSocketMagic)));
+                            await stream.WriteAsync(Encoding.ASCII.GetBytes(
+                                "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                                + $"Sec-WebSocket-Accept: {accept}\r\n\r\n"), ct);
+                            return;
+                        }
                     }
                     else if (requestLine.StartsWith("POST /api/session/list ", StringComparison.Ordinal)
                         && head.Contains($"Cookie: {CookieName}={CookieValue}", StringComparison.Ordinal))

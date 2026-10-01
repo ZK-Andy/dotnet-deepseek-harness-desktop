@@ -12,11 +12,13 @@ public class DshLoopbackProxyTests
     private const string CookieName = "test-proxy-auth";
     private const string CookieValue = "PROXYSECRET456";
 
-    /// <summary>铸币稳定化测试快参（ADR holder-mint-gate-deepening）：稳定窗/节拍 1ms（两拍即稳）、
-    /// 预算 250ms——桩不满足探活面时秒级 fail-open，全文件铸币点不再吃生产默认 2s 稳定窗。</summary>
+    /// <summary>铸币稳定化测试快参（ADR holder-mint-gate-deepening）：稳定窗 1ms、节拍 10ms（两三拍即稳）、
+    /// 预算 250ms——桩不满足探活面时秒级 fail-open，全文件铸币点不再吃生产默认 2s 稳定窗。
+    /// 节拍不宜再小：通道面探活每次被掐断的 ConnectAsync 会派生数条内核重试连接（实测 ~4×），
+    /// 1ms 节拍在 250ms 预算里是数百连接的探活风暴，足以灌满桩的 accept 队列（页隧道 SYN 被顶进内核重试）。</summary>
     private static readonly DshShellForward.ReadyStabilization s_fast = new(
         StableWindow: TimeSpan.FromMilliseconds(1),
-        PollInterval: TimeSpan.FromMilliseconds(1),
+        PollInterval: TimeSpan.FromMilliseconds(10),
         Budget: TimeSpan.FromMilliseconds(250));
 
     /// <summary>SSE 首块渐进到达：后端流永不结束时，页侧首行仍须到达（缓冲实现恒等不到首行；
@@ -540,6 +542,13 @@ public class DshLoopbackProxyTests
         string docBody = await doc.Content.ReadAsStringAsync(cts.Token);
 
         Assert.Equal("DSH-DOC", docBody);
+
+        // epoch 失效（ADR mint-epoch-mux-gate）：dsh 死即 route 失效——`/` 回落 holder，
+        // 重启窗口里页面自刷被门控吸收，不再落进指向已死进程的 502。
+        forward.InvalidateRoute();
+        using HttpResponseMessage heldAgain = await page.GetAsync(new Uri(proxy.Url, "/"), cts.Token);
+        Assert.Contains(WebAuthRecovery.HolderMarker,
+            await heldAgain.Content.ReadAsStringAsync(cts.Token), StringComparison.Ordinal);
         await runCts.CancelAsync();
     }
 
@@ -688,59 +697,91 @@ public class DshLoopbackProxyTests
 
         private async Task ServeAsync(CancellationToken ct)
         {
-            try
+            // 循环受理（ADR mint-epoch-mux-gate）：复合门稳定化期间探活升级会先打到本桩
+            // （探活无 Origin/sec-fetch-site，被下方严格判门 403，属预期）——桩必须继续
+            // 接待随后的真实页连接。**按连接容错**：探活超时中途掐断会产生 per-connection
+            // socket 异常，冒出循环即整体停服、页面隧道连接饿死（R2 收口实测）——per-connection
+            // 异常必须吞在循环内，循环级异常（accept 失败/取消）才落外层。
+            while (!ct.IsCancellationRequested)
             {
-                using TcpClient client = await _listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
-                using NetworkStream stream = client.GetStream();
-                // 首部按 CRLFCRLF 收满：单次 ReadAsync 遇 TCP 分段会把完整首部误判成缺头（判门假红）。
-                string head = await ReadHttpHeadAsync(stream, ct).ConfigureAwait(false);
-                LastHead = head;
-                if (_silentClose)
+                TcpClient client;
+                try
+                {
+                    client = await _listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException)
                 {
                     return;
                 }
 
-                if (_reject)
+                // 并发处置：探活风暴（快节拍 × 客户端内部重连倍数）灌满串行受理的 accept 队列会把页
+                // 隧道 SYN 顶进内核重试（秒级延迟）——处置必须不占 accept 节拍。连接所有权移交任务
+                // （任务内持有并释放；外层不得再 using，否则派发即释放、连接秒死）。
+                _ = Task.Run(async () =>
                 {
-                    await stream.WriteAsync(s_forbidden, ct).ConfigureAwait(false);
-                    return;
-                }
-
-                bool ok = head.Contains("Host: 127.0.0.1:" + Port, StringComparison.OrdinalIgnoreCase)
-                    && head.Contains("Origin: http://127.0.0.1:" + Port, StringComparison.Ordinal)
-                    && head.Contains("Cookie: " + CookieName + "=", StringComparison.Ordinal)
-                    && head.Contains("sec-fetch-site: same-origin", StringComparison.OrdinalIgnoreCase)
-                    && head.Contains("Upgrade: websocket", StringComparison.OrdinalIgnoreCase);
-                if (!ok)
-                {
-                    // 对齐 dsh 网关实证：Host/Origin 门不过即 403 forbidden（体 9 字节）+ 关连接；
-                    // 代理把该响应原样泵给页面，客户端退避重连（ADR upgrade-tunnel-host-authority）。
-                    await stream.WriteAsync(s_forbidden, ct).ConfigureAwait(false);
-                    return;
-                }
-
-                _handshakeOk.TrySetResult();
-
-                byte[] accept = Encoding.ASCII.GetBytes(
-                    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
-                    "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n");
-                await stream.WriteAsync(accept, ct).ConfigureAwait(false);
-                // 回显环：升级后页侧帧原样弹回，供“隧道存活 + 字节完整”断言；对端关闭即返。
-                byte[] echo = new byte[8192];
-                while (true)
-                {
-                    int n = await stream.ReadAsync(echo.AsMemory(0, echo.Length), ct).ConfigureAwait(false);
-                    if (n == 0)
+                    try
                     {
-                        return;
+                        using (client)
+                        using (NetworkStream stream = client.GetStream())
+                        {
+                            await ServeOneAsync(stream, ct).ConfigureAwait(false);
+                        }
                     }
-
-                    await stream.WriteAsync(echo.AsMemory(0, n), ct).ConfigureAwait(false);
-                }
+                    catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException or IOException)
+                    {
+                        // 单连接收尾（探活掐断/页断联/桩侧关）：与本连接一起结束。
+                    }
+                });
             }
-            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException or IOException)
+        }
+
+        /// <summary>单连接处置：握手判门 + 101 回显环 / 403 / 零字节关。</summary>
+        private async Task ServeOneAsync(NetworkStream stream, CancellationToken ct)
+        {
+            // 首部按 CRLFCRLF 收满：单次 ReadAsync 遇 TCP 分段会把完整首部误判成缺头（判门假红）。
+            string head = await ReadHttpHeadAsync(stream, ct).ConfigureAwait(false);
+            LastHead = head;
+            if (_silentClose)
             {
-                // 测试收尾。
+                return;
+            }
+
+            if (_reject)
+            {
+                await stream.WriteAsync(s_forbidden, ct).ConfigureAwait(false);
+                return;
+            }
+
+            bool ok = head.Contains("Host: 127.0.0.1:" + Port, StringComparison.OrdinalIgnoreCase)
+                && head.Contains("Origin: http://127.0.0.1:" + Port, StringComparison.Ordinal)
+                && head.Contains("Cookie: " + CookieName + "=", StringComparison.Ordinal)
+                && head.Contains("sec-fetch-site: same-origin", StringComparison.OrdinalIgnoreCase)
+                && head.Contains("Upgrade: websocket", StringComparison.OrdinalIgnoreCase);
+            if (!ok)
+            {
+                // 对齐 dsh 网关实证：Host/Origin 门不过即 403 forbidden（体 9 字节）+ 关连接；
+                // 代理把该响应原样泵给页面，客户端退避重连（ADR upgrade-tunnel-host-authority）。
+                await stream.WriteAsync(s_forbidden, ct).ConfigureAwait(false);
+                return;
+            }
+
+            _handshakeOk.TrySetResult();
+
+            byte[] accept = Encoding.ASCII.GetBytes(
+                "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+                "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n");
+            await stream.WriteAsync(accept, ct).ConfigureAwait(false);
+            // 回显环：升级后页侧帧原样弹回，供“隧道存活 + 字节完整”断言；对端关闭即返。
+            byte[] echo = new byte[8192];
+            while (true)
+            {
+                int n = await stream.ReadAsync(echo.AsMemory(0, echo.Length), ct).ConfigureAwait(false);
+                if (n == 0)
+                {
+                    return;
+                }
+
+                await stream.WriteAsync(echo.AsMemory(0, n), ct).ConfigureAwait(false);
             }
         }
 

@@ -63,6 +63,13 @@ internal sealed partial class StartupSequence
         // 周期起点：子进程退出后、RestartAsync 等待前。周期内的导航到达即页内自刷
         // （市场 doRestart 轮询到新 boot 即 reload），收养 navigate 据此免导航。
         _wiring.LastRecoveryShownAtUtc = DateTimeOffset.UtcNow;
+        // 铸币态 epoch 化（ADR mint-epoch-mux-gate）：dsh 死即 route 失效——代理 `/` 回落 holder、
+        // 页面自刷落进门控（旧 route 指向已死进程时自刷只会落进 502 错误页）。失效幂等：残留锁死分支
+        // 逐轮重入只在首轮翻转留痕，cookie 保留供收养重验。
+        if (_shellForward.InvalidateRoute())
+        {
+            HostLog.Write("[shell] dsh 进程退出：铸币态失效，holder 门控重新武装（cookie 保留待收养重验）");
+        }
         // 恢复页三件套（ADR diag-masking-and-recovery-page）：失败原因 + stderr 尾部展示 +
         // 导出诊断/退出动作。desktop.* 走 Ryn 层 IPC 不依赖 dsh 存活；数据经 textContent
         // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）。原因选择是域决策（UiCopy.RecoveryReason）；
@@ -75,16 +82,17 @@ internal sealed partial class StartupSequence
         return ValueTask.CompletedTask;
     }
 
-    /// <summary>收养后导航：epoch 可能已换（新 secret/端口）→ 先重铸（覆盖式，每次全量 HTTP），再定导航。
+    /// <summary>收养后导航：epoch 可能已换（新 secret/端口）→ 先重验铸币态，再定导航。
     /// 页内已自刷即免导航，只做收养登记（导航靶点恒为代理根）。</summary>
     private ValueTask NavigateAfterAdoptAsync(RynNavigationCallbacks navCallbacks, Uri url)
     {
         // webUrl 恒代理根（导航靶点与健康 reload 靶点）；收养登记只刷新铸币态，dsh 旧 URL 不再进导航。
         // 页面永驻代理内：Ryn dev-server 分支已自动信任代理源，无需逐跳授权；
         // dsh 自指 3xx 由代理内部跟完，页内绝对 dsh 链接走导航回调外部策略（fail-closed），外链照走系统浏览器。
-        // 同步编排沿用既有形态：重铸内部超时兜底，无 ct 位（收养回调无取消语义）；失败 loud，导航照发
+        // 同步编排沿用既有形态：重验内部超时兜底，无 ct 位（收养回调无取消语义）；失败 loud，导航照发
         // （转发 401/502 → 探针/恢复面按错误页处理）。
-        _ = _shellForward.MintAsync(DshWebUrl.From(url), HostLog.Write, CancellationToken.None).GetAwaiter().GetResult();
+        // 收养重验走 token-free 路径（ADR mint-epoch-mux-gate）。
+        _ = _shellForward.RevalidateAsync(DshWebUrl.From(url), HostLog.Write, CancellationToken.None).GetAwaiter().GetResult();
         // 免导航（ADR adopt-skip-navigate-on-self-reload）：周期内有到达即视为页内自刷
         // （市场 doRestart 轮询到新 boot 即 location.reload；谓词只比时间戳，同源靠前提假设），
         // 再导航即多余——只做收养登记，跳过实际导航。无到达时走壳单跳。

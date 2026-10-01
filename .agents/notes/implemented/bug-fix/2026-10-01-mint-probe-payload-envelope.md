@@ -60,7 +60,10 @@ holder 铸币门控（[holder-mint-gate-deepening](../feature/2026-10-01-holder-
 代价：探针形状与上游网关/描述符契约耦合，上游若改 args 形态（如放开 `cursor`）即漂移——由夹具形状校验与
 形状钉死回归在 CI 显形，不再靠「HTTP 200」这种弱证据。
 
-遗留（归上游面）：会话服务就绪 ≠ 页面 hydrate 完成，页内自举残余 1–2s 仍待上游列表快照 stale-while-revalidate。
+遗留（归上游面）：会话服务就绪 ≠ 页面 hydrate 完成，页内自举残余待上游列表快照
+stale-while-revalidate——方向与推动状态的单一事实源是
+[holder-mint-gate-deepening](../feature/2026-10-01-holder-mint-gate-deepening.md)
+Alternatives 的 archived 行（「上游 dsh web 做会话列表快照」），本笔记不另登记。
 
 ## Testing
 
