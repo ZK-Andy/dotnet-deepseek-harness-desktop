@@ -220,6 +220,9 @@
             closeTitle: '关闭时最小化到托盘',
             closeDesc: '勾选后点击关闭按钮会隐藏到系统托盘，取消则直接退出应用。',
             closeUnavailable: '当前运行环境无系统托盘，开关不可用。',
+            // 命令通道失败（非「宿主答不可用」）：状态未知 + 可重试，见 useSwitchState 的三态
+            hostUnreachableDesc: '\u72b6\u6001\u672a\u77e5\uff0c\u8bf7\u91cd\u8bd5\uff1b\u82e5\u53cd\u590d\u51fa\u73b0\u8bf7\u91cd\u542f\u5e94\u7528',
+            retry: '\u91cd\u8bd5',
             // 组标题（原散落在各 Section 的 '.ddc-gtitle' 字面量）
             updGroup: '\u66f4\u65b0',
             diagGroup: '\u8bca\u65ad',
@@ -265,6 +268,9 @@
             closeTitle: 'Minimize to tray on close',
             closeDesc: 'When checked, closing the window hides it to the tray; otherwise the app quits.',
             closeUnavailable: 'No system tray in this environment; the switch is unavailable.',
+            // Command-channel failure (NOT "host answered unavailable"): state unknown + retryable.
+            hostUnreachableDesc: 'State unknown \u2014 retry; restart the app if it keeps happening',
+            retry: 'Retry',
             // 组标题
             updGroup: 'Update',
             diagGroup: 'Diagnostics',
@@ -314,22 +320,144 @@
             }
           }
 
+          // 页面侧降级积压：命令通道失败时本页的失败只活在内存里，host.log 上零证据
+          // （2026-10-01 实机：通道健康、开关不动、日志空白）——先积压，等本页下一次成功调用
+          // （开关重试 / 更新重试 / 探针，即经 invokeWithTimeout 的命令）补报给宿主
+          // desktop.companion.report。补报自身也接结算兜底：桥接 invoke 可能既不成功也不失败
+          // （同 invokeWithTimeout 的依据），悬挂即回队——否则「不丢」不成立。
+          // 有意取舍：队列是页面内存态，页面卸载即消失（跨页持久化不在本批，见 ADR Consequences）。
+          var pendingReports = []
+          var sendReport = function (item) {
+            var settled = false
+            var requeue = function () {
+              if (settled) return
+              settled = true
+              pendingReports.push(item)
+            }
+            try {
+              window.__ryn.invoke('desktop.companion.report', item).then(function () { settled = true }, requeue)
+            } catch (e) { requeue() }
+            setTimeout(requeue, 8000)
+          }
+          var flushReports = function () {
+            if (!pendingReports.length) return
+            var batch = pendingReports
+            pendingReports = []
+            for (var i = 0; i < batch.length; i++) sendReport(batch[i])
+          }
+          // 同一 scope+消息只积压一条：重试/重挂载把同一缺陷重复上报没有新增信息，只刷日志。
+          var reportDegradation = function (scope, message) {
+            var item = { scope: scope, message: message }
+            for (var i = 0; i < pendingReports.length; i++) {
+              if (pendingReports[i].scope === scope && pendingReports[i].message === message) { flushReports(); return }
+            }
+            pendingReports.push(item)
+            flushReports()
+          }
+
           // 命令通道调用：invoke + 结算锁 + 4s 兜底超时。桥接的 invoke 在 __ryn 不完整时会同步抛，
           // 包一层 catch 转 reject——「既不成功也不失败」与同步抛都收敛到失败，不留悬挂 Promise。
-          var invokeWithTimeout = function (command) {
+          // 成功路径顺带补报积压（通道恢复即落痕）；args 缺省 {}——空参数体的 invoke 在宿主分发层会 500。
+          var invokeWithTimeout = function (command, args) {
             return new Promise(function (resolve, reject) {
               var settled = false
               var once = function (fn) {
                 return function (v) { if (!settled) { settled = true; fn(v) } }
               }
               try {
-                window.__ryn.invoke(command, {}).then(once(resolve), once(reject))
+                window.__ryn.invoke(command, args || {}).then(
+                  once(function (v) { flushReports(); resolve(v) }), once(reject))
               } catch (e) { once(reject)(e) }
               setTimeout(once(reject), 4000)
             })
           }
 
+          // 取帧：通道调用 + 形状校验。合法对象帧直接给；宿主错误帧（{"error":…}，如 autostart
+          // getState 读盘失败）单独抛，让宿主给的原因进上报与日志，不被并成「unexpected frame」；
+          // 其余（没答案 / 答了但不是帧）一律抛——调用方按「通道失败」处置，绝不把坏帧当结论。
+          var invokeFrame = function (command, args) {
+            return invokeWithTimeout(command, args).then(function (res) {
+              var frame = parseFrame(res)
+              if (frame && typeof frame === 'object') {
+                if (typeof frame.error === 'string') throw new Error('host error: ' + frame.error)
+                return frame
+              }
+              throw new Error('bad frame: ' + command)
+            })
+          }
+
           var queryState = function () { return invokeWithTimeout('desktop.update.getState') }
+
+          // 开关行初值装载：首拉 + 800ms 重试一次，两次都失败才判定「通道失败」并补报。
+          // 只有合法帧才敢下结论——把「没答案」渲染成「无系统托盘 / 已关闭」正是 2026-10-01 实机缺陷。
+          var loadSwitchState = function (command, accept, settle) {
+            var cancelled = false
+            var attempts = 0
+            var run = function () {
+              invokeFrame(command).then(function (frame) {
+                if (cancelled) return
+                var state = accept(frame)
+                if (state) { settle(state); return }
+                fail('unexpected frame: ' + JSON.stringify(frame).slice(0, 120))
+              }, function (e) {
+                if (cancelled) return
+                console.warn(TAG, command + ' failed:', e && e.message)
+                fail(e && e.message ? String(e.message) : 'invoke failed')
+              })
+            }
+            var fail = function (detail) {
+              attempts += 1
+              if (attempts >= 2) {
+                reportDegradation(command, 'state unavailable after retry: ' + detail)
+                settle({ channelDown: true })
+                return
+              }
+              setTimeout(run, 800)
+            }
+            run()
+            return function () { cancelled = true }
+          }
+
+          // 开关状态 hook：null=装载中；对象=已结算（{enabled,...} 或 {channelDown:true}）。
+          // 返回 [state, setState, retry]——retry 递增 nonce 重跑装载，失败后可自愈，不必重开设置页。
+          var useSwitchState = function (command, accept) {
+            var sp = reactMod.useState(null)
+            var state = sp[0]
+            var setState = sp[1]
+            var np = reactMod.useState(0)
+            var nonce = np[0]
+            var setNonce = np[1]
+            reactMod.useEffect(function () {
+              return loadSwitchState(command, accept, setState)
+            }, [nonce])
+            var retry = function () { setState(null); setNonce(nonce + 1) }
+            return [state, setState, retry]
+          }
+
+          var channelDown = function (state) { return !!(state && state.channelDown) }
+
+          // 通道失败时开关的替代控制位：状态未知无从切换，给可点的重试入口（而非灰着不解释）。
+          // disabled 谓词由调用方给（关闭到托盘另有一条 available=false），缺省 = 尚未结算。
+          var switchControl = function (th, state, onToggle, retry, disabled) {
+            if (channelDown(state)) {
+              return h('button', {
+                className: 'ovn-btn ovn-btn--ghost',
+                type: 'button',
+                onClick: retry,
+              }, th('retry'))
+            }
+            return Switch2({
+              checked: !!(state && state.enabled),
+              disabled: disabled === undefined ? !state : disabled,
+              onChange: onToggle,
+            })
+          }
+
+          // 开关行的 desc：通道失败 → 「状态未知 + 重试」；否则用调用方给的常规文案
+          // （关闭到托盘在 available=false 时自带「无系统托盘」追加行）。两行共用同一映射。
+          var switchDesc = function (th, state, normalDesc) {
+            return channelDown(state) ? th('hostUnreachableDesc') : normalDesc
+          }
 
           // 失败分流（ADR port-drift-ipc-origin-mismatch）：getState 失败有两种因、处置不同——
           // ① 宿主无自更新栈（dev 门禁，路由未注册）：给 dev 提示；② 页面→壳命令通道整体失效
@@ -359,12 +487,16 @@
 
           // 设置页区块：undefined=查询中不渲染；{unavailable:'nostack'|'channel'}=页内提示；
           // 对象（宿主状态帧）=正常渲染。宿主推送的事件帧晚到会覆盖提示态（见 pushed 守卫）。
+          // 通道失败不再锁死：首次挂载失败自动重查一次（3s），并给手动重试入口（重挂载整段 effect）。
           function UpdateSection(props) {
             var p = props || {}
             var th = p.t || function (k) { return k }
             var pair = reactMod.useState(undefined)
             var state = pair[0]
             var setState = pair[1]
+            var np = reactMod.useState(0)
+            var nonce = np[0]
+            var setNonce = np[1]
             reactMod.useEffect(function () {
               // 宿主推送的状态帧优先：失败查询的异步结论不得覆盖已经到达的真实状态；
               // cancelled 挡住卸载后到达的结论（两个 4s 定时器都不随卸载取消）
@@ -377,19 +509,36 @@
               }).catch(function (e3) {
                 console.warn(TAG, 'update getState failed:', e3 && e3.message)
                 probeCommandChannel().then(function (channelOk) {
-                  if (!pushed && !cancelled) setState({ unavailable: channelOk ? 'nostack' : 'channel' })
+                  if (pushed || cancelled) return
+                  if (!channelOk) {
+                    reportDegradation('desktop.update.getState', 'command channel down (probe failed)')
+                  }
+                  setState({ unavailable: channelOk ? 'nostack' : 'channel' })
+                  // 自动重查只给一次（nonce 0→1）：通道持续不通时把节奏交回用户，不无限重试
+                  if (!channelOk && nonce === 0) {
+                    setTimeout(function () { if (!cancelled) setNonce(1) }, 3000)
+                  }
                 })
               })
               return function () {
                 cancelled = true
                 document.removeEventListener('dsh-desktop-update', onEvt)
               }
-            }, [])
+            }, [nonce])
             if (state === undefined) return null
             if (state.unavailable) {
               return h('div', { className: 'ddc-group' },
                 h('div', { className: 'ddc-gtitle' }, th('updGroup')),
-                h('div', { className: 'ddc-desc' }, th(state.unavailable === 'channel' ? 'unavailChannel' : 'unavail')))
+                h('div', { className: 'ddc-list' },
+                  h('div', { className: 'ddc-row2' },
+                    h('div', { className: 'ddc-copy' },
+                      h('div', { className: 'ddc-desc' }, th(state.unavailable === 'channel' ? 'unavailChannel' : 'unavail'))),
+                    h('div', { className: 'ddc-ctl' },
+                      h('button', {
+                        className: 'ovn-btn ovn-btn--ghost',
+                        type: 'button',
+                        onClick: function () { setState(undefined); setNonce(nonce + 1) },
+                      }, th('retry'))))))
             }
             var busy = state.status === 'checking' || state.status === 'downloading' || state.status === 'installing'
             // 按钮标签随状态机切换（opencode updater-action 同款）：ready 即安装入口，不再单设主按钮
@@ -465,25 +614,28 @@
                     }, th('diagBtn'))))))
           }
 
-          // 「桌面」区块：开机自启 + 关闭时最小化到托盘（均为 opencode 发行说明同款开关行）
+          // 「桌面」区块：开机自启 + 关闭时最小化到托盘（均为 opencode 发行说明同款开关行）。
+          // 两行的状态一律经 useSwitchState 装载：合法帧才算数，「没答案」渲染成可重试的通道失败。
           function DesktopSection(props) {
             var p = props || {}
             var th = p.t || function (k) { return k }
-            var asp = reactMod.useState(null)
-            var enabled = asp[0]
-            var setEnabled = asp[1]
-            reactMod.useEffect(function () {
-              window.__ryn.invoke('desktop.autostart.getState', {}).then(function (res) {
-                var p2 = parseFrame(res)
-                if (p2 && typeof p2.enabled === 'boolean') setEnabled(p2.enabled)
-              }, function () { setEnabled(false) })
-            }, [])
+            var asp = useSwitchState('desktop.autostart.getState', function (frame) {
+              return typeof frame.enabled === 'boolean' ? { enabled: frame.enabled } : null
+            })
+            var state = asp[0]
+            var setState = asp[1]
+            var retryAutostart = asp[2]
             var toggleAutostart = function (next) {
-              setEnabled(null)
-              window.__ryn.invoke('desktop.autostart.set', { enabled: next }).then(function (res) {
-                var p2 = parseFrame(res)
-                setEnabled(p2 && typeof p2.enabled === 'boolean' ? p2.enabled : next)
-              }, function () { setEnabled(!next) })
+              if (channelDown(state)) return
+              setState({ enabled: next })
+              invokeWithTimeout('desktop.autostart.set', { enabled: next }).then(function (res) {
+                var frame = parseFrame(res)
+                if (frame && typeof frame.enabled === 'boolean') setState({ enabled: frame.enabled })
+                else { reportDegradation('desktop.autostart.set', 'unexpected frame; reverted'); setState({ enabled: !next }) }
+              }, function (e) {
+                reportDegradation('desktop.autostart.set', (e && e.message) || 'invoke failed; reverted')
+                setState({ enabled: !next })
+              })
             }
             return h('div', { className: 'ddc-group' },
               h('div', { className: 'ddc-gtitle' }, th('desktopGroup')),
@@ -491,50 +643,54 @@
                 h('div', { className: 'ddc-row2' },
                   h('div', { className: 'ddc-copy' },
                     h('div', { className: 'ddc-title' }, th('autostart')),
-                    h('div', { className: 'ddc-desc' }, th('autostartDesc'))),
+                    h('div', { className: 'ddc-desc' }, switchDesc(th, state, th('autostartDesc')))),
                   h('div', { className: 'ddc-ctl' },
-                    Switch2({ checked: enabled, disabled: enabled === null, onChange: toggleAutostart }))),
+                    switchControl(th, state, toggleAutostart, retryAutostart))),
                 CloseToTrayRow({ t: th })))
           }
 
           // 关闭时最小化到托盘：宿主持久化于 <DSH_HOME>/desktop-preferences.json（默认开启，
-          // 与历史行为一致）。available=false 表示无系统托盘——隐藏无从谈起，开关禁用。
+          // 与历史行为一致）。available=false（宿主明确答）才表示无系统托盘——隐藏无从谈起，开关禁用；
+          // 「没答案」走 channelDown，与「答了不可用」处置不同（重试 vs 换环境）。
           function CloseToTrayRow(props) {
             var p = props || {}
             var th = p.t || function (k) { return k }
-            var sp = reactMod.useState(null)
-            var st = sp[0]
-            var setSt = sp[1]
-            reactMod.useEffect(function () {
-              window.__ryn.invoke('desktop.closeToTray.getState', {}).then(function (res) {
-                var p2 = parseFrame(res)
-                if (p2 && typeof p2.enabled === 'boolean') setSt({ enabled: p2.enabled, available: !!p2.available })
-                else setSt({ enabled: true, available: false })
-              }, function () { setSt({ enabled: true, available: false }) })
-            }, [])
-            var toggle = function (next) {
-              if (!st || !st.available) return
-              setSt({ enabled: next, available: true })
-              window.__ryn.invoke('desktop.closeToTray.set', { enabled: next }).then(function (res) {
-                var p2 = parseFrame(res)
-                if (p2 && typeof p2.enabled === 'boolean') setSt({ enabled: p2.enabled, available: !!p2.available })
-                else setSt({ enabled: !next, available: true })
-              }, function () { setSt({ enabled: !next, available: true }) })
+            // 装载与 set 共用同一把形状尺：两字段齐才算合法帧——缺字段不得被当成「无系统托盘」
+            var closeAccept = function (frame) {
+              return typeof frame.enabled === 'boolean' && typeof frame.available === 'boolean'
+                ? { enabled: frame.enabled, available: frame.available }
+                : null
             }
-            var unavailable = !!st && !st.available
-            var desc = unavailable
+            var csp = useSwitchState('desktop.closeToTray.getState', closeAccept)
+            var st = csp[0]
+            var setSt = csp[1]
+            var retryClose = csp[2]
+            var toggle = function (next) {
+              if (!st || channelDown(st) || !st.available) return
+              setSt({ enabled: next, available: true })
+              invokeWithTimeout('desktop.closeToTray.set', { enabled: next }).then(function (res) {
+                var frame = parseFrame(res)
+                if (frame && typeof frame.enabled === 'boolean' && typeof frame.available === 'boolean') {
+                  setSt({ enabled: frame.enabled, available: frame.available })
+                } else {
+                  reportDegradation('desktop.closeToTray.set', 'unexpected frame; reverted')
+                  setSt({ enabled: !next, available: true })
+                }
+              }, function (e) {
+                reportDegradation('desktop.closeToTray.set', (e && e.message) || 'invoke failed; reverted')
+                setSt({ enabled: !next, available: true })
+              })
+            }
+            var noTray = !!st && !channelDown(st) && st.available === false
+            var desc = switchDesc(th, st, noTray
               ? h('span', null, th('closeDesc'), h('br'), th('closeUnavailable'))
-              : th('closeDesc')
+              : th('closeDesc'))
             return h('div', { className: 'ddc-row2' },
               h('div', { className: 'ddc-copy' },
                 h('div', { className: 'ddc-title' }, th('closeTitle')),
                 h('div', { className: 'ddc-desc' }, desc)),
               h('div', { className: 'ddc-ctl' },
-                Switch2({
-                  checked: !!st && st.enabled,
-                  disabled: !st || unavailable,
-                  onChange: toggle,
-                })))
+                switchControl(th, st, toggle, retryClose, !st || st.available === false)))
           }
 
           ctx.slots.inject('sidebar.footer.action', function () {

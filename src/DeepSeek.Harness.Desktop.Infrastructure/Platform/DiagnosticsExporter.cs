@@ -86,9 +86,11 @@ public static class DiagnosticsExporter
     public static DiagnosticsExportResult Export(string home, string outputDirectory, string appVersion, Func<string?>? healthSnapshot = null)
     {
         Directory.CreateDirectory(outputDirectory);
+        // 文件名到毫秒：同秒连点两次导出会撞名，旧形态把「文件已存在」误报成「文档目录不可写」并回退
+        // （2026-10-01 实机 16:23:52）。毫秒分辨率下同机连点不再撞名，判据仍是文件系统本身。
         string zipPath = Path.Combine(
             outputDirectory,
-            $"dsh-desktop-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+            $"dsh-desktop-diagnostics-{DateTime.Now:yyyyMMdd-HHmmssfff}.zip");
 
         var included = new List<string>();
         using (ZipArchive zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))

@@ -5,7 +5,7 @@ using Ryn.Ipc;
 namespace DeepSeek.Harness.Desktop;
 
 /// <summary>壳级命令路由注册（组合根注册下沉为按域 AddXxx，ADR compose-root-form-separation）：
-/// 外部链接导航、语言桥、开机自启三域。TODO(rehome-shell-routers)：路由类型仍居根命名空间，
+/// 外部链接导航、语言桥、开机自启、页面降级报障四域。TODO(rehome-shell-routers)：路由类型仍居根命名空间，
 /// 按域分文件归位时随迁并删除本行。</summary>
 internal static class ShellCommandRegistration
 {
@@ -36,6 +36,14 @@ internal static class ShellCommandRegistration
     {
         services.AddSingleton<ICommandRouter>(new CompanionLocaleCommandRouter(uiLocale, log: HostLog.Write));
         services.AddSingleton<ICommandRouter>(new UiLocaleCommandRouter(uiLocale));
+        return services;
+    }
+
+    /// <summary>伴生插件页面降级报障（desktop.companion.report，ADR companion-switch-degradation-recovery）：
+    /// 页面侧失败经此进 host.log——通道本身失败时页面先积压，待通道恢复补报。</summary>
+    public static IServiceCollection AddCompanionReportCommand(this IServiceCollection services)
+    {
+        services.AddSingleton<ICommandRouter>(new CompanionReportCommandRouter(log: HostLog.Write));
         return services;
     }
 

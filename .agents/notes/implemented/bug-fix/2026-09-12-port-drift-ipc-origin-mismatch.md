@@ -49,4 +49,5 @@ Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
 - [运行时交接收养](2026-09-12-runtime-handoff-adoption.md)：同批的血统收割——漂移触发面的收敛（不是本缺陷的修复）。
 - [companion 更新设置页](../feature/2026-08-22-companion-update-settings-section.md)：设置页失败降级的契约所有者（本篇把它的单一降级细化为两种因）。
 - [companion invoke 帧契约](2026-08-24-companion-invoke-frame-contract.md)：本区块失败降级文案的来处；本篇补的是「降级原因不止一种」。
+- [companion 开关行的降级三态与失败留痕](2026-10-01-companion-switch-degradation-recovery.md)：同通道「没答案」这一支的处置（本篇决定的是成因分流、处置对象是更新块；该篇处置两个开关行并在通道恢复后补报留痕）。
 - 上游：`Yupmoh/Ryn` [issue #90](https://github.com/Yupmoh/Ryn/issues/90) / [PR #91](https://github.com/Yupmoh/Ryn/pull/91)——`BuildCorsHeaders` 与 `IsAuthorized` 共用同一 origin 判据，并给 `/ipc/eval/` 响应补同样的头。

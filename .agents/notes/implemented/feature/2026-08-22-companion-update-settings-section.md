@@ -33,3 +33,4 @@ Status: implemented
 - `2026-08-22-companion-plugin-version-aware-upgrade`：本次 version bump 即其约定首次执行。
 - [AOT JSON 源生成收敛](../bug-fix/2026-08-26-aot-json-source-generation.md)：本批引入的状态帧转义机制的现归属。
 - [端口漂移后的 IPC origin 错配](../bug-fix/2026-09-12-port-drift-ipc-origin-mismatch.md)：失败降级从「一种因」细化为「dev 门禁 / 命令通道失效」两种因的来处。
+- [companion 开关行的降级三态与失败留痕](../bug-fix/2026-10-01-companion-switch-degradation-recovery.md)：本页两个开关行不再把「没答案」渲染成「无系统托盘 / 已关闭」，并把页面侧失败经 `desktop.companion.report` 留痕。

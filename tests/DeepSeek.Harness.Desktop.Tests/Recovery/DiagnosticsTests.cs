@@ -7,7 +7,8 @@ namespace DeepSeek.Harness.Desktop.Tests.Recovery;
 public class DiagnosticsExporterTests
 {
     /// <summary>验证导出 zip 只收录白名单条目：日志、state/web-port 快照进包且 state 含版本与 home 信息，
-    /// 凭证/会话/包配置等敏感面在路径与内容两级均被排除，缺失的可选文件不出现也不报错。</summary>
+    /// 凭证/会话/包配置等敏感面在路径与内容两级均被排除，缺失的可选文件不出现也不报错；
+    /// 同时钉住产物文件名的毫秒分辨率（同秒连点不再撞名，见 ADR companion-switch-degradation-recovery）。</summary>
     [Fact]
     public void Export_WhitelistedEntriesOnly_SensitiveExcluded()
     {
@@ -27,6 +28,8 @@ public class DiagnosticsExporterTests
             DiagnosticsExportResult result = DiagnosticsExporter.Export(home, outDir, appVersion: "9.9.9-test");
 
             Assert.True(File.Exists(result.ZipPath));
+            // 文件名 = dsh-desktop-diagnostics-yyyyMMdd-HHmmssfff.zip（毫秒 3 位）：同秒连点不再撞名
+            Assert.Matches(@"^dsh-desktop-diagnostics-\d{8}-\d{9}\.zip$", Path.GetFileName(result.ZipPath));
             using ZipArchive zip = ZipFile.OpenRead(result.ZipPath);
             var names = zip.Entries.Select(e => e.FullName).ToHashSet();
 

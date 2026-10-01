@@ -126,6 +126,7 @@ public sealed partial class DesktopBootstrap
         services.AddRynNavigationCallbacks();
         services.AddExternalLinkRouting(proxy);
         services.AddLocaleCommands(_uiLocale);
+        services.AddCompanionReportCommand();
         services.AddDiagnosticsCommands(() => wiring.HealthMonitor?.Snapshot);
         services.AddRecoveryCommands(wiring);
         services.AddBootstrapCommands(preflight.Bootstrap);
