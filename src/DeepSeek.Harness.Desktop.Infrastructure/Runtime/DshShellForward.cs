@@ -141,7 +141,7 @@ public sealed class DshShellForward
     /// <summary>铸币后的就绪稳定化（ADR holder-mint-gate-deepening）：303 只证认证行挂载，前端静态面
     /// 与会话服务由更晚挂载的行提供，此刻放行只会让 holder reload 落进「UI 框架在、会话树不在」的
     /// 渐进渲染。以铸得 cookie 对 origin <c>POST /api/session/list</c>（真实 wire 路径，host.log 实证）
-    /// 轮询探活，Ready（200 + 响应体非空）连续维持达稳定窗即通过——门控位置钉在会话服务就绪，
+    /// 轮询探活，Ready（200 + <c>result.ok:true</c> 信封）连续维持达稳定窗即通过——门控位置钉在会话服务就绪，
     /// 首屏回到「UI + 树一次出全」（两跳时代的渲染形态）；总预算封顶，到期未稳定 fail-open
     /// （dsh 挂死由监督器/恢复面兜底，铸币不得无界等待）。取消（ct）即上抛——与铸币语义同源。</summary>
     private async Task WaitWebFaceStableAsync(string origin, string cookie, Action<string> log, CancellationToken ct)
@@ -176,9 +176,13 @@ public sealed class DshShellForward
         }
     }
 
-    /// <summary>单次会话面探活：镜像 dsh 0.2.0 客户端 <c>call()</c> 的 wire 语义（dsh-client-connection：
+    /// <summary>单次会话面探活：镜像实机 dsh 客户端 <c>call()</c> 的 wire 语义（dsh-client-connection：
     /// 信封 <c>{type:"client-request",rpcId,method,payload}</c> POST 到 <c>/api/&lt;method&gt;</c>，成功回包为
-    /// <c>result.ok === true</c> 的 server-response）——payload <c>{}</c> 即合法（<c>SessionListRequest = {cursor?}</c>）。
+    /// <c>result.ok === true</c> 的 server-response）。payload 必须包成 <c>{args:{_request:{}}}</c>：typert 网关
+    /// 强制「恰好一个 plain-object args 字段」（dsh-api-gateway <c>invokeRpc</c> 校验），session/list 的 args
+    /// 描述符只收保留空请求 <c>_request</c>（<c>{cursor}</c> 被 boundary validation 拒）。形状错时网关仍回 200，
+    /// 但体是 <c>ok:false</c> 的 gateway 错误信封——判据因此恒不成立、稳定化恒 fail-open
+    /// （ADR mint-probe-payload-envelope 实机实证；旧版发裸 <c>payload:{}</c> 即此形态）。
     /// Ready = 200 + 回包为 <c>result.ok:true</c> 的 server-response 信封；网关校验失败/服务未激活/超时/
     /// 应答异常一律未就绪。调用方取消（ct）即上抛，探活自身超时按未就绪折算不外抛。</summary>
     private async Task<bool> ProbeSessionListReadyAsync(string origin, string cookie, CancellationToken ct, TimeSpan timeout)
@@ -187,10 +191,11 @@ public sealed class DshShellForward
         cts.CancelAfter(timeout);
         try
         {
-            // 信封为固定形状（method/payload 是常量，rpcId 是 GUID——皆无转义风险），手工拼装避免为此开源生成注册面。
+            // 信封为固定形状（method/args 是常量，rpcId 是 GUID——皆无转义风险），手工拼装避免为此开源生成注册面。
+            // payload 的 args 包装是 typert 网关硬契约（见方法 doc）；_request 为 session/list 的保留空请求。
             string envelope =
                 "{\"type\":\"client-request\",\"rpcId\":\"" + Guid.NewGuid().ToString("D") +
-                "\",\"method\":\"session/list\",\"payload\":{}}";
+                "\",\"method\":\"session/list\",\"payload\":{\"args\":{\"_request\":{}}}}";
             using HttpRequestMessage request = BuildForwardRequest(
                 "POST", origin + "/api/session/list", Encoding.UTF8.GetBytes(envelope),
                 new Dictionary<string, string> { ["Content-Type"] = "application/json" }, cookie);

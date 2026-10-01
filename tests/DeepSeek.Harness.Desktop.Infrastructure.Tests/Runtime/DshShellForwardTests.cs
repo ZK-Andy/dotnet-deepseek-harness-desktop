@@ -89,7 +89,9 @@ public class DshShellForwardTests
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
-        using var server = new DshMimicResponder(port, cts.Token) { ReadyDelayMilliseconds = 100 };
+        // 就绪时延须给两次探活（建立 readySince + 维持稳定窗）留足裕量：桩对每次探活都计延迟，
+        // 全量并行下 100ms×2 会顶穿 s_fast 的 250ms 预算而走 fail-open（实测 flaky）。
+        using var server = new DshMimicResponder(port, cts.Token) { ReadyDelayMilliseconds = 30 };
         var forward = new DshShellForward(
             new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
         var lines = new List<string>();
@@ -120,6 +122,28 @@ public class DshShellForwardTests
         Assert.True(minted);
         Assert.True(forward.TryGetRoute(out _, out _));
         Assert.Contains(lines, l => l.Contains("预算耗尽") && l.Contains("fail-open"));
+    }
+
+    /// <summary>探针 payload 形状钉死（ADR mint-probe-payload-envelope）：必须是 typert 网关强制的
+    /// <c>{args:{_request:{}}}</c> 包装。夹具按实机网关语义拒裸形状，形状一漂移本测即红——旧版裸
+    /// <c>payload:{}</c> 正是被网关以 200 + ok:false 回绝、令门控 100% fail-open 的形态。</summary>
+    [Fact]
+    public async Task Mint_ProbePayload_CarriesTypertArgsEnvelope()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        int port = LoopbackHttpResponder.ReserveFreePort();
+        using var server = new DshMimicResponder(port, cts.Token);
+        var forward = new DshShellForward(
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+        var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
+
+        Assert.True(await forward.MintAsync(url, _ => { }, cts.Token));
+
+        Assert.True(server.ProbeCookieSeen);
+        Assert.False(server.ProbeArgumentsRejected, $"探针形状被网关拒：{server.LastProbeBody}");
+        Assert.Contains(
+            "\"method\":\"session/list\",\"payload\":{\"args\":{\"_request\":{}}}",
+            server.LastProbeBody, StringComparison.Ordinal);
     }
 
     /// <summary>取消即上抛（R2 B1）：预取消的令牌使铸币抛，不吞。</summary>
@@ -199,8 +223,10 @@ public class DshShellForwardTests
     }
 
     /// <summary>dsh 门摹拟应答者：正确 token 303 + 铸 cookie；铸币后的会话面探活（POST /api/session/list
-    /// 携带该 cookie）按就绪时延配置回 200 有体（<see cref="ReadyDelayMilliseconds"/>：-1 = 恒不就绪；
-    /// 0 = 即刻）；其余 401（铸币面最小形态；转发执行面的桩见 <c>DshLoopbackProxyTests.StubDshHandler</c>）。</summary>
+    /// 携带该 cookie）先过实机网关形状闸——payload 未含 <c>{"args":{"_request":{}}}</c> 即回
+    /// <c>200</c> + gateway 错误信封（<c>ok:false</c>；形状漂移不随时延），通过后才按
+    /// <see cref="ReadyDelayMilliseconds"/> 回 200 就绪体（-1 = 恒 401 不就绪；0 = 即刻）；其余 401
+    /// （铸币面最小形态；转发执行面的桩见 <c>DshLoopbackProxyTests.StubDshHandler</c>）。</summary>
     private sealed class DshMimicResponder : IDisposable
     {
         private readonly TcpListener _listener;
@@ -212,6 +238,12 @@ public class DshShellForwardTests
 
         /// <summary>是否观察到携带铸得 cookie 的会话面探活（POST /api/session/list）。</summary>
         public bool ProbeCookieSeen { get; private set; }
+
+        /// <summary>最近一次探活请求体（形状断言用）。</summary>
+        public string LastProbeBody { get; private set; } = string.Empty;
+
+        /// <summary>是否发生「payload 未包 args」的形状拒绝（实机网关语义：200 + ok:false 错误信封）。</summary>
+        public bool ProbeArgumentsRejected { get; private set; }
 
         public DshMimicResponder(int port, CancellationToken ct)
         {
@@ -289,6 +321,8 @@ public class DshShellForwardTests
 
                     string head = Encoding.ASCII.GetString(buf, 0, total);
                     string requestLine = head.Split("\r\n")[0];
+                    int bodyHeadEnd = head.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+                    string body = bodyHeadEnd >= 0 && bodyHeadEnd + 4 <= head.Length ? head[(bodyHeadEnd + 4)..] : string.Empty;
                     byte[] bytes;
                     if (requestLine.StartsWith("GET /?token=" + GoodToken + " ", StringComparison.Ordinal))
                     {
@@ -301,7 +335,17 @@ public class DshShellForwardTests
                         && head.Contains($"Cookie: {CookieName}={CookieValue}", StringComparison.Ordinal))
                     {
                         ProbeCookieSeen = true;
-                        if (ReadyDelayMilliseconds < 0)
+                        LastProbeBody = body;
+                        if (!body.Contains("\"payload\":{\"args\":{\"_request\":{}}}", StringComparison.Ordinal))
+                        {
+                            // 实机网关语义（ADR mint-probe-payload-envelope 实证）：payload 未包 args 仍回 200，
+                            // 但体是 ok:false 的 gateway 错误信封——探针判据因此恒不成立。
+                            ProbeArgumentsRejected = true;
+                            bytes = Encoding.ASCII.GetBytes(LoopbackHttpResponder.Response(
+                                "HTTP/1.1 200 OK",
+                                "{\"type\":\"server-response\",\"rpcId\":\"00000000-0000-0000-0000-000000000000\",\"result\":{\"ok\":false,\"error\":{\"code\":\"gateway/internal\",\"message\":\"Remote payload must contain exactly one plain-object args field\",\"details\":{}}}}\n"));
+                        }
+                        else if (ReadyDelayMilliseconds < 0)
                         {
                             bytes = Encoding.ASCII.GetBytes(LoopbackHttpResponder.Response(
                                 "HTTP/1.1 401 Unauthorized", "dsh web authentication required\n"));

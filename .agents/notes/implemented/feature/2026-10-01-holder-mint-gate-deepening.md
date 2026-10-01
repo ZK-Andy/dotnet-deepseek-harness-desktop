@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-01 — Decision 1 的「payload `{}` 即合法（`SessionListRequest = {cursor?}`）」被实机证伪：typert 网关强制 payload 恰一个 plain-object `args` 字段，`session/list` 需 `{"args":{"_request":{}}}`；裸 `{}` 回 `200 + ok:false`，判据恒不成立 → 稳定化恒 fail-open。探针形状与判据由 [mint-probe-payload-envelope](../bug-fix/2026-10-01-mint-probe-payload-envelope.md) 承接；保留服役的部分：探针靶点（会话服务就绪）、稳定窗/节拍/预算与 fail-open 语义、holder 过渡屏同款化。
+
 Review: LIGHT/2026-10-01#2/R2（探针增量轮：2 Blocker——①信封缺失成立并采纳：`{}` 体在网关即回 200+ok:false 错误信封，判据必须含 `result.ok:true`；②点号路径主张经实机证据反驳不成立：host.log 68 次斜杠形态 + 0.2.0 客户端 `call()` 源码 `send(\`${channel}/${endpoint}\`)` 双证，vendored 0.1.1-rc.2 点号形态非实机 wire；已按裁决修正）
 Review: LIGHT/2026-10-01#1/R2+R3=ok（0 Blocker；Suggestion 3 条全采纳：门控成功路径钉死测试、fail-open 日志记实际耗时、并发覆盖面记账入 Consequences）
 
