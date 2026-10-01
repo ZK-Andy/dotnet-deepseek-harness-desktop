@@ -289,36 +289,44 @@ jobs:
         shell: bash
         run: bash scripts/verify-package-layout.sh --platform windows --target artifacts/win-x64/stage/DeepSeek.Harness.Desktop
 
+      # 冒烟腿的 runner 前置（唯一家 = scripts/prepare-windows-smoke.sh），排在 npm 缓存步之前：
+      #   ① Defender 实时防护排除——**失败即红**：本步产出即「首启 npm 装包不再被逐文件扫描拖慢」
+      #      （量测见 ADR process/2026-10-01-windows-smoke-npm-install-speedup），排除没生效却
+      #      继续＝这轮提速悄悄不发生；先排除再谈缓存恢复，缓存那 189MB 的落盘也在排除面内。
+      #   ② WebView2 先探后装——镜像自带运行时（注册表 pv 命中）即跳过 Evergreen 的下载+安装；
+      #      未注册才装，失败仍 fail loud。目录枚举与 pv 只留痕，不判门。
+      - name: 冒烟前置（Defender 排除 + WebView2 先探后装）
+        shell: bash
+        run: bash scripts/prepare-windows-smoke.sh
+
+      # 解析 dsh 跟版线当前版本，供 npm 缓存键「跟版」。规格单一来源 = appsettings.json 的
+      # DshSpec（不在工作流里复写通道名）。解析失败**不判门**（留 `::warning::` 可见），此时键
+      # 退化为常量后缀 `unknown`：本次仍由 `restore-keys` 命中旧条目，但该键一旦建立就不再更新
+      # ——即退化成「常量键→条目永久冻结」形态，直到解析恢复。
+      - name: 解析 dsh 跟版线版本（npm 缓存键跟版）
+        shell: bash
+        run: |
+          set -euo pipefail
+          SPEC="$(node -e "process.stdout.write(require('./src/DeepSeek.Harness.Desktop/appsettings.json').RuntimeBootstrap.DshSpec)" 2>/dev/null || true)"
+          V="$(npm view --loglevel=error "$SPEC" version 2>/dev/null | tail -n 1 || true)"
+          if [[ ! "$V" =~ ^[0-9] ]]; then
+            echo "::warning::dsh 跟版线版本解析失败（spec='${SPEC}'，观测值='${V}'），npm 缓存键退化为常量后缀"
+            V="unknown"
+          fi
+          echo "DSH_CACHE_KEY=npm-cache-windows-x64-dsh-${V}" >> "$GITHUB_ENV"
+          echo "dsh 跟版线 ${SPEC} → ${V}"
+
       - name: 缓存 npm 下载缓存（只缓存 cacache 下载内容，不缓存 %APPDATA%\npm 安装树——首启冷装路径仍被真实演练）
         uses: actions/cache@v4
         with:
           path: ~/AppData/Local/npm-cache
-          # 键无 hash 是**有意**：该缓存装的是首启从 registry 拉的下载内容（dshmarket 走 `latest`），
-          # 仓库侧没有能表征它的输入——hash 一个不存在的路径只会得到一个假 hash。
+          # 键带**运行时解析**的 dsh 跟版线版本：通道是移动靶（现 `@next`），仓库侧没有能表征它的
+          # 输入——hash 一个不存在的路径只会得到一个假 hash，故在 job 内解析一次再组键。
           # 缓存陈旧只意味着命中率下降，不会陈旧产物（cacache 按内容寻址）。
-          # 同因故不设 `restore-keys` 前缀回退：主键恒为常量，精确命中恒成立，前缀回退永不参与。
-          key: npm-cache-windows-x64
-      # 安装 WebView2 Evergreen（运行态实验，ADR smoke-runner-deepening）——下载失败仍 fail loud。
-      # 尾两段探针只留痕，不判门：注册表探针恒 exit 0，版本与命中与否由人眼复核，安装成败由
-      # 安装器退出码承担。
-      - name: 安装 WebView2 Evergreen + 版本/注册表探针留痕（探针不判门）
-        shell: bash
-        env:
-          # Git Bash 会把 /silent /install 当 POSIX 路径转换（cookbook [脚本]；
-          # smoke-install-windows.sh /VERYSILENT 同款先例），此处排除。
-          MSYS2_ARG_CONV_EXCL: '*'
-        run: |
-          set -euo pipefail
-          EXE="$RUNNER_TEMP/MicrosoftEdgeWebview2Setup.exe"
-          for _ in 1 2 3; do
-            curl -sSL --fail --retry 2 -o "$EXE" "https://go.microsoft.com/fwlink/p/?LinkId=2124703" && break || sleep 10
-          done
-          [[ -f "$EXE" ]] || { echo "::error::Evergreen 下载失败（3 次重试）"; exit 1; }
-          "$EXE" /silent /install
-          echo "== WebView2 版本留痕（证据位） =="
-          powershell -NoProfile -Command "Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' | Select-Object Name | Format-Table -HideTableHeaders | Out-String -Width 200"
-          echo "== WebView2 注册表探针（对标 Ryn DoctorCommand CheckWebView2：HKCU/HKLM × pv 非空非 0.0.0.0） =="
-          powershell -NoProfile -Command '$paths = @('"'"'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'"'"', '"'"'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'"'"', '"'"'HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'"'"'); $found = $false; foreach ($p in $paths) { try { $v = (Get-ItemProperty -Path $p -Name '"'"'pv'"'"' -ErrorAction Stop).pv; if ($v -and $v -ne '"'"'0.0.0.0'"'"') { Write-Output "WebView2 pv=$v ($p)"; $found = $true } } catch {} }; if (-not $found) { Write-Output '"'"'::warning::WebView2 注册表探针未命中（安装器退出码为 0 但 pv 缺失，冒烟仍继续）'"'"' }; $error.Clear(); exit 0'
+          # `restore-keys` 前缀回退随键跟版才有意义：上游换版时精确键 miss，退到最近创建的条目
+          # （未变依赖的 tarball 仍复用）并在 job 末存下新键；该前缀同时命中更早的常量键条目。
+          key: ${{ env.DSH_CACHE_KEY }}
+          restore-keys: npm-cache-windows-x64
 
       - name: 安装冒烟（静默安装→启动→等 dsh web URL 行或引导启动行）
         id: smoke

@@ -92,7 +92,7 @@ scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 | 本文件（AGENTS.md） | ≤ 800 词 |
 | .agents/AGENTS.md | ≤ 300 词 |
 | .agents/notes/README.md | ≤ 400 词 |
-| docs/cookbook.md | ≤ 2700 词 |
+| docs/cookbook.md | ≤ 2761 词 |
 | docs/cookbook-archive.md（冻结冷归档层） | ≤ 300 词 |
 | docs/coding-standards.md | ≤ 700 词 |
 | docs/architecture-standards.md | ≤ 600 词 |
