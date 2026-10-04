@@ -25,7 +25,7 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-919%2F919-brightgreen" alt="tests"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-927%2F927-brightgreen" alt="tests"></a>
   <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-62.58%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
@@ -43,7 +43,7 @@
 - 💓 **页面健康监护（假活看门狗）** — 壳侧只读探针轮询「dsh 进程在跑但页面空白」的假活形态（不注入脚本、不依赖桌面伴生插件存活）；连续空白达阈值即在预算内触发一次有界 reload 自愈，耗尽转观测、成功恢复复位预算——防误报引发无限重载循环。
 - ⬆️ **自更新** — 启动后台检查一次 + 设置页手动检查；发现新版本一键安装并自动重启（安装包 `SHA256` 强校验；`macOS` 引导手动更新），详见下方[「自动更新」](#自动更新)。
 - 🧩 **插件市场 + 版本感知升级 + registry 自管** — `dsh-market` 经首启引导页「插件准备」步（推荐 chip + 确认/跳过 + 日志回流）以 registry 安装到桌面专属 profile（`~/.dsh/profiles/dotnet-desktop`），确认后与 dsh 内核一次就位（联网；跳过可稍后在应用内市场补装）；随包桌面伴生插件按版本感知升级——内置版本更新即自动升级、绝不降级；市场为 registry 形态（与用户自装完全等价：上游发新版市场内即提示，无需等桌面发版）；`1200+` 插件可搜一键装。
-- 🖥️ **系统托盘** — 关闭窗口默认最小化到托盘（可在设置改为直接退出），托盘菜单提供显示主窗 / 检查更新 / 退出（随 dsh 语言中英切换）；退出经有序编排，运行时子进程干净回收。
+- 🖥️ **系统托盘** — 关闭窗口默认最小化到托盘（可在设置改为直接退出），托盘菜单提供显示主窗 / 检查更新 / 重启 / 退出（随 dsh 语言中英切换）；退出经有序编排，运行时子进程干净回收，重启走同一编排——在回收运行时并释放单实例仲裁位之后才拉起新实例。
 - 🪟 **窗口状态记忆** — 重启后恢复上次的窗口尺寸与最大化状态（托盘隐藏/唤回期间本就保留）；全程由壳内建持久化承担，无感知。
 - 🚀 **单实例仲裁** — 应用运行中再次点击启动器/图标，唤起既有主窗而非新开重复实例。
 - 🔁 **开机自启** — 设置页一键开关（Linux XDG autostart / Windows 注册表 Run / macOS LaunchAgents）。
