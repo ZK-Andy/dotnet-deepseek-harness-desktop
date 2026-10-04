@@ -12,6 +12,9 @@ public enum TrayAction
     /// <summary>触发一次自更新检查。</summary>
     CheckUpdate,
 
+    /// <summary>重启应用（回收运行时后拉起新实例）。</summary>
+    Restart,
+
     /// <summary>真正退出应用（放行关窗）。</summary>
     Quit,
 }
@@ -35,10 +38,13 @@ public static class TrayMenuActions
     /// <summary>菜单：检查更新（仅自更新栈装载时出现）。</summary>
     public const string CheckUpdateItemId = "check-update";
 
+    /// <summary>菜单：重启应用。</summary>
+    public const string RestartItemId = "restart";
+
     /// <summary>菜单：退出。</summary>
     public const string QuitItemId = "quit";
 
-    /// <summary>构造托盘菜单：显示主窗 / 检查更新（可选）/ 分隔线 / 退出。</summary>
+    /// <summary>构造托盘菜单：显示主窗 / 检查更新（可选）/ 分隔线 / 重启 / 退出。</summary>
     /// <param name="includeUpdateItem">自更新栈是否装载（决定「检查更新」项是否出现）。</param>
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文）——随 dsh 语言切换由 <c>UiLocale.Changed</c>
     /// 订阅方重建菜单（ADR host-ui-locale）；非 <c>en*</c> 一律中文（对齐 dsh 字典兜底方向）。</param>
@@ -55,6 +61,7 @@ public static class TrayMenuActions
         }
 
         items.Add(new() { Id = "", Label = "", Separator = true });
+        items.Add(new() { Id = RestartItemId, Label = UiCopy.TrayRestart(english) });
         items.Add(new() { Id = QuitItemId, Label = UiCopy.TrayQuit(english) });
         return items;
     }
@@ -99,6 +106,7 @@ public static class TrayMenuActions
         {
             ShowItemId => TrayAction.ShowMainWindow,
             CheckUpdateItemId => TrayAction.CheckUpdate,
+            RestartItemId => TrayAction.Restart,
             QuitItemId => TrayAction.Quit,
             _ => null,
         };

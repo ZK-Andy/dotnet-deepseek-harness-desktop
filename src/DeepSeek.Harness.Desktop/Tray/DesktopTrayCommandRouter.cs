@@ -6,7 +6,7 @@ namespace DeepSeek.Harness.Desktop.Tray;
 
 /// <summary>
 /// 宿主命令路由：<c>desktop.tray.event</c>——companion 把 Ryn 托盘插件的 Web 层事件中继回宿主，
-/// 在此解析为原生动作（显示主窗 / 检查更新 / 退出）。托盘点击的原生语义只能走这条公开链路：
+/// 在此解析为原生动作（显示主窗 / 检查更新 / 重启 / 退出）。托盘点击的原生语义只能走这条公开链路：
 /// <c>TrayService.EmitEvent</c> 是插件内部属性，NativeAOT 下反射私有面不可用（ADR shell-tray-hide-to-tray）。
 /// </summary>
 /// <remarks>
@@ -22,6 +22,7 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
 
     private readonly Func<Task> _showWindow;
     private readonly Action _closeWindow;
+    private readonly Action _restart;
     private readonly CloseGate _closeGate;
     private readonly UpdateStateMachine? _updateMachine;
     private readonly UiLocale _uiLocale;
@@ -31,6 +32,8 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
     /// <summary>创建路由。</summary>
     /// <param name="showWindow">显示主窗动作（宿主接线为 deferred 窗口的 ShowAsync）。</param>
     /// <param name="closeWindow">关闭窗口动作（宿主接线为 deferred 窗口的 Close）。</param>
+    /// <param name="restart">重启动作（宿主接线为 ExitPipeline.Restart + 拉起新实例，ADR app-restart-native-switch）：
+    /// 通道失效时托盘是唯一存活的重启入口——原生事件链路不依赖 Web 通道。</param>
     /// <param name="closeGate">关窗闸门：退出路径先批准再 Close，放行 hide-to-tray 拦截。</param>
     /// <param name="updateMachine">自更新状态机；未装载（dev 门禁）时「检查更新」无动作。</param>
     /// <param name="uiLocale">宿主 UI 语言单点：通知正文按点击时刻的语言取分支。</param>
@@ -40,6 +43,7 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
     public DesktopTrayCommandRouter(
         Func<Task> showWindow,
         Action closeWindow,
+        Action restart,
         CloseGate closeGate,
         UpdateStateMachine? updateMachine,
         UiLocale uiLocale,
@@ -48,6 +52,7 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
     {
         _showWindow = showWindow;
         _closeWindow = closeWindow;
+        _restart = restart;
         _closeGate = closeGate;
         _updateMachine = updateMachine;
         _uiLocale = uiLocale;
@@ -74,6 +79,15 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
         _log?.Invoke($"[tray] 事件到达：{payload.Event ?? "(null)"} 载荷={payloadLog}");
 
         TrayAction? action = TrayMenuActions.TryResolve(payload.Event, payload.Data);
+        return action is { } resolved
+            ? DispatchAsync(resolved, payload.Event, payloadLog, cancellationToken)
+            : IgnoreAsync(payload.Event, payloadLog);
+    }
+
+    /// <summary>把已解析的托盘动作分发到宿主语义（F2 尺寸拆分：纯路由与动作分发分离）。
+    /// 动作分支只受理不留挂——同步段完成即回帧，长任务（检查更新）转后台。</summary>
+    private ValueTask<string> DispatchAsync(TrayAction action, string? eventName, string payloadLog, CancellationToken cancellationToken)
+    {
         switch (action)
         {
             case TrayAction.ShowMainWindow:
@@ -88,6 +102,21 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
                 else
                 {
                     _log?.Invoke("[tray] 检查更新：自更新栈未装载（dev 门禁），无动作");
+                }
+
+                break;
+            case TrayAction.Restart:
+                // 与退出同一先批准再动作契约：闸门不放行，Restart 里的 Close 会被 hide-to-tray 吞成隐藏
+                _closeGate.ApproveExit();
+                try
+                {
+                    _restart();
+                    _log?.Invoke("[tray] 托盘菜单重启：已受理（回收运行时后拉起新实例）");
+                }
+                catch (Exception ex)
+                {
+                    // 拉起新实例失败等路径：本进程仍存活（Restart 的回收步可能已执行），留证即可
+                    _log?.Invoke($"[tray] 重启失败：{ex.Message}");
                 }
 
                 break;
@@ -106,27 +135,31 @@ public sealed class DesktopTrayCommandRouter : ICommandRouter
                 }
 
                 break;
-            default:
-                // 非托盘事件 / 未知条目 / 坏载荷：忽略。Web 层可能出现任意未来事件名，非错误。
-                // 但忽略必须有痕——事件到达性排查的最后一环（否则「到了被忽略」与「没到」无法区分）
-                _log?.Invoke($"[tray] 事件忽略：{payload.Event ?? "(null)"} 载荷={payloadLog}（非托盘事件/未知条目/坏载荷）");
-                return ValueTask.FromResult("null");
         }
 
         return ValueTask.FromResult("{}");
+    }
 
-        async Task ShowWindowSafeAsync()
+    /// <summary>忽略分支：非托盘事件 / 未知条目 / 坏载荷——Web 层可能出现任意未来事件名，非错误。
+    /// 但忽略必须有痕——事件到达性排查的最后一环（否则「到了被忽略」与「没到」无法区分）。</summary>
+    private ValueTask<string> IgnoreAsync(string? eventName, string payloadLog)
+    {
+        _log?.Invoke($"[tray] 事件忽略：{eventName ?? "(null)"} 载荷={payloadLog}（非托盘事件/未知条目/坏载荷）");
+        return ValueTask.FromResult("null");
+    }
+
+    /// <summary>显示主窗的安全封装：失败只留痕不上抛（路由同步段不允许被窗口异常拖垮）。</summary>
+    private async Task ShowWindowSafeAsync()
+    {
+        try
         {
-            try
-            {
-                await _showWindow();
-                // 成功路径留痕：托盘事件到达性排查此前只有失败分支可查（host.log 盲点）
-                _log?.Invoke("[tray] 托盘菜单显示主窗：已执行");
-            }
-            catch (Exception ex)
-            {
-                _log?.Invoke($"[tray] 显示主窗失败：{ex.Message}");
-            }
+            await _showWindow();
+            // 成功路径留痕：托盘事件到达性排查此前只有失败分支可查（host.log 盲点）
+            _log?.Invoke("[tray] 托盘菜单显示主窗：已执行");
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"[tray] 显示主窗失败：{ex.Message}");
         }
     }
 

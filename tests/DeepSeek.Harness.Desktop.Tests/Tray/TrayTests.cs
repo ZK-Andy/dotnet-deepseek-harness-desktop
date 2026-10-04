@@ -3,35 +3,38 @@ using Ryn.Plugins.Tray;
 
 namespace DeepSeek.Harness.Desktop.Tests.Tray;
 
-/// <summary>托盘菜单构造：条目集合随自更新栈有无变化，分隔线与退出恒在。</summary>
+/// <summary>托盘菜单构造：条目集合随自更新栈有无变化，分隔线、重启与退出恒在。</summary>
 public class TrayMenuBuildTests
 {
-    /// <summary>验证带自更新栈的菜单装配出 4 项：显示主窗、检查更新、分隔线、退出，且顺序与中文文案固定。</summary>
+    /// <summary>验证带自更新栈的菜单装配出 5 项：显示主窗、检查更新、分隔线、重启、退出，顺序与中文文案固定。</summary>
     [Fact]
     public void BuildItems_WithUpdateStack_ContainsAllEntries()
     {
         List<TrayMenuItem> items = TrayMenuActions.BuildItems(includeUpdateItem: true);
 
-        Assert.Equal(4, items.Count);
+        Assert.Equal(5, items.Count);
         Assert.Equal(TrayMenuActions.ShowItemId, items[0].Id);
         Assert.Equal("显示主窗", items[0].Label);
         Assert.Equal(TrayMenuActions.CheckUpdateItemId, items[1].Id);
         Assert.Equal("检查更新", items[1].Label);
         Assert.True(items[2].Separator);
-        Assert.Equal(TrayMenuActions.QuitItemId, items[3].Id);
-        Assert.Equal("退出", items[3].Label);
+        Assert.Equal(TrayMenuActions.RestartItemId, items[3].Id);
+        Assert.Equal("重启", items[3].Label);
+        Assert.Equal(TrayMenuActions.QuitItemId, items[4].Id);
+        Assert.Equal("退出", items[4].Label);
     }
 
-    /// <summary>验证无自更新栈时菜单仅 3 项：「检查更新」被剔除，分隔线与退出仍保留且位置正确。</summary>
+    /// <summary>验证无自更新栈时菜单仅 4 项：「检查更新」被剔除，分隔线、重启与退出仍保留且位置正确。</summary>
     [Fact]
-    public void BuildItems_WithoutUpdateStack_OmitsCheckEntry_KeepsSeparatorAndQuit()
+    public void BuildItems_WithoutUpdateStack_OmitsCheckEntry_KeepsSeparatorRestartAndQuit()
     {
         List<TrayMenuItem> items = TrayMenuActions.BuildItems(includeUpdateItem: false);
 
-        Assert.Equal(3, items.Count);
+        Assert.Equal(4, items.Count);
         Assert.DoesNotContain(items, i => i.Id == TrayMenuActions.CheckUpdateItemId);
         Assert.True(items[1].Separator);
-        Assert.Equal(TrayMenuActions.QuitItemId, items[2].Id);
+        Assert.Equal(TrayMenuActions.RestartItemId, items[2].Id);
+        Assert.Equal(TrayMenuActions.QuitItemId, items[3].Id);
     }
 
     /// <summary>验证 en/en-GB 输出英文文案，zh-CN、未知语言（fr）与不传 locale 均回退中文，对齐 dsh 兜底方向。</summary>
@@ -44,19 +47,21 @@ public class TrayMenuBuildTests
         List<TrayMenuItem> english = TrayMenuActions.BuildItems(includeUpdateItem: true, en);
         Assert.Equal("Show Main Window", english[0].Label);
         Assert.Equal("Check for Updates", english[1].Label);
-        Assert.Equal("Quit", english[3].Label);
+        Assert.Equal("Restart", english[3].Label);
+        Assert.Equal("Quit", english[4].Label);
 
         var zh = new UiLocale();
         zh.Set("zh-CN");
         List<TrayMenuItem> chinese = TrayMenuActions.BuildItems(includeUpdateItem: true, zh);
         Assert.Equal("显示主窗", chinese[0].Label);
         Assert.Equal("检查更新", chinese[1].Label);
-        Assert.Equal("退出", chinese[3].Label);
+        Assert.Equal("重启", chinese[3].Label);
+        Assert.Equal("退出", chinese[4].Label);
 
         var other = new UiLocale();
         other.Set("fr");
-        Assert.Equal("退出", TrayMenuActions.BuildItems(true, other)[3].Label);
-        Assert.Equal("退出", TrayMenuActions.BuildItems(true)[3].Label);
+        Assert.Equal("重启", TrayMenuActions.BuildItems(true, other)[3].Label);
+        Assert.Equal("退出", TrayMenuActions.BuildItems(true)[4].Label);
     }
 }
 
@@ -67,6 +72,7 @@ public class TrayActionResolveTests
     [Theory]
     [InlineData(TrayMenuActions.ShowItemId, TrayAction.ShowMainWindow)]
     [InlineData(TrayMenuActions.CheckUpdateItemId, TrayAction.CheckUpdate)]
+    [InlineData(TrayMenuActions.RestartItemId, TrayAction.Restart)]
     [InlineData(TrayMenuActions.QuitItemId, TrayAction.Quit)]
     public void MenuItemClicked_KnownIds_MapToActions(string id, TrayAction expected)
     {
@@ -154,6 +160,11 @@ public class DesktopTrayCommandRouterTests
                 // 记录 Close 发生时闸门状态：顺序契约的断言点
                 calls.Add(gate.ShouldCancelClose ? "close:locked" : "close:released");
             },
+            restart: () =>
+            {
+                // 重启与退出同一先批准再动作契约：记录 Restart 触发瞬间闸门状态
+                calls.Add(gate.ShouldCancelClose ? "restart:locked" : "restart:released");
+            },
             closeGate: gate,
             updateMachine: machine,
             uiLocale: new UiLocale(),
@@ -181,6 +192,20 @@ public class DesktopTrayCommandRouterTests
         string frame = await RouteAsync(router, """{"event":"tray.menuItemClicked","data":"quit"}""");
 
         Assert.Equal(new[] { "close:released" }, calls);
+        Assert.False(gate.ShouldCancelClose);
+        Assert.Equal("{}", frame);
+    }
+
+    /// <summary>验证重启路径先放行闸门再触发 Restart（与退出同一契约），并回成功帧 {}。</summary>
+    [Fact]
+    public async Task Restart_ApprovesGateBeforeRestarting_OrderContract()
+    {
+        var gate = new CloseGate();
+        (DesktopTrayCommandRouter? router, List<string>? calls) = MakeRouter(gate);
+
+        string frame = await RouteAsync(router, """{"event":"tray.menuItemClicked","data":"restart"}""");
+
+        Assert.Equal(new[] { "restart:released" }, calls);
         Assert.False(gate.ShouldCancelClose);
         Assert.Equal("{}", frame);
     }
@@ -338,6 +363,7 @@ public class DesktopTrayCommandRouterTests
         var router = new DesktopTrayCommandRouter(
             showWindow: () => Task.CompletedTask,
             closeWindow: () => { },
+            restart: () => { },
             closeGate: new CloseGate(),
             updateMachine: stateMachine,
             uiLocale: new UiLocale(),
@@ -382,6 +408,7 @@ public class DesktopTrayCommandRouterTests
         var router = new DesktopTrayCommandRouter(
             showWindow: () => Task.CompletedTask,
             closeWindow: () => { },
+            restart: () => { },
             closeGate: new CloseGate(),
             updateMachine: machine,
             uiLocale: new UiLocale(),

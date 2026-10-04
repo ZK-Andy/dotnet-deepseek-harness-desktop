@@ -29,6 +29,9 @@ public static class UiCopy
     /// <summary>托盘：退出。</summary>
     public static string TrayQuit(bool english) => english ? "Quit" : "退出";
 
+    /// <summary>托盘：重启应用。</summary>
+    public static string TrayRestart(bool english) => english ? "Restart" : "重启";
+
     // ======== 托盘「检查更新」结果通知（TrayCheckFeedback） ========
 
     /// <summary>托盘通知：已是最新版本。</summary>

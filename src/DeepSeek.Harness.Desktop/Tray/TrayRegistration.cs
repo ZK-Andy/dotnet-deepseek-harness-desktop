@@ -34,6 +34,12 @@ internal static class TrayRegistration
                 // 必然晚于接线，故此处不可能为 null
                 wiring.Exit!.OrderlyQuit();
             },
+            restart: () =>
+            {
+                // 同上：托盘重启必经菜单交互，接线时点必已就绪。
+                // Restart 内部先回收再 spawn（旧 dsh 树不死透会死于看门狗，ADR app-restart-native-switch）
+                wiring.Exit!.Restart(AppRelaunch.SpawnSelf);
+            },
             tray.CloseGate,
             update.Updates.Machine,
             uiLocale,
