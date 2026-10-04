@@ -79,13 +79,34 @@ env）、`--self-test`（`pv` 四态判定夹具）已接进 `ci.yml` 的自测�
 而缓存是优化，判红等于用一次发版换一个缓存键。
 
 **3｜不缓存 `%APPDATA%\npm` 安装树**：维持既有决定——Windows 腿继续真实演练首启冷装路径
-（cacache 按内容寻址，陈旧只降命中率，不会陈旧产物）。
+（cacache 按内容寻址，陈旧只降命中率，不会陈旧产物）。落点本身已按第 4 条移到 `D:`。
+
+**4｜npm 全局落点重定向到 `D:`（2026-10-05 二批，由「机制实测」节驱动）**：
+[prepare-windows-smoke.sh](../../../../scripts/prepare-windows-smoke.sh)——`build-windows` 腿的 runner
+前置唯一家——在 WebView2 处理之后调用
+[npm-prefix-lib.sh](../../../../scripts/lib/npm-prefix-lib.sh)（尺寸闸 S2 的拆分家），把 npm
+userconfig（`~/.npmrc`）的 `prefix` 写成 `D:/npm-global`
+（幂等改写：只增改 `prefix` 行，既有设置保留；旋钮 `SMOKE_NPM_PREFIX` 覆写落点，空串 = 不重定向）。
+理由：windows-2025 行同 runner、同 538 包，`C:` 落点 223–304s、`D:` 落点 22–24s（windows-2022 同向：
+223–288s → 13–25s）；改的只是落点，**冷装路径（下载 + reify）照跑**，故不牺牲第 3 条要保的覆盖。
+`D:` 不可用（缺失/只读）、或 userconfig 改写失败（不可写/父目录被占），均退回 npm 默认落点、
+只留 warning 不判门——慢不是错，本步不得把腿判红。自测面（`--self-test`，ci.yml:89 已跑）覆盖：
+新建写入、既有设置保留、既有 `prefix` 行替换不重复、重复调用幂等、落点被普通文件占位判不可用、
+空串旋钮不重定向、改写失败不判门。
+
+**范围界（与两次产品面否决的区别）**：改 npmrc `prefix` 这一形态在
+[npm-global-bin-path](../../archived/bug-fix/2026-09-26-npm-global-bin-path.md) 与
+[windows-dsh-spawn-unified](../bug-fix/2026-09-27-windows-dsh-spawn-unified.md) 的 Alternatives 里
+被两次否决，语境都是**产品**：壳在用户机上不得改写用户的全局 npm 布局（越界；只读查询 + 进程内补
+PATH 零副作用）。本条只作用于 **CI 冒烟腿的一次性 runner**——脚本仅由 `package.yml` 的 build-windows
+腿调用、机器随 job 销毁、`src/**` 零改动，产品安装路径仍走 npm 默认前缀。两次否决继续约束产品面，
+本条不翻其案。
 
 ## Alternatives considered
 
 - **缓存 `%APPDATA%\npm` 全局安装树**：落败（本批不做）——直接消除首启装包成本，但 Windows 腿
-  就不再演练冷装这条产品路径，本类回归（装包变慢/失败）会被缓存命中掩盖。首启装包本身在本批
-  没有拿到提速手段（见 Consequences），故这是下一手。
+  就不再演练冷装这条产品路径，本类回归（装包变慢/失败）会被缓存命中掩盖。2026-10-05 二批后该条
+  降为**最后手段**：提速已由 Decision 第 4 条的落点重定向买到（不牺牲冷装覆盖，见 Consequences）。
 - **对 npm 相关路径加 Defender 实时防护排除（曾作为本篇 Decision 落地，同批撤回）**：撤回——首个
   dispatch（run 36831059163）的留痕显示该镜像 `DisableRealtimeMonitoring=True` 且排除面本就含
   `C:\`、`D:\`，再加 `%LOCALAPPDATA%\npm-cache` / `%APPDATA%\npm` / `C:\Program Files\nodejs`
@@ -112,13 +133,19 @@ env）、`--self-test`（`pv` 四态判定夹具）已接进 `ci.yml` 的自测�
   永久冻结在建立时的闭包（跟版键每次换版重存，读数见 Testing）。
 - 未买到：首启装包本身没被加速——Defender 排除撤回后这个成本项回到无手段状态；真要砍它只剩
   「缓存 `%APPDATA%\npm` 安装树」（首条 Alternatives，需先接受冷装覆盖的损失）。
-- 代价：Windows 冒烟腿新增一处 runner 状态依赖（镜像是否自带 WebView2）；未自带时行为回落到
-  本步引入前的 Evergreen 安装链（fail loud），不新增红面。
+  **2026-10-05 二批改写**：该步已买到提速——落点移到 `D:` 后从 223–304s 降到 22–24s（读数见
+  「机制实测」与 Decision 第 4 条），上句的现状判断作废；缓存安装树降为最后手段（它要牺牲冷装
+  覆盖，换落点不牺牲）。
+- 代价：Windows 冒烟腿新增两处 runner 状态依赖——①镜像是否自带 WebView2（未自带时行为回落到
+  本步引入前的 Evergreen 安装链，fail loud，不新增红面）；②`D:` 是否可用（缺失/只读、或 userconfig
+  改写失败即退回默认落点：腿仍绿，但该步静默慢一个量级，见 Decision 第 4 条）。
 
 ## Testing
 
-- 本地：`bash scripts/prepare-windows-smoke.sh --self-test`（`pv` 四态）；`verify-shell-standards.sh`
-  （27 文件 S1–S6）；`actionlint -shellcheck="shellcheck -S warning"`；`verify-governance.py`。
+- 本地：`bash scripts/prepare-windows-smoke.sh --self-test`（`pv` 四态 + `npm-prefix-lib.sh` 七夹具——
+  新建写入、既有设置保留、既有 `prefix` 行替换不重复、重复调用幂等、落点被普通文件占位判不可用、
+  空串旋钮不重定向、改写失败不判门）；`verify-shell-standards.sh`（28 文件 S1–S6）；`actionlint
+  -shellcheck="shellcheck -S warning"`；`verify-governance.py`。
 - CI（两轮 `release.yml` 分支 ref dispatch）：
   - run 36833047506（shipped head，Defender 半已撤）：`冒烟前置` 3s（只余 `pv` 探测）、
     `解析 dsh 跟版线版本` 7s、缓存步精确命中 `Cache restored from key:
@@ -134,16 +161,18 @@ env）、`--self-test`（`pv` 四态判定夹具）已接进 `ci.yml` 的自测�
 
 一次性探针（独立临时仓，跑完即删；产品代码零改动）：同一 workflow 同日，同一 `@deepseek-ai/dsh@next`
 （Windows 538 包 / Unix 540 包；26,643 文件；511–519MB），先预热一次填满 npm 缓存，此后所有被测变体
-均命中缓存、交替执行（n=2/格）；每格另跑 node `fs` 基线（10,000 个 1KB 文件 + 256MB 顺序写——与 npm
-同一条写路径，用于把「卷的小文件代价」与「npm 自身开销」切开）。
+均命中缓存、交替执行（各变体 n=2，每格 6 次安装）；每格另跑 node `fs`
+基线（10,000 个 1KB 文件 + 256MB 顺序写——与 npm 同一条写路径，用于把「卷的小文件代价」与
+「npm 自身开销」切开）。冷列一律记 **wall 秒**（与暖列同口径）：仅 windows-2022 / `D:` 格来自
+两次 dispatch（43s / 57s），其余格各一次（单值）；全列 n<3，属【探索性】读数。
 
-| 格（镜像 / 安装落点） | node / npm | `fs` 基线 | npm 安装（缓存暖，n=6） | npm 安装（冷，预热那次） |
+| 格（镜像 / 安装落点） | node / npm | `fs` 基线 | npm 安装（缓存暖，n=6） | npm 安装（冷，wall 秒） |
 |---|---|---|---|---|
 | windows-2025 / `C:` | 22.23.3 / 10.9.9 | 652 文件/s（15.3s/万文件） | 223–304s | 297s |
 | windows-2022 / `C:` | 22.23.3 / 10.9.9 | 1,536 文件/s（6.5s） | 223–288s | 254s |
-| windows-2025 / `D:` | 22.23.3 / 10.9.9 | 10,823 文件/s（0.9s） | **22–24s** | **51s** |
-| windows-2022 / `D:` | 22.23.3 / 10.9.9 | 9,718–13,661 文件/s | **13–25s**（两 run：13–17s / 25s） | 54–57s |
-| ubuntu-24.04 / `$HOME` | 22.23.3 / 10.9.9 | 22,472 文件/s | 14–15s | 33–34s |
+| windows-2025 / `D:` | 22.23.3 / 10.9.9 | 10,823 文件/s（0.9s） | **22–24s** | **53s** |
+| windows-2022 / `D:` | 22.23.3 / 10.9.9 | 9,718–13,661 文件/s | **13–25s**（两 run：13–17s / 25s） | 43s / 57s |
+| ubuntu-24.04 / `$HOME` | 22.23.3 / 10.9.9 | 22,472 文件/s | 14–15s | 34s |
 | macos-15-arm64 / `$HOME` | 22.23.2 / 10.9.8 | 4,488 文件/s | 13–20s | 35s |
 
 读出的机制（实测，非推断）：
@@ -157,10 +186,11 @@ env）、`--self-test`（`pv` 四态判定夹具）已接进 `ci.yml` 的自测�
   但 npm 端到端差异落在噪声带（223–304s vs 223–288s）。
 - **`D:` 在 windows-2025 上仍然存在且可写**（同批 `D:NTFS/219.9GBfree`），故该提速手段对
   `windows-latest` 直接可用，不必降级镜像。
-- **去掉 `--progress=true`（E4）与加 `--prefer-offline`（E6）均无可靠效果**：`D:` 格三个变体平铺在
-  22–25s；`C:` 格的表观差异由「同格越跑越快」的漂移解释（win2025-c 顺序 304→268→223→260→223→225）。
-  缓存命中后既无下载可省，也无包元数据再验证成本可减。
-- 该提速**尚未落地**：改冒烟腿的安装落点动的是 `.github/workflows/**`（FULL 档），本次只交付测量。
+- **去掉 `--progress=true`（E4）与加 `--prefer-offline`（E6）均无可靠效果**（每变体 n=2，探索性口径；
+  该口径下「无显著差异」的判据取 `D:` 格——三个变体在 n=6 的格面上平铺于 22–25s）：`C:` 格的表观差异
+  由「同格越跑越快」的漂移解释（win2025-c 顺序 304→268→223→260→223→225）。缓存命中后既无下载可省，
+  也无包元数据再验证成本可减。
+- 该提速已落地：见 Decision 第 4 条——改的是 runner 前置脚本，产品代码零改动。
 
 配置探针（同批）顺带确认：壳的 env 净化剥离 `npm_config_prefix` 后，npm 的 `prefix`/`cache` 回到默认值
 `%APPDATA%\npm` / `%LOCALAPPDATA%\npm-cache`——后者正是

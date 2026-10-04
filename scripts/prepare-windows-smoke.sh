@@ -7,7 +7,13 @@
 # 下载+静默安装（镜像自带运行时；读数见 ADR process/2026-10-01-windows-smoke-npm-install-speedup）；
 # 未登记才装，下载 3 次重试、以 curl 退出码判定成败，失败即红。目录枚举与 `pv` 结论只留痕不判门。
 #
-# 环境：RUNNER_TEMP（Evergreen 安装器落点；GitHub Actions 注入）。
+# npm 全局落点重定向：本 runner 的 C: 卷小文件写路径比同机 D: 慢一个量级（同 538 包实测
+# 223–304s vs 22–24s，机制实测见同篇 ADR），故把 dsh 的全局安装落点经 npm userconfig 的
+# `prefix` 指到 D:——冷装路径照跑、只换卷。D: 不可用、或 userconfig 改写失败（不可写/父目录被占）
+# 均退回 npm 默认落点：只 warn 不判门——慢不是错，本步不得把腿判红。
+#
+# 环境：RUNNER_TEMP（Evergreen 安装器落点；GitHub Actions 注入）；SMOKE_NPM_PREFIX 覆写落点
+# （空串 = 不重定向，保留 npm 默认 %APPDATA%\npm）。
 # 用法: prepare-windows-smoke.sh
 # 自测: prepare-windows-smoke.sh --self-test（纯判定夹具，不碰注册表/网络）
 set -euo pipefail
@@ -15,6 +21,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=lib/npm-prefix-lib.sh
+source "$SCRIPT_DIR/lib/npm-prefix-lib.sh"
 
 # Git Bash 会把 /silent /install 当 POSIX 路径转换（cookbook [脚本]；smoke-install-windows.sh
 # 的 /VERYSILENT 同款先例），本脚本自带导出，不依赖调用方注入。
@@ -104,6 +112,9 @@ prepare_self_test() { # 纯判定夹具（不碰注册表/网络）
   _pv_assert "0.0.0.0 视为未装" "0.0.0.0" missing
   _pv_assert "空白 pv 视为未装" "   " missing
   _pv_assert "真实版本视为已装" "154.0.4258.48" present
+
+  # npm 落点夹具（库内自带：scripts/lib/npm-prefix-lib.sh）
+  npm_prefix_self_test || fails=$((fails + 1))
   if [[ "$fails" -eq 0 ]]; then
     echo "prepare-windows-smoke self-test: PASS"
     return 0
@@ -124,6 +135,7 @@ main() {
     log "[win] WebView2 已由 runner 镜像提供（pv=${pv}），跳过 Evergreen 下载/安装"
   fi
   webview2_evidence "$pv"
+  relocate_npm_prefix
 }
 
 case "${1:-}" in
