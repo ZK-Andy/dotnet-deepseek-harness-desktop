@@ -28,6 +28,7 @@ public sealed partial class DshShellForward
     };
 
     private readonly HttpClient _client;
+    private readonly TimeProvider _timeProvider;
 
     /// <summary>构造转发器（应用单例；HttpClient 生命周期随实例）。</summary>
     public DshShellForward()
@@ -42,10 +43,11 @@ public sealed partial class DshShellForward
     }
 
     /// <summary>测试缝：注入传输与稳定化参数（回环夹具压缩时长用）。</summary>
-    internal DshShellForward(HttpMessageHandler handler, ReadyStabilization? stabilization)
+    internal DshShellForward(HttpMessageHandler handler, ReadyStabilization? stabilization, TimeProvider? timeProvider = null)
     {
         _client = new HttpClient(handler) { Timeout = s_rpcTimeout };
         _stabilization = stabilization;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>构造外发转发请求：黑名单头剔除 + 壳 cookie 附带 + 体与 content 头保真

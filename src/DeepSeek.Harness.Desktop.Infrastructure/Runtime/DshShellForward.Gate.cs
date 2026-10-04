@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -106,7 +105,10 @@ public sealed partial class DshShellForward
     {
         ReadyStabilization settings = _stabilization ?? s_defaultStabilization;
         var gate = new RelayWebReadinessGate(settings.StableWindow);
-        long started = Stopwatch.GetTimestamp();
+        // 时刻全部经 _timeProvider（默认 TimeProvider.System）：生产走墙钟；测试注入虚拟时钟后
+        // 「稳定窗达成 vs 预算耗尽」的分叉由时钟推进决定，与探活实际耗时/机器负载解耦
+        // （墙钟竞速在 CI 并行负载下两次误判 fail-open，见 ADR mint-gate-virtual-time-seam）。
+        long started = _timeProvider.GetTimestamp();
         int samples = 0;
         while (true)
         {
@@ -114,32 +116,32 @@ public sealed partial class DshShellForward
             // 单次探活钉进剩余预算：半死 dsh 挂住单连接也不得把 fail-open 拖过预算（对齐
             // ProbeLoopbackWebAsync 的「实际单次等待取较小者」口径）。通道面探活前按已耗时重算
             // 剩余——会话面吃掉预算后，挂死的升级不得再借 round 起点的旧剩余把 fail-open 拖过预算。
-            TimeSpan remaining = settings.Budget - Stopwatch.GetElapsedTime(started);
+            TimeSpan remaining = settings.Budget - _timeProvider.GetElapsedTime(started);
             bool sessionReady = await ProbeSessionListReadyAsync(
                 origin, cookie, ct, remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining).ConfigureAwait(false);
             bool muxReady = false;
             if (sessionReady)
             {
-                TimeSpan muxRemaining = settings.Budget - Stopwatch.GetElapsedTime(started);
+                TimeSpan muxRemaining = settings.Budget - _timeProvider.GetElapsedTime(started);
                 muxReady = await ProbeMuxReadyAsync(
                     origin, cookie, ct, muxRemaining < TimeSpan.Zero ? TimeSpan.Zero : muxRemaining).ConfigureAwait(false);
             }
 
             if (gate.Observe(
                     muxReady ? RuntimeLineageProbes.LoopbackWebProbe.Ready : RuntimeLineageProbes.LoopbackWebProbe.ServingNotReady,
-                    DateTimeOffset.UtcNow))
+                    _timeProvider.GetUtcNow()))
             {
                 log($"[shell] 就绪稳定化：会话面与通道面 Ready 连续维持满稳定窗（探活{samples}次；{origin}）");
                 return;
             }
 
-            if (Stopwatch.GetElapsedTime(started) >= settings.Budget)
+            if (_timeProvider.GetElapsedTime(started) >= settings.Budget)
             {
-                log($"[shell] 就绪稳定化预算耗尽（实际等待{Stopwatch.GetElapsedTime(started).TotalSeconds:F1}s，探活{samples}次）——fail-open 放行，页面健康交探针/恢复面");
+                log($"[shell] 就绪稳定化预算耗尽（实际等待{_timeProvider.GetElapsedTime(started).TotalSeconds:F1}s，探活{samples}次）——fail-open 放行，页面健康交探针/恢复面");
                 return;
             }
 
-            await Task.Delay(settings.PollInterval, ct).ConfigureAwait(false);
+            await Task.Delay(settings.PollInterval, _timeProvider, ct).ConfigureAwait(false);
         }
     }
 

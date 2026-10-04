@@ -16,9 +16,10 @@ public class DshShellForwardTests
     private const string CookieValue = "SHELLSECRET456";
     private const string WebSocketMagic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-    /// <summary>测试快参：稳定窗 1ms、节拍 10ms（两三拍即稳）、预算 250ms（fail-open 路径测试秒级返回）。
-    /// 节拍不宜再小：复合探活的通道面每次 ConnectAsync 在被掐断时会派生数条内核重试连接（实测 ~4×），
-    /// 1ms 节拍在 250ms 预算里是数百连接的探活风暴，足以灌满桩的 accept 队列。</summary>
+    /// <summary>测试快参：稳定窗 1ms、节拍 10ms、预算 250ms。断言「稳定窗达成 vs 预算耗尽」
+    /// 分叉的测试一律配 <see cref="VirtualTimeProvider"/>——分叉由虚拟时钟推进决定，与探活
+    /// 实际耗时/机器负载解耦（墙钟竞速在 CI 并行负载下两次误判 fail-open，ADR
+    /// mint-gate-virtual-time-seam）；参数大小从此只是语义表达，不再承担竞速赔率。</summary>
     private static readonly DshShellForward.ReadyStabilization s_fast = new(
         StableWindow: TimeSpan.FromMilliseconds(1),
         PollInterval: TimeSpan.FromMilliseconds(10),
@@ -39,7 +40,7 @@ public class DshShellForwardTests
         int port = LoopbackHttpResponder.ReserveFreePort();
         using var server = new DshMimicResponder(port, cts.Token);
         var forward = new DshShellForward(
-            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast, new VirtualTimeProvider());
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
@@ -72,8 +73,9 @@ public class DshShellForwardTests
         Assert.DoesNotContain(lines, l => l.Contains("WRONG"));
     }
 
-    /// <summary>稳定化不通过不放行：303 已铸到 cookie 但会话面恒 401，route/TCS 在预算耗尽前不得可见
-    /// （holder 不得提前 reload 进半成品页面，ADR holder-mint-gate-deepening）。</summary>
+    /// <summary>稳定化不通过不放行：303 已铸到 cookie 但会话面 400ms 才就绪，route/TCS 在稳定化
+    /// 未达成前不得可见（holder 不得提前 reload 进半成品页面，ADR holder-mint-gate-deepening）。
+    /// 虚拟时钟下中间态断言的窗口由轮数决定（两拍探活才放行），与墙钟负载无关。</summary>
     [Fact]
     public async Task Mint_RouteInvisibleUntilStabilized()
     {
@@ -81,7 +83,7 @@ public class DshShellForwardTests
         int port = LoopbackHttpResponder.ReserveFreePort();
         using var server = new DshMimicResponder(port, cts.Token) { ReadyDelayMilliseconds = 400 };
         var forward = new DshShellForward(
-            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast, new VirtualTimeProvider());
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
         Task<bool> minting = forward.MintAsync(url, _ => { }, cts.Token);
@@ -95,17 +97,18 @@ public class DshShellForwardTests
     }
 
     /// <summary>延迟就绪（0 &lt; 时延 &lt; 预算）：稳定化真正走「探活 Ready 达稳定窗」放行而非 fail-open
-    /// 兜底——日志含稳定化成功标记、无预算耗尽标记（评审补强：区分门控放行与预算兜底放行两条路径）。</summary>
+    /// 兜底——日志含稳定化成功标记、无预算耗尽标记（评审补强：区分门控放行与预算兜底放行两条路径）。
+    /// 分叉由虚拟时钟决定：两拍探活（建立 readySince + 维持稳定窗）虚拟耗时 10ms 远小于预算，
+    /// 与探活真实延迟/并行负载无关（墙钟竞速曾致 CI 误判 fail-open）。</summary>
     [Fact]
     public async Task Mint_WebFaceReadyAfterDelay_PassesGateWithoutFailOpen()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
-        // 就绪时延须给两次探活（建立 readySince + 维持稳定窗）留足裕量：桩对每次探活都计延迟，
-        // 全量并行下 100ms×2 会顶穿 s_fast 的 250ms 预算而走 fail-open（实测 flaky）。
+        // 就绪时延 30ms：走「首次探活未就绪 → 建立基准 → 维持稳定窗」的真实序列。
         using var server = new DshMimicResponder(port, cts.Token) { ReadyDelayMilliseconds = 30 };
         var forward = new DshShellForward(
-            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast, new VirtualTimeProvider());
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
@@ -125,7 +128,7 @@ public class DshShellForwardTests
         int port = LoopbackHttpResponder.ReserveFreePort();
         using var server = new DshMimicResponder(port, cts.Token) { ReadyDelayMilliseconds = -1 };
         var forward = new DshShellForward(
-            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast, new VirtualTimeProvider());
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
@@ -168,7 +171,7 @@ public class DshShellForwardTests
         int port = LoopbackHttpResponder.ReserveFreePort();
         using var server = new DshMimicResponder(port, cts.Token) { MuxReadyDelayMilliseconds = 100 };
         var forward = new DshShellForward(
-            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_wide);
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_wide, new VirtualTimeProvider());
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
@@ -194,7 +197,7 @@ public class DshShellForwardTests
         int port = LoopbackHttpResponder.ReserveFreePort();
         using var server = new DshMimicResponder(port, cts.Token) { MuxReadyDelayMilliseconds = -1 };
         var forward = new DshShellForward(
-            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast, new VirtualTimeProvider());
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
@@ -249,7 +252,7 @@ public class DshShellForwardTests
         int port = LoopbackHttpResponder.ReserveFreePort();
         using var server = new DshMimicResponder(port, cts.Token);
         var forward = new DshShellForward(
-            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast);
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast, new VirtualTimeProvider());
         var lines = new List<string>();
         var tokenUrl = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
