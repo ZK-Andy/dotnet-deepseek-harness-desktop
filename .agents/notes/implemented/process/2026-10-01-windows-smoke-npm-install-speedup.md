@@ -28,7 +28,7 @@ step 时间戳与 `smoke-logs` artifact 内的引导日志）：
 落盘成本**（跨平台对照仅该 run 一次，Windows 六次引导耗时为 Linux 44s 的 4.4–12×
 【探索性：对照 n=1】）。具体机制**仍未证**：Defender 逐文件扫描这一候选已被 runner 自身状态
 排除（见 Status 下的 Erratum），Windows 无法像 Linux 那样从 cacache 硬链接而退化为整份拷贝是
-另一候选【推断 · 未证】。最慢一次引导尝试 539s（该行计整条 `RuntimeBootstrap.RunAsync`，见
+另一候选【推断 · 未证】。（2026-10-05 探针已定案，见下节「机制实测」：主因是 `C:` 卷的小文件写路径——上述两条候选都不是。）最慢一次引导尝试 539s（该行计整条 `RuntimeBootstrap.RunAsync`，见
 `FirstBootBootstrapService` 的成功分支；npm 单步 ≤ 该值），而冒烟等待窗 720s 正是从单步默认
 `RuntimeBootstrapOptions.StepTimeoutMinutes=10`（=600s）推出来的——539s 与窗余量 181s、
 与单步上限余量 ≥61s（按上界估，【推演】），再慢一档就红成「步骤超时」或「等待窗耗尽」，
@@ -129,3 +129,40 @@ env）、`--self-test`（`pv` 四态判定夹具）已接进 `ci.yml` 的自测�
     npm-cache-windows-x64-dsh-0.2.0-rc.2`、`安装冒烟` 217s（改前 252–570s）、win 腿 8m53s → 5m40s、
     引导 188s（538 包，落在改前 195–539s 内）；该 run 的
     `DisableRealtimeMonitoring=True` 与排除面含 `C:\`、`D:\` 留痕即本篇撤回 Defender 的依据。
+
+## 机制实测（2026-10-05 临时探针）
+
+一次性探针（独立临时仓，跑完即删；产品代码零改动）：同一 workflow 同日，同一 `@deepseek-ai/dsh@next`
+（Windows 538 包 / Unix 540 包；26,643 文件；511–519MB），先预热一次填满 npm 缓存，此后所有被测变体
+均命中缓存、交替执行（n=2/格）；每格另跑 node `fs` 基线（10,000 个 1KB 文件 + 256MB 顺序写——与 npm
+同一条写路径，用于把「卷的小文件代价」与「npm 自身开销」切开）。
+
+| 格（镜像 / 安装落点） | node / npm | `fs` 基线 | npm 安装（缓存暖，n=6） | npm 安装（冷，预热那次） |
+|---|---|---|---|---|
+| windows-2025 / `C:` | 22.23.3 / 10.9.9 | 652 文件/s（15.3s/万文件） | 223–304s | 297s |
+| windows-2022 / `C:` | 22.23.3 / 10.9.9 | 1,536 文件/s（6.5s） | 223–288s | 254s |
+| windows-2025 / `D:` | 22.23.3 / 10.9.9 | 10,823 文件/s（0.9s） | **22–24s** | **51s** |
+| windows-2022 / `D:` | 22.23.3 / 10.9.9 | 9,718–13,661 文件/s | **13–25s**（两 run：13–17s / 25s） | 54–57s |
+| ubuntu-24.04 / `$HOME` | 22.23.3 / 10.9.9 | 22,472 文件/s | 14–15s | 33–34s |
+| macos-15-arm64 / `$HOME` | 22.23.2 / 10.9.8 | 4,488 文件/s | 13–20s | 35s |
+
+读出的机制（实测，非推断）：
+
+- **主因是 `C:` 卷的小文件写路径**——不是 Windows、不是 NTFS 本身、不是 npm：同一台 Windows runner
+  把落点换到 `D:`，同一个 538 包装完只要 22–24s，与 Linux/macOS 同档（13–20s）。C: → D: 提速 9–13×，
+  与 `fs` 基线同向（同批 652 vs 10,823 文件/s ≈ 17×）。
+- **大文件吞吐不是瓶颈**：256MB 顺序写在所有格都是 1,524–4,491MB/s，与安装耗时无关。
+- **与 npm / Node 版本无关**：Windows 与 macOS 同为 Node 22.23.x + npm 10.9.x，实测 240s vs 15s。
+- **镜像代次不是杠杆**：windows-2025 的 `C:` 在小文件基线上比 2022 慢一倍（652 vs 1,536 文件/s），
+  但 npm 端到端差异落在噪声带（223–304s vs 223–288s）。
+- **`D:` 在 windows-2025 上仍然存在且可写**（同批 `D:NTFS/219.9GBfree`），故该提速手段对
+  `windows-latest` 直接可用，不必降级镜像。
+- **去掉 `--progress=true`（E4）与加 `--prefer-offline`（E6）均无可靠效果**：`D:` 格三个变体平铺在
+  22–25s；`C:` 格的表观差异由「同格越跑越快」的漂移解释（win2025-c 顺序 304→268→223→260→223→225）。
+  缓存命中后既无下载可省，也无包元数据再验证成本可减。
+- 该提速**尚未落地**：改冒烟腿的安装落点动的是 `.github/workflows/**`（FULL 档），本次只交付测量。
+
+配置探针（同批）顺带确认：壳的 env 净化剥离 `npm_config_prefix` 后，npm 的 `prefix`/`cache` 回到默认值
+`%APPDATA%\npm` / `%LOCALAPPDATA%\npm-cache`——后者正是
+[package.yml](../../../../.github/workflows/package.yml) 缓存的路径，**缓存路径本身没错**；镜像 global
+npmrc 里的 `C:\npm\cache` 因 `globalconfig` 随前缀改道而不被读取。
