@@ -73,7 +73,9 @@ relocate_npm_prefix() {
     return 0
   fi
   log "[win] npm 全局落点已指向 $prefix（userconfig=${userconfig}）"
-  log "[win] npm config get prefix = $(npm config get prefix 2>/dev/null || echo '(查询失败)')"
+  # 证据位按**壳侧环境**查（剥 npm_config_prefix）：镜像把该前缀设成机器级环境变量，不剥就永远读到
+  # `C:\npm\prefix`，与壳（EnvironmentHygiene 剥 `npm_*`）看到的落点相反——是诊断误导源。
+  log "[win] npm config get prefix（壳侧净化后）= $(env -u npm_config_prefix npm config get prefix 2>/dev/null || echo '(查询失败)')"
 }
 
 # 自测：0 = 全过。覆盖写入四态（新建/保留既有/替换既有 prefix 行/幂等）与三条降级路径

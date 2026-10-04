@@ -146,6 +146,10 @@ PATH 零副作用）。本条只作用于 **CI 冒烟腿的一次性 runner**—
   新建写入、既有设置保留、既有 `prefix` 行替换不重复、重复调用幂等、落点被普通文件占位判不可用、
   空串旋钮不重定向、改写失败不判门）；`verify-shell-standards.sh`（28 文件 S1–S6）；`actionlint
   -shellcheck="shellcheck -S warning"`；`verify-governance.py`。
+- CI（2026-10-05 落点重定向实跑验证，`package.yml` dispatch run 37236334764 / head `f6a9215`）：
+  `冒烟前置` 步 5s，留痕 `[win] npm 全局落点已指向 D:/npm-global`；`安装冒烟` 步 **76s**（改前同腿
+  265–373s）；引导日志 `第 1 次尝试成功（耗时 50s）`、`added 538 packages in 47s`、壳侧
+  `npm 全局 bin 已暴露：D:\npm-global` 与 `步骤 Ready：dsh 0.2.0-rc.2 就绪`；五腿全绿。
 - CI（两轮 `release.yml` 分支 ref dispatch）：
   - run 36833047506（shipped head，Defender 半已撤）：`冒烟前置` 3s（只余 `pv` 探测）、
     `解析 dsh 跟版线版本` 7s、缓存步精确命中 `Cache restored from key:
