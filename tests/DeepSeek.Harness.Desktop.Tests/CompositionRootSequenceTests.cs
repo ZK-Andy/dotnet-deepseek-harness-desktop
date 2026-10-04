@@ -72,6 +72,19 @@ public class CompositionRootSequenceTests
             "恢复周期起点必须失效铸币态（dsh 死即 holder 门控重武装）");
     }
 
+    /// <summary>窗口几何持久化接线钉（rationale 见 ADR window-geometry-ryn-native-persist）。
+    /// mutation 反证：删掉 PersistWindowState 赋值（或注释失效）本测即红。</summary>
+    [Fact]
+    public void BuildApp_EnablesRynWindowStatePersistence()
+    {
+        string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
+            "src/DeepSeek.Harness.Desktop/DesktopBootstrap.App.cs"));
+
+        Assert.Contains("opts.PersistWindowState = true;", source, StringComparison.Ordinal);
+        // 注释失效同红（R2 评审建议）：源锚只防删除不防注释，补一发防注释锚
+        Assert.DoesNotContain("// opts.PersistWindowState", source, StringComparison.Ordinal);
+    }
+
     private static void AssertChainOrder(string source, string[] chain)
     {
         int cursor = -1;

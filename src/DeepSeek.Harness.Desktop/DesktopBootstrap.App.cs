@@ -69,17 +69,12 @@ public sealed partial class DesktopBootstrap
             .ConfigureOptions(opts =>
             {
                 // IPC 桥接白名单显式登记代理源（Ryn 默认只认 ryn://app；Ryn dev-server 分支会自动
-                // 追加代理源 + IPC 服地址，此处显式更稳，不依赖隐式追加）。
+                // 追加代理源 + IPC 服地址，此处显式更稳，不依赖隐式追加）。代理源恒为初始 URL
+                // （dsh 未就绪时窗口即开 holder；Ryn dev-server 分支在窗口创建时接管 IPC，不依赖
+                // dsh 时序——冷机探针同样有效）。仅代理绑定失败才回退 wwwroot 占位（极罕见）。
                 if (proxy is not null)
                 {
                     opts.AllowedOrigins.Add(proxy.Origin);
-                }
-
-                if (proxy is not null)
-                {
-                    // 代理源恒为初始 URL（dsh 未就绪时窗口即开 holder；Ryn dev-server 分支在窗口创建时
-                    // 接管 IPC，不依赖 dsh 时序——冷机探针同样有效）。
-                    // 仅代理绑定失败才回退 wwwroot 占位（极罕见，行为与旧降级一致）。
                     opts.Url = proxy.Url;
                 }
                 else
@@ -91,6 +86,8 @@ public sealed partial class DesktopBootstrap
                 opts.Title = "DeepSeek Harness Desktop";
                 opts.Width = 1200;
                 opts.Height = 800;
+                // 窗口几何持久化：rationale 见 ADR window-geometry-ryn-native-persist。
+                opts.PersistWindowState = true;
                 // A 类启动配置经类型化值消费（批次 3）：dev 后缀规则封装进 LaunchOptions。
                 opts.ApplicationId = preflight.Launch.ApplicationIdFor("io.github.ZK-Andy.dotnet-deepseek-harness-desktop");
                 if (File.Exists(iconPath)) // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
