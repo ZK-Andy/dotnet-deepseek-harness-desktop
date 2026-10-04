@@ -88,4 +88,48 @@ public class ExitPipelineTests
 
         Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "closeWindow", "watchdog" }, r.Steps);
     }
+
+    /// <summary>验证 Restart 完整编排：回收 → 释放监听器 → <b>先拉起新实例</b> → 关窗 → 看门狗。
+    /// spawn 晚于回收是硬约束（ADR app-restart-native-switch）：旧 dsh 树不死透，看门狗 stopHost
+    /// 会击杀新实例的 dsh；监听器/marker 不释放，新实例过不了单实例仲裁。</summary>
+    [Fact]
+    public void Restart_ReapsAndDisposes_BeforeSpawning_ThenClosesWithWatchdog()
+    {
+        var r = new Recorder();
+        Pipeline(r).Restart(r.Step("spawn"));
+
+        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "spawn", "closeWindow", "watchdog" }, r.Steps);
+    }
+
+    /// <summary>验证 Restart 幂等：重复调用只执行一次完整编排，不二次 spawn/关窗。</summary>
+    [Fact]
+    public void Restart_SecondCall_IsNoOp()
+    {
+        var r = new Recorder();
+        ExitPipeline pipeline = Pipeline(r);
+
+        pipeline.Restart(r.Step("spawn"));
+        pipeline.Restart(r.Step("spawn"));
+
+        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "spawn", "closeWindow", "watchdog" }, r.Steps);
+    }
+
+    /// <summary>验证 Restart 与 OrderlyQuit 共享 once-guard：先到者得，后到路径整体 no-op
+    /// （退出与重启竞争时只有一个编排生效）。</summary>
+    [Fact]
+    public void Restart_AfterOrderlyQuit_IsNoOp_AndViceVersa()
+    {
+        var r = new Recorder();
+        ExitPipeline first = Pipeline(r);
+        first.OrderlyQuit();
+        first.Restart(r.Step("spawn"));
+
+        var r2 = new Recorder();
+        ExitPipeline second = Pipeline(r2);
+        second.Restart(r2.Step("spawn"));
+        second.OrderlyQuit();
+
+        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "closeWindow", "watchdog" }, r.Steps);
+        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "spawn", "closeWindow", "watchdog" }, r2.Steps);
+    }
 }

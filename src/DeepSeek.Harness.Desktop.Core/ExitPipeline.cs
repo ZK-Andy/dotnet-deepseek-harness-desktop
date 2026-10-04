@@ -74,6 +74,26 @@ public sealed class ExitPipeline
         _startWatchdog();
     }
 
+    /// <summary>应用重启（ADR app-restart-native-switch）：回收三件套 → 释放监听器 → <b>拉起新实例</b> →
+    /// 关窗 → 看门狗；once-guard 与 <see cref="OrderlyQuit"/> 共享（先到者得，另一路径即 no-op）。
+    /// 回收与监听器释放必须先于 spawn：旧 dsh 树不死透，本进程看门狗的 <c>stopHost</c> 可能击杀
+    /// 新实例的 dsh；监听器/marker 不释放，新实例过不了单实例仲裁。</summary>
+    /// <param name="spawnSuccessor">拉起新实例的动作（宿主接线为 <c>AppRelaunch.SpawnSelf</c>）。</param>
+    public void Restart(Action spawnSuccessor)
+    {
+        if (Interlocked.Exchange(ref _orderlyQuitDone, 1) != 0)
+        {
+            return;
+        }
+
+        _log?.Invoke("[tray] 重启：回收运行时后拉起新实例");
+        ReapRuntime();
+        _disposeListener?.Invoke();
+        spawnSuccessor();
+        _closeWindow();
+        _startWatchdog();
+    }
+
     /// <summary>8s 退出看门狗（无令牌，退出即终态）：主循环届时仍未返回则先补一次 Stop（幂等）再强制终结。
     /// Exit 不展开栈，已显式完成的 Cancel/Stop/Release/unlink 不会被二次执行，无双重释放面。</summary>
     public void ScheduleQuitWatchdog()

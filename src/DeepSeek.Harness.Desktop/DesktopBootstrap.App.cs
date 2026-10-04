@@ -128,6 +128,7 @@ public sealed partial class DesktopBootstrap
         services.AddRecoveryCommands(wiring);
         services.AddBootstrapCommands(preflight.Bootstrap);
         services.AddAutostartCommands();
+        services.AddAppRestartCommand(wiring);
         services.AddTrayServices(update, wiring, _uiLocale);
         services.AddUpdateCommands(update, wiring);
         // 启动编排服务（容器解析；工厂惰性求值——wiring.App/WindowAccessor 在 Build 完成后才回填，
