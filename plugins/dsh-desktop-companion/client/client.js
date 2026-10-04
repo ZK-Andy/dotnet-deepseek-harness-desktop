@@ -22,7 +22,7 @@
  *   to a new loopback port after the window was created) and points at the fix.
  * - Tray event relay: forwards Ryn tray plugin events (tray.clicked,
  *   tray.menuItemClicked) to the host via desktop.tray.event; show /
- *   check-update / quit semantics are resolved on the host side.
+ *   check-update / restart / quit semantics are resolved on the host side.
  */
 ;(function () {
   if (typeof window === 'undefined' || !window.__ModuleLoader__) return
@@ -106,7 +106,8 @@
             // 设置页视觉对齐原生设置区块（settings-plugins/general 的 token 规格）：
             // 分组标题 16px/600；卡片 = bg-layer-3 底 + border-l2 描边 + 12px 圆角；
             // 行内「标题/描述 左、控件 右」，行间以 border-l2 分隔；按钮为原生
-            // save/discard 两态（主=反色填充，次=描边幽灵）；开关为 28×16 克隆。
+            // save/discard 两态（主=反色填充，次=描边幽灵）；开关为官方 Switch 同规格克隆
+            // （36×20 胶囊，Switch.module.css 逐项对照，见下方 nativeSwitch 探测）。
             '.ddc-page{max-width:760px;display:flex;flex-direction:column;gap:12px;' +
             'color:var(--dsw-alias-label-primary)}' +
             '.ddc-group{display:flex;flex-direction:column;gap:10px}' +
@@ -130,17 +131,17 @@
             'color:var(--dsw-alias-label-secondary)}' +
             '.ovn-btn--ghost:hover:not(:disabled){color:var(--dsw-alias-label-primary);' +
             'border-color:var(--dsw-alias-label-dimmed);filter:none}' +
-            '.ddc-sw{position:relative;width:28px;height:16px;flex:none;border-radius:3px;' +
-            'border:1px solid var(--dsw-alias-border-l2);background:transparent;cursor:pointer;' +
-            'padding:0;transition:background .15s,border-color .15s}' +
-            '.ddc-sw:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed)}' +
-            '.ddc-sw[aria-checked="true"]{border-color:transparent;' +
-            'background:#22c55e;background:var(--dsw-alias-state-success-primary,#22c55e)}' +
-            '.ddc-sw[disabled]{opacity:.4;cursor:default}' +
-            '.ddc-sw i{position:absolute;top:50%;left:1px;width:14px;height:14px;margin-top:-7px;' +
-            'border-radius:2px;background:var(--dsw-alias-bg-base,#fff);' +
-            'box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translateX(0);transition:transform .15s}' +
-            '.ddc-sw[aria-checked="true"] i{transform:translateX(11px)}'
+            '.ddc-sw{position:relative;flex:none;width:36px;height:20px;padding:2px;border:0;' +
+            'border-radius:10px;background:var(--dsw-alias-border-l3,#3a3a4a);cursor:pointer;' +
+            'transition:background 120ms ease}' +
+            '.ddc-sw[aria-checked="true"]{background:#22c55e;' +
+            'background:var(--dsw-alias-brand-primary,#22c55e)}' +
+            '.ddc-sw[disabled]{opacity:.5;cursor:default}' +
+            '.ddc-sw:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#22c55e);outline-offset:2px}' +
+            '.ddc-sw i{display:block;width:16px;height:16px;border-radius:50%;' +
+            'background:var(--dsw-alias-label-primary-foreground,#fff);' +
+            'transform:translateX(0);transition:transform 120ms ease}' +
+            '.ddc-sw[aria-checked="true"] i{transform:translateX(16px)}'
           if (!document.getElementById(style.id)) document.head.append(style)
 
           function UpdateButton(props) {
@@ -220,9 +221,16 @@
             closeTitle: '关闭时最小化到托盘',
             closeDesc: '勾选后点击关闭按钮会隐藏到系统托盘，取消则直接退出应用。',
             closeUnavailable: '当前运行环境无系统托盘，开关不可用。',
-            // 命令通道失败（非「宿主答不可用」）：状态未知 + 可重试，见 useSwitchState 的三态
-            hostUnreachableDesc: '\u72b6\u6001\u672a\u77e5\uff0c\u8bf7\u91cd\u8bd5\uff1b\u82e5\u53cd\u590d\u51fa\u73b0\u8bf7\u91cd\u542f\u5e94\u7528',
+            // 命令通道失败（非「宿主答不可用」）：状态未知 + 可重试，见 useSwitchState 的三态；
+            // 反复出现指向托盘菜单重启——通道失效时托盘原生链路仍可达（ADR app-restart-native-switch）
+            hostUnreachableDesc: '状态未知，请重试；若反复出现请重启应用（可用托盘菜单）',
             retry: '\u91cd\u8bd5',
+            // 重启应用行（宿主命令 desktop.app.restart；受理即静候，失败回页内）
+            restartTitle: '重启应用',
+            restartDesc: '退出并重新启动桌面壳，会话数据不受影响。',
+            restartBtn: '重启',
+            restarting: '正在重启…',
+            restartFail: '重启失败',
             // 组标题（原散落在各 Section 的 '.ddc-gtitle' 字面量）
             updGroup: '\u66f4\u65b0',
             diagGroup: '\u8bca\u65ad',
@@ -269,8 +277,16 @@
             closeDesc: 'When checked, closing the window hides it to the tray; otherwise the app quits.',
             closeUnavailable: 'No system tray in this environment; the switch is unavailable.',
             // Command-channel failure (NOT "host answered unavailable"): state unknown + retryable.
-            hostUnreachableDesc: 'State unknown \u2014 retry; restart the app if it keeps happening',
+            // Repeated failures point at the tray menu — the native tray chain still works when the
+            // page-to-host channel is down (ADR app-restart-native-switch).
+            hostUnreachableDesc: 'State unknown — retry; if it keeps happening, restart the app (tray menu → Restart)',
             retry: 'Retry',
+            // Restart row (host command desktop.app.restart; accepted = hold "restarting", failure inline)
+            restartTitle: 'Restart app',
+            restartDesc: 'Quit and relaunch the desktop shell; session data is unaffected.',
+            restartBtn: 'Restart',
+            restarting: 'Restarting…',
+            restartFail: 'Restart failed',
             // 组标题
             updGroup: 'Update',
             diagGroup: 'Diagnostics',
@@ -436,9 +452,24 @@
 
           var channelDown = function (state) { return !!(state && state.channelDown) }
 
-          // 通道失败时开关的替代控制位：状态未知无从切换，给可点的重试入口（而非灰着不解释）。
+          // 官方 Switch 探测（ADR app-restart-native-switch）：dsh 模块表自带
+          // @deepseek-ai/dsh-client-ui-primitives，但 Switch 导出在 0.1.1-rc.2 尚未出现、
+          // 更新的 dsh 才有——取到即用原生（零漂移），取不到回退 .ddc-sw 克隆
+          // （按官方 Switch.module.css 规格重画，上方样式块）。
+          var nativeSwitch = null
+          try {
+            var primitivesMod = require('@deepseek-ai/dsh-client-ui-primitives')
+            if (primitivesMod && typeof primitivesMod.Switch === 'function') nativeSwitch = primitivesMod.Switch
+            else console.warn(TAG, 'ui-primitives has no Switch export; using clone fallback')
+          } catch (e1b) {
+            // 模块不在模块表：老 dsh，走克隆（留痕便于「为何开关长得不一样」的排障，评审 R2 采纳项）
+            console.warn(TAG, 'ui-primitives module unavailable; using clone fallback', e1b && e1b.message)
+          }
+
+          // 开关行控件：官方 Switch 可用时直接消费（label 是官方组件的必填 aria 名，
+          // 由调用方传行标题）；否则出克隆。通道失败仍优先给重试按钮。
           // disabled 谓词由调用方给（关闭到托盘另有一条 available=false），缺省 = 尚未结算。
-          var switchControl = function (th, state, onToggle, retry, disabled) {
+          var switchControl = function (th, state, onToggle, retry, disabled, label) {
             if (channelDown(state)) {
               return h('button', {
                 className: 'ovn-btn ovn-btn--ghost',
@@ -446,11 +477,27 @@
                 onClick: retry,
               }, th('retry'))
             }
-            return Switch2({
-              checked: !!(state && state.enabled),
-              disabled: disabled === undefined ? !state : disabled,
-              onChange: onToggle,
-            })
+            var off = disabled === undefined ? !state : !!disabled
+            var checked = !!(state && state.enabled)
+            if (nativeSwitch) {
+              return h(nativeSwitch, {
+                checked: checked,
+                disabled: off,
+                onChange: onToggle,
+                label: label || '',
+              })
+            }
+            return h('button', {
+              className: 'ddc-sw',
+              type: 'button',
+              role: 'switch',
+              'aria-checked': checked ? 'true' : 'false',
+              'aria-label': label || '',
+              disabled: off,
+              onClick: function () {
+                if (!off && onToggle) onToggle(!checked)
+              },
+            }, h('i'))
           }
 
           // 开关行的 desc：通道失败 → 「状态未知 + 重试」；否则用调用方给的常规文案
@@ -469,20 +516,6 @@
               console.warn(TAG, 'command channel probe failed:', e && e.message)
               return false
             })
-          }
-
-          // opencode Switch 同款开关（28×16 轨道 + 14×14 滑块）
-          function Switch2(props) {
-            return h('button', {
-              className: 'ddc-sw',
-              type: 'button',
-              role: 'switch',
-              'aria-checked': props.checked ? 'true' : 'false',
-              disabled: !!props.disabled,
-              onClick: function () {
-                if (!props.disabled && props.onChange) props.onChange(!props.checked)
-              },
-            }, h('i'))
           }
 
           // 设置页区块：undefined=查询中不渲染；{unavailable:'nostack'|'channel'}=页内提示；
@@ -614,7 +647,7 @@
                     }, th('diagBtn'))))))
           }
 
-          // 「桌面」区块：开机自启 + 关闭时最小化到托盘（均为 opencode 发行说明同款开关行）。
+          // 「桌面」区块：开机自启 + 关闭时最小化到托盘 + 重启应用（开关行为官方发行说明同款行）。
           // 两行的状态一律经 useSwitchState 装载：合法帧才算数，「没答案」渲染成可重试的通道失败。
           function DesktopSection(props) {
             var p = props || {}
@@ -645,8 +678,9 @@
                     h('div', { className: 'ddc-title' }, th('autostart')),
                     h('div', { className: 'ddc-desc' }, switchDesc(th, state, th('autostartDesc')))),
                   h('div', { className: 'ddc-ctl' },
-                    switchControl(th, state, toggleAutostart, retryAutostart))),
-                CloseToTrayRow({ t: th })))
+                    switchControl(th, state, toggleAutostart, retryAutostart, undefined, th('autostart')))),
+                CloseToTrayRow({ t: th }),
+                RestartRow({ t: th })))
           }
 
           // 关闭时最小化到托盘：宿主持久化于 <DSH_HOME>/desktop-preferences.json（默认开启，
@@ -690,7 +724,47 @@
                 h('div', { className: 'ddc-title' }, th('closeTitle')),
                 h('div', { className: 'ddc-desc' }, desc)),
               h('div', { className: 'ddc-ctl' },
-                switchControl(th, st, toggle, retryClose, !st || st.available === false)))
+                switchControl(th, st, toggle, retryClose, !st || st.available === false, th('closeTitle'))))
+          }
+
+          // 重启应用（ADR app-restart-native-switch）：受理即静候——宿主 200ms 冲刷后回收进程
+          // 重启，页面随进程退出销毁；失败转页内错误（含 4s 超时兜底误报，见 invokeWithTimeout）。
+          // 通道整体失效时本按钮同样发不出，hostUnreachableDesc 已把该场景指向托盘菜单。
+          function RestartRow(props) {
+            var p = props || {}
+            var th = p.t || function (k) { return k }
+            var bpair = reactMod.useState(false)
+            var busy = bpair[0]
+            var setBusy = bpair[1]
+            var epair = reactMod.useState(null)
+            var err = epair[0]
+            var setErr = epair[1]
+            var doRestart = function () {
+              if (busy) return
+              setBusy(true)
+              setErr(null)
+              invokeWithTimeout('desktop.app.restart', {}).then(function () {
+                // 受理成功即保持「正在重启」态：后续结论（成功销毁/失败回显）都不需要本组件再动作
+              }, function (e) {
+                setBusy(false)
+                var detail = (e && e.message) ? String(e.message) : th('restartFail')
+                setErr(detail)
+                reportDegradation('desktop.app.restart', detail)
+              })
+            }
+            return h('div', { className: 'ddc-row2' },
+              h('div', { className: 'ddc-copy' },
+                h('div', { className: 'ddc-title' }, th('restartTitle')),
+                err !== null
+                  ? h('div', { className: 'ddc-desc ddc-err' }, th('restartFail') + th('diagFailSep') + err)
+                  : h('div', { className: 'ddc-desc' }, th('restartDesc'))),
+              h('div', { className: 'ddc-ctl' },
+                h('button', {
+                  className: 'ovn-btn ovn-btn--ghost',
+                  type: 'button',
+                  disabled: busy,
+                  onClick: doRestart,
+                }, busy ? th('restarting') : th('restartBtn'))))
           }
 
           ctx.slots.inject('sidebar.footer.action', function () {
