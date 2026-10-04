@@ -98,7 +98,7 @@ public sealed class PluginProfileTransaction
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            CopyDirectory(activeProfile, tx.StagingProfileDir);
+            CopyDirectory(activeProfile, tx.StagingProfileDir, log);
         }
         catch
         {
@@ -319,21 +319,65 @@ public sealed class PluginProfileTransaction
         }
     }
 
-    /// <summary>递归拷贝目录（排除运行时管理文件）。staging 与 active 同卷，后续 rename 原子。</summary>
-    private static void CopyDirectory(string sourceDir, string targetDir)
+    /// <summary>递归拷贝目录（排除运行时管理文件）。staging 与 active 同卷，后续 rename 原子。
+    /// 符号链接**重建链接本体**（读 LinkTarget 原样重建，悬空链同样保留）——绝不 <c>File.Copy</c>
+    /// 穿链复制内容：node_modules 的 .bin 与 pnpm 布局全是链接，悬空残留（包已删、链接在）会令
+    /// File.Copy 抛 ENOENT 使整个 staging 拷贝失败、事务管线对任何 stale 链接的 profile 永久卡死
+    /// （2026-10-05 实机：.bin/node-which 悬空 → companion 升级 0.0.20→0.0.21 每次启动失败，
+    /// ADR transactional-plugin-copy-preserves-symlinks）。</summary>
+    private static void CopyDirectory(string sourceDir, string targetDir, Action<string> log)
     {
         Directory.CreateDirectory(targetDir);
-        foreach (string file in Directory.EnumerateFiles(sourceDir))
+        foreach (string entry in Directory.EnumerateFileSystemEntries(sourceDir))
         {
-            if (!s_copiedFileExclusions.Contains(Path.GetFileName(file)))
+            string target = Path.Combine(targetDir, Path.GetFileName(entry));
+            if (PathLinkGuard.IsLink(entry))
             {
-                File.Copy(file, Path.Combine(targetDir, Path.GetFileName(file)));
+                RecreateLink(entry, target, log);
+                continue;
+            }
+
+            if (Directory.Exists(entry))
+            {
+                CopyDirectory(entry, target, log);
+            }
+            else if (!s_copiedFileExclusions.Contains(Path.GetFileName(entry)))
+            {
+                File.Copy(entry, target);
             }
         }
+    }
 
-        foreach (string sub in Directory.EnumerateDirectories(sourceDir))
+    /// <summary>在 staging 重建一个符号链接：目标串原样保留（相对链接保持相对）。链接类型判定：
+    /// <c>Directory.Exists</c> 穿链为真 = 目录链（有效）；为假 = 文件链或悬空链（按文件链重建）。
+    /// 悬空判定不得用 <c>File.Exists</c>——.NET 7+ 对悬空符号链接返回 true（lstat 语义），
+    /// 必须解析链接目标本体判定。</summary>
+    private static void RecreateLink(string sourceEntry, string target, Action<string> log)
+    {
+        string? linkTarget = Directory.Exists(sourceEntry)
+            ? new DirectoryInfo(sourceEntry).LinkTarget
+            : new FileInfo(sourceEntry).LinkTarget;
+        if (string.IsNullOrEmpty(linkTarget))
         {
-            CopyDirectory(sub, Path.Combine(targetDir, Path.GetFileName(sub)));
+            // 探测与重建之间被并发删除等极端窗口：跳过该条并留痕，不让单条链接拖垮整个拷贝
+            log($"[host] 插件事务：链接目标读取为空，staging 跳过（{sourceEntry}）");
+            return;
         }
+
+        if (Directory.Exists(sourceEntry))
+        {
+            Directory.CreateSymbolicLink(target, linkTarget);
+            return;
+        }
+
+        string resolved = Path.IsPathRooted(linkTarget)
+            ? linkTarget
+            : Path.Combine(Path.GetDirectoryName(sourceEntry)!, linkTarget);
+        if (!File.Exists(resolved) && !Directory.Exists(resolved))
+        {
+            log($"[host] 插件事务：悬空链接按文件链重建（{sourceEntry} → {linkTarget}）");
+        }
+
+        File.CreateSymbolicLink(target, linkTarget);
     }
 }

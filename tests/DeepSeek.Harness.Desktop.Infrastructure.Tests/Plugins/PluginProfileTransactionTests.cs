@@ -42,6 +42,47 @@ public class PluginProfileTransactionTests
         }
     }
 
+    /// <summary>验证 staging 拷贝对符号链接重建链接本体而非穿链复制：有效文件/目录链接与悬空链接
+    /// 都原样保留（悬空链曾令 File.Copy 抛 ENOENT、整个升级事务对 stale 链接的 profile 永久卡死
+    /// ——2026-10-05 实机 .bin/node-which，ADR transactional-plugin-copy-preserves-symlinks）。</summary>
+    [Fact]
+    public void Begin_PreservesSymlinks_IncludingDangling()
+    {
+        string home = SeedActiveProfile(NewHome(), "old");
+        try
+        {
+            // 摆出 node_modules 形态：有效文件链 + 目录链 + 悬空链（包已删、.bin 链接残留）
+            string nm = Path.Combine(ProfileDir(home), "node_modules");
+            string bin = Path.Combine(nm, ".bin");
+            Directory.CreateDirectory(bin);
+            Directory.CreateDirectory(Path.Combine(nm, "real-pkg"));
+            File.WriteAllText(Path.Combine(nm, "real-pkg", "index.js"), "x");
+            File.CreateSymbolicLink(Path.Combine(bin, "valid-file"), Path.Combine("..", "real-pkg", "index.js"));
+            Directory.CreateSymbolicLink(Path.Combine(nm, "linked-pkg"), Path.Combine("real-pkg"));
+            File.CreateSymbolicLink(Path.Combine(bin, "node-which"), Path.Combine("..", "which", "bin", "node-which"));
+
+            var logs = new List<string>();
+            var tx = PluginProfileTransaction.Begin(home, logs.Add);
+
+            string stagedBin = Path.Combine(tx.StagingProfileDir, "node_modules", ".bin");
+            string stagedNm = Path.Combine(tx.StagingProfileDir, "node_modules");
+            // 悬空链原样重建（不抛、不跟随）
+            var dangling = new FileInfo(Path.Combine(stagedBin, "node-which"));
+            Assert.Equal(Path.Combine("..", "which", "bin", "node-which"), dangling.LinkTarget);
+            // 有效文件链重建且可解引用
+            Assert.True(File.Exists(Path.Combine(stagedBin, "valid-file")));
+            // 目录链重建后穿链可达内容
+            Assert.True(File.Exists(Path.Combine(stagedNm, "linked-pkg", "index.js")));
+            // 真实文件照常拷贝
+            Assert.True(File.Exists(Path.Combine(stagedNm, "real-pkg", "index.js")));
+            Assert.Contains(logs, l => l.Contains("悬空链接按文件链重建"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
     /// <summary>验证 active profile 缺失时 Begin 抛异常（调用链保证 EnsureProfile 先行，缺序应炸出来）。</summary>
     [Fact]
     public void Begin_Throws_WhenActiveProfileMissing()
