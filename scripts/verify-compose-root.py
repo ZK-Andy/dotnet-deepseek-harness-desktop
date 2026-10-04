@@ -38,6 +38,8 @@ import re
 import sys
 from pathlib import Path
 
+from gate_common import CSharpLineScanner, TARGET_OWNER_RE, TYPE_DECL_RE
+
 DEFAULT_SRC = "src/DeepSeek.Harness.Desktop"
 DEFAULT_OWNED_SRC = (
     "src/DeepSeek.Harness.Desktop",
@@ -65,30 +67,15 @@ ALLOWED_METHODS = {
     "RegisterServices",
 }
 
-_TYPE_DECL_RE = re.compile(r"^\s*(?:[\w.]+\s+)*(?:class|struct|record|interface|enum)\s+(\w+)")
 _NEW_RE = re.compile(r"\bnew\s+(\w+)\s*\(")
 # `Type field = new();` — the assigned declared type gives target-typed new its owner.
 _TARGET_NEW_RE = re.compile(r"\bnew\s*\(\)")
-_TARGET_OWNER_RE = re.compile(r"(?:[\w.]+\s+)?(\w+)(?:<[^=]*>)?\s+\w+\s*=\s*(?:[\w.]+\s+)?new\s*\(")
 _GETAWAITER_RE = re.compile(r"\.GetAwaiter\(\)\.GetResult\(\)")
-_LINE_COMMENT_RE = re.compile(r"//.*")
 _COMPOSE_METHOD_RE = re.compile(r"^\s*(?:public|private|protected|internal)\s+(?:[\w<>\[\],.?]+\s+)+(\w+)\s*\(")
 # Constructors (single token between modifiers and paren) and expression-bodied
 # members (`Type Name => ...`) both carry logic and belong in the C2 inventory.
 _COMPOSE_CTOR_RE = re.compile(r"^\s*(?:public|private|protected|internal)\s+(\w+)\s*\(")
 _COMPOSE_PROPERTY_RE = re.compile(r"^\s*(?:public|private|protected|internal)\s+[\w<>\[\],.?]+\s+(\w+)\s*=>")
-
-
-def _strip_line_comment(line: str) -> str:
-    """Strip the first `//` that is NOT inside a string literal (naive quote
-    scan — enough to keep `http://…` inside a string from truncating code)."""
-    quotes = 0
-    for i in range(len(line) - 1):
-        if line[i] == '"':
-            quotes ^= 1
-        elif line[i] == "/" and line[i + 1] == "/" and quotes == 0:
-            return line[:i]
-    return line
 
 
 def _root_files(src: Path) -> list[Path]:
@@ -103,8 +90,9 @@ def _owned_types(owned_srcs: list[Path]) -> set[str]:
         for path in src.rglob("*.cs"):
             if any(part in ("obj", "bin") for part in path.relative_to(src).parts):
                 continue
-            for line in path.read_text(encoding="utf-8").splitlines():
-                m = _TYPE_DECL_RE.match(_strip_line_comment(line))
+            raws = path.read_text(encoding="utf-8").splitlines()
+            for code in CSharpLineScanner(raws).iter_cleaned():
+                m = TYPE_DECL_RE.match(code)
                 if m:
                     types.add(m.group(1))
     return types
@@ -126,13 +114,13 @@ def _violations(src: Path, owned_srcs: list[Path],
     owned = _owned_types(owned_srcs)
     new_count = 0
     for path in files:
-        for raw in path.read_text(encoding="utf-8").splitlines():
-            code = _strip_line_comment(raw)
+        raws = path.read_text(encoding="utf-8").splitlines()
+        for code in CSharpLineScanner(raws).iter_cleaned():
             for m in _NEW_RE.finditer(code):
                 if m.group(1) in owned:
                     new_count += 1
             if _TARGET_NEW_RE.search(code):
-                owner = _TARGET_OWNER_RE.search(code)
+                owner = TARGET_OWNER_RE.search(code)
                 if owner and owner.group(1) in owned:
                     new_count += 1
                 elif owner is None:

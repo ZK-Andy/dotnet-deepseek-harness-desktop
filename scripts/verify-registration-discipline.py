@@ -58,7 +58,7 @@ import re
 import sys
 from pathlib import Path
 
-from gate_common import CSharpLineScanner
+from gate_common import CSharpLineScanner, TARGET_OWNER_RE, TYPE_DECL_RE
 
 DEFAULT_SRC = "src/DeepSeek.Harness.Desktop"
 DEFAULT_INFRA_SRC = "src/DeepSeek.Harness.Desktop.Infrastructure"
@@ -74,10 +74,8 @@ IGNORE_MARK = "verify-registration-discipline: ignore"
 # Sanctioned cross-layer facility, not coupling (see module docstring).
 EXEMPT_TYPES = {"HostLog"}
 
-_TYPE_DECL_RE = re.compile(r"^\s*(?:[\w.]+\s+)*(?:class|struct|record|interface|enum)\s+(\w+)")
 _NEW_RE = re.compile(r"\bnew\s+(\w+)(?:<[^()<>]*>)?\s*\(")
 _TARGET_NEW_RE = re.compile(r"\bnew\s*\(\)")
-_TARGET_OWNER_RE = re.compile(r"(?:[\w.]+\s+)?(\w+)(?:<[^=]*>)?\s+\w+\s*=\s*(?:[\w.]+\s+)?new\s*\(")
 _STATIC_RE = re.compile(r"\b([A-Z]\w*)\s*\.\s*(\w+)")
 _QUALIFIED_RE = re.compile(r"\bInfrastructure\s*\.[\w.]+")
 _USING_DIRECTIVE_RE = re.compile(r"^\s*(?:global\s+)?using\s+[A-Za-z_][\w.]*\s*;")
@@ -95,8 +93,9 @@ def _infra_types(infra_src: Path) -> set[str]:
     for path in infra_src.rglob("*.cs"):
         if "obj" in path.parts or "bin" in path.parts:
             continue
-        for line in path.read_text(encoding="utf-8").splitlines():
-            m = _TYPE_DECL_RE.match(line.split("//")[0])
+        raws = path.read_text(encoding="utf-8").splitlines()
+        for code in CSharpLineScanner(raws).iter_cleaned():
+            m = TYPE_DECL_RE.match(code)
             if m:
                 types.add(m.group(1))
     return types
@@ -131,7 +130,7 @@ def _violations(src: Path, infra_src: Path,
                     news += 1
                     notes.append(f"  note R1a {rel}:{lineno}: `new {m.group(1)}(` outside registration")
             if _TARGET_NEW_RE.search(code):
-                owner = _TARGET_OWNER_RE.search(code)
+                owner = TARGET_OWNER_RE.search(code)
                 if owner and owner.group(1) in infra and owner.group(1) not in EXEMPT_TYPES:
                     news += 1
                     notes.append(f"  note R1a {rel}:{lineno}: target-typed `new()` of `{owner.group(1)}`"

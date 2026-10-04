@@ -60,6 +60,18 @@ def heading_slugs(path: Path) -> set[str]:
     return slugs
 
 
+# C# type-declaration shape shared by the registration-discipline (R1a) and
+# compose-root (C3) owned/infra type collectors: captures the declared type
+# name on lines like `public sealed class Engine` / `internal record Foo`.
+# (verify-code-health.py keeps its own modifier-filter variant — different
+# semantics, deliberately not unified.)
+TYPE_DECL_RE = re.compile(r"^\s*(?:[\w.]+\s+)*(?:class|struct|record|interface|enum)\s+(\w+)")
+
+# Target-typed `Type field = new();` owner attribution, shared by the same
+# two gates: captures the declared type on the left of `= new(`.
+TARGET_OWNER_RE = re.compile(r"(?:[\w.]+\s+)?(\w+)(?:<[^=]*>)?\s+\w+\s*=\s*(?:[\w.]+\s+)?new\s*\(")
+
+
 class CSharpLineScanner:
     """Yield cleaned C# lines: comment text and string-literal contents blanked.
 
@@ -244,6 +256,15 @@ def _self_test() -> int:
           "code on both sides of an inline block comment survives")
     st.ok(clean('var s = "{ not a brace }";')[0].count("{") == 0,
           "braces inside string contents do not reach the consumer")
+
+    # Shared gate regexes: declaration capture + target-typed owner capture.
+    m = TYPE_DECL_RE.match("public sealed class Engine")
+    st.ok(m is not None and m.group(1) == "Engine", "TYPE_DECL_RE captures the type name")
+    st.ok(TYPE_DECL_RE.match("    private int _n = 1;") is None,
+          "TYPE_DECL_RE ignores member declarations")
+    m = TARGET_OWNER_RE.search("private Engine _e = new();")
+    st.ok(m is not None and m.group(1) == "Engine",
+          "TARGET_OWNER_RE attributes target-typed new via the declared type")
 
     # SelfTest idiom: ok() tallies, finish() banners and returns the code.
     # The intentional-failure probe writes to stderr; it is redirected so the

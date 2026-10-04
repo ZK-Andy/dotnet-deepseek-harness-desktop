@@ -6,6 +6,10 @@ Review: FULL/2026-10-01/R1=ok R2=ok R3=ok
 
 各路：R1 首轮 0 Blocker（5 Suggestion：3 采纳——R1q 钉死测/ADR 收窄/doc 去括号，1 部分采纳——notes 补行号但不降噪，1 挂账——正则收进 gate_common defer 下次动 gate 时）；R2 首轮 0 Blocker（4 Suggestion 全采纳：ADR 口径修正/HostLog 补行/泛型正则扩展/R1q 夹具/global-using 覆盖）；R3 首轮 0 Blocker（2 Suggestion 转 implemented 时顺手做：Related 反向链/实查范围补一句）。三路结论均在本轮内一次完整返回，无中断。
 
+Review: FULL/2026-10-04/R1=ok R2=ok R3=ok
+
+R1-S5 收敛批（首轮三路 0 Blocker/0 Suggestion；改旧笔记事实同步，无新决定）。
+
 ## Problem
 
 AI 写代码的耦合反复出现：多次重构，每次都是巨大的时间与 token 成本【据用户陈述，未计量】。现有防线覆盖了耦合的一部分，但漏了执行最关键的一段：
@@ -35,7 +39,7 @@ AI 写代码的耦合反复出现：多次重构，每次都是巨大的时间�
 
 - R1 注册点纪律首次有机器执行：注册外新增直接构造或静态调用在 pre-commit 即红。上游"在做决定的操作里强制"标准下，本条从"未执行"变为"已执行"。
 - 帽 1/15 是**起点不是目标**：下调走脚本变更（天然 FULL 面）；`new StartupNoticeService` 的迁移（进 DI/端口）是减帽的自然形态，出本批范围。
-- notes 通道保留（R1-S1 部分驳回）：站点级审计链是报告模式唯一的定位手段，16 行输出对 0.146s 门禁可接受；R1-S5 正则收敛挂账下次动 gate 时。
+- notes 通道保留（R1-S1 部分驳回）：站点级审计链是报告模式唯一的定位手段，16 行输出对 0.146s 门禁可接受。R1-S5 正则收敛已落（2026-10-04）：`TYPE_DECL_RE`/`TARGET_OWNER_RE` 单源进 `gate_common`，两门禁的类型收集与计数循环统一用 `CSharpLineScanner`，compose-root 死码 `_LINE_COMMENT_RE` 删除；`verify-code-health.py` 的修饰符过滤变体语义不同，刻意不收。
 - 已知局限随脚本 docstring（如实声明）：collection-element `new()`、嵌套泛型、短别名限定不可见；误报走"改脚本即 FULL 评审"。
 - cookbook 未记本条：`docs/cookbook.md` 字数预算 2761/2761 已满，加条即超限（留待预算腾挪时补）。
 
@@ -44,6 +48,7 @@ AI 写代码的耦合反复出现：多次重构，每次都是巨大的时间�
 - `verify-registration-discipline.py --self-test` 十夹具全过（合规注册/DI 放行/显式 new/目标类型 new/泛型 new/R1q 全限定/global-using 跳过/忽略标记/封顶）。
 - `--enforce` 实仓绿：R1a 1/1、R1b 15/15；耗时 0.146s（hook 安全）；降帽（`--max-static-calls 14`）演示 trip，exit 1 且行可审计。
 - 同批门禁：adr-format/budgets/md-links/governance/shell-standards/actionlint 全绿；`dotnet test` 未跑（零 src/tests 变更，按 diff 面最小证据）。
+- R1-S5 收敛（2026-10-04）：`gate_common --self-test`（新增两正则三断言）+ 两门禁 `--self-test` + 实仓 `--enforce` 全绿，计数零漂移（R1a 1/1、R1b 15/15、C3 16/16）。
 - 三重审核：R1/R2/R3 各首轮 0 Blocker（见文件头 Review 行与裁定）。
 
 ## Related
