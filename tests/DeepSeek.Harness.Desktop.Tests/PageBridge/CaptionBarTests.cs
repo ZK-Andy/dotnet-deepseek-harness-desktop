@@ -66,6 +66,10 @@ public class CaptionBarTests
         Assert.Contains($"--dsh-frame-chrome-top:{height}px", script, StringComparison.Ordinal);
         Assert.Contains("sidebarCol", script, StringComparison.Ordinal);
         Assert.Contains($"padding-top:{height}px!important", script, StringComparison.Ordinal);
+        // 结构式兜底收窄（评审 S3）：:where() 归零权重 + 父级须有第二个孩子——侧栏列一旦挪位只会
+        // 不命中（顶区无让位），不会把让位间距误打到内容列首元素上
+        Assert.Contains(":where(:has(", script, StringComparison.Ordinal);
+        Assert.Contains(":nth-child(2))", script, StringComparison.Ordinal);
         Assert.Contains($"#dsh-desktop-caption-bar{{position:fixed;top:0;left:0;height:{height}px", script, StringComparison.Ordinal);
     }
 
@@ -83,6 +87,10 @@ public class CaptionBarTests
         Assert.Contains("\\u003Cbutton data-webview-close\\u003E", script, StringComparison.Ordinal);
         Assert.Contains("\\u003Cbutton data-webview-minimize\\u003E", script, StringComparison.Ordinal);
         Assert.Contains("\\u003Cbutton data-webview-maximize\\u003E", script, StringComparison.Ordinal);
+        // 注入条必须保持可命中（回归钉）：Ryn 自动拖拽条按 mousedown 活体命中判定，盖住条带却全高的元素
+        // 按「内容」处理；本壳侧栏被 padding-top 推下 52px，故这条自绘条是顶带唯一的拖拽面——设
+        // pointer-events:none 会让顶区失去窗口拖拽（Ryn docs/custom-title-bars.md「overlays…content」）。
+        Assert.DoesNotContain("pointer-events:none", script, StringComparison.Ordinal);
     }
 
     /// <summary>验证样式注入带查重守卫 + 元素 id 幂等守卫（双路注入不重复追加）。</summary>
@@ -121,5 +129,46 @@ public class CaptionBarTests
         Assert.Contains("Minimize", enScript, StringComparison.Ordinal);
         Assert.Contains("Maximize", enScript, StringComparison.Ordinal);
         Assert.Contains("Close", enScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>macOS 绿灯＝原生全屏（官方 macOS 绿灯是 Enter Full Screen，窗口缩放另有其键）：
+    /// 换成本壳自有属性 + 自绑点击走 window.setFullscreen，并不再出现 data-webview-maximize——
+    /// 后者是 Ryn 注入脚本的窗口缩放语义，留着会与原生全屏并存且语义相左；其他平台保持缩放不变。</summary>
+    [Fact]
+    public void Build_MacChrome_GreenButtonEntersNativeFullscreen()
+    {
+        var en = new UiLocale();
+        en.Set("en");
+        string mac = CaptionBar.Build(52, en, macChrome: true);
+        Assert.Contains("data-dsh-fullscreen", mac, StringComparison.Ordinal);
+        Assert.Contains("button[data-dsh-fullscreen]{background:#28c840}", mac, StringComparison.Ordinal);
+        Assert.Contains("window.setFullscreen", mac, StringComparison.Ordinal);
+        Assert.Contains("Full Screen", mac, StringComparison.Ordinal);
+        Assert.Contains("bar.children[2].addEventListener('click'", mac, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-webview-maximize", mac, StringComparison.Ordinal);
+        // 透明链只此一支：mac 脚本同样不得关掉注入条的命中（拖拽面回归钉，见红绿灯用例）
+        Assert.DoesNotContain("pointer-events:none", mac, StringComparison.Ordinal);
+
+        // 非 macOS 不得出现全屏语义（缩放面已由既有红绿灯用例钉住，此处只钉「不越界」）
+        string other = CaptionBar.Build(52, en);
+        Assert.DoesNotContain("data-dsh-fullscreen", other, StringComparison.Ordinal);
+        Assert.DoesNotContain("window.setFullscreen", other, StringComparison.Ordinal);
+    }
+
+    /// <summary>macOS 毛玻璃透明链（官方 vibrancy 观感）：窗/网页背景由 RynOptions.Backdrop 清成透明，
+    /// 页面侧须让 html/body 透明、侧栏列半透明，材质才透得出来；官方用 html[data-platform='darwin']
+    /// 门控，而该属性正是本壳禁用的宿主冒充开关（插件崩），故按平台在注入期取舍——非 macOS 恒不含
+    /// 透明链（无 backdrop 后端时会直接露底）。</summary>
+    [Fact]
+    public void Build_MacChrome_AddsVibrancyTransparencyChain()
+    {
+        string mac = CaptionBar.Build(52, macChrome: true);
+        Assert.Contains("html,body{background:transparent!important}", mac, StringComparison.Ordinal);
+        Assert.Contains(
+            "color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 80%,transparent)!important", mac, StringComparison.Ordinal);
+
+        string other = CaptionBar.Build(52);
+        Assert.DoesNotContain("background:transparent", other, StringComparison.Ordinal);
+        Assert.DoesNotContain("color-mix(", other, StringComparison.Ordinal);
     }
 }

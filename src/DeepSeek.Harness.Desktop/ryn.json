@@ -14,7 +14,8 @@
         "toggleMaximize",
         "startDrag",
         "startResize",
-        "beginNativeDrag"
+        "beginNativeDrag",
+        "setFullscreen"
       ]
     }
   }

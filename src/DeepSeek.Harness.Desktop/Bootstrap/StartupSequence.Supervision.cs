@@ -138,12 +138,14 @@ internal sealed partial class StartupSequence
     {
         CancellationToken ct = supervisor.Cts.Token;
         RynNavigationCallbacks callbacks = _app.App.Services.GetRequiredService<RynNavigationCallbacks>();
+        // macChrome = 本机是 macOS：绿灯走原生全屏 + 追加毛玻璃透明链（见 CaptionBar.Build）。
+        bool macChrome = OperatingSystem.IsMacOS();
         callbacks.SetOnNavigatedPersistent(() => Task.Run(() =>
             PagePump.InjectCaptionBarWhenReadyAsync(
-                _app.WindowAccessor, CaptionBar.Build(_captionBar.HeightPx, _uiLocale), ct)));
+                _app.WindowAccessor, CaptionBar.Build(_captionBar.HeightPx, _uiLocale, macChrome), ct)));
         _ = Task.Run(() =>
             PagePump.InjectCaptionBarWhenReadyAsync(
-                _app.WindowAccessor, CaptionBar.Build(_captionBar.HeightPx, _uiLocale), ct));
+                _app.WindowAccessor, CaptionBar.Build(_captionBar.HeightPx, _uiLocale, macChrome), ct));
     }
 
     /// <summary>启动期告知任务接线（ADR shared-home-desktop-profile）：版本底线 + 旧 home 提示 +

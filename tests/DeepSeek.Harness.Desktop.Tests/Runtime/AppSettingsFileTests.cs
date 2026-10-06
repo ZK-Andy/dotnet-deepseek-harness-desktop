@@ -1,5 +1,4 @@
 using System.Text.Json;
-using DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 namespace DeepSeek.Harness.Desktop.Tests.Runtime;
 
@@ -32,7 +31,8 @@ public class AppSettingsFileTests
         Assert.True(
             doc.RootElement.GetProperty("RuntimeTimeouts").GetProperty("SpawnTimeoutSeconds").GetInt32() > 0,
             "RuntimeTimeouts 节被掏空");
-        // 节名与解析器一致（CaptionBarOptions 的节名是 CaptionBar，非类型名）；高度 52 在本测试中只作解析通路凭证
-        Assert.Equal(52, CaptionBarOptions.Parse(text).HeightPx);
+        // CaptionBar 节在文件里显式在位：读原始 JSON 取值，不走 fail-safe 解析——后者缺节/坏值回退的
+        // 默认恰是 52，拿它断言是循环证明（评审 S1），删掉整个节仍会绿。
+        Assert.Equal(52, doc.RootElement.GetProperty("CaptionBar").GetProperty("HeightPx").GetInt32());
     }
 }

@@ -41,7 +41,7 @@ internal static class PagePump
             }
             catch (InvalidOperationException)
             {
-                // 窗口尚未创建/已销毁：稍后重试。一次性提示必须送达。
+                // 窗口尚未创建/已销毁：稍后重试（banner 与 caption-bar 两场景共用本助手，预算见调用点）。
             }
             catch (Exception ex)
             {

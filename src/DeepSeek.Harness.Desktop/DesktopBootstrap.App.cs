@@ -92,6 +92,7 @@ public sealed partial class DesktopBootstrap
                 // 宿主冒充（data-platform 会令 dsh 客户端插件加载失败）。
                 opts.TitleBarStyle = TitleBarStyle.Frameless;
                 opts.TitleBarAutoDragHeight = _captionBar.HeightPx;
+                opts.Backdrop = OperatingSystem.IsMacOS() ? BackdropMaterial.Blur : BackdropMaterial.None; // macOS 毛玻璃（官方 vibrancy）；其余平台无 backdrop 后端，置 Blur 只会剩透明窗露底
                 opts.PersistWindowState = true; // 几何持久化：rationale 见 ADR window-geometry-ryn-native-persist
                 // A 类启动配置经类型化值消费（批次 3）：dev 后缀规则封装进 LaunchOptions。
                 opts.ApplicationId = preflight.Launch.ApplicationIdFor("io.github.ZK-Andy.dotnet-deepseek-harness-desktop");

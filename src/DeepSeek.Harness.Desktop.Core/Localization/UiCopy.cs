@@ -253,6 +253,13 @@ public static class UiCopy
         ? (CaptionMinimizeEn, CaptionMaximizeEn, CaptionCloseEn)
         : (CaptionMinimize, CaptionMaximize, CaptionClose);
 
+    /// <summary>标题栏：绿灯按钮在 macOS 的可达名——macOS 绿灯是<i>原生全屏</i>语义（官方行为），
+    /// 非 macOS 仍走 <see cref="CaptionButtonNames"/> 的最大化/还原。不成对常量：index.html 的静态条
+    /// 三端统一为最大化语义（代理未起时的引导页），无 EN 字典对账对象。</summary>
+    /// <param name="english">是否取英文分支。</param>
+    /// <returns>绿灯按钮的可达名。</returns>
+    public static string CaptionFullscreenName(bool english) => english ? "Full Screen" : "全屏";
+
     // ======== 静态引导页登记（wwwroot/index.html；zh 常量 + EN 字典，被 verify-ui-copy 双向核对） ========
     // index.html 是静态文档，文案改动必须同步此登记（zh 字面量留在 HTML、英文收在 EN 字典），否则 verify-ui-copy 拦截。
 
