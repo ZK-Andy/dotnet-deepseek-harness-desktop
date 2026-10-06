@@ -6,6 +6,10 @@ Review: FULL/2026-10-07#5/R1=ok R2=ok R3=ok
 
 三审结论：R1 注入脚本四件拆分与 `macChrome` 单布尔承载为最小形态、`greenAttr` 单源；R2 能力面「恰好集」七项同源、注入仍全走 `JsString`、直绑 `bar.children[2]` 与 Ryn capture 委托无冲突、几何判据失败默认方向安全、平台闸两处同谓词；R3 ADR 骨架/Related/上游参照路径经核实（`--dsw-specific-sidebar-fill`、上游 note 在 `implemented/`）、Deferred 只留未做项。三轮评审：首轮 0 Blocker（4+5+3 条建议）、验轮 2 与验轮 3 各收敛至「改名残留 + 措辞失实」类，末轮 2 条 Blocker（悬空 cref、ADR 测试段仍写已删的一次性标志）当场修复并 grep 自证（旧符号全仓零命中），未再开第 4 轮（轮次到顶）。macOS 观感与「不崩」仍需真机/发版冒烟腿验收。
 
+Review: FULL/2026-10-07#6/R1=ok R2=ok R3=ok
+
+Rosetta 闸批（原生 chrome 的平台闸）：首轮三路各 1 Blocker——同一处，类注/ADR 的「代价」称真实 Intel Mac 也走降级面，与该批谓词（只排除 `X64/Arm64`）相悖；处置取「改文案坐实代码」（仅排除 Rosetta-x64，真实 Intel Mac 留在闸内、其原生路径既无 CI 腿也无真机 → 已补入实机验收项），机理段降为【推断 · 未证】并分离现象面，判据改纯函数 `ShouldEnable` + 真值表回归钉。验轮：R1/R2 0 Blocker，R3 1 Blocker（「该面已入真机验收项」当时并未真落）已补，其余 7 条建议全处置（指针纠位、口径统一为闸内/闸外、参数注事实订正）。
+
 ## Problem
 
 壳窗口默认是平台原生标题栏，与官方 DeepSeek 桌面端的无边框观感割裂：标题条占纵向空间、观感随平台各自为政。需求方要求三端统一官方 **macOS** 截图呈现的形态：内容满幅到顶、无独立标题带、红绿灯悬浮在侧栏顶区（且折叠按钮与红绿灯同行）。Ryn 0.38.0 内建 chrome 控制面（`TitleBarStyle`、自动拖拽条、`data-webview-*` 声明式窗口控制），具备零自研底座的条件。
@@ -19,10 +23,11 @@ Review: FULL/2026-10-07#5/R1=ok R2=ok R3=ok
   1. 把宿主 chrome 高度登进 dsh 的公开变量 `--dsh-frame-top-clearance` / `--dsh-frame-chrome-top`（前者由客户端 JS 无条件读取以让浮层避开宿主 chrome、后者供浮层遮罩消费）——这是宿主本职，不是冒充。
   2. **侧栏列顶部让位** `padding-top`：padding 属元素自身背景盒，让位带被侧栏自身填充色无缝覆盖 → 无色带、无色差（`[class*="sidebarCol"]` 后缀选择器 + `:where(:has(> [data-shell-bottom]):has(> :nth-child(2)) > :first-child)` 结构式双兜底；侧栏列无稳定 data-* 钩子，真实 DOM 实测 frame > `.<hash>_sidebarCol`。兜底式以 `:where()` 归零权重并要求父级另有第二子——侧栏列挪位时最坏只是不再命中，不会把让位间距误打到内容列首元素上）。
   3. **折叠按钮回到让位带右端**（官方 darwin 布局把它放顶条里、与红绿灯同行）：`transform` 上移（不改布局盒，x 与侧栏宽度无关）+ 同批放开品牌行 `overflow` 裁剪（不放开则几何到位却画不出来）、不新增自绘按钮（会与原生重复）；折叠态把裁剪与位移一并还原，按钮留在轨内可点。
-  4. **红绿灯三点**：12px 系统色圆点（`#ff5f57/#febc2e/#28c840`），位置对齐官方 `trafficLightPosition(16,18)`，悬停出深色符号；点击走 Ryn 对 `data-webview-close/minimize/maximize` 的委托监听（`window.*` IPC，能力面 = ryn.json `window` 节细粒度 allow-list，`RynWindowCapabilityTests` 钉集相等）。**绿灯在 macOS 另走原生全屏**（官方 macOS 绿灯是 Enter Full Screen，窗口缩放另有其键）：属性换成本壳自有 `data-dsh-fullscreen` + 自绑点击调 `window.setFullscreen`，可达名随之改（`UiCopy.CaptionFullscreenName`）；Ryn 0.38 无 fullscreen 查询命令，故不存标志位而用无状态几何判据（`|innerHeight-screen.height|≤2 且 |innerWidth-screen.width|≤2` ⇒ 判为已全屏；全屏铺满整屏且菜单栏自动隐藏，窗口缩放只占工作区、高度差 &gt; 2），每次点击现算，导航与外部退出都不会让状态漂移。
+  4. **红绿灯三点**：12px 系统色圆点（`#ff5f57/#febc2e/#28c840`），位置对齐官方 `trafficLightPosition(16,18)`，悬停出深色符号；点击走 Ryn 对 `data-webview-close/minimize/maximize` 的委托监听（`window.*` IPC，能力面 = ryn.json `window` 节细粒度 allow-list，`RynWindowCapabilityTests` 钉集相等）。**绿灯在闸内另走原生全屏**（官方 macOS 绿灯是 Enter Full Screen，窗口缩放另有其键）：属性换成本壳自有 `data-dsh-fullscreen` + 自绑点击调 `window.setFullscreen`，可达名随之改（`UiCopy.CaptionFullscreenName`）；Ryn 0.38 无 fullscreen 查询命令，故不存标志位而用无状态几何判据（`|innerHeight-screen.height|≤2 且 |innerWidth-screen.width|≤2` ⇒ 判为已全屏；全屏铺满整屏且菜单栏自动隐藏，窗口缩放只占工作区、高度差 &gt; 2），每次点击现算，导航与外部退出都不会让状态漂移。闸外（含非 macOS 与 Rosetta-x64）绿灯仍是窗口缩放。
   5. **注入条保持可命中**（不设 `pointer-events:none`）：Ryn 自动拖拽条按 mousedown 的活体命中元素判定，**盖住条带却向下延伸的元素一律按内容处理、不拖拽**（Ryn `docs/custom-title-bars.md`）；本壳侧栏列的**元素盒**仍覆盖顶带（本壳只给它加 `padding-top`），盒高全窗 ⇒ 按内容处理，故这条自绘条（盒高 52 ≤ 阈值 78）是**侧栏让位区内**唯一可拖拽的命中体，透明化即失去该区拖拽（dsh 中间列头部自身 ≤78px，那一带另有 dsh 自己的可拖面；本壳可拖面 = 条盒 ≈68×52 扣掉三个 12×12 圆点的余量）。它盖住的正是自家 padding 造出的空白侧栏区（区无 dsh 控件），吞事件在此不损失可达性。
-- **macOS 毛玻璃**（官方 vibrancy 观感，`OperatingSystem.IsMacOS()` 分支）：窗口侧 `RynOptions.Backdrop = Blur`（Ryn 会把窗/网页背景清成透明，再由 `NSVisualEffectView` 垫材质；其余平台 backdrop 后端降级 None，故显式择值、不静默降级——非 macOS 恒 `None`，否则只剩透明窗露底）；页面侧由注入脚本补官方那条**透明链**（`html,body` 透明 + 侧栏列改 80% 不透明的 `color-mix` 色调，材质经此透出）。官方侧栏色标取 `--dsw-specific-sidebar-fill` 的渐变叠色，且整链以 `html[data-platform='darwin']` 门控，而该属性正是本壳禁用的宿主冒充开关（见 Alternatives）；故改为注入期按平台取舍、色标改用通用 `--dsw-alias-bg-base` 的 80% 不透明 `color-mix` 近似（**已知偏离**：与 dsh 自带 darwin 规则的取色/减透明回退不同，观感以真机为准）。
-- **能力面**：`window.setFullscreen` 进 ryn.json allow-list，`RynWindowCapabilityTests` 的「恰好集」随之扩到七项（Ryn 注入脚本六命令 + 本壳绿灯命令）。Ryn 的能力面文件无平台条件字段，故该命令在 Windows/Linux 同样被放行（**已知扩大**：那两端无消费点，仅 macOS 分支调用；宁可显式登记也不引入平台分裂的能力文件）。
+- **原生 chrome 的平台闸（判据单点 `PageBridge.MacNativeChrome`，`IsEnabled` = macOS 且非 Rosetta-x64；纯函数 `ShouldEnable(isMacOs, process, os)` 供真值表回归钉）**：窗口侧 `RynOptions.Backdrop` 与注入侧的 `macChrome` 同源此判据。**排除 Rosetta-x64 的根据**：release run `37545883056` 同一份代码 mac arm64 腿绿、mac x64 腿 `Segmentation fault: 11`（该腿上次绿是 v0.6.2，本批唯一的原生层改动就是 backdrop）。【推断 · 未证】机理——Ryn 的原生窗口路径按 `OSArchitecture` 挑结构体返回 ABI（`objc_msgSend_stret` 与 arm64 变体各一支），Rosetta 下该属性报 Arm64（.NET 7+ 语义）→ 取错分支 → ABI 失配；同族前科：`TitleBarStyle.Overlay` 的原生红绿灯在 mac x64 同样 segfault（run `37532237576`，见 Alternatives 的 Overlay 条）。**真实 Intel Mac（X64/X64）不在排除面内、仍走原生路径**——该面本机无真机、也无 CI 腿（x64 腿跑在 arm64 runner 上即 Rosetta），故列入 macOS 真机验收项。降级形态是**整条原生增强一起退出**（绿灯回落窗口缩放、不设 backdrop）：保守取舍——两者共同依赖「本进程能安全用原生窗口 API」这一尚未逐项取证的前提，分裂会留下半开状态。
+- **macOS 毛玻璃**（官方 vibrancy 观感，`MacNativeChrome.IsEnabled` 分支）：窗口侧 `RynOptions.Backdrop = Blur`（Ryn 会把窗/网页背景清成透明，再由 `NSVisualEffectView` 垫材质；闸外恒 None，否则只剩透明窗露底）；页面侧由注入脚本补官方那条**透明链**（`html,body` 透明 + 侧栏列改 80% 不透明的 `color-mix` 色调，材质经此透出）。官方侧栏色标取 `--dsw-specific-sidebar-fill` 的渐变叠色，且整链以 `html[data-platform='darwin']` 门控，而该属性正是本壳禁用的宿主冒充开关（见 Alternatives）；故改为注入期按平台取舍、色标改用通用 `--dsw-alias-bg-base` 的 80% 不透明 `color-mix` 近似（**已知偏离**：与 dsh 自带 darwin 规则的取色/减透明回退不同，观感以真机为准）。
+- **能力面**：`window.setFullscreen` 进 ryn.json allow-list，`RynWindowCapabilityTests` 的「恰好集」随之扩到七项（Ryn 注入脚本六命令 + 本壳绿灯命令）。Ryn 的能力面文件无平台条件字段，故该命令在 Windows/Linux 同样被放行（**已知扩大**：那两端无消费点，仅闸内分支调用；宁可显式登记也不引入平台分裂的能力文件）。
 - **注入时机**：`StartupSequence.SetupCaptionBar` 双路（接线时一轮 + `RynNavigationCallbacks.SetOnNavigatedPersistent` 常驻导航钩子每次导航到达后重挂），脚本按当时 locale 现取，挂监督器取消令牌；失败仅留痕（托盘菜单是窗口控制退路）。
 - **占位页** `wwwroot/index.html` 内置同 id 同规格点簇（壳自有引导页无 dsh 侧栏，自带 52px 让位）。
 
@@ -46,20 +51,22 @@ Review: FULL/2026-10-07#5/R1=ok R2=ok R3=ok
 
 - 买到的：三端一致的官方 macOS 观感（满幅、无缝让位带、红绿灯与折叠按钮同行）；不冒充宿主身份，dsh 客户端插件行为与浏览器渲染一致（全部正常激活，快捷键仍由网页侧派发）。
 - 付出的：让位与折叠按钮定位依赖 dsh 侧栏的类名后缀（`sidebarCol`/`toggle`/`collapsed`）与内部行内边距（上移量的 `+10px` 余量），dsh 大改侧栏结构时需随之校准——失效形态是「按钮/内容位置偏移」而非崩溃；`--dsh-frame-top-clearance`/`--dsh-frame-chrome-top` 是 dsh 客户端**读**的公开量，上游若改名同样只需校准。
-- 与官方 macOS 观感的已知差异：折叠时官方完全隐藏侧栏（把重开控件挂进 frame 的 leading 座位），本壳折叠仍走 dsh 的窄轨布局（轨道内容随让位整体下移到红绿灯之下）；macOS 全屏隐灯（官方 `html[data-fullscreen]` 让位/隐灯）未做——绿灯已切原生全屏，但全屏态下本壳自绘灯仍随注入条留在于顶区。
-- macOS 面（原生全屏切换、毛玻璃）**尚未经过任何实机或 CI 运行验证**：能启动应用的 mac 腿只在 `package.yml` 里跑，而它的触发面是发布（`release.yml` 经 `workflow_call`，即 tag）与手动 `workflow_dispatch`；PR 期的 `ci.yml` mac 腿只跑两个过滤测试类、不启应用——本批只做了本机（Linux）单测与静态门禁，观感与「不崩」都需发版冒烟腿 + macOS 真机验收（见 Testing）。
+- 与官方 macOS 观感的已知差异：折叠时官方完全隐藏侧栏（把重开控件挂进 frame 的 leading 座位），本壳折叠仍走 dsh 的窄轨布局（轨道内容随让位整体下移到红绿灯之下）；macOS 全屏隐灯（官方 `html[data-fullscreen]` 让位/隐灯）未做——闸内绿灯已切原生全屏，但全屏态下本壳自绘灯仍随注入条留在于顶区。
+- macOS 面（原生全屏切换、毛玻璃）的证据状态：**闸内那侧只有 mac arm64 腿验到「不崩」**（run `37545883056` arm64 腿绿），观感需真机；闸外降级那侧（Rosetta-x64）是**同一次 run 的 x64 腿崩溃**给出的落闸依据，其「加闸后不崩」待下一次发版腿复证。真实 Intel Mac 的原生路径既无 CI 腿也无真机 —— 列入 macOS 真机验收项。能启动应用的 mac 腿只在 `package.yml` 里跑，触发面是发布（`release.yml` 经 `workflow_call`，即 tag）与手动 `workflow_dispatch`；PR 期的 `ci.yml` mac 腿只跑两个过滤测试类、不启应用。
 
 ## Testing
 
-- `CaptionBarTests`：禁 `data-platform` / 禁 `data-windows-titlebar` / 禁 `dshDesktop` 三条红线回归钉；chrome 高度变量与侧栏让位同高；结构式兜底收窄（`:where(` + `:nth-child(2)`）；注入条**不得** `pointer-events:none`（拖拽面回归钉，评审 S4/R2，三端与 mac 脚本各钉一次）；折叠按钮归位与折叠态中和；红绿灯系统色与官方位置；幂等与样式查重守卫；innerHTML 经 JsString 转义（评审 B1）；可达名双语；macOS 分支（绿灯换 `data-dsh-fullscreen` + 直绑第三子 `bar.children[2].addEventListener('click'` 调 `window.setFullscreen`、不再出现 `data-webview-maximize`、透明链在）与非 macOS 分支「不越界」的对照。
+- `CaptionBarTests`：禁 `data-platform` / 禁 `data-windows-titlebar` / 禁 `dshDesktop` 三条红线回归钉；chrome 高度变量与侧栏让位同高；结构式兜底收窄（`:where(` + `:nth-child(2)`）；注入条**不得** `pointer-events:none`（拖拽面回归钉，评审 S4/R2，三端与 mac 脚本各钉一次）；折叠按钮归位与折叠态中和；红绿灯系统色与官方位置；幂等与样式查重守卫；innerHTML 经 JsString 转义（评审 B1）；可达名双语；闸内分支（绿灯换 `data-dsh-fullscreen` + 直绑第三子 `bar.children[2].addEventListener('click'` 调 `window.setFullscreen`、不再出现 `data-webview-maximize`、透明链在）与闸外分支「不越界」的对照。
 - `CaptionBarOptionsTests`：默认 52、缺节/非正值/坏 JSON 回退矩阵。
 - `RynWindowCapabilityTests`：ryn.json window allow-list 与「Ryn 注入脚本六命令 + 本壳 `setFullscreen`」集相等。
+- `MacNativeChromeTests`：平台闸真值表（纯函数 `ShouldEnable(isMacOs, process, os)`）——Rosetta（X64/Arm64）闸外、真实 Intel（X64/X64）与 Apple Silicon（Arm64/Arm64）闸内、非 macOS 恒闸外。把判据做成纯函数就是为了让这条断言**不**退化成对 ambient 值的重述。
+- **闸的两端另有端到端回归面 = 发版冒烟的两条 mac 腿**：arm64 腿（闸内，原生化生效）与 x64/Rosetta 腿（闸外降级）都必须绿；run `37545883056` 是 x64 腿在加闸前的红证据（`Segmentation fault: 11`）。`CaptionBarTests` 的 `macChrome:false` 分支用例另盖「闸外不产出」（无 `data-dsh-fullscreen`/`window.setFullscreen`/透明链）。
 - 真实 DOM 实测（浏览器加载 dsh web，注入同一份样式，量几何 + 截图）：展开 红绿灯 (16,18..30)、折叠按钮 (240,12)、侧栏填充无缝；折叠 按钮 (10,70) 不与红绿灯重叠。
-- 实机验收项（发布前）：三端顶区观感对照官方、拖拽/双击缩放、三键点击、折叠/展开、托盘退路、自更新链路；注入条覆盖顶区 0..52 的左上一段且**保持可命中**——它既是三键的落点也是该条带唯一的拖拽面，专核该区拖动/双击缩放正常、且其下（自家 padding 造出的空白侧栏区）无 dsh 控件被挡。**macOS 专项（本机无真机，须真机过）**：绿灯进出原生全屏（含用 ⌃⌘F 或菜单退出后再点绿灯能否正确反向、系统「自动隐藏菜单栏」+ Dock 自动隐藏时判据的盲区）、全屏态下注入条/红绿灯的观感与让位是否需收缩、毛玻璃透明链在当前主题（浅/深）下的侧栏色调与对比度（与 dsh 自带 darwin 取色不同）、窗口拖动/切换主题后材质是否稳定。
+- 实机验收项（发布前）：三端顶区观感对照官方、拖拽/双击缩放、三键点击、折叠/展开、托盘退路、自更新链路；注入条覆盖顶区 0..52 的左上一段且**保持可命中**——它既是三键的落点也是该条带唯一的拖拽面，专核该区拖动/双击缩放正常、且其下（自家 padding 造出的空白侧栏区）无 dsh 控件被挡。**macOS 专项（本机无真机，须真机过）**：真实 Intel Mac（x64 原生，`_macos-x64.dmg`）的原生路径——原生 backdrop 与绿灯原生全屏不崩、毛玻璃观感（该面既无 CI 腿——x64 腿跑在 arm64 runner 上即 Rosetta——也无真机，是闸内的未验面）；绿灯进出原生全屏（含用 ⌃⌘F 或菜单退出后再点绿灯能否正确反向、系统「自动隐藏菜单栏」+ Dock 自动隐藏时判据的盲区）、全屏态下注入条/红绿灯的观感与让位是否需收缩、毛玻璃透明链在当前主题（浅/深）下的侧栏色调与对比度（与 dsh 自带 darwin 取色不同）、窗口拖动/切换主题后材质是否稳定。
 
 ## Deferred
 
-- `html[data-fullscreen]` 全屏态下的让位/红绿灯隐藏（官方全屏隐灯）——绿灯已切原生全屏，本项待 macOS 真机对照后再定形态。
+- `html[data-fullscreen]` 全屏态下的让位/红绿灯隐藏（官方全屏隐灯）——闸内绿灯已切原生全屏，本项待 macOS 真机对照后再定形态。
 - 折叠态与官方「隐藏侧栏 + 顶条重开控件」的对齐。
 
 ## Related

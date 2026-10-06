@@ -138,8 +138,8 @@ internal sealed partial class StartupSequence
     {
         CancellationToken ct = supervisor.Cts.Token;
         RynNavigationCallbacks callbacks = _app.App.Services.GetRequiredService<RynNavigationCallbacks>();
-        // macChrome = 本机是 macOS：绿灯走原生全屏 + 追加毛玻璃透明链（见 CaptionBar.Build）。
-        bool macChrome = OperatingSystem.IsMacOS();
+        // macChrome = 是否启用原生 macOS chrome（判据单点见 MacNativeChrome）。
+        bool macChrome = MacNativeChrome.IsEnabled;
         callbacks.SetOnNavigatedPersistent(() => Task.Run(() =>
             PagePump.InjectCaptionBarWhenReadyAsync(
                 _app.WindowAccessor, CaptionBar.Build(_captionBar.HeightPx, _uiLocale, macChrome), ct)));

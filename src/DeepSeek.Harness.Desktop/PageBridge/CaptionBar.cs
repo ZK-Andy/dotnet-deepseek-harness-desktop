@@ -29,7 +29,7 @@ internal static class CaptionBar
     /// （语义＝窗口缩放），原生全屏必须换名并自绑点击（语义见 <see cref="FullscreenClickBinding"/>）。</summary>
     private const string MacGreenAttr = "data-dsh-fullscreen";
 
-    /// <summary>绿灯按钮属性（非 macOS）：Ryn 注入脚本识别的窗口缩放语义。</summary>
+    /// <summary>绿灯按钮属性（闸外，含非 macOS 与 Rosetta-x64）：Ryn 注入脚本识别的窗口缩放语义。</summary>
     private const string ZoomGreenAttr = "data-webview-maximize";
 
     /// <summary>生成启动注入脚本（除 macOS 两项差异外三端同款，纯函数可单测）：宿主 chrome 高度变量 +
@@ -39,9 +39,8 @@ internal static class CaptionBar
     /// <param name="heightPx">chrome 高度（CSS 像素，<see cref="Infrastructure.Runtime.CaptionBarOptions.HeightPx"/>；
     /// 与 Ryn 自动拖拽条同源，默认 52 = 官方 macOS 侧栏顶条）。</param>
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
-    /// <param name="macChrome">是否 macOS 原生语义（调用点传 <c>OperatingSystem.IsMacOS()</c>）：绿灯走
-    /// <i>原生全屏</i>而非窗口缩放，并追加毛玻璃透明链（官方 vibrancy 观感）。非 macOS 恒 false——
-    /// 其余平台的 backdrop 后端降级为 None，透明窗会直接露底。</param>
+    /// <param name="macChrome">是否启用原生 macOS chrome（调用点传 <see cref="MacNativeChrome.IsEnabled"/>，
+    /// 理由与闸界见其类注）：true 时绿灯走<i>原生全屏</i>而非窗口缩放，并追加毛玻璃透明链。否则恒 false。</param>
     public static string Build(int heightPx, UiLocale? uiLocale = null, bool macChrome = false)
     {
         bool english = uiLocale?.IsEnglish == true;
