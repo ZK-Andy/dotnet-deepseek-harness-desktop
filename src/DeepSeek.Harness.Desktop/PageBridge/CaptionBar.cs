@@ -57,7 +57,7 @@ internal static class CaptionBar
             "[class*=\"collapsed\"] button[class*=\"toggle\"]{transform:none}" +
             "#" + ElementId + "{position:fixed;top:0;left:0;height:" + heightPx + "px;display:flex;" +
             "align-items:flex-start;gap:8px;padding:18px 0 0 16px;z-index:2147483647}" +
-            "#" + ElementId + " button{width:12px;height:12px;border:0;padding:0;border-radius:50%;" +
+            "#" + ElementId + " button{width:12px;height:12px;padding:0;border-radius:50%;" +
             "position:relative;display:flex;align-items:center;justify-content:center;" +
             "border:1px solid rgba(0,0,0,.12);cursor:default}" +
             "#" + ElementId + " button[data-webview-close]{background:#ff5f57}" +
