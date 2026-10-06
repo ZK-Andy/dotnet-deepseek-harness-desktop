@@ -2,13 +2,12 @@ using System.Text.Json;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
-/// <summary>CaptionBarOptions 装载（ADR frameless-uniform-caption-bar）：默认值锁定 = 官方 darwin
-/// 侧栏顶条高度 52（Ryn 自动拖拽条与之对齐）；缺节/坏 JSON/非正值回退与 RuntimeTimeouts 同哲学。</summary>
+/// <summary>CaptionBarOptions 装载（ADR frameless-uniform-caption-bar）：默认值锁定 = 官方 macOS 侧栏顶条 52（Ryn 自动拖拽条与之对齐）；缺节/坏 JSON/非正值回退与 RuntimeTimeouts 同哲学。</summary>
 public class CaptionBarOptionsTests
 {
-    /// <summary>验证默认高度 = 官方 darwin 侧栏顶条 52px。</summary>
+    /// <summary>验证默认高度 = 官方 macOS 侧栏顶条 52px。</summary>
     [Fact]
-    public void Defaults_MatchOfficialDarwinTopStrip()
+    public void Defaults_MatchOfficialCaptionHeight()
     {
         Assert.Equal(52, new CaptionBarOptions().HeightPx);
     }
@@ -24,7 +23,7 @@ public class CaptionBarOptionsTests
         Assert.Equal(52, CaptionBarOptions.Parse(json).HeightPx);
     }
 
-    /// <summary>验证合法节覆盖高度；非正值（无法承载拖拽条）视作缺失回退默认。</summary>
+    /// <summary>验证合法节覆盖高度；非正值（不构成合法顶带）视作缺失回退默认。</summary>
     [Theory]
     [InlineData("""{"CaptionBar":{"HeightPx":48}}""", 48)]
     [InlineData("""{"CaptionBar":{"HeightPx":0}}""", 52)]

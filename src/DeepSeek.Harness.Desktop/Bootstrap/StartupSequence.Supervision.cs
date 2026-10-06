@@ -129,21 +129,21 @@ internal sealed partial class StartupSequence
         _ = _wiring.HealthMonitor.RunAsync(TimeSpan.FromSeconds(_timeouts.HealthInitialDelaySeconds), supervisor.Cts.Token);
     }
 
-    /// <summary>无边框 chrome 注入接线（ADR frameless-uniform-caption-bar）。三端都注 darwin 平台标记
-    /// （激活 dsh web 内建的官方 macOS 呈现：侧栏 52px 顶条、满幅布局、折叠全隐）+ 红绿灯三点（悬浮、
-    /// 无背景面；mac 也用注入点——Overlay 原生红绿灯在 mac x64 Rosetta 上 segfault，见组合根注释）。
-    /// 脚本在常驻导航钩子内按当时 locale 现取（随语言切换）；接线时另起一轮注入尝试，窗口就绪即生效。
-    /// 注入失败仅留痕——窗口控制退路是托盘菜单的唤回/最大化/退出（hide-to-tray 关窗闸门不依赖顶栏）。</summary>
+    /// <summary>无边框窗口 chrome 注入接线（ADR frameless-uniform-caption-bar）：脚本自绘 macOS 观感
+    /// （红绿灯 + 侧栏顶部让位 + 宿主 chrome 高度变量，幂等，三端同款）。常驻导航钩子负责每次页面到达后的
+    /// 重挂（初次加载/自愈重载/引导后接管都会触发导航到达），脚本在钩子内按当时 locale 现取（随语言切换）；
+    /// 接线时另起一轮注入尝试，窗口就绪即生效。注入失败仅留痕——窗口控制退路是托盘菜单的唤回/最大化/退出
+    /// （hide-to-tray 关窗闸门不依赖注入）。</summary>
     private void SetupCaptionBar(SupervisorSetup supervisor)
     {
         CancellationToken ct = supervisor.Cts.Token;
         RynNavigationCallbacks callbacks = _app.App.Services.GetRequiredService<RynNavigationCallbacks>();
         callbacks.SetOnNavigatedPersistent(() => Task.Run(() =>
             PagePump.InjectCaptionBarWhenReadyAsync(
-                _app.WindowAccessor, CaptionBar.Build(_uiLocale), ct)));
+                _app.WindowAccessor, CaptionBar.Build(_captionBar.HeightPx, _uiLocale), ct)));
         _ = Task.Run(() =>
             PagePump.InjectCaptionBarWhenReadyAsync(
-                _app.WindowAccessor, CaptionBar.Build(_uiLocale), ct));
+                _app.WindowAccessor, CaptionBar.Build(_captionBar.HeightPx, _uiLocale), ct));
     }
 
     /// <summary>启动期告知任务接线（ADR shared-home-desktop-profile）：版本底线 + 旧 home 提示 +

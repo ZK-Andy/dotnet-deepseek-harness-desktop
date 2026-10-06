@@ -1,57 +1,63 @@
-# Agent Note: 三端统一官方 macOS 形态的无边框窗口
+# Agent Note: 无边框窗口与壳自绘 macOS 观感
 
 Status: implemented
 
-Review: FULL/2026-10-07#3/R1=ok R2=ok R3=ok
-
 ## Problem
 
-壳窗口默认是平台原生标题栏，与官方 DeepSeek 桌面端的无边框观感割裂：标题条占纵向空间、观感随平台各自为政。需求方要求三端统一官方 macOS 截图呈现的形态：内容满幅到顶、无独立标题带、红绿灯悬浮于侧栏顶区。Ryn 0.38.0 内建完整 chrome 控制面（`TitleBarStyle`、自动拖拽条、`data-webview-*` 声明式窗口控制），具备零自研底座的对齐条件。
+壳窗口默认是平台原生标题栏，与官方 DeepSeek 桌面端的无边框观感割裂：标题条占纵向空间、观感随平台各自为政。需求方要求三端统一官方 **macOS** 截图呈现的形态：内容满幅到顶、无独立标题带、红绿灯悬浮在侧栏顶区（且折叠按钮与红绿灯同行）。Ryn 0.38.0 内建 chrome 控制面（`TitleBarStyle`、自动拖拽条、`data-webview-*` 声明式窗口控制），具备零自研底座的条件。
 
 ## Decision
 
-**关键发现：dsh web 端内建完整的桌面 chrome 感知，全部挂在 `html[data-platform='darwin']` 上**（官方 Electron preload 独家设置；上游 ADR 2026-09-13-macos-hidden-titlebar-vibrancy）——侧栏 52px 红绿灯让位顶条、拖拽区标记、满幅布局、折叠全隐、右栏避让等都是 web 端现成规则。壳侧不需要自绘任何呈现面，把标记喂给页面即可激活官方 macOS 形态：
+**三端统一 `TitleBarStyle.Frameless` + 壳自绘 macOS 观感**：窗口是我们的，量自己的 chrome、画自己的按钮——**不向 dsh 客户端冒充任何宿主身份**。
 
-- **三端统一注入 darwin 标记**（`PageBridge.CaptionBar.Build` 前段）：`document.documentElement.dataset.platform='darwin'`，随同把 `body` 底色压回 `--dsw-alias-bg-base`——dsh 的 darwin 呈现含「html/body 透明 + 侧栏半透 tint」毛玻璃链，无 vibrancy 的普通窗口上会透到 webview 底色，扁平化后与浏览器渲染一致（vibrancy 留作后续）；扁平化 style 带查重守卫（双路注入防重复追加）。
-- **窗口控制三端同为注入红绿灯三点**（`CaptionBar.Build`）：12px 系统色圆点（`#ff5f57/#febc2e/#28c840`）悬浮于侧栏顶条，悬停出深色符号，点击走 Ryn 对 `data-webview-close/minimize/maximize` 的委托监听（`window.*` IPC）。**不用 Ryn `Overlay` + `TrafficLightPosition` 原生红绿灯**：v0.6.1 冒烟实证 mac x64（Rosetta，macOS 26 runner）窗口创建后约 1 秒 segfault（release run 37532237576 两轮同签名，arm64 同批全绿；Frameless 路径由 0.6.0 mac x64 全链冒烟实证安全）——原生灯路径在 Ryn 上游修复前弃用，三端像素级一致反而更贴合「无差别」。
-- **拖拽**：Ryn `TitleBarAutoDragHeight = CaptionBarOptions.HeightPx`（默认 52 = 官方顶条高）——webkit 不认 `-webkit-app-region`（Chromium 专属），Ryn 的 mousedown 裁决拖拽条是等价物：顶条内非交互点拖拽、双击缩放，交互元素自动排除。
-- **注入面**：`StartupSequence.SetupCaptionBar` 双路（接线时一轮 + `RynNavigationCallbacks.SetOnNavigatedPersistent` 常驻导航钩子每次到达后重挂），脚本幂等、按当时 locale 现取，挂监督器取消令牌；失败仅留痕（托盘菜单是窗口控制退路）。能力面：ryn.json `window` 节细粒度 allow-list 恰好覆盖 Ryn titlebar 脚本调用的六命令（`RynWindowCapabilityTests` 钉死集相等）。
-- **可调参数**：拖拽条高 `CaptionBar.HeightPx`（默认 52，非正值回退）。
+- **窗口**：`Frameless`（去原生 chrome，含 macOS 红绿灯）+ `TitleBarAutoDragHeight = CaptionBarOptions.HeightPx`（默认 52 = 官方 macOS 侧栏顶条；webview 不认 `-webkit-app-region`，Ryn 的 mousedown 拖拽条是等价物，双击缩放内建）。
+- **注入脚本**（`PageBridge.CaptionBar.Build`，三端同款，幂等可重挂）：
+  1. 把宿主 chrome 高度登进 dsh 的公开变量 `--dsh-frame-top-clearance` / `--dsh-frame-chrome-top`（前者由客户端 JS 无条件读取以让浮层避开宿主 chrome、后者供浮层遮罩消费）——这是宿主本职，不是冒充。
+  2. **侧栏列顶部让位** `padding-top`：padding 属元素自身背景盒，让位带被侧栏自身填充色无缝覆盖 → 无色带、无色差（`[class*="sidebarCol"]` 后缀选择器 + `:has(> [data-shell-bottom]) > :first-child` 结构式双兜底；侧栏列无稳定 data-* 钩子，真实 DOM 实测 frame > `.<hash>_sidebarCol`）。
+  3. **折叠按钮回到让位带右端**（官方 darwin 布局把它放顶条里、与红绿灯同行）：`transform` 上移（不改布局盒，x 与侧栏宽度无关）+ 同批放开品牌行 `overflow` 裁剪（不放开则几何到位却画不出来）、不新增自绘按钮（会与原生重复）；折叠态把裁剪与位移一并还原，按钮留在轨内可点。
+  4. **红绿灯三点**：12px 系统色圆点（`#ff5f57/#febc2e/#28c840`），位置对齐官方 `trafficLightPosition(16,18)`，悬停出深色符号；点击走 Ryn 对 `data-webview-close/minimize/maximize` 的委托监听（`window.*` IPC，能力面 = ryn.json `window` 节细粒度 allow-list 六命令，`RynWindowCapabilityTests` 钉集相等）。
+- **注入时机**：`StartupSequence.SetupCaptionBar` 双路（接线时一轮 + `RynNavigationCallbacks.SetOnNavigatedPersistent` 常驻导航钩子每次导航到达后重挂），脚本按当时 locale 现取，挂监督器取消令牌；失败仅留痕（托盘菜单是窗口控制退路）。
+- **占位页** `wwwroot/index.html` 内置同 id 同规格点簇（壳自有引导页无 dsh 侧栏，自带 52px 让位）。
 
-FULL 评审三轮：#1（2026-10-07）抓出 innerHTML 裸拼单引号致 JS 解析即炸——innerHTML 全段走 `JsString` 管线 + 解析回归钉（`node` 实证 `new Function` 可解析）；#2（同日，v2 重做批）抓出 Win/Linux 路缺透明链扁平化（暗色主题侧栏洗白）——扁平化并入 `Build()`；横幅堆叠基准点回退窗口顶（顶条属 dsh 自有 UI，横幅为临时覆盖层）；#3（同日，v3 批）随 mac x64 segfault 定案复核实修面（darwin 标记 + 扁平化 + 查重守卫合一、死码 `BuildPlatformMark` 删除）。
+### 官方 macOS 折叠侧栏后红绿灯的行为（源码对照，本节为参照系）
+
+上游 `apps/desktop` 与 `packages/client/ui-layout/src/client/AppFrame.module.css`：折叠时**红绿灯完全不动**（AppKit 原生按钮，恒在 (16,18)、占位到 x=68）；侧栏列**整个隐藏**（darwin 下 `collapsedWidth = 0`，**无窄轨**——56px 窄轨是非 darwin 平台的行为）；折叠期挂载 `shell.leading` 座位（`top: 11px; left: 88px`，两个 28px 控件：展开侧栏 + 新会话，中线 y≈24 与红绿灯齐平），并发布 `--dsh-frame-leading-clearance: 160px`（红绿灯到 68 + 控件 88..152 + 8px 空隙）供顶到左上角的主面板让位；全屏时 macOS 隐灯，座位左移 `left:12px`、让位降到 84px。
+
+本壳的偏离点：我们没认领 darwin（认领即冒充宿主、插件崩），折叠后拿到的是 dsh 的非 darwin 窄轨，三点（16..68）会跨到内容区上——故折叠态把三点收进轨内（内缩 10 + 3×10 + 2×6 = 52 ≤ 轨宽），不做「整列隐藏 + 座位重开控件」的完整复刻（那需要 darwin 布局）。
 
 ## Alternatives considered
 
-- **三端 Frameless + 自绘 40px caption 色带（第一版实现，实机对照推翻）**：官方 Windows 确有 caption 带，但 macOS 官方是无带满幅；自绘带配色无论用 dsh token 还是官方调色板都会在与页面拼接处出现色差线，且 macOS 上与「红绿灯嵌侧栏」的官方观感完全不符。需求方明确三端统一 macOS 形态后此路废弃。
-- **三端统一官方 Windows 形态（带 + overlay 键，落败）**：机制可行（喂 `win32` 标记 + 注入带），但需求方指定 macOS 形态为目标。
+- **注入 `data-platform='darwin'` 借用 dsh 内建 macOS 呈现（v0.6.1/0.6.2 实现，实测崩溃后废弃）**：该属性不是样式开关，而是 dsh 客户端的**桌面运行时开关**——`detectEnvironment` 见之即判 `runtime="desktop"`（官方 Electron 宿主语义），`dsh-client-shortcuts` 随即要求 `window.dshDesktop.keyboard`（官方 preload 桥，非 Electron 宿主不存在）并 `throw`，级联 25 个 UI 插件 pending，启动即显示「插件加载失败」屏。**实证**：v0.6.1 release 与 v0.6.2 首发安装后各一次；代码级根因见 `dsh-client-shortcuts/lib/client.js` 的 `detectEnvironment` 与 `ShortcutsService` 构造。冒充宿主身份的方案从此禁止。
+- **注入 `data-windows-titlebar`（落败）**：纯 CSS 开关、不触发运行时误判，但那是 dsh 的 Windows 呈现（顶带 + 内容圆角卡片），非需求方指定的 macOS 形态。
+- **注入 `window.dshDesktop` 假桥后继续用 `data-platform`（落败）**：桥面实测很小（`keyboard.closeWindow/subscribe` + `shortcuts` + `deviceInfo`），能骗过插件构造；但 `runtime="desktop"` 会把这些插件的**可配置快捷键判给「原生菜单」**（`installKeyboard(..., native=true)` 时 DOM 只喂固定动作），而本壳没有原生菜单——快捷键会静默失效。骗得过去 ≠ 不付代价。
+- **`TitleBarStyle.Overlay` + `TrafficLightPosition` 原生红绿灯（v0.6.1 实现，实测崩溃后废弃）**：mac x64（Rosetta，macOS 26 runner）窗口创建后约 1 秒 `Segmentation fault: 11`（同批 arm64 全绿）；Ryn 0.38.0 该路径在 Rosetta 下不可用。上游修复后如需原生灯（悬停符号、全屏联动）可按平台回归，须先过 mac x64 冒烟腿。
 - **`TitleBarStyle.Hidden`（落败）**：留空原生条，与满幅目标相反。
-- **macOS 用 Overlay 原生红绿灯 + `TrafficLightPosition`（v2 采用后实证落败）**：官方同款机制，arm64 冒烟全绿，但 mac x64（Rosetta，macOS 26 runner）窗口创建后约 1 秒 segfault（两轮同签名，`Segmentation fault: 11`），0.6.1 tag 因此未发布。Ryn 0.38.0 上游的原生灯路径在 Rosetta 下不可用；上游修复后如需原生灯（悬停符号、全屏联动）可按平台重新启用，需先过 mac x64 冒烟。
-- **`window: true` 整前缀放行（落败）**：dsh 页面是上游不可控内容，`setSize/setPosition/setFullscreen` 等命令面无必要暴露。
+- **整条自绘 caption 色带（v0.6.0 实现，实机对照后废弃）**：自绘带用独立底色，与 dsh 页面拼接处必然出现色差线（需求方实机否决），且 macOS 上形态不符——正解是让让位带由侧栏自身填充覆盖（本轮）。
+- **`window: true` 整前缀放行能力（落败）**：dsh 页面是上游不可控内容，`setSize/setPosition/setFullscreen` 等命令面无必要暴露。
 
 ## Consequences
 
-- 买到的：三端一致的官方 macOS 观感（满幅、红绿灯嵌侧栏顶条、无色带无色差线）；呈现规则全部来自 dsh web 内建（壳侧零样式维护，上游对 darwin 呈现的后续改进随页面升级自动获益）。
-- 付出的：`data-platform='darwin'` 是「对页面说谎」——页面上一切依赖真实平台的分支（目前只有呈现）都按 darwin 走；上游若新增 darwin-only 行为（如 macOS 更新通道提示）会在三端同时生效。毛玻璃（vibrancy）以扁平底色近似，透明窗口 + BackdropMaterial 留作后续。红绿灯 maximize 是窗口缩放（toggleMaximize）而非 macOS 全屏。
-- Ryn 自动拖拽条是「顶 52px 内非交互即拖拽」的近似，与官方逐 chrome 行声明的拖拽面不逐像素等价；dsh 顶区内交互元素（按钮/链接/输入）自动排除。
-- wwwroot 占位页与注入脚本共享同一 id 与点簇规格（`CaptionBarTests` 与 `PageHealthMonitorTests.ShellDocuments_HaveVisibleText_StayAlive` 各钉一面）；占位页非 dsh web，无 darwin 呈现规则，保持自有居中布局。
+- 买到的：三端一致的官方 macOS 观感（满幅、无缝让位带、红绿灯与折叠按钮同行）；不冒充宿主身份，dsh 客户端插件行为与浏览器渲染一致（全部正常激活，快捷键仍由网页侧派发）。
+- 付出的：让位与折叠按钮定位依赖 dsh 侧栏的类名后缀（`sidebarCol`/`toggle`/`collapsed`）与内部行内边距（上移量的 `+10px` 余量），dsh 大改侧栏结构时需随之校准——失效形态是「按钮/内容位置偏移」而非崩溃；`--dsh-frame-top-clearance`/`--dsh-frame-chrome-top` 是 dsh 客户端**读**的公开量，上游若改名同样只需校准。
+- 与官方 macOS 观感的已知差异：折叠时官方完全隐藏侧栏（把重开控件挂进 frame 的 leading 座位），本壳折叠仍走 dsh 的窄轨布局（轨道内容随让位整体下移到红绿灯之下）；红绿灯绿色键是窗口缩放（`toggleMaximize`）而非 macOS 原生全屏；毛玻璃（vibrancy）未做，侧栏为纯色填充。
 
 ## Testing
 
-- `CaptionBarTests`：darwin 标记（先于幂等守卫）、红绿灯序与系统色、无色带（无 padding-top/无全宽背景）、innerHTML 转义回归、可达名双语。
+- `CaptionBarTests`：禁 `data-platform` / 禁 `data-windows-titlebar` / 禁 `dshDesktop` 三条红线回归钉；chrome 高度变量与侧栏让位同高；折叠按钮归位与折叠态中和；红绿灯系统色与官方位置；幂等与样式查重守卫；innerHTML 经 JsString 转义（评审 B1）；可达名双语。
 - `CaptionBarOptionsTests`：默认 52、缺节/非正值/坏 JSON 回退矩阵。
 - `RynWindowCapabilityTests`：ryn.json window allow-list 与 Ryn 注入脚本六命令集相等。
-- `node` 实证：mark/build 脚本 `new Function` 解析通过 + DOM stub 下 `data-platform=darwin` 写入。
-- 实机验收项（发布前）：三端顶区观感对照官方、红绿灯悬停符号、拖拽/双击缩放、最大化后行为、托盘退路。
+- 真实 DOM 实测（浏览器加载 dsh web，注入同一份样式，量几何 + 截图）：展开 红绿灯 (16,18..30)、折叠按钮 (240,12)、侧栏填充无缝；折叠 按钮 (10,70) 不与红绿灯重叠。
+- 实机验收项（发布前）：三端顶区观感对照官方、拖拽/双击缩放、三键点击、折叠/展开、托盘退路、自更新链路。
 
 ## Deferred
 
-- macOS vibrancy（透明窗口 + Ryn BackdropMaterial）——当前以 bg-base 扁平化近似。
-- `html[data-fullscreen]` 全屏标记回流（官方 darwin 全屏红绿灯消失后的布局放松）。
-- 红绿灯 maximize 的全屏语义对齐（当前为缩放）。
+- macOS vibrancy（透明窗口 + Ryn BackdropMaterial）。
+- `html[data-fullscreen]` 全屏态下的让位/红绿灯隐藏（官方全屏隐灯）。
+- 折叠态与官方「隐藏侧栏 + 顶条重开控件」的对齐。
 
 ## Related
 
-- [window-geometry-ryn-native-persist](2026-10-04-window-geometry-ryn-native-persist.md)——窗口几何持久化同为 Ryn 内建能力单点接线；无边框不触碰几何事件。
+- [window-geometry-ryn-native-persist](2026-10-04-window-geometry-ryn-native-persist.md)——窗口几何持久化同为 Ryn 内建能力单点接线。
 - [shell-tray-hide-to-tray](../architecture/2026-08-24-shell-tray-hide-to-tray.md)——关窗闸门挂窗口 `Closing`，是注入失败的窗口控制退路。
 - [host-ui-locale](2026-08-28-host-ui-locale.md)——红绿灯可达名与横幅同走 UiCopy 双语单点。
-- 上游参照：deepseek-harness `.agents/notes/archived/feature/2026-09-13-macos-hidden-titlebar-vibrancy.md`（darwin 呈现规则的家）。
+- 上游参照：deepseek-harness `.agents/notes/archived/feature/2026-09-13-macos-hidden-titlebar-vibrancy.md`（darwin 呈现的实现细节；其 `data-platform` 前提是本篇第一号备选被否的原因）。

@@ -4,13 +4,13 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 /// <summary>
 /// 无边框窗口 chrome 的可调参数（appsettings.json 的 <c>CaptionBar</c> 节，禁止硬编码进逻辑）。
-/// 默认 52 = 官方桌面端 macOS 呈现的侧栏顶条高度（dsh web darwin 规则的红绿灯让位带）——
-/// Ryn 自动拖拽条与之对齐后，顶条空域即拖拽区、双击缩放生效。配色不在此列：呈现由 dsh web
-/// darwin 规则承担（配色天然一致）；红绿灯点色是 macOS 系统色（设计常量）。
+/// 默认 52 = 官方 macOS 侧栏顶条高度（红绿灯让位带；上游 darwin 呈现同值）——该值同时驱动
+/// 侧栏顶部让位、宿主 chrome 高度变量与 Ryn 自动拖拽条。配色不在此列：让位带由侧栏自身填充色
+/// 覆盖（无缝），红绿灯点色是 macOS 系统色（设计常量）。
 /// </summary>
 public sealed record CaptionBarOptions
 {
-    /// <summary>顶部拖拽条高度（CSS 像素）。默认 52 = 官方 darwin 侧栏顶条（traffic-light 让位带）。</summary>
+    /// <summary>顶部 chrome（红绿灯让位带）高度（CSS 像素）。默认 52 = 官方 macOS 侧栏顶条。</summary>
     public int HeightPx { get; init; } = 52;
 
     /// <summary>全默认实例：组合根字段初始化的引用目标（目标类型 <c>new()</c> 会被组合根配额计数，

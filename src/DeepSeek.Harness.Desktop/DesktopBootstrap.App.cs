@@ -86,11 +86,10 @@ public sealed partial class DesktopBootstrap
                 opts.Title = "DeepSeek Harness Desktop";
                 opts.Width = 1200;
                 opts.Height = 800;
-                // 无边框对齐官方 macOS 形态，三端统一（ADR frameless-uniform-caption-bar）：dsh web 桌面
-                // 呈现（侧栏 52px 顶条、满幅）靠注入 data-platform='darwin' 激活；窗口控制三端同为注入
-                // 红绿灯三点。不用 Overlay/TrafficLightPosition（原生红绿灯）：mac x64（Rosetta）在
-                // macOS 26 上窗口创建后即 segfault（run 37532237576 两轮同签名）；Frameless 路径由
-                // 0.6.0 mac x64 全链冒烟实证安全。
+                // 无边框窗口（ADR frameless-uniform-caption-bar）：Frameless 三端去原生 chrome；macOS 观感
+                // 由壳自绘（注入脚本画红绿灯 + 侧栏顶部让位，见 PageBridge.CaptionBar），拖拽条与 chrome
+                // 同高。禁用 Overlay/TrafficLightPosition（原生红绿灯，mac x64 Rosetta segfault）与任何
+                // 宿主冒充（data-platform 会令 dsh 客户端插件加载失败）。
                 opts.TitleBarStyle = TitleBarStyle.Frameless;
                 opts.TitleBarAutoDragHeight = _captionBar.HeightPx;
                 opts.PersistWindowState = true; // 几何持久化：rationale 见 ADR window-geometry-ryn-native-persist

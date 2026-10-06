@@ -36,28 +36,24 @@
             }
         }
         /* —— 无边框窗口 chrome（ADR frameless-uniform-caption-bar）——
-           与 PageBridge.CaptionBar 注入同 id 同规格：官方 macOS 红绿灯三点（无背景面，悬浮），
-           仅非 mac 显示（真 mac 由 Overlay 原生红绿灯接管，下方脚本隐藏本簇）。
-           本页非 dsh web（无 darwin 呈现规则可用），布局保持居中满幅，无需让位。 */
+           与 PageBridge.CaptionBar 注入同 id 同规格：macOS 红绿灯三点（1 6px 起、18px 下、12px 圆点），
+           本页是壳自有引导页（无 dsh 侧栏可让位），自带 52px 顶部让位。 */
+        body { padding-top: 52px; }
         #dsh-desktop-caption-bar {
-            position: fixed; top: 0; left: 0; z-index: 2147483647;
-            display: none; padding: 14px 0 0 12px; pointer-events: none;
+            position: fixed; top: 0; left: 0; height: 52px;
+            display: flex; align-items: flex-start; gap: 8px; padding: 18px 0 0 16px;
+            z-index: 2147483647;
         }
-        #dsh-desktop-caption-bar.on { display: flex; }
         #dsh-desktop-caption-bar button {
-            width: 20px; height: 20px; border: 0; background: transparent; padding: 0;
-            display: flex; align-items: center; justify-content: center;
-            position: relative; pointer-events: auto;
-        }
-        #dsh-desktop-caption-bar button span {
-            width: 12px; height: 12px; border-radius: 50%; display: block;
+            width: 12px; height: 12px; border: 0; padding: 0; border-radius: 50%;
+            position: relative; display: flex; align-items: center; justify-content: center;
             border: 1px solid rgb(0 0 0 / 12%);
         }
-        #dsh-desktop-caption-bar button[data-webview-close] span { background: #ff5f57; }
-        #dsh-desktop-caption-bar button[data-webview-minimize] span { background: #febc2e; }
-        #dsh-desktop-caption-bar button[data-webview-maximize] span { background: #28c840; }
+        #dsh-desktop-caption-bar button[data-webview-close] { background: #ff5f57; }
+        #dsh-desktop-caption-bar button[data-webview-minimize] { background: #febc2e; }
+        #dsh-desktop-caption-bar button[data-webview-maximize] { background: #28c840; }
         #dsh-desktop-caption-bar button svg {
-            display: none; position: absolute; width: 8px; height: 8px; color: rgb(0 0 0 / 55%);
+            display: none; width: 6px; height: 6px; color: rgb(0 0 0 / 55%);
         }
         #dsh-desktop-caption-bar button:hover svg { display: block; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -150,10 +146,10 @@
     </style>
 </head>
 <body>
-    <div id="dsh-desktop-caption-bar" class="on">
-        <button data-webview-close aria-label="关闭" data-i18n-aria="capClose"><svg viewBox="0 0 8 8"><path d="M0.5 0.5l7 7M7.5 0.5l-7 7" stroke="currentColor" stroke-width="1.2" fill="none"/></svg><span></span></button>
-        <button data-webview-minimize aria-label="最小化" data-i18n-aria="capMinimize"><svg viewBox="0 0 8 8"><path d="M0.5 4h7" stroke="currentColor" stroke-width="1.2" fill="none"/></svg><span></span></button>
-        <button data-webview-maximize aria-label="最大化" data-i18n-aria="capMaximize"><svg viewBox="0 0 8 8"><path d="M5.5 0.5h2v2M2.5 7.5h-2v-2M7.5 0.5L4.5 3.5M0.5 7.5l3-3" stroke="currentColor" stroke-width="1.2" fill="none"/></svg><span></span></button>
+    <div id="dsh-desktop-caption-bar">
+        <button data-webview-close aria-label="关闭" data-i18n-aria="capClose"><svg viewBox="0 0 6 6"><path d="M0.5 0.5l5 5M5.5 0.5l-5 5" stroke="currentColor" stroke-width="1" fill="none"/></svg></button>
+        <button data-webview-minimize aria-label="最小化" data-i18n-aria="capMinimize"><svg viewBox="0 0 6 6"><path d="M0.5 3h5" stroke="currentColor" stroke-width="1" fill="none"/></svg></button>
+        <button data-webview-maximize aria-label="最大化" data-i18n-aria="capMaximize"><svg viewBox="0 0 6 6"><path d="M3.8 0.5h1.7v1.7M2.2 5.5H0.5V3.8M5.5 0.5L3.5 2.5M0.5 5.5l2-2" stroke="currentColor" stroke-width="1" fill="none"/></svg></button>
     </div>
     <h1>DeepSeek Harness Desktop</h1>
     <div id="bootstrap">
