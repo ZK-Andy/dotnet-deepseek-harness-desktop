@@ -32,7 +32,7 @@ public sealed partial class HarnessRuntimeHost
 
     /// <summary>运行时超时家（单例装载，见 <see cref="RuntimeTimeouts"/>）：relay 节拍/宽限/稳定窗与收养轮询
     /// 皆出此源；测试经内部注入口覆写延迟以压缩时长（<see cref="RelayDelayOverride"/>）。</summary>
-    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
+    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
 
     /// <summary>relay 等待的探测节拍。</summary>
     private static TimeSpan s_relayWaitInterval => TimeSpan.FromSeconds(s_timeouts.RelayWaitIntervalSeconds);

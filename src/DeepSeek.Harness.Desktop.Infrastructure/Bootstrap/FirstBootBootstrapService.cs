@@ -49,7 +49,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
         // 全局 dsh（都在 PATH 上），桌面与终端共用同一套；没有系统 node 时由桌面装 node 到系统全局前缀
         //（需 sudo 则提示手动命令），而非桌面包私有运行时/私有 PATH。
         _options = RuntimeBootstrapOptions.Load(AppContext.BaseDirectory);
-        _timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
+        _timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
         // 若系统全局 node 已由桌面装好（此前安装/用户手动），把它暴露到进程 PATH，让宿主 spawn 与探测能解析。
         EnsureRuntimeNodeOnPath();
 

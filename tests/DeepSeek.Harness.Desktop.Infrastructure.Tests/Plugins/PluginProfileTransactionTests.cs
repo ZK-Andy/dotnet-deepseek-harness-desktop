@@ -470,6 +470,142 @@ public class PluginProfileTransactionTests
         return dir;
     }
 
+    /// <summary>验证目录链接建链无权限的降级语义：穿链递归复制整棵内容、本条计 1 降级
+    /// （直测 internal 缝——真实触发面 Windows 缺 SeCreateSymbolicLinkPrivilege 无法在 POSIX CI 注入，
+    /// ADR config-load-fail-safe-and-symlink-privilege-fallback）。</summary>
+    [Fact]
+    public void DegradeDirLink_CopiesTreeThroughLink()
+    {
+        string dir = OutsideDir("degrade-dir");
+        string target = Path.Combine(dir, "staged-link");
+        try
+        {
+            string source = Path.Combine(dir, "real-pkg");
+            Directory.CreateDirectory(Path.Combine(source, "sub"));
+            File.WriteAllText(Path.Combine(source, "index.js"), "x");
+            File.WriteAllText(Path.Combine(source, "sub", "deep.txt"), "y");
+            string link = Path.Combine(dir, "linked-pkg");
+            Directory.CreateSymbolicLink(link, Path.Combine("real-pkg"));
+
+            var logs = new List<string>();
+            int degraded = PluginStagingCopier.DegradeDirLink(link, target, logs.Add);
+
+            Assert.Equal(1, degraded);
+            Assert.Equal("x", File.ReadAllText(Path.Combine(target, "index.js")));
+            Assert.Equal("y", File.ReadAllText(Path.Combine(target, "sub", "deep.txt")));
+            Assert.Contains(logs, l => l.Contains("目录链接建链无权限"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证文件链接建链无权限的降级语义：有效目标穿链复制内容（File.Copy 跟随源链接）。</summary>
+    [Fact]
+    public void DegradeFileLink_ValidTarget_CopiesThroughLink()
+    {
+        string dir = OutsideDir("degrade-file");
+        try
+        {
+            string realFile = Path.Combine(dir, "index.js");
+            File.WriteAllText(realFile, "x");
+            string link = Path.Combine(dir, "shim");
+            File.CreateSymbolicLink(link, Path.Combine("index.js"));
+            string target = Path.Combine(dir, "staged-shim");
+
+            var logs = new List<string>();
+            int degraded = PluginStagingCopier.DegradeFileLink(link, target, Path.Combine("index.js"), logs.Add);
+
+            Assert.Equal(1, degraded);
+            Assert.Equal("x", File.ReadAllText(target));
+            Assert.Contains(logs, l => l.Contains("文件链接建链无权限"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证悬空文件链建链无权限时跳过并留痕：File.Copy 的 ENOENT 吞为跳过（含目标本身是
+    /// 悬空链、File.Exists lstat 语义探不出的形态），绝不拖垮整个拷贝、不留半拷贝。</summary>
+    [Fact]
+    public void DegradeFileLink_DanglingTarget_SkipsAndLogs()
+    {
+        string dir = OutsideDir("degrade-dangling");
+        try
+        {
+            string link = Path.Combine(dir, "node-which");
+            File.CreateSymbolicLink(link, Path.Combine("which", "bin", "node-which"));
+            string target = Path.Combine(dir, "staged-node-which");
+
+            var logs = new List<string>();
+            int degraded = PluginStagingCopier.DegradeFileLink(
+                link, target, Path.Combine("which", "bin", "node-which"), logs.Add);
+
+            Assert.Equal(1, degraded);
+            Assert.False(File.Exists(target));
+            Assert.Contains(logs, l => l.Contains("悬空链接建链无权限"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证降级路径的环守卫：已解析目标目录已在 visited 集合即跳过并留痕（pnpm 依赖互指的
+    /// 目录链接图在无权限环境会无界递归栈溢出——2026-10-07 R2 评审，ADR config-load-fail-safe-and-symlink-privilege-fallback）。</summary>
+    [Fact]
+    public void DegradeDirLink_CycleVisited_SkipsAndLogs()
+    {
+        string dir = OutsideDir("degrade-cycle");
+        string target = Path.Combine(dir, "staged-link");
+        try
+        {
+            string real = Path.Combine(dir, "real-pkg");
+            Directory.CreateDirectory(real);
+            File.WriteAllText(Path.Combine(real, "index.js"), "x");
+            string link = Path.Combine(dir, "linked-pkg");
+            Directory.CreateSymbolicLink(link, Path.Combine("real-pkg"));
+
+            var logs = new List<string>();
+            var visited = new HashSet<string>(StringComparer.Ordinal) { Path.GetFullPath(real) };
+            int degraded = PluginStagingCopier.DegradeDirLink(link, target, logs.Add, visited);
+
+            Assert.Equal(1, degraded);
+            Assert.False(Directory.Exists(target));
+            Assert.Contains(logs, l => l.Contains("遇环"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>验证「非权限异常仍 loud」不变量：建链目标已存在（IOException 形态）不得被降级路径吞掉
+    /// 而须上抛（降级只捕 UnauthorizedAccessException；直测 internal 缝，同上 ADR）。</summary>
+    [Fact]
+    public void RecreateLink_NonPrivilegeFailure_ThrowsLoud()
+    {
+        string dir = OutsideDir("recreate-loud");
+        try
+        {
+            string real = Path.Combine(dir, "real-pkg");
+            Directory.CreateDirectory(real);
+            string link = Path.Combine(dir, "linked-pkg");
+            Directory.CreateSymbolicLink(link, Path.Combine("real-pkg"));
+            string occupiedTarget = Path.Combine(dir, "occupied");
+            Directory.CreateDirectory(occupiedTarget);
+
+            Assert.ThrowsAny<System.IO.IOException>(() =>
+                PluginStagingCopier.RecreateLink(link, occupiedTarget, _ => { }));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     /// <summary>先摘链（不递归，避免递归删除与链接目标纠缠）再递归删 home。</summary>
     private static void UnlinkThenDeleteHome(string home, string link)
     {

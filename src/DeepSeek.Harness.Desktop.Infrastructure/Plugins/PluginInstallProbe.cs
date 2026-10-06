@@ -16,7 +16,7 @@ public static class PluginInstallProbe
     /// 消费方为 <see cref="PluginProcessRunner.RunProbeAsync"/>。</summary>
     internal static TimeSpan ProbeTimeout => TimeSpan.FromSeconds(s_timeouts.SpawnTimeoutSeconds);
 
-    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
+    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
 
     /// <summary>构造探针 spawn 的启动信息：复用 <see cref="HarnessRuntimeHost.BuildStartPsi"/> 单一事实源
     /// （env 净化、PATH 富化、血统 token 同一实现），端口让 OS 分配（<c>--port 0</c>）避开首选端口与

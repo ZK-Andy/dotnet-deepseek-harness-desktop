@@ -101,74 +101,53 @@ public sealed record RuntimeTimeouts
     /// <summary>进度/状态推送重试节拍（毫秒）。</summary>
     public int PushRetryDelayMilliseconds { get; init; } = 400;
 
-    /// <summary>从应用旁的 appsettings.json 读取 <c>RuntimeTimeouts</c> 节；文件缺失或节缺失时全默认。</summary>
-    public static RuntimeTimeouts Load(string baseDirectory)
-    {
-        string path = Path.Combine(baseDirectory, "appsettings.json");
-        if (!File.Exists(path))
-        {
-            return new RuntimeTimeouts();
-        }
-
-        try
-        {
-            return Parse(File.ReadAllText(path));
-        }
-        catch (JsonException)
-        {
-            // 配置损坏不阻塞启动：回退全默认（与 UpdateOptions 同哲学——超时是增强配置）。
-            return new RuntimeTimeouts();
-        }
-    }
+    /// <summary>从应用旁的 appsettings.json 读取 <c>RuntimeTimeouts</c> 节；文件缺失或节缺失时全默认；
+    /// 文件不可读/损坏/取值不可用也回退全默认并留痕，不阻塞启动。</summary>
+    /// <param name="baseDirectory">appsettings.json 所在目录。</param>
+    /// <param name="log">失败留痕出口（可空；启动路径传 <c>HostLog.Write</c>）。</param>
+    public static RuntimeTimeouts Load(string baseDirectory, Action<string>? log = null) =>
+        ConfigSectionFile.LoadFile(baseDirectory, nameof(RuntimeTimeouts), Parse, new RuntimeTimeouts(), log);
 
     /// <summary>把 appsettings.json 全文解析为 <see cref="RuntimeTimeouts"/>（纯函数，可单测）：
-    /// 无 <c>RuntimeTimeouts</c> 节、节非对象或键缺失一律回退默认；损坏 JSON 由调用方转 fail-safe。</summary>
+    /// 根非对象、无 <c>RuntimeTimeouts</c> 节、节非对象、键缺失或取值不可表示（小数/越界）
+    /// 一律回退默认；损坏 JSON 由调用方转 fail-safe（本方法除坏 JSON 外不抛）。</summary>
     /// <param name="json">appsettings.json 全文。</param>
     /// <returns>解析后的选项（缺省字段保持默认值）。</returns>
-    internal static RuntimeTimeouts Parse(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("RuntimeTimeouts", out JsonElement section) ||
-            section.ValueKind != JsonValueKind.Object)
-        {
-            return new RuntimeTimeouts();
-        }
+    internal static RuntimeTimeouts Parse(string json) =>
+        ConfigSectionJson.Parse(json, "RuntimeTimeouts", ParseSection, new RuntimeTimeouts());
 
+    private static RuntimeTimeouts ParseSection(JsonElement section)
+    {
         var options = new RuntimeTimeouts();
-        options = options with { RelayWaitIntervalSeconds = GetInt(section, nameof(RelayWaitIntervalSeconds), options.RelayWaitIntervalSeconds) };
-        options = options with { RelayHelperGraceSeconds = GetInt(section, nameof(RelayHelperGraceSeconds), options.RelayHelperGraceSeconds) };
-        options = options with { RelayReadyStableWindowSeconds = GetInt(section, nameof(RelayReadyStableWindowSeconds), options.RelayReadyStableWindowSeconds) };
-        options = options with { AdoptedExitPollIntervalSeconds = GetInt(section, nameof(AdoptedExitPollIntervalSeconds), options.AdoptedExitPollIntervalSeconds) };
-        options = options with { PortProbeTimeoutMilliseconds = GetInt(section, nameof(PortProbeTimeoutMilliseconds), options.PortProbeTimeoutMilliseconds) };
-        options = options with { WebProbeTimeoutMilliseconds = GetInt(section, nameof(WebProbeTimeoutMilliseconds), options.WebProbeTimeoutMilliseconds) };
-        options = options with { LifecycleGateWaitSeconds = GetInt(section, nameof(LifecycleGateWaitSeconds), options.LifecycleGateWaitSeconds) };
-        options = options with { SpawnTimeoutSeconds = GetInt(section, nameof(SpawnTimeoutSeconds), options.SpawnTimeoutSeconds) };
-        options = options with { NotifyPrimaryTimeoutSeconds = GetInt(section, nameof(NotifyPrimaryTimeoutSeconds), options.NotifyPrimaryTimeoutSeconds) };
-        options = options with { SupervisorJoinTimeoutSeconds = GetInt(section, nameof(SupervisorJoinTimeoutSeconds), options.SupervisorJoinTimeoutSeconds) };
-        options = options with { SupervisorRestartTimeoutSeconds = GetInt(section, nameof(SupervisorRestartTimeoutSeconds), options.SupervisorRestartTimeoutSeconds) };
-        options = options with { SupervisorRecoveredRetryDelaySeconds = GetInt(section, nameof(SupervisorRecoveredRetryDelaySeconds), options.SupervisorRecoveredRetryDelaySeconds) };
-        options = options with { SupervisorFailedRetryDelaySeconds = GetInt(section, nameof(SupervisorFailedRetryDelaySeconds), options.SupervisorFailedRetryDelaySeconds) };
-        options = options with { SupervisorBlockedLogEveryRounds = GetInt(section, nameof(SupervisorBlockedLogEveryRounds), options.SupervisorBlockedLogEveryRounds) };
-        options = options with { HealthInitialDelaySeconds = GetInt(section, nameof(HealthInitialDelaySeconds), options.HealthInitialDelaySeconds) };
-        options = options with { BootstrapSettleTimeoutSeconds = GetInt(section, nameof(BootstrapSettleTimeoutSeconds), options.BootstrapSettleTimeoutSeconds) };
-        options = options with { NavCommitTimeoutSeconds = GetInt(section, nameof(NavCommitTimeoutSeconds), options.NavCommitTimeoutSeconds) };
-        options = options with { NavCallTimeoutSeconds = GetInt(section, nameof(NavCallTimeoutSeconds), options.NavCallTimeoutSeconds) };
-        options = options with { AuthProbeTimeoutSeconds = GetInt(section, nameof(AuthProbeTimeoutSeconds), options.AuthProbeTimeoutSeconds) };
-        options = options with { AuthProbeAttempts = GetInt(section, nameof(AuthProbeAttempts), options.AuthProbeAttempts) };
-        options = options with { WindowReadyTimeoutSeconds = GetInt(section, nameof(WindowReadyTimeoutSeconds), options.WindowReadyTimeoutSeconds) };
-        options = options with { WindowReadyPollIntervalSeconds = GetInt(section, nameof(WindowReadyPollIntervalSeconds), options.WindowReadyPollIntervalSeconds) };
-        options = options with { IpcServeTimeoutSeconds = GetInt(section, nameof(IpcServeTimeoutSeconds), options.IpcServeTimeoutSeconds) };
-        options = options with { IpcAcceptRetryDelaySeconds = GetInt(section, nameof(IpcAcceptRetryDelaySeconds), options.IpcAcceptRetryDelaySeconds) };
-        options = options with { VersionProbeTimeoutSeconds = GetInt(section, nameof(VersionProbeTimeoutSeconds), options.VersionProbeTimeoutSeconds) };
-        options = options with { BannerMaxAttempts = GetInt(section, nameof(BannerMaxAttempts), options.BannerMaxAttempts) };
-        options = options with { BannerRetryDelaySeconds = GetInt(section, nameof(BannerRetryDelaySeconds), options.BannerRetryDelaySeconds) };
-        options = options with { PushMaxAttempts = GetInt(section, nameof(PushMaxAttempts), options.PushMaxAttempts) };
-        options = options with { PushRetryDelayMilliseconds = GetInt(section, nameof(PushRetryDelayMilliseconds), options.PushRetryDelayMilliseconds) };
+        options = options with { RelayWaitIntervalSeconds = ConfigSectionJson.GetInt(section, nameof(RelayWaitIntervalSeconds), options.RelayWaitIntervalSeconds) };
+        options = options with { RelayHelperGraceSeconds = ConfigSectionJson.GetInt(section, nameof(RelayHelperGraceSeconds), options.RelayHelperGraceSeconds) };
+        options = options with { RelayReadyStableWindowSeconds = ConfigSectionJson.GetInt(section, nameof(RelayReadyStableWindowSeconds), options.RelayReadyStableWindowSeconds) };
+        options = options with { AdoptedExitPollIntervalSeconds = ConfigSectionJson.GetInt(section, nameof(AdoptedExitPollIntervalSeconds), options.AdoptedExitPollIntervalSeconds) };
+        options = options with { PortProbeTimeoutMilliseconds = ConfigSectionJson.GetInt(section, nameof(PortProbeTimeoutMilliseconds), options.PortProbeTimeoutMilliseconds) };
+        options = options with { WebProbeTimeoutMilliseconds = ConfigSectionJson.GetInt(section, nameof(WebProbeTimeoutMilliseconds), options.WebProbeTimeoutMilliseconds) };
+        options = options with { LifecycleGateWaitSeconds = ConfigSectionJson.GetInt(section, nameof(LifecycleGateWaitSeconds), options.LifecycleGateWaitSeconds) };
+        options = options with { SpawnTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(SpawnTimeoutSeconds), options.SpawnTimeoutSeconds) };
+        options = options with { NotifyPrimaryTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(NotifyPrimaryTimeoutSeconds), options.NotifyPrimaryTimeoutSeconds) };
+        options = options with { SupervisorJoinTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(SupervisorJoinTimeoutSeconds), options.SupervisorJoinTimeoutSeconds) };
+        options = options with { SupervisorRestartTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(SupervisorRestartTimeoutSeconds), options.SupervisorRestartTimeoutSeconds) };
+        options = options with { SupervisorRecoveredRetryDelaySeconds = ConfigSectionJson.GetInt(section, nameof(SupervisorRecoveredRetryDelaySeconds), options.SupervisorRecoveredRetryDelaySeconds) };
+        options = options with { SupervisorFailedRetryDelaySeconds = ConfigSectionJson.GetInt(section, nameof(SupervisorFailedRetryDelaySeconds), options.SupervisorFailedRetryDelaySeconds) };
+        options = options with { SupervisorBlockedLogEveryRounds = ConfigSectionJson.GetInt(section, nameof(SupervisorBlockedLogEveryRounds), options.SupervisorBlockedLogEveryRounds) };
+        options = options with { HealthInitialDelaySeconds = ConfigSectionJson.GetInt(section, nameof(HealthInitialDelaySeconds), options.HealthInitialDelaySeconds) };
+        options = options with { BootstrapSettleTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(BootstrapSettleTimeoutSeconds), options.BootstrapSettleTimeoutSeconds) };
+        options = options with { NavCommitTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(NavCommitTimeoutSeconds), options.NavCommitTimeoutSeconds) };
+        options = options with { NavCallTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(NavCallTimeoutSeconds), options.NavCallTimeoutSeconds) };
+        options = options with { AuthProbeTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(AuthProbeTimeoutSeconds), options.AuthProbeTimeoutSeconds) };
+        options = options with { AuthProbeAttempts = ConfigSectionJson.GetInt(section, nameof(AuthProbeAttempts), options.AuthProbeAttempts) };
+        options = options with { WindowReadyTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(WindowReadyTimeoutSeconds), options.WindowReadyTimeoutSeconds) };
+        options = options with { WindowReadyPollIntervalSeconds = ConfigSectionJson.GetInt(section, nameof(WindowReadyPollIntervalSeconds), options.WindowReadyPollIntervalSeconds) };
+        options = options with { IpcServeTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(IpcServeTimeoutSeconds), options.IpcServeTimeoutSeconds) };
+        options = options with { IpcAcceptRetryDelaySeconds = ConfigSectionJson.GetInt(section, nameof(IpcAcceptRetryDelaySeconds), options.IpcAcceptRetryDelaySeconds) };
+        options = options with { VersionProbeTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(VersionProbeTimeoutSeconds), options.VersionProbeTimeoutSeconds) };
+        options = options with { BannerMaxAttempts = ConfigSectionJson.GetInt(section, nameof(BannerMaxAttempts), options.BannerMaxAttempts) };
+        options = options with { BannerRetryDelaySeconds = ConfigSectionJson.GetInt(section, nameof(BannerRetryDelaySeconds), options.BannerRetryDelaySeconds) };
+        options = options with { PushMaxAttempts = ConfigSectionJson.GetInt(section, nameof(PushMaxAttempts), options.PushMaxAttempts) };
+        options = options with { PushRetryDelayMilliseconds = ConfigSectionJson.GetInt(section, nameof(PushRetryDelayMilliseconds), options.PushRetryDelayMilliseconds) };
         return options;
     }
-
-    private static int GetInt(JsonElement section, string name, int current) =>
-        section.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.Number
-            ? value.GetInt32()
-            : current;
 }

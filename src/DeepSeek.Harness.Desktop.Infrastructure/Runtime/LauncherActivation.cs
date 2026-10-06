@@ -20,7 +20,7 @@ public static class LauncherActivation
     internal const string ShowCommand = "show";
 
     /// <summary>单实例 IPC 超时家（单例装载，见 <see cref="RuntimeTimeouts"/>；同文件 <c>PrimaryListener</c> 共用）。</summary>
-    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
+    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
 
     /// <summary>accept 循环异常退避节拍（供 <c>PrimaryListener</c>）。</summary>
     internal static TimeSpan IpcAcceptRetryDelay => TimeSpan.FromSeconds(s_timeouts.IpcAcceptRetryDelaySeconds);

@@ -12,7 +12,7 @@ internal static class PagePump
 {
     /// <summary>页面注入超时家（单例装载，见 <c>RuntimeTimeouts</c>）。</summary>
     private static readonly RuntimeTimeouts s_timeouts =
-        RuntimeTimeouts.Load(AppContext.BaseDirectory);
+        RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
 
     /// <summary>窗口就绪后注入横幅：Current 未就绪的 InvalidOperationException 按节拍重试（上限见配置）；
     /// 其余异常记日志放弃——横幅是增强告知，绝不拖垮启动链路。</summary>

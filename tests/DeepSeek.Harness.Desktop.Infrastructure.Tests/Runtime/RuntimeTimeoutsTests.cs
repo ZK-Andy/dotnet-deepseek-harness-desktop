@@ -130,6 +130,37 @@ public class RuntimeTimeoutsTests
         Assert.Equal(1, o.RelayWaitIntervalSeconds);
     }
 
+    /// <summary>验证根非对象（数组/字符串/数字/null）时回退默认而非抛错——该形态下 TryGetProperty 抛
+    /// InvalidOperationException，曾穿透只 catch JsonException 的 Load 在启动早期即崩（2026-10-06 R1/R2 挂账，
+    /// ADR config-load-fail-safe-and-symlink-privilege-fallback）。</summary>
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("\"x\"")]
+    [InlineData("42")]
+    [InlineData("null")]
+    public void Parse_RootNotObject_FallsBackToDefaults(string json)
+    {
+        var o = RuntimeTimeouts.Parse(json);
+
+        Assert.Equal(1, o.RelayWaitIntervalSeconds);
+        Assert.Equal(60, o.SpawnTimeoutSeconds);
+        Assert.Equal(400, o.PushRetryDelayMilliseconds);
+    }
+
+    /// <summary>验证数值键不可表示（小数/超 Int32 范围）时该键回退默认、其余键照常生效——
+    /// GetInt32 对小数与越界抛 FormatException，曾穿透只 catch JsonException 的 Load（同上 ADR）。</summary>
+    [Fact]
+    public void Parse_UnrepresentableNumber_KeepsDefaultForThatKey()
+    {
+        var o = RuntimeTimeouts.Parse("""
+            {"RuntimeTimeouts":{"SpawnTimeoutSeconds":1.5,"BannerMaxAttempts":99999999999,"RelayWaitIntervalSeconds":3}}
+            """);
+
+        Assert.Equal(60, o.SpawnTimeoutSeconds);
+        Assert.Equal(30, o.BannerMaxAttempts);
+        Assert.Equal(3, o.RelayWaitIntervalSeconds);
+    }
+
     /// <summary>验证坏 JSON 文件时 Load fail-safe 回退默认值而非抛异常，配置损坏不阻塞启动。</summary>
     [Fact]
     public void Load_BrokenJson_FailsSafeToDefaults()

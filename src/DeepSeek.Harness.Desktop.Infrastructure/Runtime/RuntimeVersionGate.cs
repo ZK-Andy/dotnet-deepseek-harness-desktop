@@ -22,7 +22,7 @@ public static class RuntimeVersionGate
     /// （可调参数，见 <see cref="RuntimeTimeouts"/>；<see cref="MinimumVersion"/> 才是协议底线，保持固定）。</summary>
     public static TimeSpan ProbeTimeout => TimeSpan.FromSeconds(s_timeouts.VersionProbeTimeoutSeconds);
 
-    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
+    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
 
     private static readonly Regex s_versionToken = new(
         @"v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?",

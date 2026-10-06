@@ -13,7 +13,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 public static class RuntimeLineageProbes
 {
     /// <summary>运行时超时家（单例装载，见 <see cref="RuntimeTimeouts"/>）。</summary>
-    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
+    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
 
     /// <summary>端口探活的单次超时（TCP 连接本机回环：连不上即无人监听）。</summary>
     private static TimeSpan s_portProbeTimeout => TimeSpan.FromMilliseconds(s_timeouts.PortProbeTimeoutMilliseconds);

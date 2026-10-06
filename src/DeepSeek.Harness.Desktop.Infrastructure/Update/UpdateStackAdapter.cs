@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Text.Json;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
 
@@ -25,24 +24,9 @@ public sealed class UpdateStackAdapter(Action<string>? log = null) :
     public UpdateOptions LoadOptions() => LoadUpdateSection(AppContext.BaseDirectory);
 
     /// <summary>从应用旁的 appsettings.json 读取 <c>Update</c> 节；文件缺失或节缺失时全默认；
-    /// 配置损坏不阻塞启动：回退全默认（fail-safe 而非 fail-loud——更新是增强功能）。</summary>
-    private static UpdateOptions LoadUpdateSection(string baseDirectory)
-    {
-        string path = Path.Combine(baseDirectory, "appsettings.json");
-        if (!File.Exists(path))
-        {
-            return new UpdateOptions();
-        }
-
-        try
-        {
-            return UpdateOptions.Parse(File.ReadAllText(path));
-        }
-        catch (JsonException)
-        {
-            return new UpdateOptions();
-        }
-    }
+    /// 配置损坏/不可读不阻塞启动：回退全默认并留痕（fail-safe 而非 fail-loud——更新是增强功能）。</summary>
+    private UpdateOptions LoadUpdateSection(string baseDirectory) =>
+        ConfigSectionFile.LoadFile(baseDirectory, "Update", UpdateOptions.Parse, new UpdateOptions(), log);
 
     /// <inheritdoc/>
     public string CurrentVersion() => AppVersion.Current();

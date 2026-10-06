@@ -27,27 +27,24 @@ public sealed record UpdateOptions
     public static bool IsEnabledFor(bool isDev, string? forceDevEnv) => !isDev || forceDevEnv == "1";
 
     /// <summary>把 appsettings.json 全文解析为 <see cref="UpdateOptions"/>（纯函数，可单测）：
-    /// 无 <c>Update</c> 节、节非对象或键缺失一律回退默认；损坏 JSON 由调用方转 fail-safe。</summary>
+    /// 根非对象、无 <c>Update</c> 节、节非对象、键缺失或取值不可表示（小数/越界）一律回退默认；
+    /// 损坏 JSON 由调用方转 fail-safe（本方法除坏 JSON 外不抛）。</summary>
     /// <param name="json">appsettings.json 全文。</param>
     /// <returns>解析后的选项（缺省字段保持默认值）。</returns>
-    internal static UpdateOptions Parse(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("Update", out JsonElement section) ||
-            section.ValueKind != JsonValueKind.Object)
-        {
-            return new UpdateOptions();
-        }
+    internal static UpdateOptions Parse(string json) =>
+        ConfigSectionJson.Parse(json, "Update", ParseSection, new UpdateOptions());
 
+    private static UpdateOptions ParseSection(JsonElement section)
+    {
         var options = new UpdateOptions();
         if (section.TryGetProperty(nameof(Repository), out JsonElement repo) && repo.ValueKind == JsonValueKind.String)
         {
             options = options with { Repository = repo.GetString()! };
         }
 
-        options = options with { FeedTimeoutSeconds = GetInt(section, nameof(FeedTimeoutSeconds), options.FeedTimeoutSeconds) };
-        options = options with { DownloadTimeoutMinutes = GetInt(section, nameof(DownloadTimeoutMinutes), options.DownloadTimeoutMinutes) };
-        options = options with { PkexecObserveSeconds = GetInt(section, nameof(PkexecObserveSeconds), options.PkexecObserveSeconds) };
+        options = options with { FeedTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(FeedTimeoutSeconds), options.FeedTimeoutSeconds) };
+        options = options with { DownloadTimeoutMinutes = ConfigSectionJson.GetInt(section, nameof(DownloadTimeoutMinutes), options.DownloadTimeoutMinutes) };
+        options = options with { PkexecObserveSeconds = ConfigSectionJson.GetInt(section, nameof(PkexecObserveSeconds), options.PkexecObserveSeconds) };
 
         if (section.TryGetProperty(nameof(UpdatesDirName), out JsonElement dir) && dir.ValueKind == JsonValueKind.String)
         {
@@ -56,9 +53,4 @@ public sealed record UpdateOptions
 
         return options;
     }
-
-    private static int GetInt(JsonElement section, string name, int current) =>
-        section.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.Number
-            ? value.GetInt32()
-            : current;
 }

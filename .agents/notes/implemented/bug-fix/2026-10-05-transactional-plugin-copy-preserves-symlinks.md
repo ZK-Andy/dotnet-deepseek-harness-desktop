@@ -28,3 +28,4 @@ Status: implemented
 
 - [transactional-plugin-pipeline](../architecture/2026-09-13-transactional-plugin-pipeline.md)——staging 拷贝/换入管线本体；本篇修其拷贝步的链接语义。
 - [profile-lock-path-symlink-rejection](2026-09-16-profile-lock-path-symlink-rejection.md)——「拒链不穿链」纪律的来源；本篇把该纪律延伸到拷贝操作。
+- [config-load-fail-safe-and-symlink-privilege-fallback](2026-10-07-config-load-fail-safe-and-symlink-privilege-fallback.md)——本篇 Consequences 付出的「Windows 需开发者模式/特权」代价由其建链无权限降级兜底承接（后续批）。

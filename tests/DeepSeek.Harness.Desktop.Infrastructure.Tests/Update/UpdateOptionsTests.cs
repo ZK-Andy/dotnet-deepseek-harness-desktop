@@ -76,6 +76,37 @@ public class UpdateOptionsParseTests
         Assert.Equal("dl", o.UpdatesDirName);
     }
 
+    /// <summary>验证根非对象（数组/字符串/数字/null）时回退默认而非抛错——该形态下 TryGetProperty 抛
+    /// InvalidOperationException，曾穿透只 catch JsonException 的 Load 在启动早期即崩（2026-10-06 R1/R2 挂账，
+    /// ADR config-load-fail-safe-and-symlink-privilege-fallback）。</summary>
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("\"x\"")]
+    [InlineData("42")]
+    [InlineData("null")]
+    public void Parse_RootNotObject_FallsBackToDefaults(string json)
+    {
+        var o = UpdateOptions.Parse(json);
+
+        Assert.Equal("ZK-Andy/dotnet-deepseek-harness-desktop", o.Repository);
+        Assert.Equal(15, o.FeedTimeoutSeconds);
+        Assert.Equal("updates", o.UpdatesDirName);
+    }
+
+    /// <summary>验证数值键不可表示（小数/超 Int32 范围）时该键回退默认、其余键照常生效——
+    /// GetInt32 对小数与越界抛 FormatException，曾穿透只 catch JsonException 的 Load（同上 ADR）。</summary>
+    [Fact]
+    public void Parse_UnrepresentableNumber_KeepsDefaultForThatKey()
+    {
+        var o = UpdateOptions.Parse("""
+            {"Update":{"FeedTimeoutSeconds":1.5,"DownloadTimeoutMinutes":99999999999,"PkexecObserveSeconds":20}}
+            """);
+
+        Assert.Equal(15, o.FeedTimeoutSeconds);
+        Assert.Equal(30, o.DownloadTimeoutMinutes);
+        Assert.Equal(20, o.PkexecObserveSeconds);
+    }
+
     /// <summary>验证类型不符（数值键给了字符串/字符串键给了数值）时该键回退默认，不影响其余键。</summary>
     [Theory]
     [InlineData("""{"Update":{"Repository":5,"FeedTimeoutSeconds":"7"}}""")]

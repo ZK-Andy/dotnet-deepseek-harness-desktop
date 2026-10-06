@@ -25,7 +25,7 @@ public sealed partial class DshLoopbackProxy : IDisposable
 
     /// <summary>日志档位缺省装载（单例；见 <see cref="ProxyLogging"/> 与 ADR proxy-log-noise-reduction）：
     /// 与 <c>RuntimeVersionGate</c>/<c>LauncherActivation</c> 同款——基础设施自持其配置单次装载。</summary>
-    private static readonly ProxyLogging s_logging = ProxyLogging.Load(AppContext.BaseDirectory);
+    private static readonly ProxyLogging s_logging = ProxyLogging.Load(AppContext.BaseDirectory, HostLog.Write);
 
     /// <summary>代理源（窗口 URL 与探针/守卫口径家；端口记忆优先、冲突 OS 分配，构造即绑定）。</summary>
     public Uri Url { get; }

@@ -23,10 +23,13 @@ public sealed record ProxyLogging
     public int SlowRequestMilliseconds { get; init; } = 2000;
 
     /// <summary>从 <paramref name="baseDirectory"/> 的 appsettings.json 装载，再叠加无人值守面的 trace 覆盖；
-    /// 文件缺失/损坏/不可读一律回退默认，不阻塞启动。</summary>
+    /// 文件缺失/损坏/不可读一律回退默认并留痕，不阻塞启动。</summary>
     /// <param name="baseDirectory">appsettings.json 所在目录（宿主为 AppContext.BaseDirectory）。</param>
-    public static ProxyLogging Load(string baseDirectory) =>
-        ApplyTraceEnv(LoadFile(baseDirectory), Environment.GetEnvironmentVariable(TraceEnv));
+    /// <param name="log">失败留痕出口（可空；启动路径传 <c>HostLog.Write</c>）。</param>
+    public static ProxyLogging Load(string baseDirectory, Action<string>? log = null) =>
+        ApplyTraceEnv(
+            ConfigSectionFile.LoadFile(baseDirectory, nameof(ProxyLogging), Parse, new ProxyLogging(), log),
+            Environment.GetEnvironmentVariable(TraceEnv));
 
     /// <summary>无人值守 trace 覆盖的纯判定（ADR proxy-log-noise-reduction）：仅字面 <c>"1"</c> 打开，
     /// 其余（未设/其他值）一律维持文件档位——fail-closed；拆纯缝以便不经进程环境单测。</summary>
@@ -35,65 +38,23 @@ public sealed record ProxyLogging
     internal static ProxyLogging ApplyTraceEnv(ProxyLogging options, string? value) =>
         value == "1" ? options with { Trace = true } : options;
 
-    private static ProxyLogging LoadFile(string baseDirectory)
-    {
-        string path = Path.Combine(baseDirectory, "appsettings.json");
-        if (!File.Exists(path))
-        {
-            return new ProxyLogging();
-        }
-
-        try
-        {
-            return Parse(File.ReadAllText(path));
-        }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
-        {
-            // 配置损坏/不可读不阻塞启动：回退全默认（与 RuntimeTimeouts/UpdateOptions 同哲学——日志档位是增强配置）。
-            return new ProxyLogging();
-        }
-    }
-
     /// <summary>把 appsettings.json 全文解析为 <see cref="ProxyLogging"/>（纯函数，可单测；不含环境覆盖）：
     /// 根非对象、无 <c>ProxyLogging</c> 节、节非对象、键缺失、类型不符或取值越界（小数/超 Int32 范围/小于下界）
     /// 一律回退默认；损坏 JSON 由调用方转 fail-safe（本方法除坏 JSON 外不抛）。</summary>
     /// <param name="json">appsettings.json 全文。</param>
     /// <returns>解析后的选项（缺省字段保持默认值）。</returns>
-    internal static ProxyLogging Parse(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        if (doc.RootElement.ValueKind != JsonValueKind.Object ||
-            !doc.RootElement.TryGetProperty("ProxyLogging", out JsonElement section) ||
-            section.ValueKind != JsonValueKind.Object)
-        {
-            // 根非对象（`[]`/`"x"`/`42`/`null`）时 TryGetProperty 会抛 InvalidOperationException——
-            // 该形态属配置损坏，与缺节同等回默认，绝不升级成启动异常。
-            return new ProxyLogging();
-        }
+    internal static ProxyLogging Parse(string json) =>
+        ConfigSectionJson.Parse(json, "ProxyLogging", ParseSection, new ProxyLogging());
 
+    private static ProxyLogging ParseSection(JsonElement section)
+    {
         var options = new ProxyLogging();
-        options = options with { Trace = GetBool(section, nameof(Trace), options.Trace) };
+        options = options with { Trace = ConfigSectionJson.GetBool(section, nameof(Trace), options.Trace) };
         options = options with
         {
-            SlowRequestMilliseconds = GetInt(
+            SlowRequestMilliseconds = ConfigSectionJson.GetInt(
                 section, nameof(SlowRequestMilliseconds), options.SlowRequestMilliseconds, SlowRequestFloorMilliseconds),
         };
         return options;
     }
-
-    private static bool GetBool(JsonElement section, string name, bool current) =>
-        section.TryGetProperty(name, out JsonElement value) &&
-        value.ValueKind is JsonValueKind.True or JsonValueKind.False
-            ? value.GetBoolean()
-            : current;
-
-    /// <summary>数值键读取：非数值、不可表示为 Int32（小数/越界——<c>GetInt32</c> 会抛 FormatException）或小于
-    /// <paramref name="floor"/> 一律回退默认值，绝不把配置损坏升级成启动异常。</summary>
-    private static int GetInt(JsonElement section, string name, int current, int floor) =>
-        section.TryGetProperty(name, out JsonElement value) &&
-        value.ValueKind == JsonValueKind.Number &&
-        value.TryGetInt32(out int parsed) &&
-        parsed >= floor
-            ? parsed
-            : current;
 }

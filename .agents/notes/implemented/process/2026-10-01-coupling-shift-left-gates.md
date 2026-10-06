@@ -41,7 +41,7 @@ AI 写代码的耦合反复出现：多次重构，每次都是巨大的时间�
 - 帽 1/15 是**起点不是目标**：下调走脚本变更（天然 FULL 面）；`new StartupNoticeService` 的迁移（进 DI/端口）是减帽的自然形态，出本批范围。
 - notes 通道保留（R1-S1 部分驳回）：站点级审计链是报告模式唯一的定位手段，16 行输出对 0.146s 门禁可接受。R1-S5 正则收敛已落（2026-10-04）：`TYPE_DECL_RE`/`TARGET_OWNER_RE` 单源进 `gate_common`，两门禁的类型收集与计数循环统一用 `CSharpLineScanner`，compose-root 死码 `_LINE_COMMENT_RE` 删除；`verify-code-health.py` 的修饰符过滤变体语义不同，刻意不收。
 - 已知局限随脚本 docstring（如实声明）：collection-element `new()`、嵌套泛型、短别名限定不可见；误报走"改脚本即 FULL 评审"。
-- cookbook 未记本条：`docs/cookbook.md` 字数预算 2761/2761 已满，加条即超限（留待预算腾挪时补）。
+- cookbook 判别条目（「注册点闸红的判别」）随 2026-10-07 预算腾挪批归位 `docs/cookbook.md`（此前 2761/2761 零余量欠账）。
 
 ## Testing
 

@@ -60,7 +60,7 @@ public sealed partial class DesktopBootstrap
     private Preflight ResolveRuntimeAndDev(StartupWiring wiring)
     {
         // 运行时超时家（见 RuntimeTimeouts；字段注释为唯一家）——先于单实例仲裁消费。
-        _timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory);
+        _timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
         // 首启引导服务（R3 端口实现，ADR composition-root-value-flow-pipeline 批次 1）：全局 node/dsh
         // 引导、插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主惰性提供
         // （宿主在编排阶段创建，经 wiring.Host 惰性读——「注册早于赋值」语义与搬迁前字段一致）。
