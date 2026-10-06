@@ -224,6 +224,35 @@ public static class UiCopy
     public static string RecoveryReason(bool isLockBlocked, bool english) =>
         isLockBlocked ? ReasonDshResidueLocked(english) : ReasonRuntimeCrashed(english);
 
+    // ======== 自绘标题栏（caption bar；PageBridge/CaptionBar + wwwroot/index.html 静态条同源）========
+    // 三个窗口按钮的可达名（aria-label）：按钮无可见文本（细线符号），读屏依赖此名；
+    // zh 侧同时登记 index.html 静态条的 aria 字面量，EN 侧进 index.html EN 字典（verify-ui-copy 双向核对）。
+
+    /// <summary>标题栏：最小化按钮可达名。</summary>
+    public const string CaptionMinimizeEn = "Minimize";
+
+    /// <summary>标题栏：最小化按钮可达名（zh）。</summary>
+    public const string CaptionMinimize = "最小化";
+
+    /// <summary>标题栏：最大化/还原按钮可达名。</summary>
+    public const string CaptionMaximizeEn = "Maximize";
+
+    /// <summary>标题栏：最大化/还原按钮可达名（zh）。</summary>
+    public const string CaptionMaximize = "最大化";
+
+    /// <summary>标题栏：关闭按钮可达名。</summary>
+    public const string CaptionCloseEn = "Close";
+
+    /// <summary>标题栏：关闭按钮可达名（zh）。</summary>
+    public const string CaptionClose = "关闭";
+
+    /// <summary>标题栏按钮可达名按宿主语言取值。</summary>
+    /// <param name="english">是否取英文分支。</param>
+    /// <returns>（最小化，最大化，关闭）三元组。</returns>
+    public static (string Minimize, string Maximize, string Close) CaptionButtonNames(bool english) => english
+        ? (CaptionMinimizeEn, CaptionMaximizeEn, CaptionCloseEn)
+        : (CaptionMinimize, CaptionMaximize, CaptionClose);
+
     // ======== 静态引导页登记（wwwroot/index.html；zh 常量 + EN 字典，被 verify-ui-copy 双向核对） ========
     // index.html 是静态文档，文案改动必须同步此登记（zh 字面量留在 HTML、英文收在 EN 字典），否则 verify-ui-copy 拦截。
 

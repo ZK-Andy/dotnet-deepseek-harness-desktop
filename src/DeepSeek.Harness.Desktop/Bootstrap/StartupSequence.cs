@@ -18,6 +18,7 @@ internal sealed partial class StartupSequence : IStartupSequence
     private readonly UpdateSetup _updates;
     private readonly UiLocale _uiLocale;
     private readonly RuntimeTimeouts _timeouts;
+    private readonly CaptionBarOptions _captionBar;
     private readonly DshShellForward _shellForward;
     private readonly DshLoopbackProxy? _proxy;
     private readonly StartupWiring _wiring;
@@ -30,6 +31,7 @@ internal sealed partial class StartupSequence : IStartupSequence
         UpdateSetup updates,
         UiLocale uiLocale,
         RuntimeTimeouts timeouts,
+        CaptionBarOptions captionBar,
         DshShellForward shellForward,
         DshLoopbackProxy? proxy,
         StartupWiring wiring,
@@ -40,6 +42,7 @@ internal sealed partial class StartupSequence : IStartupSequence
         _updates = updates;
         _uiLocale = uiLocale;
         _timeouts = timeouts;
+        _captionBar = captionBar;
         _shellForward = shellForward;
         _proxy = proxy;
         _wiring = wiring;
@@ -61,6 +64,7 @@ internal sealed partial class StartupSequence : IStartupSequence
             ShowTray();
             SupervisorSetup supervisor = SetupSupervisor(host);
             SetupHealthMonitor(supervisor);
+            SetupCaptionBar(supervisor);
             StartUpdateCheck();
             StartupNoticeTask(host, supervisor);
             return RunAppLoop(supervisor);

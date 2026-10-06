@@ -30,6 +30,7 @@ public sealed class RynNavigationCallbacks
     // origin 会让漂移后的同源 SPA 路由被误判为外部。初始值由构造注入（首启 webUrl 的 Authority）。
     private string? _currentOrigin;
     private Action? _onNavigatedImpl;
+    private Action? _onNavigatedPersistent;
     private DateTimeOffset? _lastNavigatedAtUtc;
     private readonly object _navStampGate = new();
     // 宿主亲手授权过的 origin（spawn 的 dsh loopback authority 形态，如 http://127.0.0.1:41449）：
@@ -79,6 +80,14 @@ public sealed class RynNavigationCallbacks
     /// ADR bootstrap-cross-scheme-cookie-401）；横幅/恢复各自有自重复试与直注入，不经此信号。
     /// </summary>
     public void SetOnNavigated(Action onNavigated) => Volatile.Write(ref _onNavigatedImpl, onNavigated);
+
+    /// <summary>
+    /// 绑定「导航已到达」常驻回调（与单槽的 <see cref="SetOnNavigated"/> 不同：本钩子一经绑定随每次到达
+    /// 持续触发，且不占用单槽）。消费者：自绘顶栏的导航后重注入（ADR frameless-uniform-caption-bar）——
+    /// 顶栏 DOM 随整页导航销毁，每次到达（含初次加载/自愈重载/引导后接管）都必须重挂。
+    /// 回调在 saucer 原生回调线程触发，实现方自行封送（顶栏注入经 Task.Run 交线程池）。
+    /// </summary>
+    public void SetOnNavigatedPersistent(Action onNavigated) => Volatile.Write(ref _onNavigatedPersistent, onNavigated);
 
     /// <summary>登记宿主授权的 origin（与原生 <c>AuthorizeIpcOrigin</c> 同点调用）：
     /// 用户发起且目标为集内 origin 的导航放行；集外仍按外部策略。仅绝对环回 URI 入集
@@ -169,5 +178,6 @@ public sealed class RynNavigationCallbacks
 
         _log?.Invoke($"[nav] 导航已到达：{context.Url}（origin → {_currentOrigin}）");
         Volatile.Read(ref _onNavigatedImpl)?.Invoke();
+        Volatile.Read(ref _onNavigatedPersistent)?.Invoke();
     }
 }

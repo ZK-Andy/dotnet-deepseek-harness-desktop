@@ -14,6 +14,8 @@ public sealed partial class DesktopBootstrap
     // —— 装配期构造数据（注册闭包与编排服务的共同输入；非编排状态）——
     // 运行时超时家（与 A 类启动配置同点解析一次，消费段收值；见 RuntimeTimeouts）。
     private RuntimeTimeouts _timeouts = new();
+    // 自绘标题栏参数家（ADR frameless-uniform-caption-bar）：与超时家同点解析一次。
+    private CaptionBarOptions _captionBar = CaptionBarOptions.Default;
     // 宿主 UI 语言单点（ADR host-ui-locale）：companion 上报 dsh locale，托盘/横幅/引导页据此出双语；
     // 上次上报值经 profile 目录持久化（ADR ui-copy-bilingual-completion），dsh 起来前也能取到。
     private UiLocale _uiLocale = null!;
@@ -61,6 +63,8 @@ public sealed partial class DesktopBootstrap
     {
         // 运行时超时家（见 RuntimeTimeouts；字段注释为唯一家）——先于单实例仲裁消费。
         _timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
+        // 自绘标题栏参数（ADR frameless-uniform-caption-bar）：同点解析。
+        _captionBar = CaptionBarOptions.Load(AppContext.BaseDirectory, HostLog.Write);
         // 首启引导服务（R3 端口实现，ADR composition-root-value-flow-pipeline 批次 1）：全局 node/dsh
         // 引导、插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主惰性提供
         // （宿主在编排阶段创建，经 wiring.Host 惰性读——「注册早于赋值」语义与搬迁前字段一致）。

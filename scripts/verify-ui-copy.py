@@ -48,6 +48,7 @@ CS_CONSUMERS = [
     (CORE, "Localization/UiLocale.cs"),
     (SRC, "Recovery/RecoveryPageBuilder.cs"),
     (SRC, "PageBridge/DesktopBanner.cs"),
+    (SRC, "PageBridge/CaptionBar.cs"),
     (SRC, "PageBridge/PagePump.cs"),
     (SRC, "Tray/TrayCheckFeedback.cs"),
     (SRC, "Tray/DesktopTrayCommandRouter.cs"),

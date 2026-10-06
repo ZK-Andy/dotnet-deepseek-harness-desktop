@@ -6,6 +6,16 @@
   },
   "capabilities": {
     "app": true,
-    "desktop": true
+    "desktop": true,
+    "window": {
+      "allow": [
+        "close",
+        "minimize",
+        "toggleMaximize",
+        "startDrag",
+        "startResize",
+        "beginNativeDrag"
+      ]
+    }
   }
 }

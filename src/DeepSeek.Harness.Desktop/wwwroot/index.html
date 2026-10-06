@@ -33,8 +33,26 @@
                 --dshdt-error: #ef4444;
                 --dshdt-error-bg: rgb(239 68 68 / 10%);
                 --dshdt-error-border: rgb(239 68 68 / 35%);
+                --dshdt-cap-bg: #1b1b1c;
             }
         }
+        /* —— 自绘标题栏（ADR frameless-uniform-caption-bar）——
+           与 PageBridge.CaptionBar 注入脚本同 id 同规格：本页是静态文档，顶栏直接内置；
+           注入脚本遇同 id 即让位（幂等守卫）。配色回退值 = 官方 caption 规格。 */
+        :root { --dshdt-cap-bg: #f9fafb; }
+        body { padding-top: 40px; }
+        #dsh-desktop-caption-bar {
+            position: fixed; top: 0; left: 0; right: 0; height: 40px;
+            display: flex; justify-content: flex-end; align-items: stretch;
+            z-index: 2147483647; background: var(--dshdt-cap-bg); color: var(--dshdt-label-primary);
+        }
+        #dsh-desktop-caption-bar button {
+            width: 46px; border: 0; background: transparent; color: inherit; padding: 0;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #dsh-desktop-caption-bar button:hover { background: var(--dshdt-surface); }
+        #dsh-desktop-caption-bar button[data-webview-close]:hover { background: #e81123; color: #fff; }
+        #dsh-desktop-caption-bar svg { width: 10px; height: 10px; display: block; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -125,6 +143,11 @@
     </style>
 </head>
 <body>
+    <div id="dsh-desktop-caption-bar" data-webview-drag>
+        <button data-webview-minimize aria-label="最小化" data-i18n-aria="capMinimize"><svg viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg></button>
+        <button data-webview-maximize aria-label="最大化" data-i18n-aria="capMaximize"><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>
+        <button data-webview-close aria-label="关闭" data-i18n-aria="capClose"><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1"/></svg></button>
+    </div>
     <h1>DeepSeek Harness Desktop</h1>
     <div id="bootstrap">
         <div class="spinner visible" id="bootSpinner"></div>
@@ -172,7 +195,10 @@
             installingPrefix: 'Installing ',
             preinstallSkipped: 'Plugin install skipped',
             preinstallDone: 'Install complete',
-            recommendedPrefix: 'Recommended · '
+            recommendedPrefix: 'Recommended · ',
+            capMinimize: 'Minimize',
+            capMaximize: 'Maximize',
+            capClose: 'Close'
         };
         // 动态文案的模块级词典：英文时指向 EN；中文默认留在各调用点的字面量（T 第二参）
         var UI = null;
@@ -187,6 +213,11 @@
             for (var i = 0; i < nodes.length; i++) {
                 var key = nodes[i].getAttribute('data-i18n');
                 if (EN[key]) { nodes[i].textContent = EN[key]; }
+            }
+            var ariaNodes = document.querySelectorAll('[data-i18n-aria]');
+            for (var j = 0; j < ariaNodes.length; j++) {
+                var ariaKey = ariaNodes[j].getAttribute('data-i18n-aria');
+                if (EN[ariaKey]) { ariaNodes[j].setAttribute('aria-label', EN[ariaKey]); }
             }
         }
         // 语言未定前的宿主帧先入队：applyLocale 只改静态节点，若进度/插件帧先到（chips、日志行由

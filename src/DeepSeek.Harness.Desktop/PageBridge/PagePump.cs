@@ -16,9 +16,23 @@ internal static class PagePump
 
     /// <summary>窗口就绪后注入横幅：Current 未就绪的 InvalidOperationException 按节拍重试（上限见配置）；
     /// 其余异常记日志放弃——横幅是增强告知，绝不拖垮启动链路。</summary>
-    internal static async Task ShowBannerWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
+    internal static Task ShowBannerWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct) =>
+        RetryInjectWhenReadyAsync(accessor, script, "banner", s_timeouts.BannerMaxAttempts,
+            TimeSpan.FromSeconds(s_timeouts.BannerRetryDelaySeconds), ct);
+
+    /// <summary>窗口就绪后注入自绘顶栏（ADR frameless-uniform-caption-bar）：重试语义与横幅同源
+    /// （未就绪按节拍重试至上限，其余异常记日志放弃——顶栏属增强面，绝不拖垮启动/导航链路；
+    /// 失败退路是托盘菜单的唤回/最大化/退出命令）。脚本幂等，导航后重注入无副作用。</summary>
+    internal static Task InjectCaptionBarWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct) =>
+        RetryInjectWhenReadyAsync(accessor, script, "caption-bar", s_timeouts.PushMaxAttempts,
+            TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds), ct);
+
+    /// <summary>脚本注入的有界重试单点：Current 未就绪（InvalidOperationException）按节拍重试；
+    /// 其余异常记日志放弃。重试上限/节拍由调用方给（横幅与顶栏各配各的）。</summary>
+    private static async Task RetryInjectWhenReadyAsync(
+        CurrentWindowAccessor accessor, string script, string scenario, int maxAttempts, TimeSpan retryDelay, CancellationToken ct)
     {
-        for (int attempt = 0; attempt < s_timeouts.BannerMaxAttempts && !ct.IsCancellationRequested; attempt++)
+        for (int attempt = 0; attempt < maxAttempts && !ct.IsCancellationRequested; attempt++)
         {
             try
             {
@@ -31,13 +45,13 @@ internal static class PagePump
             }
             catch (Exception ex)
             {
-                HostLog.Write($"[host] 横幅注入失败：{ex.Message}");
+                HostLog.Write($"[host] {scenario} 注入失败：{ex.Message}");
                 return;
             }
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(s_timeouts.BannerRetryDelaySeconds), ct);
+                await Task.Delay(retryDelay, ct);
             }
             catch (OperationCanceledException)
             {

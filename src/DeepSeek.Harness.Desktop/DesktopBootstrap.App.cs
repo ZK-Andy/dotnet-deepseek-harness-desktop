@@ -86,6 +86,10 @@ public sealed partial class DesktopBootstrap
                 opts.Title = "DeepSeek Harness Desktop";
                 opts.Width = 1200;
                 opts.Height = 800;
+                // 三端统一无边框（ADR frameless-uniform-caption-bar）：chrome 全去（含 macOS 红绿灯），
+                // 窗口控制与拖拽由注入顶栏承担；拖拽条与顶栏高度同源（CaptionBarOptions）。
+                opts.TitleBarStyle = TitleBarStyle.Frameless;
+                opts.TitleBarAutoDragHeight = _captionBar.HeightPx;
                 // 窗口几何持久化：rationale 见 ADR window-geometry-ryn-native-persist。
                 opts.PersistWindowState = true;
                 // A 类启动配置经类型化值消费（批次 3）：dev 后缀规则封装进 LaunchOptions。
@@ -94,10 +98,7 @@ public sealed partial class DesktopBootstrap
                 {
                     opts.IconPath = iconPath;
                 }
-                else
-                {
-                    HostLog.Write($"[host] icon 缺失：{iconPath}");
-                }
+                // 缺失不告警分支：icon 缺失由下方 Ryn opts 摘要行的 Icon=missing 留痕（托盘侧 IsReady 同样降级）
 
                 HostLog.Write($"[host] Ryn opts: Url={(proxy?.Url?.ToString() ?? "null")} ApplicationId={opts.ApplicationId} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 // WebView 调试器默认关闭；开发期设 DSH_DEVTOOLS=1 开启（与 dev 判定无关，
@@ -139,6 +140,7 @@ public sealed partial class DesktopBootstrap
             update,
             _uiLocale,
             _timeouts,
+            _captionBar,
             _shellForward,
             proxy,
             wiring,

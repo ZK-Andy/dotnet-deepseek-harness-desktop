@@ -14,7 +14,8 @@ public class DesktopBannerTests
         Assert.Contains("if(document.getElementById(id))return;", script);
     }
 
-    /// <summary>验证脚本内嵌全部已知横幅 id，堆叠偏移按已存横幅数 × 44px 运行时计算。</summary>
+    /// <summary>验证脚本内嵌全部已知横幅 id，堆叠偏移 = 自绘顶栏下缘 + 已存横幅数 × 44px 运行时计算
+    /// （顶栏不存在时 base=0，行为与旧基准点一致）。</summary>
     [Fact]
     public void Build_EmbedsAllKnownIds_ForStackCount()
     {
@@ -24,8 +25,10 @@ public class DesktopBannerTests
             Assert.Contains($"'{known}'", script);
         }
 
-        // 堆叠偏移 = 已存横幅数 × 44px（运行时计算，消除各横幅各自手写守卫链的漂移）
-        Assert.Contains("top:'+(n*44)+'px;", script);
+        // 基准点 = caption bar 实际高度（Frameless 顶栏常驻页面顶部，横幅不得压住它）
+        Assert.Contains("var cap=document.getElementById('dsh-desktop-caption-bar');", script);
+        Assert.Contains("var base=cap?cap.getBoundingClientRect().height:0;", script);
+        Assert.Contains("top:'+(base+n*44)+'px;", script);
     }
 
     /// <summary>验证文案经 JsString 管线转义，含引号与闭合标签的原始输入不会直接拼进脚本。</summary>
