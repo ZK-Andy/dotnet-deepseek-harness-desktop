@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Review: FULL/2026-10-07#2/R1=ok R2=ok R3=ok
+Review: FULL/2026-10-07#3/R1=ok R2=ok R3=ok
 
 ## Problem
 
@@ -12,20 +12,20 @@ Review: FULL/2026-10-07#2/R1=ok R2=ok R3=ok
 
 **关键发现：dsh web 端内建完整的桌面 chrome 感知，全部挂在 `html[data-platform='darwin']` 上**（官方 Electron preload 独家设置；上游 ADR 2026-09-13-macos-hidden-titlebar-vibrancy）——侧栏 52px 红绿灯让位顶条、拖拽区标记、满幅布局、折叠全隐、右栏避让等都是 web 端现成规则。壳侧不需要自绘任何呈现面，把标记喂给页面即可激活官方 macOS 形态：
 
-- **三端统一注入 darwin 标记**（`PageBridge.CaptionBar.BuildPlatformMark`）：`document.documentElement.dataset.platform='darwin'`，随同把 `body` 底色压回 `--dsw-alias-bg-base`——dsh 的 darwin 呈现含「html/body 透明 + 侧栏半透 tint」毛玻璃链，无 vibrancy 的普通窗口上会透到 webview 底色，扁平化后与浏览器渲染一致（vibrancy 留作后续）。
-- **窗口控制**：macOS `TitleBarStyle.Overlay` + `TrafficLightPosition(16,18)`（官方同位）用原生红绿灯；Windows/Linux `TitleBarStyle.Frameless` + 注入红绿灯三点（`CaptionBar.Build`）：12px 系统色圆点（`#ff5f57/#febc2e/#28c840`）悬浮于侧栏顶条，悬停出深色符号，点击走 Ryn 对 `data-webview-close/minimize/maximize` 的委托监听（`window.*` IPC）。真实平台探测（UA）只决定点簇显隐——`data-platform` 恒为 darwin。
+- **三端统一注入 darwin 标记**（`PageBridge.CaptionBar.Build` 前段）：`document.documentElement.dataset.platform='darwin'`，随同把 `body` 底色压回 `--dsw-alias-bg-base`——dsh 的 darwin 呈现含「html/body 透明 + 侧栏半透 tint」毛玻璃链，无 vibrancy 的普通窗口上会透到 webview 底色，扁平化后与浏览器渲染一致（vibrancy 留作后续）；扁平化 style 带查重守卫（双路注入防重复追加）。
+- **窗口控制三端同为注入红绿灯三点**（`CaptionBar.Build`）：12px 系统色圆点（`#ff5f57/#febc2e/#28c840`）悬浮于侧栏顶条，悬停出深色符号，点击走 Ryn 对 `data-webview-close/minimize/maximize` 的委托监听（`window.*` IPC）。**不用 Ryn `Overlay` + `TrafficLightPosition` 原生红绿灯**：v0.6.1 冒烟实证 mac x64（Rosetta，macOS 26 runner）窗口创建后约 1 秒 segfault（release run 37532237576 两轮同签名，arm64 同批全绿；Frameless 路径由 0.6.0 mac x64 全链冒烟实证安全）——原生灯路径在 Ryn 上游修复前弃用，三端像素级一致反而更贴合「无差别」。
 - **拖拽**：Ryn `TitleBarAutoDragHeight = CaptionBarOptions.HeightPx`（默认 52 = 官方顶条高）——webkit 不认 `-webkit-app-region`（Chromium 专属），Ryn 的 mousedown 裁决拖拽条是等价物：顶条内非交互点拖拽、双击缩放，交互元素自动排除。
 - **注入面**：`StartupSequence.SetupCaptionBar` 双路（接线时一轮 + `RynNavigationCallbacks.SetOnNavigatedPersistent` 常驻导航钩子每次到达后重挂），脚本幂等、按当时 locale 现取，挂监督器取消令牌；失败仅留痕（托盘菜单是窗口控制退路）。能力面：ryn.json `window` 节细粒度 allow-list 恰好覆盖 Ryn titlebar 脚本调用的六命令（`RynWindowCapabilityTests` 钉死集相等）。
 - **可调参数**：拖拽条高 `CaptionBar.HeightPx`（默认 52，非正值回退）。
 
-FULL 评审两轮：第一轮（2026-10-07）抓出 innerHTML 裸拼单引号致 JS 解析即炸——innerHTML 全段走 `JsString` 管线 + 解析回归钉（`node` 实证 `new Function` 可解析）；第二轮（同日 #2，v2 重做批）抓出 Win/Linux 路缺透明链扁平化（darwin 呈现激活而 body 未压回 bg-base，暗色主题侧栏洗白）——扁平化 CSS 并入 `Build()` 与 mark 共用同款查重守卫，测试钉死；同批把横幅堆叠基准点回退为窗口顶（顶条在 v2 属 dsh 自有 UI，横幅为临时覆盖层，不做几何耦合）。
+FULL 评审三轮：#1（2026-10-07）抓出 innerHTML 裸拼单引号致 JS 解析即炸——innerHTML 全段走 `JsString` 管线 + 解析回归钉（`node` 实证 `new Function` 可解析）；#2（同日，v2 重做批）抓出 Win/Linux 路缺透明链扁平化（暗色主题侧栏洗白）——扁平化并入 `Build()`；横幅堆叠基准点回退窗口顶（顶条属 dsh 自有 UI，横幅为临时覆盖层）；#3（同日，v3 批）随 mac x64 segfault 定案复核实修面（darwin 标记 + 扁平化 + 查重守卫合一、死码 `BuildPlatformMark` 删除）。
 
 ## Alternatives considered
 
 - **三端 Frameless + 自绘 40px caption 色带（第一版实现，实机对照推翻）**：官方 Windows 确有 caption 带，但 macOS 官方是无带满幅；自绘带配色无论用 dsh token 还是官方调色板都会在与页面拼接处出现色差线，且 macOS 上与「红绿灯嵌侧栏」的官方观感完全不符。需求方明确三端统一 macOS 形态后此路废弃。
 - **三端统一官方 Windows 形态（带 + overlay 键，落败）**：机制可行（喂 `win32` 标记 + 注入带），但需求方指定 macOS 形态为目标。
 - **`TitleBarStyle.Hidden`（落败）**：留空原生条，与满幅目标相反。
-- **macOS 也用自绘红绿灯（落败）**：官方同款论证——重造红绿灯放弃原生悬停符号与全屏联动，无收益；Overlay + 原生灯只要求页面绕行。
+- **macOS 用 Overlay 原生红绿灯 + `TrafficLightPosition`（v2 采用后实证落败）**：官方同款机制，arm64 冒烟全绿，但 mac x64（Rosetta，macOS 26 runner）窗口创建后约 1 秒 segfault（两轮同签名，`Segmentation fault: 11`），0.6.1 tag 因此未发布。Ryn 0.38.0 上游的原生灯路径在 Rosetta 下不可用；上游修复后如需原生灯（悬停符号、全屏联动）可按平台重新启用，需先过 mac x64 冒烟。
 - **`window: true` 整前缀放行（落败）**：dsh 页面是上游不可控内容，`setSize/setPosition/setFullscreen` 等命令面无必要暴露。
 
 ## Consequences

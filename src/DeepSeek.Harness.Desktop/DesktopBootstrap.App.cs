@@ -86,14 +86,14 @@ public sealed partial class DesktopBootstrap
                 opts.Title = "DeepSeek Harness Desktop";
                 opts.Width = 1200;
                 opts.Height = 800;
-                // 无边框对齐官方 macOS 形态，三端统一（ADR frameless-uniform-caption-bar）：dsh web 的桌面
-                // 呈现（侧栏 52px 顶条、满幅）靠注入 data-platform='darwin' 激活；窗口控制 macOS 用 Overlay
-                // 原生红绿灯（官方同位），Win/Linux 用注入红绿灯三点。拖拽条高对齐官方顶条（CaptionBarOptions）。
-                opts.TitleBarStyle = OperatingSystem.IsMacOS() ? TitleBarStyle.Overlay : TitleBarStyle.Frameless;
+                // 无边框对齐官方 macOS 形态，三端统一（ADR frameless-uniform-caption-bar）：dsh web 桌面
+                // 呈现（侧栏 52px 顶条、满幅）靠注入 data-platform='darwin' 激活；窗口控制三端同为注入
+                // 红绿灯三点。不用 Overlay/TrafficLightPosition（原生红绿灯）：mac x64（Rosetta）在
+                // macOS 26 上窗口创建后即 segfault（run 37532237576 两轮同签名）；Frameless 路径由
+                // 0.6.0 mac x64 全链冒烟实证安全。
+                opts.TitleBarStyle = TitleBarStyle.Frameless;
                 opts.TitleBarAutoDragHeight = _captionBar.HeightPx;
-                opts.TrafficLightPosition = new TrafficLightPosition(16, 18);
-                // 窗口几何持久化：rationale 见 ADR window-geometry-ryn-native-persist。
-                opts.PersistWindowState = true;
+                opts.PersistWindowState = true; // 几何持久化：rationale 见 ADR window-geometry-ryn-native-persist
                 // A 类启动配置经类型化值消费（批次 3）：dev 后缀规则封装进 LaunchOptions。
                 opts.ApplicationId = preflight.Launch.ApplicationIdFor("io.github.ZK-Andy.dotnet-deepseek-harness-desktop");
                 if (File.Exists(iconPath)) // verify-code-conventions: ignore 组合根装配：icon 探测是配置面

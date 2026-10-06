@@ -3,8 +3,9 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// <summary>
 /// 无边框窗口 chrome 注入脚本的单一工厂：三端统一官方 macOS 形态——内容满幅到顶、无 caption 色带，
 /// 靠给页面设置 <c>html[data-platform='darwin']</c> 激活 dsh web 端内建的桌面呈现（侧栏 52px 顶条、
-/// 折叠全隐、chrome 行布局，ADR frameless-uniform-caption-bar）。窗口控制：macOS 用原生红绿灯
-/// （Overlay + 官方同位 {x:16,y:18}），Windows/Linux 注入同款红绿灯三点（悬浮在侧栏顶条上）。
+/// 折叠全隐、chrome 行布局，ADR frameless-uniform-caption-bar）。窗口控制三端同为注入的红绿灯三点
+/// （12px 系统色圆点悬浮于侧栏顶条）；不用 Ryn Overlay 原生红绿灯——mac x64（Rosetta）在 macOS 26
+/// 上窗口创建后 segfault（release run 37532237576 两轮同签名，arm64 同批全绿）。
 /// </summary>
 /// <remarks>
 /// 按钮不带任何事件处理器——点击语义全部走 Ryn 注入脚本对 <c>data-webview-*</c> 属性的委托监听
@@ -20,27 +21,11 @@ internal static class CaptionBar
     /// （先渲染者胜，注入脚本遇之即让位）。</summary>
     public const string ElementId = "dsh-desktop-caption-bar";
 
-    /// <summary>dsh web 桌面呈现的激活标记 + 透明链扁平化 CSS 单点（纯函数可单测）。全平台都要：
-    /// darwin 规则下 html/body 透明、侧栏半透 tint——无 vibrancy 的窗口上会透到 webview 底色（暗色
-    /// 主题侧栏洗白），扁平化压回 bg-base。style 追加带查重守卫（双路注入可同文档命中两次）。</summary>
-    private static string MarkStyleScript => "(function(){" +
-        "document.documentElement.setAttribute('data-platform','darwin');" +
-        "if(document.querySelector(\"style[data-dsh-desktop='caption-mark']\"))return;" +
-        "var st=document.createElement('style');" +
-        "st.setAttribute('data-dsh-desktop','caption-mark');" +
-        "st.textContent=" + AppJsonContext.JsString(
-            "html[data-platform='darwin'] body{background:var(--dsw-alias-bg-base,#fff)!important}") + ";" +
-        "(document.head||document.documentElement).appendChild(st);" +
-        "})();";
-
-    /// <summary>dsh web 桌面呈现的激活标记（纯函数可单测）。全平台都要：这是官方 macOS 形态的开关，
-    /// 与是否注入红绿灯点无关。</summary>
-    public static string BuildPlatformMark() => MarkStyleScript;
-
-    /// <summary>生成红绿灯三点注入脚本（Windows/Linux 用，纯函数可单测）：含 darwin 标记 + 透明链
-    /// 扁平化（<see cref="BuildPlatformMark"/> 同语义，无 vibrancy 平台必须与呈现同批注入）+ 幂等 id
-    /// 守卫 + 三按钮声明式属性。可达名（aria-label）经 <see cref="AppJsonContext.JsString"/> 管线转义
-    /// 注入，随宿主 locale 取值。innerHTML 全段走 JsString 管线（SVG 单引号裸拼会炸解析——评审 B1）。</summary>
+    /// <summary>生成红绿灯三点注入脚本（三端统一，纯函数可单测）：darwin 标记 + 透明链扁平化
+    /// （dsh web 内建 macOS 呈现的开关；darwin 规则下 html/body 透明、侧栏半透 tint，无 vibrancy
+    /// 窗口不扁平化即暗色主题侧栏洗白，style 带查重守卫防双路注入重复追加）+ 幂等 id 守卫 +
+    /// 三按钮声明式属性。可达名（aria-label）经 <see cref="AppJsonContext.JsString"/> 管线转义注入，
+    /// 随宿主 locale 取值。innerHTML 全段走 JsString 管线（SVG 单引号裸拼会炸解析——评审 B1）。</summary>
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
     public static string Build(UiLocale? uiLocale = null)
     {
@@ -70,6 +55,7 @@ internal static class CaptionBar
                "document.documentElement.setAttribute('data-platform','darwin');" +
                "var id='" + ElementId + "';" +
                "if(document.getElementById(id))return;" +
+               "if(document.querySelector(\"style[data-dsh-desktop='caption-mark']\"))return;" +
                "var st=document.createElement('style');" +
                "st.setAttribute('data-dsh-desktop','caption-mark');" +
                "st.textContent=" + AppJsonContext.JsString(css) + ";" +

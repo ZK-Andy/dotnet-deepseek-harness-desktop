@@ -1,18 +1,20 @@
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 
 /// <summary>CaptionBar 工厂契约（ADR frameless-uniform-caption-bar）：darwin 平台标记、红绿灯三点
-/// （无背景面）、幂等 id 守卫、声明式窗口控制属性、可达名双语与转义纪律。</summary>
+/// （无背景面，三端统一）、幂等 id 守卫、声明式窗口控制属性、可达名双语与转义纪律。</summary>
 public class CaptionBarTests
 {
-    /// <summary>验证 darwin 标记脚本：设置 <c>html[data-platform='darwin']</c>（dsh web 桌面呈现开关）
-    /// 并把透明链压回 bg-base（无 vibrancy 窗口上的扁平化）。</summary>
+    /// <summary>验证 darwin 标记与透明链扁平化同批注入：设置 <c>html[data-platform='darwin']</c>
+    /// （dsh web 桌面呈现开关）并把透明链压回 bg-base——darwin 规则下 html/body 透明、侧栏半透
+    /// tint，无 vibrancy 窗口不扁平化即暗色主题侧栏洗白（评审#2 B1）。style 带查重守卫（双路注入
+    /// 防重复追加）。css 经 JsString 后单引号以 \u0027 转义出现。</summary>
     [Fact]
-    public void BuildPlatformMark_SetsDarwinPresentation()
+    public void Build_SetsDarwinPresentation_WithFlattening()
     {
-        string script = CaptionBar.BuildPlatformMark();
+        string script = CaptionBar.Build();
         Assert.Contains("document.documentElement.setAttribute('data-platform','darwin')", script);
-        // css 经 JsString（JSON 编码）后单引号以 \u0027 转义出现
         Assert.Contains("html[data-platform=\\u0027darwin\\u0027] body{background:var(--dsw-alias-bg-base,#fff)!important}", script, StringComparison.Ordinal);
+        Assert.Contains("querySelector(\"style[data-dsh-desktop='caption-mark']\")", script, StringComparison.Ordinal);
     }
 
     /// <summary>验证生成脚本带固定 id 的幂等守卫：红绿灯簇已存在（含 index.html 静态簇）时注入直接返回；
