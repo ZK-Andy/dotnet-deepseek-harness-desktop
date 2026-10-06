@@ -59,13 +59,9 @@ public static class DesktopBanner
                "var known=[" + known + "];" +
                "var n=0;" +
                "for(var i=0;i<known.length;i++)if(document.getElementById(known[i]))n++;" +
-               // 堆叠基准点 = 自绘顶栏下缘（Frameless 后顶栏常驻页面顶部，ADR frameless-uniform-caption-bar）；
-               // 顶栏未注入（0）时行为与旧基准点一致
-               "var cap=document.getElementById('" + CaptionBar.ElementId + "');" +
-               "var base=cap?cap.getBoundingClientRect().height:0;" +
                "var b=document.createElement('div');" +
                "b.id=id;" +
-               "b.style.cssText='position:fixed;top:'+(base+n*44)+'px;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 16px 8px 40px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#0f1111);font:13px/1.5 system-ui,sans-serif;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.1))';" +
+               "b.style.cssText='position:fixed;top:'+(n*44)+'px;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:center;justify-content:center;padding:8px 16px 8px 40px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#0f1111);font:13px/1.5 system-ui,sans-serif;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.1))';" +
                "b.textContent=" + AppJsonContext.JsString(text) + ";" +
                "var x=document.createElement('button');" +
                "x.textContent=" + AppJsonContext.JsString(okLabel) + ";" +

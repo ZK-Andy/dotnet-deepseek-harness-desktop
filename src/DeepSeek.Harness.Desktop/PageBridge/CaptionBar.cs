@@ -1,73 +1,95 @@
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
-/// 自绘标题栏（caption bar）注入脚本的单一工厂：三端统一无边框（<c>TitleBarStyle.Frameless</c>）后，
-/// 窗口控制（最小化/最大化/关闭）与拖拽由注入页面的顶栏承担，样式对齐官方桌面端 caption 规格
-/// （ADR frameless-uniform-caption-bar）。
+/// 无边框窗口 chrome 注入脚本的单一工厂：三端统一官方 macOS 形态——内容满幅到顶、无 caption 色带，
+/// 靠给页面设置 <c>html[data-platform='darwin']</c> 激活 dsh web 端内建的桌面呈现（侧栏 52px 顶条、
+/// 折叠全隐、chrome 行布局，ADR frameless-uniform-caption-bar）。窗口控制：macOS 用原生红绿灯
+/// （Overlay + 官方同位 {x:16,y:18}），Windows/Linux 注入同款红绿灯三点（悬浮在侧栏顶条上）。
 /// </summary>
 /// <remarks>
 /// 按钮不带任何事件处理器——点击语义全部走 Ryn 注入脚本对 <c>data-webview-*</c> 属性的委托监听
 /// （<c>window.minimize/toggleMaximize/close</c> IPC，能力面见 ryn.json 的 <c>window</c> 节）。
-/// 内容让位：dsh 页面布局链是 <c>html/body/#root{height:100%}</c> 百分比链，<c>body{padding-top}</c> +
-/// <c>box-sizing:border-box</c> 即整链干净下移，无底部剪裁。配色主路消费 dsh 主题 token（随页面明暗），
-/// 回退值 = 官方规格（亮 <c>#f9fafb/#0f1115</c>，暗 <c>#1b1b1c/#f9fafb</c>，经 prefers-color-scheme）。
+/// 本工厂不画任何背景面——侧栏顶条由 dsh web 自己画（配色天然一致，不存在色带错位）。
+/// dsh 的 darwin 呈现含「html/body 透明 + 侧栏半透 tint」的毛玻璃链；无 vibrancy 的普通窗口上
+/// 该链会让侧栏透到 webview 底色，故 mark 同时把 body 底色压回 <c>--dsw-alias-bg-base</c>
+/// （扁平化，与浏览器渲染一致；vibrancy 留作后续）。
 /// </remarks>
 internal static class CaptionBar
 {
-    /// <summary>顶栏元素 id：幂等守卫与横幅堆叠偏移（<see cref="DesktopBanner"/>）的共同依据；
-    /// wwwroot/index.html 静态条使用同一 id（先渲染者胜，注入脚本遇之即让位）。</summary>
+    /// <summary>红绿灯簇元素 id：幂等守卫依据；wwwroot/index.html 静态簇使用同一 id
+    /// （先渲染者胜，注入脚本遇之即让位）。</summary>
     public const string ElementId = "dsh-desktop-caption-bar";
 
-    /// <summary>生成顶栏注入脚本（纯函数可单测）：幂等 id 守卫 + 布局让位 + 三按钮声明式属性。
-    /// 样式与可达名（aria-label）均为构建期已知值，经 <see cref="AppJsonContext.JsString"/> 管线转义注入，
-    /// 随宿主 locale 取值。</summary>
-    /// <param name="heightPx">顶栏高度（CSS 像素，<see cref="CaptionBarOptions.HeightPx"/>）。</param>
+    /// <summary>dsh web 桌面呈现的激活标记 + 透明链扁平化 CSS 单点（纯函数可单测）。全平台都要：
+    /// darwin 规则下 html/body 透明、侧栏半透 tint——无 vibrancy 的窗口上会透到 webview 底色（暗色
+    /// 主题侧栏洗白），扁平化压回 bg-base。style 追加带查重守卫（双路注入可同文档命中两次）。</summary>
+    private static string MarkStyleScript => "(function(){" +
+        "document.documentElement.setAttribute('data-platform','darwin');" +
+        "if(document.querySelector(\"style[data-dsh-desktop='caption-mark']\"))return;" +
+        "var st=document.createElement('style');" +
+        "st.setAttribute('data-dsh-desktop','caption-mark');" +
+        "st.textContent=" + AppJsonContext.JsString(
+            "html[data-platform='darwin'] body{background:var(--dsw-alias-bg-base,#fff)!important}") + ";" +
+        "(document.head||document.documentElement).appendChild(st);" +
+        "})();";
+
+    /// <summary>dsh web 桌面呈现的激活标记（纯函数可单测）。全平台都要：这是官方 macOS 形态的开关，
+    /// 与是否注入红绿灯点无关。</summary>
+    public static string BuildPlatformMark() => MarkStyleScript;
+
+    /// <summary>生成红绿灯三点注入脚本（Windows/Linux 用，纯函数可单测）：含 darwin 标记 + 透明链
+    /// 扁平化（<see cref="BuildPlatformMark"/> 同语义，无 vibrancy 平台必须与呈现同批注入）+ 幂等 id
+    /// 守卫 + 三按钮声明式属性。可达名（aria-label）经 <see cref="AppJsonContext.JsString"/> 管线转义
+    /// 注入，随宿主 locale 取值。innerHTML 全段走 JsString 管线（SVG 单引号裸拼会炸解析——评审 B1）。</summary>
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
-    public static string Build(int heightPx, UiLocale? uiLocale = null)
+    public static string Build(UiLocale? uiLocale = null)
     {
         (string minimize, string maximize, string close) = UiCopy.CaptionButtonNames(uiLocale?.IsEnglish == true);
+        // 官方 macOS 红绿灯规格：12px 圆点、约 20px 间距、悬浮于侧栏顶条（无背景面）；
+        // 悬停出深色符号（× − 缩放），点色 = macOS 系统色。
         string css =
-            "#" + ElementId + "{--cap-fb-bg:#f9fafb;--cap-fb-fg:#0f1115}" +
-            "@media(prefers-color-scheme:dark){#" + ElementId + "{--cap-fb-bg:#1b1b1c;--cap-fb-fg:#f9fafb}}" +
-            "#" + ElementId + "{position:fixed;top:0;left:0;right:0;height:" + heightPx + "px;" +
-            "display:flex;justify-content:flex-end;align-items:stretch;z-index:2147483647;" +
-            "background:var(--dsw-alias-bg-overlay,var(--cap-fb-bg));" +
-            "color:var(--dsw-alias-label-primary,var(--cap-fb-fg))}" +
-            "body{padding-top:" + heightPx + "px!important;box-sizing:border-box!important}" +
-            "#" + ElementId + " button{width:46px;border:0;background:transparent;color:inherit;padding:0;" +
-            "display:flex;align-items:center;justify-content:center}" +
-            "#" + ElementId + " button:hover{background:rgba(127,127,127,.18)}" +
-            "#" + ElementId + " button[data-webview-close]:hover{background:#e81123;color:#fff}" +
-            "#" + ElementId + " svg{width:10px;height:10px;display:block}";
-        // innerHTML 全段（按钮 + SVG 图标，图标属性带单引号）整体走 JsString 管线——裸拼进单引号
-        // JS 字符串会在首个 SVG 属性引号处语法终止，整个 IIFE 解析即炸（评审 B1）
+            "html[data-platform='darwin'] body{background:var(--dsw-alias-bg-base,#fff)!important}" +
+            "#" + ElementId + "{position:fixed;top:0;left:0;z-index:2147483647;display:flex;" +
+            "padding:14px 0 0 12px;pointer-events:none}" +
+            "#" + ElementId + " button{width:20px;height:20px;border:0;padding:0;background:transparent;" +
+            "display:flex;align-items:center;justify-content:center;position:relative;" +
+            "pointer-events:auto;cursor:default}" +
+            "#" + ElementId + " button span{width:12px;height:12px;border-radius:50%;display:block;" +
+            "border:1px solid rgba(0,0,0,.12)}" +
+            "#" + ElementId + " button[data-webview-close] span{background:#ff5f57}" +
+            "#" + ElementId + " button[data-webview-minimize] span{background:#febc2e}" +
+            "#" + ElementId + " button[data-webview-maximize] span{background:#28c840}" +
+            "#" + ElementId + " button svg{display:none;position:absolute;width:8px;height:8px;" +
+            "color:rgba(0,0,0,.55)}" +
+            "#" + ElementId + " button:hover svg{display:block}";
         string barInnerHtml =
-            "<button data-webview-minimize>" + IconMinimize + "</button>" +
-            "<button data-webview-maximize>" + IconMaximize + "</button>" +
-            "<button data-webview-close>" + IconClose + "</button>";
+            "<button data-webview-close>" + IconClose + "<span></span></button>" +
+            "<button data-webview-minimize>" + IconMinimize + "<span></span></button>" +
+            "<button data-webview-maximize>" + IconMaximize + "<span></span></button>";
         return "(function(){" +
+               "document.documentElement.setAttribute('data-platform','darwin');" +
                "var id='" + ElementId + "';" +
                "if(document.getElementById(id))return;" +
                "var st=document.createElement('style');" +
+               "st.setAttribute('data-dsh-desktop','caption-mark');" +
                "st.textContent=" + AppJsonContext.JsString(css) + ";" +
                "(document.head||document.documentElement).appendChild(st);" +
                "var bar=document.createElement('div');" +
                "bar.id=id;" +
-               "bar.setAttribute('data-webview-drag','');" +
                "bar.innerHTML=" + AppJsonContext.JsString(barInnerHtml) + ";" +
-               "bar.children[0].setAttribute('aria-label'," + AppJsonContext.JsString(minimize) + ");" +
-               "bar.children[1].setAttribute('aria-label'," + AppJsonContext.JsString(maximize) + ");" +
-               "bar.children[2].setAttribute('aria-label'," + AppJsonContext.JsString(close) + ");" +
+               "bar.children[0].setAttribute('aria-label'," + AppJsonContext.JsString(close) + ");" +
+               "bar.children[1].setAttribute('aria-label'," + AppJsonContext.JsString(minimize) + ");" +
+               "bar.children[2].setAttribute('aria-label'," + AppJsonContext.JsString(maximize) + ");" +
                "(document.body||document.documentElement).appendChild(bar);" +
                "})();";
     }
 
-    /// <summary>最小化符号：Windows caption 同款中部横线（细线，随 currentColor）。</summary>
-    private const string IconMinimize = "<svg viewBox='0 0 10 10'><path d='M0 5h10' stroke='currentColor' stroke-width='1'/></svg>";
+    /// <summary>关闭符号：macOS 红绿灯悬停 ×（悬停才显示，叠在圆点上）。</summary>
+    private const string IconClose = "<svg viewBox='0 0 8 8'><path d='M0.5 0.5l7 7M7.5 0.5l-7 7' stroke='currentColor' stroke-width='1.2' fill='none'/></svg>";
 
-    /// <summary>最大化符号：Windows caption 同款方框描边（静态方框，最大化态不区分还原符号——见 ADR Deferred）。</summary>
-    private const string IconMaximize = "<svg viewBox='0 0 10 10'><rect x='0.5' y='0.5' width='9' height='9' fill='none' stroke='currentColor' stroke-width='1'/></svg>";
+    /// <summary>最小化符号：macOS 红绿灯悬停 −。</summary>
+    private const string IconMinimize = "<svg viewBox='0 0 8 8'><path d='M0.5 4h7' stroke='currentColor' stroke-width='1.2' fill='none'/></svg>";
 
-    /// <summary>关闭符号：Windows caption 同款对角叉线。</summary>
-    private const string IconClose = "<svg viewBox='0 0 10 10'><path d='M0 0l10 10M10 0L0 10' stroke='currentColor' stroke-width='1'/></svg>";
+    /// <summary>最大化符号：macOS 红绿灯悬停对角展开箭头（点击语义为窗口缩放 toggleMaximize）。</summary>
+    private const string IconMaximize = "<svg viewBox='0 0 8 8'><path d='M5.5 0.5h2v2M2.5 7.5h-2v-2M7.5 0.5L4.5 3.5M0.5 7.5l3-3' stroke='currentColor' stroke-width='1.2' fill='none'/></svg>";
 }

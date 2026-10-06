@@ -33,26 +33,33 @@
                 --dshdt-error: #ef4444;
                 --dshdt-error-bg: rgb(239 68 68 / 10%);
                 --dshdt-error-border: rgb(239 68 68 / 35%);
-                --dshdt-cap-bg: #1b1b1c;
             }
         }
-        /* —— 自绘标题栏（ADR frameless-uniform-caption-bar）——
-           与 PageBridge.CaptionBar 注入脚本同 id 同规格：本页是静态文档，顶栏直接内置；
-           注入脚本遇同 id 即让位（幂等守卫）。配色回退值 = 官方 caption 规格。 */
-        :root { --dshdt-cap-bg: #f9fafb; }
-        body { padding-top: 40px; }
+        /* —— 无边框窗口 chrome（ADR frameless-uniform-caption-bar）——
+           与 PageBridge.CaptionBar 注入同 id 同规格：官方 macOS 红绿灯三点（无背景面，悬浮），
+           仅非 mac 显示（真 mac 由 Overlay 原生红绿灯接管，下方脚本隐藏本簇）。
+           本页非 dsh web（无 darwin 呈现规则可用），布局保持居中满幅，无需让位。 */
         #dsh-desktop-caption-bar {
-            position: fixed; top: 0; left: 0; right: 0; height: 40px;
-            display: flex; justify-content: flex-end; align-items: stretch;
-            z-index: 2147483647; background: var(--dshdt-cap-bg); color: var(--dshdt-label-primary);
+            position: fixed; top: 0; left: 0; z-index: 2147483647;
+            display: none; padding: 14px 0 0 12px; pointer-events: none;
         }
+        #dsh-desktop-caption-bar.on { display: flex; }
         #dsh-desktop-caption-bar button {
-            width: 46px; border: 0; background: transparent; color: inherit; padding: 0;
+            width: 20px; height: 20px; border: 0; background: transparent; padding: 0;
             display: flex; align-items: center; justify-content: center;
+            position: relative; pointer-events: auto;
         }
-        #dsh-desktop-caption-bar button:hover { background: var(--dshdt-surface); }
-        #dsh-desktop-caption-bar button[data-webview-close]:hover { background: #e81123; color: #fff; }
-        #dsh-desktop-caption-bar svg { width: 10px; height: 10px; display: block; }
+        #dsh-desktop-caption-bar button span {
+            width: 12px; height: 12px; border-radius: 50%; display: block;
+            border: 1px solid rgb(0 0 0 / 12%);
+        }
+        #dsh-desktop-caption-bar button[data-webview-close] span { background: #ff5f57; }
+        #dsh-desktop-caption-bar button[data-webview-minimize] span { background: #febc2e; }
+        #dsh-desktop-caption-bar button[data-webview-maximize] span { background: #28c840; }
+        #dsh-desktop-caption-bar button svg {
+            display: none; position: absolute; width: 8px; height: 8px; color: rgb(0 0 0 / 55%);
+        }
+        #dsh-desktop-caption-bar button:hover svg { display: block; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -143,11 +150,20 @@
     </style>
 </head>
 <body>
-    <div id="dsh-desktop-caption-bar" data-webview-drag>
-        <button data-webview-minimize aria-label="最小化" data-i18n-aria="capMinimize"><svg viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg></button>
-        <button data-webview-maximize aria-label="最大化" data-i18n-aria="capMaximize"><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>
-        <button data-webview-close aria-label="关闭" data-i18n-aria="capClose"><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1"/></svg></button>
+    <div id="dsh-desktop-caption-bar">
+        <button data-webview-close aria-label="关闭" data-i18n-aria="capClose"><svg viewBox="0 0 8 8"><path d="M0.5 0.5l7 7M7.5 0.5l-7 7" stroke="currentColor" stroke-width="1.2" fill="none"/></svg><span></span></button>
+        <button data-webview-minimize aria-label="最小化" data-i18n-aria="capMinimize"><svg viewBox="0 0 8 8"><path d="M0.5 4h7" stroke="currentColor" stroke-width="1.2" fill="none"/></svg><span></span></button>
+        <button data-webview-maximize aria-label="最大化" data-i18n-aria="capMaximize"><svg viewBox="0 0 8 8"><path d="M5.5 0.5h2v2M2.5 7.5h-2v-2M7.5 0.5L4.5 3.5M0.5 7.5l3-3" stroke="currentColor" stroke-width="1.2" fill="none"/></svg><span></span></button>
     </div>
+    <script>
+        // 无边框 chrome（ADR frameless-uniform-caption-bar）：真 mac 用原生红绿灯（Overlay），隐藏静态点；
+        // 其余平台点亮静态三点。data-platform='darwin' 为 dsh web 桌面呈现开关（本页无 dsh UI，仅对齐语义）。
+        (function () {
+            document.documentElement.setAttribute('data-platform', 'darwin');
+            var realMac = /Mac/i.test(navigator.platform || navigator.userAgent);
+            if (!realMac) { document.getElementById('dsh-desktop-caption-bar').classList.add('on'); }
+        })();
+    </script>
     <h1>DeepSeek Harness Desktop</h1>
     <div id="bootstrap">
         <div class="spinner visible" id="bootSpinner"></div>

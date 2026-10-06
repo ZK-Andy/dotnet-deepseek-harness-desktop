@@ -1,57 +1,57 @@
-# Agent Note: 三端统一无边框窗口与自绘标题栏
+# Agent Note: 三端统一官方 macOS 形态的无边框窗口
 
 Status: implemented
 
-Review: FULL/2026-10-07/R1=ok R2=ok R3=ok
+Review: FULL/2026-10-07#2/R1=ok R2=ok R3=ok
 
 ## Problem
 
-壳窗口默认是平台原生标题栏（`TitleBarStyle.Native`），与官方 DeepSeek 桌面端的无边框观感割裂：标题条占用纵向空间、观感随平台各自为政，且与 dsh web 内容的视觉风格不连续。用户要求三端统一无边框、保留最小化/最大化/关闭三个窗口控制并保持官方一致的外观。Ryn 0.38.0 已内建完整的 chrome 控制面（`TitleBarStyle` 枚举、自动拖拽条、`data-webview-*` 声明式窗口控制），具备零自研底座的对齐条件。
+壳窗口默认是平台原生标题栏，与官方 DeepSeek 桌面端的无边框观感割裂：标题条占纵向空间、观感随平台各自为政。需求方要求三端统一官方 macOS 截图呈现的形态：内容满幅到顶、无独立标题带、红绿灯悬浮于侧栏顶区。Ryn 0.38.0 内建完整 chrome 控制面（`TitleBarStyle`、自动拖拽条、`data-webview-*` 声明式窗口控制），具备零自研底座的对齐条件。
 
 ## Decision
 
-FULL 评审（2026-10-07）抓出并修复：注入脚本 innerHTML 裸拼单引号致 JS 解析即炸（innerHTML 全段走 JsString 管线 + `Build_InnerHtmlViaJsString_NoRawSingleQuoteInjection` 解析回归钉）；allow-list 恰好集断言、钩子内按当时 locale 取脚本、注入挂监督器取消令牌三项 suggestion 同批落地。
+**关键发现：dsh web 端内建完整的桌面 chrome 感知，全部挂在 `html[data-platform='darwin']` 上**（官方 Electron preload 独家设置；上游 ADR 2026-09-13-macos-hidden-titlebar-vibrancy）——侧栏 52px 红绿灯让位顶条、拖拽区标记、满幅布局、折叠全隐、右栏避让等都是 web 端现成规则。壳侧不需要自绘任何呈现面，把标记喂给页面即可激活官方 macOS 形态：
 
-三端统一取 `RynOptions.TitleBarStyle = Frameless`（原生 chrome 全去，含 macOS 红绿灯），窗口控制与拖拽由注入页面的自绘顶栏（caption bar）承担：
+- **三端统一注入 darwin 标记**（`PageBridge.CaptionBar.BuildPlatformMark`）：`document.documentElement.dataset.platform='darwin'`，随同把 `body` 底色压回 `--dsw-alias-bg-base`——dsh 的 darwin 呈现含「html/body 透明 + 侧栏半透 tint」毛玻璃链，无 vibrancy 的普通窗口上会透到 webview 底色，扁平化后与浏览器渲染一致（vibrancy 留作后续）。
+- **窗口控制**：macOS `TitleBarStyle.Overlay` + `TrafficLightPosition(16,18)`（官方同位）用原生红绿灯；Windows/Linux `TitleBarStyle.Frameless` + 注入红绿灯三点（`CaptionBar.Build`）：12px 系统色圆点（`#ff5f57/#febc2e/#28c840`）悬浮于侧栏顶条，悬停出深色符号，点击走 Ryn 对 `data-webview-close/minimize/maximize` 的委托监听（`window.*` IPC）。真实平台探测（UA）只决定点簇显隐——`data-platform` 恒为 darwin。
+- **拖拽**：Ryn `TitleBarAutoDragHeight = CaptionBarOptions.HeightPx`（默认 52 = 官方顶条高）——webkit 不认 `-webkit-app-region`（Chromium 专属），Ryn 的 mousedown 裁决拖拽条是等价物：顶条内非交互点拖拽、双击缩放，交互元素自动排除。
+- **注入面**：`StartupSequence.SetupCaptionBar` 双路（接线时一轮 + `RynNavigationCallbacks.SetOnNavigatedPersistent` 常驻导航钩子每次到达后重挂），脚本幂等、按当时 locale 现取，挂监督器取消令牌；失败仅留痕（托盘菜单是窗口控制退路）。能力面：ryn.json `window` 节细粒度 allow-list 恰好覆盖 Ryn titlebar 脚本调用的六命令（`RynWindowCapabilityTests` 钉死集相等）。
+- **可调参数**：拖拽条高 `CaptionBar.HeightPx`（默认 52，非正值回退）。
 
-- **窗口配置**（组合根 `BuildApp` 的 `ConfigureOptions`）：`TitleBarStyle.Frameless` + `TitleBarAutoDragHeight = CaptionBarOptions.HeightPx`（自动拖拽条与顶栏高度同源，双击缩放由 Ryn 拖拽条内建）。配色不进配置：主路消费 dsh 主题 token（`--dsw-alias-bg-overlay/label-primary`，随页面明暗），回退值 = 官方 caption 规格（亮 `#f9fafb/#0f1115`、暗 `#1b1b1c/#f9fafb`，经 prefers-color-scheme 的自定义属性间接层）。
-- **注入脚本**：`PageBridge.CaptionBar.Build`（纯函数单点）生成幂等脚本——固定 id `dsh-desktop-caption-bar` 的 fixed 顶栏，整条 `data-webview-drag`，三个按钮只带 `data-webview-minimize/maximize/close` 声明式属性，**零事件处理器**（点击语义全由 Ryn 注入脚本的委托监听走 `window.*` IPC）；可达名（aria-label）经 `UiCopy.CaptionButtonNames` 随宿主 locale 取值。内容让位利用 dsh 布局链 `html/body/#root{height:100%}` 的百分比特性：`body{padding-top:H!important;box-sizing:border-box!important}` 整链干净下移，无底部剪裁。
-- **注入时机**：`StartupSequence.SetupCaptionBar` 接线两路——接线时立即一轮有界重试注入（`PagePump.InjectCaptionBarWhenReadyAsync`，与横幅共用重试单点 `RetryInjectWhenReadyAsync`，挂监督器取消令牌），另经 `RynNavigationCallbacks.SetOnNavigatedPersistent`（新增的常驻导航钩子，不占用单槽 `SetOnNavigated`）在每次页面到达后重挂——顶栏 DOM 随整页导航销毁，初次加载/自愈重载/引导后接管都必须重注入；脚本在钩子内按当时 locale 现取（语言切换后导航即换语言）。
-- **能力面**：ryn.json 的 `capabilities` 新增 `window` 节，细粒度 allow-list 只放行 Ryn titlebar 脚本实际调用的六命令（`close/minimize/toggleMaximize/startDrag/startResize/beginNativeDrag`），不放行 `setSize/setPosition/setFullscreen` 等其余 window 命令；全集由 `RynWindowCapabilityTests` 钉死。
-- **占位页**：wwwroot/index.html 静态内置同 id 同规格顶栏（引导页先于注入存在，注入脚本遇同 id 即让位）；横幅堆叠（`DesktopBanner.Build`）的基准点改为顶栏实际高度（`base + n*44`），顶栏未注入时行为与旧基准点一致。
-- **可调参数**：高度 `CaptionBar.HeightPx`（appsettings 节 `CaptionBar`，`CaptionBarOptions` record，非正值回退默认 40 = 官方 `WINDOWS_TITLEBAR_HEIGHT`）。
-- **退路**：顶栏注入失败仅留痕不重试到死——hide-to-tray 关窗闸门挂在窗口 `Closing` 上（不依赖顶栏），托盘菜单的唤回/最大化/退出始终可用。
+FULL 评审两轮：第一轮（2026-10-07）抓出 innerHTML 裸拼单引号致 JS 解析即炸——innerHTML 全段走 `JsString` 管线 + 解析回归钉（`node` 实证 `new Function` 可解析）；第二轮（同日 #2，v2 重做批）抓出 Win/Linux 路缺透明链扁平化（darwin 呈现激活而 body 未压回 bg-base，暗色主题侧栏洗白）——扁平化 CSS 并入 `Build()` 与 mark 共用同款查重守卫，测试钉死；同批把横幅堆叠基准点回退为窗口顶（顶条在 v2 属 dsh 自有 UI，横幅为临时覆盖层，不做几何耦合）。
 
 ## Alternatives considered
 
-- **`TitleBarStyle.Overlay`（落败）**：macOS 上保留原生红绿灯浮层。落败原因：与自绘三按钮叠出两套控制，破坏「三端无差别」；且红绿灯位置与自绘栏配色协调要额外维护 `TrafficLightPosition`。
-- **`TitleBarStyle.Hidden`（落败）**：留一条空的原生标题条。落败原因：内容渲染在条下方，纵向仍有原生条占位，与无边框目标相反。
-- **仅 Win/mac 无边框、Linux 保留原生（落败，官方即此形态）**：官方上游正是按平台分治（Win `titleBarOverlay`、mac `hiddenInset`、Linux 原生）。落败原因：需求方明确要求三端无差别；Ryn 的声明式控制在 WebKitGTK 上同样工作，无平台豁免的技术必要。
-- **`window: true` 整前缀放行（落败）**：少写几行 allow-list。落败原因：代理源上的 dsh 页面是上游不可控内容，`setSize/setPosition/setFullscreen/setAlwaysOnTop` 等命令面暴露面无必要扩大；细粒度 allow-list 是 ryn.json 沙箱模型的用法本意。
-- **一次性注入（落败）**：只在启动时注入一次。落败原因：顶栏 DOM 随整页导航销毁——页面健康监视的有界 reload、鉴权自愈重载、引导完成后的代理页接管都会换文档，一次性注入在这些路径上全部失效；常驻导航钩子是唯一全覆盖点。
-- **复用单槽 `SetOnNavigated`（落败）**：不加新钩子，借现成信号。落败原因：该单槽被导航提交等待（`NavigateAndAwaitCommitAsync`）按需占用/清空，两消费者互相覆盖；单槽语义是「一次性到达信号」，常驻重注入与其语义不符。
+- **三端 Frameless + 自绘 40px caption 色带（第一版实现，实机对照推翻）**：官方 Windows 确有 caption 带，但 macOS 官方是无带满幅；自绘带配色无论用 dsh token 还是官方调色板都会在与页面拼接处出现色差线，且 macOS 上与「红绿灯嵌侧栏」的官方观感完全不符。需求方明确三端统一 macOS 形态后此路废弃。
+- **三端统一官方 Windows 形态（带 + overlay 键，落败）**：机制可行（喂 `win32` 标记 + 注入带），但需求方指定 macOS 形态为目标。
+- **`TitleBarStyle.Hidden`（落败）**：留空原生条，与满幅目标相反。
+- **macOS 也用自绘红绿灯（落败）**：官方同款论证——重造红绿灯放弃原生悬停符号与全屏联动，无收益；Overlay + 原生灯只要求页面绕行。
+- **`window: true` 整前缀放行（落败）**：dsh 页面是上游不可控内容，`setSize/setPosition/setFullscreen` 等命令面无必要暴露。
 
 ## Consequences
 
-- 买到的：三端一致的无边框观感与官方对齐的窗口控制；dsh 主题 token 让顶栏随页面明暗自适应；固定顶栏带来稳定的窗口控制/拖拽落点。
-- 付出的：顶栏 z-index 恒最大——dsh 页面顶端锚定的 fixed 弹层（modal 遮罩等）会被顶栏压住一条 40px 带（modal 居中在视口而非让位后内容区，视觉上略偏）；最大化态按钮符号仍为方框（不区分还原符号，见 Deferred）；能力面新增 `window` 前缀六命令，Ryn 上游若给 titlebar 脚本加新调用需同步扩 allow-list（`RynWindowCapabilityTests` 只钉「至少齐」不钉「恰好」）。
-- wwwroot 占位页与注入脚本共享同一 id 与几何（40px 默认），两处规格变更必须同批（`CaptionBarTests` 与 `PageHealthMonitorTests.ShellDocuments_HaveVisibleText_StayAlive` 各钉一面）；静态页拿不到运行时配置，`CaptionBar.HeightPx` 配非默认值时只影响注入页与拖拽区，占位页恒为 40——该旋钮实际是「注入页可调、静态页冻结默认」。
+- 买到的：三端一致的官方 macOS 观感（满幅、红绿灯嵌侧栏顶条、无色带无色差线）；呈现规则全部来自 dsh web 内建（壳侧零样式维护，上游对 darwin 呈现的后续改进随页面升级自动获益）。
+- 付出的：`data-platform='darwin'` 是「对页面说谎」——页面上一切依赖真实平台的分支（目前只有呈现）都按 darwin 走；上游若新增 darwin-only 行为（如 macOS 更新通道提示）会在三端同时生效。毛玻璃（vibrancy）以扁平底色近似，透明窗口 + BackdropMaterial 留作后续。红绿灯 maximize 是窗口缩放（toggleMaximize）而非 macOS 全屏。
+- Ryn 自动拖拽条是「顶 52px 内非交互即拖拽」的近似，与官方逐 chrome 行声明的拖拽面不逐像素等价；dsh 顶区内交互元素（按钮/链接/输入）自动排除。
+- wwwroot 占位页与注入脚本共享同一 id 与点簇规格（`CaptionBarTests` 与 `PageHealthMonitorTests.ShellDocuments_HaveVisibleText_StayAlive` 各钉一面）；占位页非 dsh web，无 darwin 呈现规则，保持自有居中布局。
 
 ## Testing
 
-- `CaptionBarTests`：幂等守卫、声明式属性、高度贯通（bar/让位两处）、主题 token 与官方回退值、可达名双语经 JsString。
-- `CaptionBarOptionsTests`：默认值锁 40、缺节/非正值/坏 JSON 回退矩阵。
-- `RynWindowCapabilityTests`：ryn.json window allow-list 覆盖六命令全集。
-- `DesktopBannerTests`：堆叠基准点断言更新（顶栏高度计入）。
-- 实机验收项（发布前）：dsh 明暗两主题下顶栏配色/让位布局、拖拽与双击缩放、最大化后符号、托盘退路与关窗闸门行为不变。
+- `CaptionBarTests`：darwin 标记（先于幂等守卫）、红绿灯序与系统色、无色带（无 padding-top/无全宽背景）、innerHTML 转义回归、可达名双语。
+- `CaptionBarOptionsTests`：默认 52、缺节/非正值/坏 JSON 回退矩阵。
+- `RynWindowCapabilityTests`：ryn.json window allow-list 与 Ryn 注入脚本六命令集相等。
+- `node` 实证：mark/build 脚本 `new Function` 解析通过 + DOM stub 下 `data-platform=darwin` 写入。
+- 实机验收项（发布前）：三端顶区观感对照官方、红绿灯悬停符号、拖拽/双击缩放、最大化后行为、托盘退路。
 
 ## Deferred
 
-- 最大化态还原符号（`window.isMaximized` 驱动 glyph 切换）：需要窗口态事件回流，首版不做。
-- 顶栏命中 dsh 页面顶部弹层的让位细节（modal 遮罩与顶栏的视觉关系）待实机观察后再调。
+- macOS vibrancy（透明窗口 + Ryn BackdropMaterial）——当前以 bg-base 扁平化近似。
+- `html[data-fullscreen]` 全屏标记回流（官方 darwin 全屏红绿灯消失后的布局放松）。
+- 红绿灯 maximize 的全屏语义对齐（当前为缩放）。
 
 ## Related
 
-- [window-geometry-ryn-native-persist](2026-10-04-window-geometry-ryn-native-persist.md)——窗口几何持久化同为 Ryn 内建能力单点接线；本决定的 `PersistWindowState` 不受无边框影响（几何事件照常）。
-- [shell-tray-hide-to-tray](../architecture/2026-08-24-shell-tray-hide-to-tray.md)——关窗闸门挂窗口 `Closing`，是顶栏注入失败的窗口控制退路。
-- [host-ui-locale](2026-08-28-host-ui-locale.md)——顶栏可达名与横幅同走 UiCopy 双语单点。
+- [window-geometry-ryn-native-persist](2026-10-04-window-geometry-ryn-native-persist.md)——窗口几何持久化同为 Ryn 内建能力单点接线；无边框不触碰几何事件。
+- [shell-tray-hide-to-tray](../architecture/2026-08-24-shell-tray-hide-to-tray.md)——关窗闸门挂窗口 `Closing`，是注入失败的窗口控制退路。
+- [host-ui-locale](2026-08-28-host-ui-locale.md)——红绿灯可达名与横幅同走 UiCopy 双语单点。
+- 上游参照：deepseek-harness `.agents/notes/archived/feature/2026-09-13-macos-hidden-titlebar-vibrancy.md`（darwin 呈现规则的家）。

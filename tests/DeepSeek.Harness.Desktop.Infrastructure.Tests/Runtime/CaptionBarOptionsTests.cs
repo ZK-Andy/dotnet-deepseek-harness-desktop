@@ -2,15 +2,15 @@ using System.Text.Json;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
-/// <summary>CaptionBarOptions 装载（ADR frameless-uniform-caption-bar）：默认值锁定 = 官方 caption
-/// 规格（WINDOWS_TITLEBAR_HEIGHT = 40）；缺节/坏 JSON/非正值回退与 RuntimeTimeouts 同哲学。</summary>
+/// <summary>CaptionBarOptions 装载（ADR frameless-uniform-caption-bar）：默认值锁定 = 官方 darwin
+/// 侧栏顶条高度 52（Ryn 自动拖拽条与之对齐）；缺节/坏 JSON/非正值回退与 RuntimeTimeouts 同哲学。</summary>
 public class CaptionBarOptionsTests
 {
-    /// <summary>验证默认高度 = 官方 Windows caption 规格 40px。</summary>
+    /// <summary>验证默认高度 = 官方 darwin 侧栏顶条 52px。</summary>
     [Fact]
-    public void Defaults_MatchOfficialCaptionHeight()
+    public void Defaults_MatchOfficialDarwinTopStrip()
     {
-        Assert.Equal(40, new CaptionBarOptions().HeightPx);
+        Assert.Equal(52, new CaptionBarOptions().HeightPx);
     }
 
     /// <summary>验证无 CaptionBar 键或节形态不符时返回全默认值。</summary>
@@ -21,15 +21,15 @@ public class CaptionBarOptionsTests
     [InlineData("""{"Other":1}""")]
     public void Parse_MissingSection_ReturnsDefaults(string json)
     {
-        Assert.Equal(40, CaptionBarOptions.Parse(json).HeightPx);
+        Assert.Equal(52, CaptionBarOptions.Parse(json).HeightPx);
     }
 
-    /// <summary>验证合法节覆盖高度；非正值（无法承载按钮/拖拽条）视作缺失回退默认。</summary>
+    /// <summary>验证合法节覆盖高度；非正值（无法承载拖拽条）视作缺失回退默认。</summary>
     [Theory]
     [InlineData("""{"CaptionBar":{"HeightPx":48}}""", 48)]
-    [InlineData("""{"CaptionBar":{"HeightPx":0}}""", 40)]
-    [InlineData("""{"CaptionBar":{"HeightPx":-3}}""", 40)]
-    [InlineData("""{"CaptionBar":{"HeightPx":12.5}}""", 40)]
+    [InlineData("""{"CaptionBar":{"HeightPx":0}}""", 52)]
+    [InlineData("""{"CaptionBar":{"HeightPx":-3}}""", 52)]
+    [InlineData("""{"CaptionBar":{"HeightPx":12.5}}""", 52)]
     public void Parse_HeightOverride_WithNonPositiveFallback(string json, int expected)
     {
         Assert.Equal(expected, CaptionBarOptions.Parse(json).HeightPx);

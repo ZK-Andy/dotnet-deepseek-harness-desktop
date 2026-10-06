@@ -86,10 +86,12 @@ public sealed partial class DesktopBootstrap
                 opts.Title = "DeepSeek Harness Desktop";
                 opts.Width = 1200;
                 opts.Height = 800;
-                // 三端统一无边框（ADR frameless-uniform-caption-bar）：chrome 全去（含 macOS 红绿灯），
-                // 窗口控制与拖拽由注入顶栏承担；拖拽条与顶栏高度同源（CaptionBarOptions）。
-                opts.TitleBarStyle = TitleBarStyle.Frameless;
+                // 无边框对齐官方 macOS 形态，三端统一（ADR frameless-uniform-caption-bar）：dsh web 的桌面
+                // 呈现（侧栏 52px 顶条、满幅）靠注入 data-platform='darwin' 激活；窗口控制 macOS 用 Overlay
+                // 原生红绿灯（官方同位），Win/Linux 用注入红绿灯三点。拖拽条高对齐官方顶条（CaptionBarOptions）。
+                opts.TitleBarStyle = OperatingSystem.IsMacOS() ? TitleBarStyle.Overlay : TitleBarStyle.Frameless;
                 opts.TitleBarAutoDragHeight = _captionBar.HeightPx;
+                opts.TrafficLightPosition = new TrafficLightPosition(16, 18);
                 // 窗口几何持久化：rationale 见 ADR window-geometry-ryn-native-persist。
                 opts.PersistWindowState = true;
                 // A 类启动配置经类型化值消费（批次 3）：dev 后缀规则封装进 LaunchOptions。

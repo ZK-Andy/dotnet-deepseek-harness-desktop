@@ -14,8 +14,9 @@ public class DesktopBannerTests
         Assert.Contains("if(document.getElementById(id))return;", script);
     }
 
-    /// <summary>验证脚本内嵌全部已知横幅 id，堆叠偏移 = 自绘顶栏下缘 + 已存横幅数 × 44px 运行时计算
-    /// （顶栏不存在时 base=0，行为与旧基准点一致）。</summary>
+    /// <summary>验证脚本内嵌全部已知横幅 id，堆叠偏移按已存横幅数 × 44px 运行时计算。
+    /// 基准点恒为窗口顶：无边框 v2 起顶条是 dsh 自己的 UI（darwin 呈现），横幅作为临时覆盖层
+    /// 盖住顶区可接受（自带关闭键），不做几何耦合。</summary>
     [Fact]
     public void Build_EmbedsAllKnownIds_ForStackCount()
     {
@@ -25,10 +26,7 @@ public class DesktopBannerTests
             Assert.Contains($"'{known}'", script);
         }
 
-        // 基准点 = caption bar 实际高度（Frameless 顶栏常驻页面顶部，横幅不得压住它）
-        Assert.Contains("var cap=document.getElementById('dsh-desktop-caption-bar');", script);
-        Assert.Contains("var base=cap?cap.getBoundingClientRect().height:0;", script);
-        Assert.Contains("top:'+(base+n*44)+'px;", script);
+        Assert.Contains("top:'+(n*44)+'px;", script);
     }
 
     /// <summary>验证文案经 JsString 管线转义，含引号与闭合标签的原始输入不会直接拼进脚本。</summary>

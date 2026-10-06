@@ -1,31 +1,68 @@
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 
-/// <summary>CaptionBar 工厂契约（ADR frameless-uniform-caption-bar）：幂等 id 守卫、声明式窗口控制属性、
-/// 布局让位规则、主题 token 消费与可达名双语。</summary>
+/// <summary>CaptionBar 工厂契约（ADR frameless-uniform-caption-bar）：darwin 平台标记、红绿灯三点
+/// （无背景面）、幂等 id 守卫、声明式窗口控制属性、可达名双语与转义纪律。</summary>
 public class CaptionBarTests
 {
-    /// <summary>验证生成脚本带固定 id 的幂等守卫：顶栏已存在（含 index.html 静态条）时注入直接返回，
-    /// 不重复加 style 与 body 让位。</summary>
+    /// <summary>验证 darwin 标记脚本：设置 <c>html[data-platform='darwin']</c>（dsh web 桌面呈现开关）
+    /// 并把透明链压回 bg-base（无 vibrancy 窗口上的扁平化）。</summary>
     [Fact]
-    public void Build_GuardsDoubleInjection()
+    public void BuildPlatformMark_SetsDarwinPresentation()
     {
-        string script = CaptionBar.Build(40);
-        Assert.Contains("var id='dsh-desktop-caption-bar'", script);
-        Assert.Contains("if(document.getElementById(id))return;", script);
+        string script = CaptionBar.BuildPlatformMark();
+        Assert.Contains("document.documentElement.setAttribute('data-platform','darwin')", script);
+        // css 经 JsString（JSON 编码）后单引号以 \u0027 转义出现
+        Assert.Contains("html[data-platform=\\u0027darwin\\u0027] body{background:var(--dsw-alias-bg-base,#fff)!important}", script, StringComparison.Ordinal);
     }
 
-    /// <summary>验证三按钮带 Ryn 声明式窗口控制属性、整条可拖（data-webview-drag），
-    /// 按钮本身不带任何事件处理器（点击语义全由 Ryn 注入脚本委托）。按钮标签经 JsString 后
-    /// <c>&lt;</c>/<c>&gt;</c> 以 \u003C/\u003E 转义出现（JSON 编码语义）。</summary>
+    /// <summary>验证生成脚本带固定 id 的幂等守卫：红绿灯簇已存在（含 index.html 静态簇）时注入直接返回；
+    /// 且 darwin 标记在守卫之前设置（首屏呈现不依赖点簇是否注入）。</summary>
     [Fact]
-    public void Build_DeclaresWindowControlAttributes()
+    public void Build_GuardsDoubleInjection_AfterPlatformMark()
     {
-        string script = CaptionBar.Build(40);
-        Assert.Contains("bar.setAttribute('data-webview-drag','')", script);
+        string script = CaptionBar.Build();
+        int mark = script.IndexOf("setAttribute('data-platform','darwin')", StringComparison.Ordinal);
+        int guard = script.IndexOf("if(document.getElementById(id))return;", StringComparison.Ordinal);
+        Assert.True(mark >= 0);
+        Assert.True(guard > mark, "darwin 标记必须先于幂等守卫（守卫返回时标记已生效）");
+    }
+
+    /// <summary>B1 回归钉：Build（Win/Linux 路）必须自带透明链扁平化——darwin 规则下 html/body 透明、
+    /// 侧栏半透 tint，无 vibrancy 窗口不扁平化即暗色主题侧栏洗白。css 经 JsString 后单引号以 \u0027
+    /// 转义出现。</summary>
+    [Fact]
+    public void Build_IncludesTransparencyChainFlattening()
+    {
+        string script = CaptionBar.Build();
+        Assert.Contains("html[data-platform=\\u0027darwin\\u0027] body{background:var(--dsw-alias-bg-base,#fff)!important}", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>验证三按钮带 Ryn 声明式窗口控制属性（红绿灯序：关闭/最小化/最大化）、无背景面、
+    /// 无内容让位（官方 macOS 形态：内容满幅到顶），按钮本身不带事件处理器。</summary>
+    [Fact]
+    public void Build_DeclaresTrafficLightControls_NoBand()
+    {
+        string script = CaptionBar.Build();
+        Assert.Contains("\\u003Cbutton data-webview-close\\u003E", script, StringComparison.Ordinal);
         Assert.Contains("\\u003Cbutton data-webview-minimize\\u003E", script, StringComparison.Ordinal);
         Assert.Contains("\\u003Cbutton data-webview-maximize\\u003E", script, StringComparison.Ordinal);
-        Assert.Contains("\\u003Cbutton data-webview-close\\u003E", script, StringComparison.Ordinal);
         Assert.Contains("bar.innerHTML=", script);
+        // 无色带：不画背景面、不推内容（色带与 dsh 配色不一致的根因，评审第二轮移除）
+        Assert.DoesNotContain("padding-top", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("position:fixed;top:0;left:0;right:0", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>验证红绿灯点色 = macOS 系统色（关闭红/最小化黄/最大化绿），悬停符号深色；
+    /// 点簇不消费任何 dsh token（配色一致性问题由「不画面」根治，token 只留在 mark 的透明链扁平化）。</summary>
+    [Fact]
+    public void Build_TrafficLightColors_AreMacSystemColors()
+    {
+        string script = CaptionBar.Build();
+        Assert.Contains("button[data-webview-close] span{background:#ff5f57}", script, StringComparison.Ordinal);
+        Assert.Contains("button[data-webview-minimize] span{background:#febc2e}", script, StringComparison.Ordinal);
+        Assert.Contains("button[data-webview-maximize] span{background:#28c840}", script, StringComparison.Ordinal);
+        Assert.Contains("button:hover svg{display:block}", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("var(--dsw-alias-bg-overlay", script, StringComparison.Ordinal);
     }
 
     /// <summary>验证 innerHTML 全段经 JsString 双引号管线注入：SVG 图标属性的单引号若裸拼进单引号
@@ -33,33 +70,9 @@ public class CaptionBarTests
     [Fact]
     public void Build_InnerHtmlViaJsString_NoRawSingleQuoteInjection()
     {
-        string script = CaptionBar.Build(40);
+        string script = CaptionBar.Build();
         Assert.Contains("bar.innerHTML=\"", script, StringComparison.Ordinal);
         Assert.DoesNotContain("innerHTML='<", script, StringComparison.Ordinal);
-    }
-
-    /// <summary>验证高度参数贯通两处几何：顶栏 height 与 body padding-top（让位）取同值。</summary>
-    [Theory]
-    [InlineData(40)]
-    [InlineData(48)]
-    public void Build_HeightFlowsToBarAndOffset(int height)
-    {
-        string script = CaptionBar.Build(height);
-        Assert.Contains($"height:{height}px;", script);
-        Assert.Contains($"body{{padding-top:{height}px!important;box-sizing:border-box!important}}", script);
-    }
-
-    /// <summary>验证配色主路消费 dsh 主题 token（随页面明暗），回退值经自定义属性接官方
-    /// prefers-color-scheme 规格（亮 #f9fafb/#0f1115，暗 #1b1b1c/#f9fafb）。</summary>
-    [Fact]
-    public void Build_ConsumesThemeTokens_WithOfficialFallbacks()
-    {
-        string script = CaptionBar.Build(40);
-        Assert.Contains("background:var(--dsw-alias-bg-overlay,var(--cap-fb-bg))", script);
-        Assert.Contains("color:var(--dsw-alias-label-primary,var(--cap-fb-fg))", script);
-        Assert.Contains("--cap-fb-bg:#f9fafb;--cap-fb-fg:#0f1115", script);
-        Assert.Contains("@media(prefers-color-scheme:dark){#dsh-desktop-caption-bar{--cap-fb-bg:#1b1b1c;--cap-fb-fg:#f9fafb}}", script);
-        Assert.Contains("button[data-webview-close]:hover{background:#e81123;color:#fff}", script);
     }
 
     /// <summary>验证按钮可达名随宿主 locale 切换：en 出英文、缺省中文，且中文经 JsString 转义
@@ -67,7 +80,7 @@ public class CaptionBarTests
     [Fact]
     public void Build_AriaLabels_LocalizedViaJsString()
     {
-        string zh = CaptionBar.Build(40);
+        string zh = CaptionBar.Build();
         Assert.DoesNotContain("最小化", zh, StringComparison.Ordinal);
         Assert.DoesNotContain("关闭", zh, StringComparison.Ordinal);
         // 「最」= U+6700：JsString 转义后的中文可达名（编码器输出大写十六进制）
@@ -75,7 +88,7 @@ public class CaptionBarTests
 
         var en = new UiLocale();
         en.Set("en");
-        string enScript = CaptionBar.Build(40, en);
+        string enScript = CaptionBar.Build(en);
         Assert.Contains("aria-label", enScript, StringComparison.Ordinal);
         Assert.Contains("Minimize", enScript, StringComparison.Ordinal);
         Assert.Contains("Maximize", enScript, StringComparison.Ordinal);

@@ -3,15 +3,15 @@ using System.Text.Json;
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 /// <summary>
-/// 自绘标题栏（caption bar）的可调参数（appsettings.json 的 <c>CaptionBar</c> 节，禁止硬编码进逻辑）。
-/// 配色不在此列：底色/符号色随 dsh 主题 token（回退值 = 官方 caption 规格，见
-/// <c>PageBridge.CaptionBar</c>），是设计常量而非可调项。
+/// 无边框窗口 chrome 的可调参数（appsettings.json 的 <c>CaptionBar</c> 节，禁止硬编码进逻辑）。
+/// 默认 52 = 官方桌面端 macOS 呈现的侧栏顶条高度（dsh web darwin 规则的红绿灯让位带）——
+/// Ryn 自动拖拽条与之对齐后，顶条空域即拖拽区、双击缩放生效。配色不在此列：呈现由 dsh web
+/// darwin 规则承担（配色天然一致）；红绿灯点色是 macOS 系统色（设计常量）。
 /// </summary>
 public sealed record CaptionBarOptions
 {
-    /// <summary>标题栏高度（CSS 像素）。默认 40 = 官方桌面端 Windows caption 规格
-    /// （deepseek-harness apps/desktop <c>WINDOWS_TITLEBAR_HEIGHT</c>）。</summary>
-    public int HeightPx { get; init; } = 40;
+    /// <summary>顶部拖拽条高度（CSS 像素）。默认 52 = 官方 darwin 侧栏顶条（traffic-light 让位带）。</summary>
+    public int HeightPx { get; init; } = 52;
 
     /// <summary>全默认实例：组合根字段初始化的引用目标（目标类型 <c>new()</c> 会被组合根配额计数，
     /// C3 的 new 只留给真正的装配必要面）。</summary>
@@ -30,7 +30,7 @@ public sealed record CaptionBarOptions
     /// <summary>把 appsettings.json 全文解析为 <see cref="CaptionBarOptions"/>（纯函数，可单测）：
     /// 根非对象、无 <c>CaptionBar</c> 节、节非对象、键缺失或取值不可表示一律回退默认；
     /// 损坏 JSON 由调用方转 fail-safe（本方法除坏 JSON 外不抛）。
-    /// 非正值视作缺失回退默认（高度 ≤ 0 无法承载按钮，也不构成合法拖拽条）。</summary>
+    /// 非正值视作缺失回退默认（高度 ≤ 0 不构成合法拖拽条）。</summary>
     /// <param name="json">appsettings.json 全文。</param>
     /// <returns>解析后的选项（缺省字段保持默认值）。</returns>
     internal static CaptionBarOptions Parse(string json) =>
