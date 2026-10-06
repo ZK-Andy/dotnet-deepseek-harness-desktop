@@ -129,11 +129,26 @@ public sealed partial class DshLoopbackProxy
 
         if (!_forward.TryGetRoute(out string authority, out string cookie))
         {
-            Interlocked.Increment(ref _requestCount);
-            Interlocked.Increment(ref _failureCount);
-            _log($"[shell] 代理未铸币即调用：502（{req.Method} {ShellProxyFraming.PagePath(req.Target)}；dsh 未起或铸币失败）");
-            await ShellProxyFraming.WriteSmallAsync(stream, 502, "shell proxy: not minted", ct).ConfigureAwait(false);
-            return;
+            // 未铸币不再立即 502（ADR unminted-bounded-wait）：市场插件更新收尾调度 dsh 重启的
+            // 接力收养窗口里，旧页面的 XHR/SSE 重连等铸币门放行；页断联/应用退出经取消静默收尾，
+            // 预算到点仍无铸币才落既有 loud 502。
+            try
+            {
+                if (!await _forward.WaitMintedBoundedAsync(_unmintedWaitBudget, ct).ConfigureAwait(false)
+                    || !_forward.TryGetRoute(out authority, out cookie))
+                {
+                    Interlocked.Increment(ref _requestCount);
+                    Interlocked.Increment(ref _failureCount);
+                    _log($"[shell] 代理未铸币即调用：502（等待{_unmintedWaitBudget.TotalSeconds:F0}s 仍无铸币；{req.Method} {ShellProxyFraming.PagePath(req.Target)}；dsh 未起或铸币失败）");
+                    await ShellProxyFraming.WriteSmallAsync(stream, 502, "shell proxy: not minted", ct).ConfigureAwait(false);
+                    return;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // 等待期间页断联/应用退出：无响应可写，静默收尾（对齐受理循环取消语义）。
+                return;
+            }
         }
 
         // 逐请求 trace 默认关（ADR proxy-log-noise-reduction）：成功路径由终态行的异常判据 + 收尾统计承担，

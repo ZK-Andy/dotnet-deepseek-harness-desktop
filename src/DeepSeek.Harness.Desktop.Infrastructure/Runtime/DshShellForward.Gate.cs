@@ -18,6 +18,11 @@ public sealed partial class DshShellForward
         PollInterval: TimeSpan.FromSeconds(1),
         Budget: TimeSpan.FromSeconds(30));
 
+    // 未铸币等待预算：覆盖市场插件更新「update → restart scheduled」的接力收养窗口（2026-10-07 实机
+    // 事件：dsh 退出 → 收养重验放行 12s，窗口内 19 条未铸币 502 打进旧页面的市场组件）+ 余量；预算
+    // 到点仍无铸币才回落 loud 502。非用户可调行为，不进 RuntimeTimeouts（与铸币稳定化参数同口径）。
+    internal static readonly TimeSpan DefaultUnmintedWaitBudget = TimeSpan.FromSeconds(15);
+
     /// <summary>铸币稳定化参数（internal 测试缝：经构造注入覆写以压缩时长；null = 生产默认）。</summary>
     /// <param name="StableWindow">Ready 须连续维持的时长（<see cref="RelayWebReadinessGate"/>）。</param>
     /// <param name="PollInterval">探活轮询节拍。</param>
@@ -254,7 +259,8 @@ public sealed partial class DshShellForward
     }
 
     /// <summary>铸币态失效（epoch 化，ADR mint-epoch-mux-gate）：dsh 进程死亡即由监督面调用——route 清空
-    /// （代理 `/` 立即回落 holder、其余请求 502，页面自刷被门控吸收），就绪门重新武装（下一个未决门
+    /// （代理 `/` 立即回落 holder、其余转发请求进入有界等待铸币，见 ADR unminted-bounded-wait；预算内
+    /// 放行即照常转发，页面自刷被门控吸收），就绪门重新武装（下一个未决门
     /// 由后续铸币/重验放行）。cookie 保留作收养重验的凭据材料：dsh 会话 cookie 由落盘持久密钥签名、
     /// 按 authority 绑定，同端口续任者仍有效（收养收编 AdoptSuccessor 的既有口径同源）。
     /// 幂等：已处失效态（route 空且就绪门未决）即 no-op 返回 false——监督器残留锁死分支逐轮重入不得
@@ -339,7 +345,7 @@ public sealed partial class DshShellForward
     }
 
     /// <summary>取当前铸币路由（authority + cookie 名值；调用方贴 cookie、拼 target）。
-    /// 未铸币返回 false（调用方 loud 502，不抛）。</summary>
+    /// 未铸币返回 false（调用方有界等待铸币后仍无才 loud 502，不抛）。</summary>
     /// <param name="authority">记住的 dsh authority（无查询串，无 token）。</param>
     /// <param name="cookie">记住的 cookie 头值（名值对；值不出本方法即不落盘）。</param>
     /// <returns>true = 已铸币；false = 未铸币。</returns>
@@ -357,4 +363,31 @@ public sealed partial class DshShellForward
     /// <summary>等铸币就绪（holder 长轮询用；无超时，中止即调用方收回等待）。</summary>
     /// <param name="ct">调用方取消令牌（页断联/应用退出）。</param>
     internal Task WaitMintedAsync(CancellationToken ct) => _mintedTcs.Task.WaitAsync(ct);
+
+    /// <summary>未铸币有界等待（ADR unminted-bounded-wait）：转发请求在未铸币窗口内等铸币门放行而非
+    /// 立即 502——市场插件更新收尾调度 dsh 重启的接力收养窗口里，旧页面的 XHR/SSE 重连在此吸收。
+    /// 等待位与 holder 长轮询同一未决门（epoch 化：<see cref="MintAsync"/>/<see cref="RevalidateAsync"/>
+    /// 放行即解除）；等待者持的门可能恰逢 <see cref="InvalidateRoute"/> 换门——返回后调用方仍须
+    /// <see cref="TryGetRoute"/> 复核。时间经 <see cref="_timeProvider"/>（测试虚拟时钟同缝）。
+    /// 预算到点未铸成返回 false（调用方按既有 loud 502 降级）；取消（页断联/应用退出）即上抛。</summary>
+    /// <param name="budget">等待预算（生产 <see cref="DefaultUnmintedWaitBudget"/>；测试注入压缩时长）。</param>
+    /// <param name="ct">调用方取消令牌（页断联/应用退出）。</param>
+    internal async Task<bool> WaitMintedBoundedAsync(TimeSpan budget, CancellationToken ct)
+    {
+        Task minted = _mintedTcs.Task;
+        var delay = Task.Delay(budget, _timeProvider, ct);
+        Task winner = await Task.WhenAny(minted, delay).ConfigureAwait(false);
+        if (winner != minted)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(ct);
+            }
+
+            // 预算到点。竞态收口：铸币恰在 WhenAny 判定瞬间落定时 route 已可见——以 route 为准再核一次。
+            return TryGetRoute(out _, out _);
+        }
+
+        return TryGetRoute(out _, out _);
+    }
 }

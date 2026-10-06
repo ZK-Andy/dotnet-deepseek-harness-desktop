@@ -18,6 +18,7 @@ public sealed partial class DshLoopbackProxy : IDisposable
     private readonly DshLoopbackLocal _local;
     private readonly DshLoopbackTunnel _tunnel;
     private readonly ProxyLogging _logging;
+    private readonly TimeSpan _unmintedWaitBudget;
     private long _requestCount;
     private long _failureCount;
     private long _tunnelCount;
@@ -83,11 +84,12 @@ public sealed partial class DshLoopbackProxy : IDisposable
         }
     }
 
-    /// <summary>测试缝：注入 dsh 通道传输；可选注入代理端口记忆（缺省 OS 分配、不持久化）
-    /// 与日志档位（缺省读 appsettings.json 的 <c>ProxyLogging</c> 节）。</summary>
+    /// <summary>测试缝：注入 dsh 通道传输；可选注入代理端口记忆（缺省 OS 分配、不持久化）、
+    /// 日志档位（缺省读 appsettings.json 的 <c>ProxyLogging</c> 节）与未铸币等待预算
+    /// （缺省 <see cref="DshShellForward.DefaultUnmintedWaitBudget"/>）。</summary>
     internal DshLoopbackProxy(DshShellForward forward, Action<string> log, HttpMessageHandler transport,
         string? contentRoot = null, int? preferredPort = null, Action<int>? persistPort = null,
-        ProxyLogging? logging = null)
+        ProxyLogging? logging = null, TimeSpan? unmintedWaitBudget = null)
     {
         ArgumentNullException.ThrowIfNull(forward);
         ArgumentNullException.ThrowIfNull(log);
@@ -98,8 +100,9 @@ public sealed partial class DshLoopbackProxy : IDisposable
         // 流式直通：Timeout 无限（SSE 空闲不断），寿命与页 socket 绑定（页断联即 cancel，
         // EventSource 自重连；见 ADR loopback-forward-proxy）。
         _client = new HttpClient(transport) { Timeout = Timeout.InfiniteTimeSpan };
+        _unmintedWaitBudget = unmintedWaitBudget ?? DshShellForward.DefaultUnmintedWaitBudget;
         _local = new DshLoopbackLocal(forward, log, contentRoot);
-        _tunnel = new DshLoopbackTunnel(forward, log, _logging);
+        _tunnel = new DshLoopbackTunnel(forward, log, _logging, _unmintedWaitBudget);
         _listener = BindListener(preferredPort, persistPort);
         int port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         Url = new Uri($"http://localhost:{port}/", UriKind.Absolute);

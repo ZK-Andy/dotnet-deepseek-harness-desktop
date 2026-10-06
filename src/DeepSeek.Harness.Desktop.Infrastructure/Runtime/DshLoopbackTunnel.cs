@@ -17,8 +17,9 @@ internal sealed class DshLoopbackTunnel
     private readonly DshShellForward _forward;
     private readonly Action<string> _log;
     private readonly ProxyLogging _logging;
+    private readonly TimeSpan _unmintedWaitBudget;
 
-    internal DshLoopbackTunnel(DshShellForward forward, Action<string> log, ProxyLogging logging)
+    internal DshLoopbackTunnel(DshShellForward forward, Action<string> log, ProxyLogging logging, TimeSpan unmintedWaitBudget)
     {
         ArgumentNullException.ThrowIfNull(forward);
         ArgumentNullException.ThrowIfNull(log);
@@ -26,6 +27,7 @@ internal sealed class DshLoopbackTunnel
         _forward = forward;
         _log = log;
         _logging = logging;
+        _unmintedWaitBudget = unmintedWaitBudget;
     }
 
     /// <summary>升级通道隧道（标准反代语义）：向 dsh authority 建裸 TCP，
@@ -35,9 +37,23 @@ internal sealed class DshLoopbackTunnel
     {
         if (!_forward.TryGetRoute(out string authority, out string cookie))
         {
-            _log($"[shell] 代理升级无路由：502（{req.Method} {ShellProxyFraming.PagePath(req.Target)} Upgrade={upgrade}）");
-            await ShellProxyFraming.WriteSmallAsync(page, 502, "shell proxy: not minted", ct).ConfigureAwait(false);
-            return;
+            // 未铸币不再立即 502（ADR unminted-bounded-wait，与普通转发同口径）：mux 重连等铸币门
+            // 放行；取消上抛交分发面收尾，预算到点仍无铸币才落 loud 502。
+            try
+            {
+                if (!await _forward.WaitMintedBoundedAsync(_unmintedWaitBudget, ct).ConfigureAwait(false)
+                    || !_forward.TryGetRoute(out authority, out cookie))
+                {
+                    _log($"[shell] 代理升级无路由：502（等待{_unmintedWaitBudget.TotalSeconds:F0}s 仍无铸币；{req.Method} {ShellProxyFraming.PagePath(req.Target)} Upgrade={upgrade}）");
+                    await ShellProxyFraming.WriteSmallAsync(page, 502, "shell proxy: not minted", ct).ConfigureAwait(false);
+                    return;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // 等待期间应用退出：无响应可写，静默收尾。
+                return;
+            }
         }
 
         if (!Uri.TryCreate(authority, UriKind.Absolute, out Uri? baseUri) || baseUri.Port <= 0)

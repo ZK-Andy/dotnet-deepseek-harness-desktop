@@ -195,14 +195,16 @@ public class DshLoopbackProxyTests
         await runCts.CancelAsync();
     }
 
-    /// <summary>未铸币即请求：502 小体，不抛（降级面按错误页处理）。</summary>
+    /// <summary>未铸币预算到点：502 小体，不抛（降级面按错误页处理）。预算注入 50ms 压缩等待
+    /// （ADR unminted-bounded-wait 的测试缝），loud 行带等待时长。</summary>
     [Fact]
     public async Task Proxy_WithoutMint_Returns502WithoutThrowing()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var forward = new DshShellForward(new StubDshHandler(), s_fast);
         var lines = new List<string>();
-        using var proxy = new DshLoopbackProxy(forward, lines.Add, new StubDshHandler());
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, new StubDshHandler(),
+            unmintedWaitBudget: TimeSpan.FromMilliseconds(50));
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
         _ = proxy.RunAsync(runCts.Token);
         using var page = new HttpClient();
@@ -211,6 +213,36 @@ public class DshLoopbackProxyTests
 
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
         Assert.Contains(lines, l => l.Contains("未铸币"));
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>未铸币有界等待（ADR unminted-bounded-wait）：收养窗口内旧页面的请求不立即 502——
+    /// 请求先入场进入等待，铸币放行后照常转发成功；全程「未铸币即调用」行零落盘。
+    /// 铸币走 s_fast（探活不满足即 250ms fail-open），与 5s 预算之间隔两个数量级，无竞速面。</summary>
+    [Fact]
+    public async Task Proxy_UnmintedWait_AbsorbsRecoveryWindowUntilMint()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stub = new StubDshHandler();
+        var forward = new DshShellForward(stub, s_fast);
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, stub,
+            unmintedWaitBudget: TimeSpan.FromSeconds(5));
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+        using var page = new HttpClient();
+
+        Task<HttpResponseMessage> inFlight = page.GetAsync(new Uri(proxy.Url, "chat"), cts.Token);
+        await Task.Delay(100, cts.Token); // 请求先入场进入等待（铸币自身 ≥250ms，次序无竞速）
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+
+        using HttpResponseMessage response = await inFlight;
+        string body = await response.Content.ReadAsStringAsync(cts.Token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("/chat", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(lines, l => l.Contains("未铸币"));
         await runCts.CancelAsync();
     }
 
@@ -412,6 +444,69 @@ public class DshLoopbackProxyTests
 
         Assert.StartsWith("HTTP/1.1 502", Encoding.ASCII.GetString(buf, 0, read), StringComparison.Ordinal);
         Assert.Contains(lines, l => l.Contains("升级上游不可达"));
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>未铸币升级预算到点：502 + loud 行带等待时长（ADR unminted-bounded-wait 的隧道面收口；
+    /// 预算注入 50ms 压缩等待）。</summary>
+    [Fact]
+    public async Task Proxy_UpgradeUnminted_TimesOutTo502()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var forward = new DshShellForward(new StubDshHandler(), s_fast);
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, new StubDshHandler(),
+            unmintedWaitBudget: TimeSpan.FromMilliseconds(50));
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+
+        using var socket = new TcpClient();
+        await socket.ConnectAsync(IPAddress.Loopback, proxy.Url.Port, cts.Token);
+        using NetworkStream stream = socket.GetStream();
+        byte[] head = Encoding.ASCII.GetBytes(
+            "GET /api/remote.mux HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+        await stream.WriteAsync(head, cts.Token);
+        byte[] buf = new byte[12];
+        int read = await stream.ReadAsync(buf.AsMemory(0, 12), cts.Token);
+
+        Assert.StartsWith("HTTP/1.1 502", Encoding.ASCII.GetString(buf, 0, read), StringComparison.Ordinal);
+        Assert.Contains(lines, l => l.Contains("升级无路由"));
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>未铸币升级有界等待（ADR unminted-bounded-wait）：mux 重连在收养窗口内不立即 502——
+    /// 升级请求先入场进入等待，铸币放行后照常建隧道（101 + 握手手术靶点同既有用例）。</summary>
+    [Fact]
+    public async Task Proxy_UpgradeUnmintedWait_TunnelsAfterMint()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var wsStub = new StubWebSocketServer();
+        var httpStub = new StubDshHandler();
+        var forward = new DshShellForward(httpStub, s_fast);
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub, logging: s_trace,
+            unmintedWaitBudget: TimeSpan.FromSeconds(5));
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+
+        using var socket = new TcpClient();
+        await socket.ConnectAsync(IPAddress.Loopback, proxy.Url.Port, cts.Token);
+        using NetworkStream stream = socket.GetStream();
+        byte[] head = Encoding.ASCII.GetBytes(
+            "GET /api/remote.mux HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+        await stream.WriteAsync(head, cts.Token);
+        await Task.Delay(100, cts.Token); // 升级先入场进入等待（铸币自身 ≥250ms，次序无竞速）
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
+
+        byte[] buf = new byte[12];
+        int read = await stream.ReadAsync(buf.AsMemory(0, 12), cts.Token);
+
+        Assert.StartsWith("HTTP/1.1 101", Encoding.ASCII.GetString(buf, 0, read), StringComparison.Ordinal);
+        string[] snapshot = lines.ToArray();
+        Assert.DoesNotContain(snapshot, l => l.Contains("升级无路由"));
+        Assert.Contains(snapshot, l => l.Contains("升级隧道已建"));
         await runCts.CancelAsync();
     }
 
