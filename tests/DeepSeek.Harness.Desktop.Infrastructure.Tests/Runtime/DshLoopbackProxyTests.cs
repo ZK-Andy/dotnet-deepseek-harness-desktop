@@ -21,6 +21,23 @@ public class DshLoopbackProxyTests
         PollInterval: TimeSpan.FromMilliseconds(10),
         Budget: TimeSpan.FromMilliseconds(250));
 
+    /// <summary>Trace 档日志档位（逐请求两行 + 隧道建/收行的唯一取用口；ADR proxy-log-noise-reduction）：
+    /// 5 个逐事件用例共用同一不可变实例，替代各处内联 `new ProxyLogging { Trace = true }`。</summary>
+    private static readonly ProxyLogging s_trace = new() { Trace = true };
+
+    /// <summary>隧道收行落盘判据三态（ADR proxy-log-noise-reduction）：完成/取消收场默认静默（避免重回逐隧道流水），
+    /// 先结束的泵任务以异常收场（RST 即此形态）时恒打——实机 639 条收行里恰 1 条；`Trace` 档恒落。</summary>
+    [Fact]
+    public void TunnelClose_LogPredicate_CoversFaultAndTrace()
+    {
+        Assert.False(DshLoopbackTunnel.ShouldLogTunnelClose(new ProxyLogging(), Task.CompletedTask));
+        Assert.False(DshLoopbackTunnel.ShouldLogTunnelClose(
+            new ProxyLogging(), Task.FromCanceled(new CancellationToken(canceled: true))));
+        Assert.True(DshLoopbackTunnel.ShouldLogTunnelClose(
+            new ProxyLogging(), Task.FromException(new IOException("RST"))));
+        Assert.True(DshLoopbackTunnel.ShouldLogTunnelClose(s_trace, Task.CompletedTask));
+    }
+
     /// <summary>SSE 首块渐进到达：后端流永不结束时，页侧首行仍须到达（缓冲实现恒等不到首行；
     /// dsh 插件 graph 靠此推送激活，mac 54 entries 实证）。</summary>
     [Fact]
@@ -46,7 +63,8 @@ public class DshLoopbackProxyTests
         string? first = await reader.ReadLineAsync(cts.Token);
 
         Assert.Equal(": connected", first);
-        Assert.Contains(lines, l => l.Contains("代理流转") && l.Contains("/events"));
+        // 默认档位成功路径静默（ADR proxy-log-noise-reduction）：流式直通的行为证据是首行本身，不再靠逐请求行。
+        Assert.DoesNotContain(lines, l => l.Contains("代理流转"));
         await runCts.CancelAsync();
     }
 
@@ -73,8 +91,9 @@ public class DshLoopbackProxyTests
         Assert.Equal("{\"m\":1}", body);
         Assert.Equal("application/json; charset=utf-8", stub.LastContentType);
         Assert.Contains($"{CookieName}={CookieValue}", stub.LastCookie ?? string.Empty);
-        Assert.Contains(lines, l => l.Contains("代理请求：POST /rpc"));
-        Assert.Contains(lines, l => l.Contains("代理回包：200"));
+        // 默认档位逐请求 trace 不落盘（ADR proxy-log-noise-reduction）；请求确实到过 dsh 由回显体与源改写断言证明。
+        Assert.DoesNotContain(lines, l => l.Contains("代理请求"));
+        Assert.DoesNotContain(lines, l => l.Contains("代理回包"));
         Assert.DoesNotContain(lines, l => l.Contains(GoodToken) || l.Contains(CookieValue));
         await runCts.CancelAsync();
     }
@@ -195,6 +214,151 @@ public class DshLoopbackProxyTests
         await runCts.CancelAsync();
     }
 
+    /// <summary>默认档位：成功请求静默（无逐请求行），会话级证据由 Dispose 的统计行承担（ADR proxy-log-noise-reduction）。</summary>
+    [Fact]
+    public async Task Proxy_SuccessPath_SilentByDefaultWithSessionSummary()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stub = new StubDshHandler();
+        var forward = new DshShellForward(stub, s_fast);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, stub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+        using var page = new HttpClient();
+
+        using HttpResponseMessage response = await page.GetAsync(new Uri(proxy.Url, "chat/"), cts.Token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain(lines, l =>
+            l.Contains("代理请求") || l.Contains("代理回包") || l.Contains("代理流转"));
+        proxy.Dispose();
+        Assert.Contains(lines, l => l.Contains("代理统计：1 请求（1 成功 / 0 失败），升级隧道 0"));
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>默认档位：失败状态（≥400）恒打一行并计入统计失败侧——降噪不动异常面。</summary>
+    [Fact]
+    public async Task Proxy_ErrorStatus_LogsLineAndCountsFailure()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stub = new StubDshHandler();
+        var forward = new DshShellForward(stub, s_fast);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, stub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+        using var page = new HttpClient();
+
+        using HttpResponseMessage response = await page.GetAsync(new Uri(proxy.Url, "nope"), cts.Token);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains(lines, l => l.Contains("代理回包：401"));
+        proxy.Dispose();
+        Assert.Contains(lines, l => l.Contains("代理统计：1 请求（0 成功 / 1 失败），升级隧道 0"));
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>默认档位：慢请求（达阈值）也落一行——成功侧唯一的逐请求证据面。
+    /// 阈值取真实值（10ms）并由桩在目标路径上注入 80ms 延迟，判据走真实耗时比较；探活路径不延迟（不扰铸币）。</summary>
+    [Fact]
+    public async Task Proxy_SlowRequest_LogsWithoutTrace()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stub = new StubDshHandler { DelayPath = "/chat", DelayMilliseconds = 80 };
+        var forward = new DshShellForward(stub, s_fast);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, stub, logging: new ProxyLogging
+        {
+            SlowRequestMilliseconds = 10,
+        });
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+        using var page = new HttpClient();
+
+        using HttpResponseMessage response = await page.GetAsync(new Uri(proxy.Url, "chat/"), cts.Token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains(lines, l => l.Contains("代理回包：200"));
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>零请求会话不打统计行（guard：N=0 且 T=0）——空转会话退出不留噪声。</summary>
+    [Fact]
+    public void Proxy_NoTraffic_SkipsSessionSummary()
+    {
+        var lines = new List<string>();
+        var forward = new DshShellForward(new StubDshHandler(), s_fast);
+        var proxy = new DshLoopbackProxy(forward, lines.Add, new StubDshHandler());
+
+        proxy.Dispose();
+
+        Assert.DoesNotContain(lines, l => l.Contains("代理统计"));
+    }
+
+    /// <summary>升级隧道计入统计独立列（ADR proxy-log-noise-reduction）：逐隧道 trace 静默后，
+    /// 「本会话有 mux 流量」的证据只由这一列承担，故隧道请求必须计数。</summary>
+    [Fact]
+    public async Task Proxy_UpgradeTunnel_CountsInSessionSummary()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var wsStub = new StubWebSocketServer();
+        var httpStub = new StubDshHandler();
+        var forward = new DshShellForward(httpStub, s_fast);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+
+        using var socket = new TcpClient();
+        await socket.ConnectAsync(IPAddress.Loopback, proxy.Url.Port, cts.Token);
+        using NetworkStream stream = socket.GetStream();
+        byte[] head = Encoding.ASCII.GetBytes(
+            "GET /api/remote.mux HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+        await stream.WriteAsync(head, cts.Token);
+        byte[] buf = new byte[12];
+        int read = await stream.ReadAsync(buf.AsMemory(0, 12), cts.Token);
+
+        Assert.StartsWith("HTTP/1.1 101", Encoding.ASCII.GetString(buf, 0, read), StringComparison.Ordinal);
+        Assert.DoesNotContain(lines, l => l.Contains("升级隧道已建"));
+        proxy.Dispose();
+        Assert.Contains(lines, l => l.Contains("代理统计：0 请求（0 成功 / 0 失败），升级隧道 1"));
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>`Trace` 开关：恢复逐请求两行（请求行 + 终态行），降噪不夺走排障面。</summary>
+    [Fact]
+    public async Task Proxy_TraceEnabled_LogsRequestAndTerminal()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stub = new StubDshHandler();
+        var forward = new DshShellForward(stub, s_fast);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, stub, logging: s_trace);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+        using var page = new HttpClient();
+
+        using var content = new StringContent("{\"m\":1}", Encoding.UTF8, "application/json");
+        using HttpResponseMessage response = await page.PostAsync(new Uri(proxy.Url, "rpc"), content, cts.Token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains(lines, l => l.Contains("代理请求：POST /rpc"));
+        Assert.Contains(lines, l => l.Contains("代理回包：200"));
+        await runCts.CancelAsync();
+    }
+
     /// <summary>分块请求体显式拒 502：不断章转发（成帧判别覆盖；WebKit 恒发 Content-Length）。</summary>
     [Fact]
     public async Task Proxy_ChunkedBody_Returns502()
@@ -264,7 +428,7 @@ public class DshLoopbackProxyTests
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
-        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub);
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub, logging: s_trace);
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
         _ = proxy.RunAsync(runCts.Token);
 
@@ -295,7 +459,8 @@ public class DshLoopbackProxyTests
     }
 
     /// <summary>上游拒答面：dsh 回 403 时页拿到原样 403，且日志有「上游响应：HTTP/1.1 403」+ 收尾先关方=dsh——
-    /// 2026-09-27 排障时该面全无留痕（只有建立/收尾两行，拒因不可见），此处钉住。</summary>
+    /// 2026-09-27 排障时该面全无留痕（只有建立/收尾两行，拒因不可见），此处钉住。
+    /// 上游响应行恒打；`已建` 与正常 EOF 的 `已收` 属逐事件 trace（默认静默），本用例显式打开。</summary>
     [Fact]
     public async Task Proxy_UpgradeTunnel_LogsUpstreamReject()
     {
@@ -306,7 +471,7 @@ public class DshLoopbackProxyTests
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
-        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub);
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub, logging: s_trace);
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
         _ = proxy.RunAsync(runCts.Token);
 
@@ -322,7 +487,7 @@ public class DshLoopbackProxyTests
         Assert.StartsWith("HTTP/1.1 403", responseHead, StringComparison.Ordinal);
         string[] rejectLines = lines.ToArray();
         Assert.Contains(rejectLines, l => l.Contains("代理升级上游响应：HTTP/1.1 403 Forbidden"));
-        // 收尾 loud：上游先关（dsh 侧）——与「建了即收」现场同形；页读到 403 早于收尾行落盘，等落盘。
+        // 收尾行（Trace 档）：上游先关（dsh 侧）——与「建了即收」现场同形；页读到 403 早于收尾行落盘，等落盘。
         Assert.True(
             await WaitForLogAsync(lines, l => l.Contains("隧道已收") && l.Contains("先关方=dsh")),
             "应收尾留痕「先关方=dsh」");
@@ -331,7 +496,7 @@ public class DshLoopbackProxyTests
 
     /// <summary>升级隧道不被页断联监视误杀：升级后页侧帧是合法流量，哨兵不得偷字节、
     /// 不得取消隧道（Reconnecting 常亮根因：首帧即被偷 + 泵掐断，客户端循环重连）。
-    /// 另断言收尾 loud：应用退出即“先关方=宿主取消”。</summary>
+    /// 另断言收尾行（Trace 档）：应用退出即“先关方=宿主取消”。</summary>
     [Fact]
     public async Task Proxy_UpgradeTunnel_SurvivesClientFrames()
     {
@@ -342,7 +507,7 @@ public class DshLoopbackProxyTests
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
-        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub);
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub, logging: s_trace);
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
         _ = proxy.RunAsync(runCts.Token);
 
@@ -376,7 +541,7 @@ public class DshLoopbackProxyTests
         Assert.Equal(pattern, echo);
         Assert.Contains(lines.ToArray(), l => l.Contains("升级隧道已建"));
 
-        // 收尾 loud：应用退出即记“先关方=宿主取消”（泵仍在写日志，故取快照比对）。
+        // 收尾行（Trace 档）：应用退出即记“先关方=宿主取消”（泵仍在写日志，故取快照比对）。
         await runCts.CancelAsync();
         Assert.True(await WaitForLogAsync(lines, l => l.Contains("隧道已收")), "应收尾留痕");
         Assert.Contains(lines.ToArray(), l => l.Contains("隧道已收") && l.Contains("宿主取消"));
@@ -399,7 +564,8 @@ public class DshLoopbackProxyTests
     }
 
     /// <summary>上游接上就关、一个字节也不给（TCP 层 RST/FIN 型拒绝）：留痕须记「零字节即关」，
-    /// 否则该形态又回到「已建/已收」两行盲区。</summary>
+    /// 否则该形态又回到「已建/已收」两行盲区。零字节行恒打；`已建` 与正常 EOF 的 `已收` 属逐事件 trace
+    /// （ADR proxy-log-noise-reduction），本用例显式打开。</summary>
     [Fact]
     public async Task Proxy_UpgradeTunnel_LogsUpstreamSilentClose()
     {
@@ -410,7 +576,7 @@ public class DshLoopbackProxyTests
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:{wsStub.Port}/?token={GoodToken}")), _ => { }, cts.Token));
         var lines = new List<string>();
-        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub);
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, httpStub, logging: s_trace);
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
         _ = proxy.RunAsync(runCts.Token);
 
@@ -920,12 +1086,23 @@ public class DshLoopbackProxyTests
 
         public string? LastProbeBody { get; private set; }
 
+        /// <summary>延迟目标路径（默认无；尾斜杠已裁，如 `/chat`）：只延迟该路径，探活路径不动（不扰铸币时序）。</summary>
+        public string? DelayPath { get; set; }
+
+        /// <summary>延迟毫秒（配合 <see cref="DelayPath"/>）：慢请求判据的用例用真实耗时驱动阈值比较。</summary>
+        public int DelayMilliseconds { get; set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             string path = (request.RequestUri?.AbsolutePath ?? "/").TrimEnd('/');
             if (path.Length == 0)
             {
                 path = "/";
+            }
+
+            if (DelayMilliseconds > 0 && string.Equals(path, DelayPath, StringComparison.Ordinal))
+            {
+                await Task.Delay(DelayMilliseconds, cancellationToken).ConfigureAwait(false);
             }
 
             string query = request.RequestUri?.Query ?? string.Empty;

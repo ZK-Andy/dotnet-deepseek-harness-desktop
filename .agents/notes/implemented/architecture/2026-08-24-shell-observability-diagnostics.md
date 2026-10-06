@@ -34,3 +34,4 @@ Status: implemented
 
 - [dev 运行时隔离](../process/2026-08-22-dev-runtime-isolation.md)：`--export-diagnostics` 刻意先于 dev 隔离执行——CLI 取证不关心实例形态。
 - [companion 更新设置页](../feature/2026-08-22-companion-update-settings-section.md)：诊断区块（order 51）挂同一 settings.section 机制之下。
+- [proxy-log-noise-reduction](2026-10-06-proxy-log-noise-reduction.md)：本笔记定的落点与轮转不变，后续批只调「写什么」——成功路径逐请求 trace 默认关、异常面恒打。

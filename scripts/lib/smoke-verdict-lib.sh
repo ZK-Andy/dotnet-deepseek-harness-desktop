@@ -25,10 +25,13 @@ smoke_verdict() { # $1=stdout $2=host.log $3=后缀（可空）
 # 无人值守三元组（ADR preinstall-unattended-skip）：CI 无人点选，省 5 分钟决策等待。
 # 导出而非调用点内联：调用点要 `timeout ... &` + `$!`（timeout 的 pid），写成
 # `env A=1 timeout ... &` 与导出等价，但三元组会在各处各写一遍；容器腿用
-# `docker -e VAR`（不带 =value）从本进程环境透传两个常量项，同样单源。
-# $1=dsh-home（可空：只导出两个常量项，供容器腿透传——容器自建 home）。
+# `docker -e VAR`（不带 =value）从本进程环境透传常量项，同样单源。
+# $1=dsh-home（可空：只导出常量项，供容器腿透传——容器自建 home）。
 smoke_unattended_env() {
   export DEEPSEEK_API_KEY=placeholder DSH_DESKTOP_PREINSTALL_AUTO=skip
+  # 代理逐请求 trace：存活门 smoke_client_alive 以逐请求行为判据（见下），而产品默认降噪（ADR
+  # proxy-log-noise-reduction）——无人值守腿在这里显式打开，腿内 host.log 即取证通道。
+  export DSH_DESKTOP_PROXY_TRACE=1
   if [[ -n "${1:-}" ]]; then export DSH_DESKTOP_DSH_HOME="$1"; fi
 }
 

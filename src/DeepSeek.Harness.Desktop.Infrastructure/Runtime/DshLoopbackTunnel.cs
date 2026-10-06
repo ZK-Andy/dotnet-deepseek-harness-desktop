@@ -16,13 +16,16 @@ internal sealed class DshLoopbackTunnel
 
     private readonly DshShellForward _forward;
     private readonly Action<string> _log;
+    private readonly ProxyLogging _logging;
 
-    internal DshLoopbackTunnel(DshShellForward forward, Action<string> log)
+    internal DshLoopbackTunnel(DshShellForward forward, Action<string> log, ProxyLogging logging)
     {
         ArgumentNullException.ThrowIfNull(forward);
         ArgumentNullException.ThrowIfNull(log);
+        ArgumentNullException.ThrowIfNull(logging);
         _forward = forward;
         _log = log;
+        _logging = logging;
     }
 
     /// <summary>升级通道隧道（标准反代语义）：向 dsh authority 建裸 TCP，
@@ -69,7 +72,13 @@ internal sealed class DshLoopbackTunnel
                 }
 
                 string label = $"{req.Method} {ShellProxyFraming.PagePath(req.Target)} Upgrade={upgrade}";
-                _log($"[shell] 代理升级隧道已建（{label}；任一端关闭即收）");
+                if (_logging.Trace)
+                {
+                    // 逐隧道 trace 默认关（ADR proxy-log-noise-reduction）：活连接的建行是页面 mux 重连 churn 的
+                    // 流水，只在 Trace 打开时落盘；异常面（无路由/不可达/零字节/上游响应/故障收尾）照旧恒打。
+                    _log($"[shell] 代理升级隧道已建（{label}；任一端关闭即收）");
+                }
+
                 await PumpTunnelAsync(page, up, label, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is IOException or OperationCanceledException)
@@ -117,7 +126,7 @@ internal sealed class DshLoopbackTunnel
     }
 
     /// <summary>双向直泵至任一端关闭（两任务皆被观察；关闭后对端随 socket 释放中断，无计时器）。
-    /// 收尾 loud 一行：先结束的方向即先关方（页/dsh/宿主取消），排障不再靠数建立行猜
+    /// 收尾一行：先结束的方向即先关方（页/dsh/宿主取消），排障不再靠数建立行猜
     /// （Reconnecting 常亮实证：建立行刷屏、关闭零行）。取消与 EOF 同判据，先关方启发式。</summary>
     private async Task PumpTunnelAsync(NetworkStream page, NetworkStream up, string label, CancellationToken ct)
     {
@@ -129,16 +138,28 @@ internal sealed class DshLoopbackTunnel
         string fault = first.Exception?.InnerExceptions.Count > 0
             ? $"（{first.Exception.InnerExceptions[0].GetType().Name}）"
             : string.Empty;
-        _log($"[shell] 代理升级隧道已收（先关方={closer}{fault}；{label}）");
+        if (ShouldLogTunnelClose(_logging, first))
+        {
+            _log($"[shell] 代理升级隧道已收（先关方={closer}{fault}；{label}）");
+        }
         try
         {
             await Task.WhenAll(toUpstream, toPage).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException)
         {
-            // 对端已关：隧道使命结束（loud 已留）。
+            // 对端已关：隧道使命结束（收行是否留痕已由 ShouldLogTunnelClose 判定）。
         }
     }
+
+    /// <summary>收行是否落盘（ADR proxy-log-noise-reduction）：`Trace` 档恒落；默认档只在「先结束的任务以异常
+    /// 收场」时落（RST 即此形态）——实机 639 条收行里恰 1 条此种（2026-09-27 mux churn 排障现场，首读即断、
+    /// `已建` 与其后无 `上游响应`，全档静默即该类故障零留痕）。正常 EOF 收场与取消收场（`Task.Exception` 为 null）
+    /// 不落；先结束的是正常 EOF 侧、另一侧随后才故障的情形不在本行（由泵收尾的 catch 静默）。</summary>
+    /// <param name="logging">日志档位。</param>
+    /// <param name="first">先结束的泵任务。</param>
+    internal static bool ShouldLogTunnelClose(ProxyLogging logging, Task first) =>
+        logging.Trace || first.Exception is { InnerExceptions.Count: > 0 };
 
     /// <summary>上游→页方向：首块解出响应首行 loud 留痕后**原样前送**，其余字节透明直泵——
     /// 「建了即收」这类故障从此能直接读到是谁、以什么状态拒的（升级面此前只有建立/收尾两行）。

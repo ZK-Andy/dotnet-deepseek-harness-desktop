@@ -17,7 +17,15 @@ public sealed partial class DshLoopbackProxy : IDisposable
     private readonly TcpListener _listener;
     private readonly DshLoopbackLocal _local;
     private readonly DshLoopbackTunnel _tunnel;
+    private readonly ProxyLogging _logging;
+    private long _requestCount;
+    private long _failureCount;
+    private long _tunnelCount;
     private bool _disposed;
+
+    /// <summary>日志档位缺省装载（单例；见 <see cref="ProxyLogging"/> 与 ADR proxy-log-noise-reduction）：
+    /// 与 <c>RuntimeVersionGate</c>/<c>LauncherActivation</c> 同款——基础设施自持其配置单次装载。</summary>
+    private static readonly ProxyLogging s_logging = ProxyLogging.Load(AppContext.BaseDirectory);
 
     /// <summary>代理源（窗口 URL 与探针/守卫口径家；端口记忆优先、冲突 OS 分配，构造即绑定）。</summary>
     public Uri Url { get; }
@@ -75,20 +83,23 @@ public sealed partial class DshLoopbackProxy : IDisposable
         }
     }
 
-    /// <summary>测试缝：注入 dsh 通道传输；可选注入代理端口记忆（缺省 OS 分配、不持久化）。</summary>
+    /// <summary>测试缝：注入 dsh 通道传输；可选注入代理端口记忆（缺省 OS 分配、不持久化）
+    /// 与日志档位（缺省读 appsettings.json 的 <c>ProxyLogging</c> 节）。</summary>
     internal DshLoopbackProxy(DshShellForward forward, Action<string> log, HttpMessageHandler transport,
-        string? contentRoot = null, int? preferredPort = null, Action<int>? persistPort = null)
+        string? contentRoot = null, int? preferredPort = null, Action<int>? persistPort = null,
+        ProxyLogging? logging = null)
     {
         ArgumentNullException.ThrowIfNull(forward);
         ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(transport);
         _forward = forward;
         _log = log;
+        _logging = logging ?? s_logging;
         // 流式直通：Timeout 无限（SSE 空闲不断），寿命与页 socket 绑定（页断联即 cancel，
         // EventSource 自重连；见 ADR loopback-forward-proxy）。
         _client = new HttpClient(transport) { Timeout = Timeout.InfiniteTimeSpan };
         _local = new DshLoopbackLocal(forward, log, contentRoot);
-        _tunnel = new DshLoopbackTunnel(forward, log);
+        _tunnel = new DshLoopbackTunnel(forward, log, _logging);
         _listener = BindListener(preferredPort, persistPort);
         int port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         Url = new Uri($"http://localhost:{port}/", UriKind.Absolute);
@@ -155,11 +166,28 @@ public sealed partial class DshLoopbackProxy : IDisposable
         }
     }
 
-    /// <summary>停止监听并释放 dsh 通道（在途连接随 socket 关闭收尾）。</summary>
+    /// <summary>停止监听、释放 dsh 通道并落一行会话统计（在途连接随 socket 关闭收尾；幂等——
+    /// 重复释放不再重复统计）。统计口径（ADR proxy-log-noise-reduction）：`N 请求` = 受理面进入转发的请求，
+    /// 含未铸币 502（未到 dsh，计入失败）与壳自造 502（体不可读/回包超限，计入失败）；本地 holder/指南面与
+    /// 畸形请求不计；`升级隧道 T` = 升级请求受理数（含未到 dsh 的升级 502——计数点在路由校验之前，独立成列）。</summary>
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         _disposed = true;
         _listener.Stop();
         _client.Dispose();
+        long tunnels = Interlocked.Read(ref _tunnelCount);
+        // 读序即不变量（ADR proxy-log-noise-reduction）：每次失败自增都晚于其请求自增，故任一时刻 failed ≤ request；
+        // 先读 failed 再读 request，两个快照必满足 failed ≤ request，成功数不可能为负（无需钳位掩盖）。
+        long failed = Interlocked.Read(ref _failureCount);
+        long total = Interlocked.Read(ref _requestCount);
+        if (total > 0 || tunnels > 0)
+        {
+            _log($"[shell] 代理统计：{total} 请求（{total - failed} 成功 / {failed} 失败），升级隧道 {tunnels}");
+        }
     }
 }

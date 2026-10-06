@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -119,22 +120,34 @@ public sealed partial class DshLoopbackProxy
 
         if (IsUpgrade(req))
         {
+            // 升级隧道单独计数（ADR proxy-log-noise-reduction）：这是唯一不经终态行的流量类（含未到 dsh 的
+            // 升级 502）；逐隧道 trace 默认静默后，由统计行承担「本会话有没有 mux 流量」的证据。
+            Interlocked.Increment(ref _tunnelCount);
             await _tunnel.RelayUpgradeAsync(stream, req, req.Headers["Upgrade"], ct).ConfigureAwait(false);
             return;
         }
 
         if (!_forward.TryGetRoute(out string authority, out string cookie))
         {
+            Interlocked.Increment(ref _requestCount);
+            Interlocked.Increment(ref _failureCount);
             _log($"[shell] 代理未铸币即调用：502（{req.Method} {ShellProxyFraming.PagePath(req.Target)}；dsh 未起或铸币失败）");
             await ShellProxyFraming.WriteSmallAsync(stream, 502, "shell proxy: not minted", ct).ConfigureAwait(false);
             return;
         }
 
-        _log($"[shell] 代理请求：{req.Method} {ShellProxyFraming.PagePath(req.Target)}（头{req.Headers.Count}个，体{req.Body?.Length ?? 0}字节；cookie={(string.IsNullOrEmpty(cookie) ? "无" : "有")}）");
+        // 逐请求 trace 默认关（ADR proxy-log-noise-reduction）：成功路径由终态行的异常判据 + 收尾统计承担，
+        // 打开 Trace 才恢复「请求 + 终态」两行（请求行的头/体/cookie 细节即排障面）。
+        if (_logging.Trace)
+        {
+            _log($"[shell] 代理请求：{req.Method} {ShellProxyFraming.PagePath(req.Target)}（头{req.Headers.Count}个，体{req.Body?.Length ?? 0}字节；cookie={(string.IsNullOrEmpty(cookie) ? "无" : "有")}）");
+        }
+
+        long started = Stopwatch.GetTimestamp();
         HttpResponseMessage terminal = await FollowRedirectsAsync(authority, req, cookie, ct).ConfigureAwait(false);
         using (terminal)
         {
-            await RelayTerminalAsync(stream, req, terminal, ct).ConfigureAwait(false);
+            await RelayTerminalAsync(stream, req, terminal, Stopwatch.GetElapsedTime(started), ct).ConfigureAwait(false);
         }
     }
 
@@ -187,10 +200,21 @@ public sealed partial class DshLoopbackProxy
 
     private async Task RelayTerminalAsync(
         NetworkStream stream, ShellProxyFraming.PageRequest req,
-        HttpResponseMessage terminal, CancellationToken ct)
+        HttpResponseMessage terminal, TimeSpan elapsed, CancellationToken ct)
     {
         // set-cookie 永不进页面（壳代持，上游同款）。
         string contentType = terminal.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
+        int status = (int)terminal.StatusCode;
+        Interlocked.Increment(ref _requestCount);
+        bool failed = status >= 400;
+        if (failed)
+        {
+            Interlocked.Increment(ref _failureCount);
+        }
+
+        // 逐请求终态行默认只留异常面（ADR proxy-log-noise-reduction）：失败、慢请求或 Trace 打开才落一行。
+        bool loud = failed || _logging.Trace ||
+            elapsed.TotalMilliseconds >= _logging.SlowRequestMilliseconds;
         bool streamed = IsEventStream(terminal) || !terminal.Content.Headers.ContentLength.HasValue;
         if (!streamed)
         {
@@ -201,24 +225,45 @@ public sealed partial class DshLoopbackProxy
             }
             catch (Exception ex) when (ex is TaskCanceledException or IOException or InvalidOperationException)
             {
+                // 页见 502 即失败；上游状态已按 ≥400 计过的不重复计（每请求至多一次失败，成功 = N − 失败 才成立）。
+                // 恒打一行——此前这条路径页收 502 却零留痕（ADR proxy-log-noise-reduction 恒打面）。
+                if (!failed)
+                {
+                    Interlocked.Increment(ref _failureCount);
+                }
+
+                _log($"[shell] 代理回包体不可读：502（{req.Method} {ShellProxyFraming.PagePath(req.Target)} {ex.GetType().Name}）");
                 await ShellProxyFraming.WriteSmallAsync(stream, 502, "shell proxy: body unreadable", ct).ConfigureAwait(false);
                 return;
             }
 
             if (bytes.LongLength > DshShellForward.MaxBodyBytes)
             {
+                if (!failed)
+                {
+                    Interlocked.Increment(ref _failureCount);
+                }
+
                 _log($"[shell] 代理回包超限：502（{req.Method} {ShellProxyFraming.PagePath(req.Target)} {bytes.LongLength}字节）");
                 await ShellProxyFraming.WriteSmallAsync(stream, 502, "shell proxy: body too large", ct).ConfigureAwait(false);
                 return;
             }
 
-            _log($"[shell] 代理回包：{(int)terminal.StatusCode} {contentType} {bytes.Length}字节（{req.Method} {ShellProxyFraming.PagePath(req.Target)}）");
-            await ShellProxyFraming.WriteBufferedAsync(stream, (int)terminal.StatusCode, contentType, bytes, ct).ConfigureAwait(false);
+            if (loud)
+            {
+                _log($"[shell] 代理回包：{status} {contentType} {bytes.Length}字节（{req.Method} {ShellProxyFraming.PagePath(req.Target)}，{elapsed.TotalMilliseconds:F0}ms）");
+            }
+
+            await ShellProxyFraming.WriteBufferedAsync(stream, status, contentType, bytes, ct).ConfigureAwait(false);
             return;
         }
 
-        _log($"[shell] 代理流转：{(int)terminal.StatusCode} {contentType}（{req.Method} {ShellProxyFraming.PagePath(req.Target)}，页断联即停）");
-        await ShellProxyFraming.WriteStreamHeadAsync(stream, (int)terminal.StatusCode, contentType, ct).ConfigureAwait(false);
+        if (loud)
+        {
+            _log($"[shell] 代理流转：{status} {contentType}（{req.Method} {ShellProxyFraming.PagePath(req.Target)}，页断联即停，{elapsed.TotalMilliseconds:F0}ms）");
+        }
+
+        await ShellProxyFraming.WriteStreamHeadAsync(stream, status, contentType, ct).ConfigureAwait(false);
         try
         {
             await terminal.Content.CopyToAsync(stream, ct).ConfigureAwait(false);
