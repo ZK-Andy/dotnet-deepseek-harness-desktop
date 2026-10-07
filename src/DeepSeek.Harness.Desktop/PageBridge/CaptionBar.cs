@@ -1,12 +1,13 @@
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
-/// 无边框窗口 chrome 注入脚本的单一工厂：官方 macOS 观感由<b>壳自己</b>实现——侧栏列顶部让位
+/// 无边框窗口 chrome 注入脚本的薄渲染器：官方 macOS 观感由<b>壳自己</b>实现——侧栏列顶部让位
 /// （padding 属元素自身背景盒，让位带被侧栏填充色无缝覆盖）、左上角红绿灯三点（壳绘制，走 Ryn
-/// 声明式 <c>data-webview-*</c> 控制）、并把宿主 chrome 高度登进 dsh 的公开变量
-/// （<c>--dsh-frame-top-clearance</c> 由客户端 JS 无条件读取承担布局让位；<c>--dsh-frame-chrome-top</c>
-/// 恒为 0，使模态遮罩画满全视口、顶栏随之变暗——上游该变量只为窗外原生 caption 留空
-/// （ADR frameless-uniform-caption-bar）。
+/// 声明式 <c>data-webview-*</c> 控制）、并发布 dsh 的三变量几何。几何语义归 Core 端口
+/// （<see cref="Core.WindowChrome.ChromeInsets"/> + <see cref="Core.WindowChrome.IWindowChromePolicy"/>，
+/// ADR window-chrome-depatch-core-ports）：<c>top-clearance</c> 承担布局让位、<c>chrome-top</c> 恒为 0
+/// 使模态遮罩画满全视口（上游该变量只为窗外原生 caption 留空）、<c>overlay-top</c> 让对话框/菜单
+/// 避开顶带（台阶 + 20px）。本类只渲染不计算；<c>data-fullscreen</c> 静态不发（运行时状态）。
 /// </summary>
 /// <remarks>
 /// <para><b>禁止设置 <c>data-platform</c></b>（v0.6.1/0.6.2 启动失败根因）：该属性是 dsh 客户端的
@@ -45,7 +46,16 @@ internal static class CaptionBar
     /// <summary>绿灯按钮属性（闸外，含非 macOS 与 Rosetta-x64）：Ryn 注入脚本识别的窗口缩放语义。</summary>
     private const string ZoomGreenAttr = "data-webview-maximize";
 
-    /// <summary>生成注入脚本（除 macOS 两项差异外三端同款，纯函数可单测）：宿主 chrome 高度变量 +
+    /// <summary>dsh 三变量协议名（上游公开量；语义归 <see cref="Core.WindowChrome.ChromeInsets"/>，
+    /// 本类只做渲染——协议改名只改此处）。</summary>
+    private const string TopClearanceVar = "--dsh-frame-top-clearance";
+    private const string ChromeTopVar = "--dsh-frame-chrome-top";
+    private const string OverlayTopVar = "--dsh-frame-overlay-top";
+
+    /// <summary>本壳自有变量（供下方 calc 复用；非上游协议）。</summary>
+    private const string DeskCaptionHVar = "--dsh-desk-caption-h";
+
+    /// <summary>生成注入脚本（除 macOS 两项差异外三端同款，纯函数可单测）：三变量几何（Core 端口解出） +
     /// 侧栏顶部让位 + 顶层文档守卫 + 幂等守卫 + 红绿灯三按钮 + 带内拖拽判定。可达名（aria-label）双语
     /// 经 <see cref="AppJsonContext.JsString"/> 管线转义注入，执行期按 <c>html[lang]</c> 现取；
     /// innerHTML 全段同样走 JsString（SVG 单引号裸拼会炸解析——FULL 评审 B1）。
@@ -69,6 +79,9 @@ internal static class CaptionBar
         string greenAttr = macChrome ? MacGreenAttr : ZoomGreenAttr;
         string greenZh = macChrome ? UiCopy.CaptionFullscreenName(english: false) : maximizeZh;
         string greenEn = macChrome ? UiCopy.CaptionFullscreenName(english: true) : maximizeEn;
+        // 三变量几何归 Core 端口（ADR window-chrome-depatch-core-ports）：本壳无全屏状态源，
+        // 恒按非全屏解；data-fullscreen 静态不发（运行时状态，静态发即对上游 CSS 说谎）。
+        ChromeInsets insets = WindowChromePolicy.Default.ResolveInsets(heightPx, fullscreen: false);
 
         return "(function(){" +
                // 注册式执行是全 frame 注入（Ryn 的 inject 传 no_frames=false）：只给顶层文档建壳顶栏，
@@ -79,7 +92,7 @@ internal static class CaptionBar
                "if(!document.querySelector(\"style[data-dsh-desktop='caption-bar']\")){" +
                "var st=document.createElement('style');" +
                "st.setAttribute('data-dsh-desktop','caption-bar');" +
-               "st.textContent=" + AppJsonContext.JsString(BuildCss(heightPx, greenAttr, macChrome)) + ";" +
+               "st.textContent=" + AppJsonContext.JsString(BuildCss(insets, heightPx, greenAttr, macChrome)) + ";" +
                "(document.head||document.documentElement).appendChild(st);}" +
                "var bar=document.createElement('div');" +
                "bar.id=id;" +
@@ -94,75 +107,102 @@ internal static class CaptionBar
                "bar.children[1].setAttribute('aria-label',names[1]);" +
                "bar.children[2].setAttribute('aria-label',names[2]);" +
                "(document.body||document.documentElement).appendChild(bar);" +
-               BuildDragBinding(heightPx) +
+               // 带上界取自 Core 模型（值恒等于 HeightPx，见 ChromeInsets）：渲染只消费，不重算。
+               BuildDragBinding(insets.TopClearancePx) +
                (macChrome ? FullscreenClickBinding : "") +
                "})();";
     }
 
-    /// <summary>注入样式：宿主 chrome 高度变量 + 侧栏让位 + 注入条与红绿灯几何（macChrome 追加透明链）。</summary>
+    /// <summary>注入样式的总装（只拼装不计算）：三变量发布 + 侧栏让位 + 折叠按钮归位 + 红绿灯几何
+    /// （macChrome 追加透明链）。拖拽判定另见 <see cref="BuildDragBinding"/>（行为保持——删除主张已
+    /// 在订正中落败，见 ADR）。</summary>
+    /// <param name="insets">三变量几何（Core 端口解出，本方法只渲染）。</param>
     /// <param name="heightPx">chrome 高度（CSS 像素）。</param>
     /// <param name="greenAttr">绿灯按钮属性名（绿底规则随之切换）。</param>
     /// <param name="macChrome">是否追加 macOS 毛玻璃透明链。</param>
     /// <returns>整段 CSS 文本（由调用方经 JsString 注入）。</returns>
-    private static string BuildCss(int heightPx, string greenAttr, bool macChrome)
-    {
-        // ① 宿主 chrome 高度登进 dsh 公开变量：top-clearance 供客户端 JS 读数让布局/浮层定位避开；
-        //    chrome-top 恒为 0——上游该变量只为窗外原生 caption 留空（Windows 分支发布、全屏归零），
-        //    本壳顶带是窗内页面（含 dsh 自己的 tab 条），随高度发布会把顶带排除在模态遮罩绘制之外。
-        //    自带 --dsh-desk-caption-h 供下方 calc 复用。
-        // ② 侧栏列顶部让位：padding 在元素自身背景盒内，让位带由侧栏填充覆盖 → 无缝无带（macOS 观感）。
-        //    侧栏列无稳定的 data-* 钩子（真实 DOM 实测：frame > .<hash>_sidebarCol），故双选择器兜底：类名后缀
-        //    （CSS Modules 原名后缀）+ 结构式。结构式用 :where() 归零权重、并要求父级至少有第二个孩子——
-        //    侧栏列一旦挪位，最坏只让本规则不再命中（顶区无让位），绝不把让位间距打到内容列首元素上（评审 S3）。
-        // ③ 折叠按钮回到让位带右端（官方 darwin 布局把它放顶条里、与红绿灯同行）：先用 transform 上移
-        //    （不改布局盒，x 与侧栏宽度无关），但品牌行自带 overflow:hidden 会把它裁掉——故同批放开该行
-        //    裁剪（实测：不放开则按钮几何到位却画不出来）；折叠态把裁剪与位移一并还原，按钮留在轨内可点。
-        //    不新增自绘按钮（会与原生重复，实测踩过）。
-        // ④ 红绿灯：12px 系统色圆点，位置对齐官方 trafficLightPosition(16,18)，悬停出深色符号。
-        //    官方 macOS/Windows 的窗口按钮都是宿主原生（AppKit / Chromium overlay），页面从不绘制——
-        //    自绘灯没有那层「网页之外」的保障，故两态都要自己安排：展开时贴官方位（灯下有侧栏填充），
-        //    折叠时侧栏收为窄轨，三点随之收进轨内（否则会漂到内容区上 = 显示在外面）。
-        //    不用自绘底衬：底衬在两态宽度不同会露出色块补丁，收进窄轨后灯下天然是侧栏/轨道填充色。
-        //    注入条<b>必须保持可命中</b>（不设 pointer-events:none）：三个圆点靠它承载点击。
-        //    顶带拖拽<b>不由本条的命中面积决定</b>——判定已收归本壳（见 BuildDragBinding）：dsh 把顶带
-        //    留给自顶带起算的流内 chrome（列容器与会话头部），Ryn 的自动拖拽条对「盖住条带却向下延伸」
-        //    的元素一律按内容处理，故那条带在 Ryn 侧不可靠；注入条只是碰巧落在带内的一个小命中体，
-        //    不再是拖拽面的唯一来源（条内非按钮区域仍算壳带，见判据的 fixed 例外）。
-        // ⑤ macOS 毛玻璃（官方 vibrancy 观感）：窗/网页背景已由 RynOptions.Backdrop 清成透明，页面侧补
-        //    官方那条透明链——html/body 透明 + 侧栏列改半透明色调，NSVisualEffectView 经此透出。官方侧栏
-        //    色标取 --dsw-specific-sidebar-fill 的渐变叠加，且整链以 html[data-platform='darwin'] 门控，
-        //    而该属性正是本壳禁用的宿主冒充开关（见类注）；故改为注入期按平台收录本段、色标改用通用
-        //    --dsw-alias-bg-base 的 80% 不透明 color-mix 近似（非 macOS 恒不含）。
-        return ":root{--dsh-frame-top-clearance:" + heightPx + "px;--dsh-frame-chrome-top:0px;" +
-               "--dsh-desk-caption-h:" + heightPx + "px}" +
-               "[class*=\"sidebarCol\"]," +
-               ":where(:has(> [data-shell-bottom]):has(> :nth-child(2)) > :first-child){" +
-               "padding-top:" + heightPx + "px!important}" +
-               "[class*=\"logoRow\"]{overflow:visible!important}" +
-               "[class*=\"collapsed\"] [class*=\"logoRow\"]{overflow:hidden!important}" +
-               "[class*=\"sidebarCol\"] button[class*=\"toggle\"]{" +
-               "transform:translateY(calc(-1 * (var(--dsh-desk-caption-h) + 10px)))}" +
-               "[class*=\"collapsed\"] button[class*=\"toggle\"]{transform:none}" +
-               "#" + ElementId + "{position:fixed;top:0;left:0;height:" + heightPx + "px;display:flex;" +
-               "align-items:flex-start;gap:8px;padding:18px 0 0 16px;z-index:2147483647}" +
-               "#" + ElementId + " button{width:12px;height:12px;padding:0;border-radius:50%;" +
-               "position:relative;display:flex;align-items:center;justify-content:center;" +
-               "border:1px solid rgba(0,0,0,.12);cursor:default}" +
-               "#" + ElementId + " button[data-webview-close]{background:#ff5f57}" +
-               "#" + ElementId + " button[data-webview-minimize]{background:#febc2e}" +
-               "#" + ElementId + " button[" + greenAttr + "]{background:#28c840}" +
-               "#" + ElementId + " button svg{display:none;width:6px;height:6px;color:rgba(0,0,0,.55)}" +
-               "#" + ElementId + " button:hover svg{display:block}" +
-               // 折叠态（侧栏收窄轨）：三点收进轨宽（约 56px）内——内缩 10 + 3×10 + 2×6 = 52，落在轨的填充上
-               "html:has([class*=\"sidebarCol\"] [class*=\"collapsed\"]) #" + ElementId +
-               "{padding:20px 0 0 10px;gap:6px}" +
-               "html:has([class*=\"sidebarCol\"] [class*=\"collapsed\"]) #" + ElementId +
-               " button{width:10px;height:10px}" +
-               (macChrome
-                   ? "html,body{background:transparent!important}[class*=\"sidebarCol\"]{" +
-                     "background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 80%,transparent)!important}"
-                   : "");
-    }
+    private static string BuildCss(ChromeInsets insets, int heightPx, string greenAttr, bool macChrome) =>
+        BuildChromeVariables(insets) +
+        BuildSidebarClearance(heightPx) +
+        BuildToggleReturn() +
+        BuildTrafficLights(greenAttr, heightPx) +
+        (macChrome ? BuildVibrancyChain() : "");
+
+    /// <summary>三变量发布（语义归 <see cref="Core.WindowChrome.ChromeInsets"/>，本方法只渲染模型值、
+    /// 不重算）：top-clearance 供客户端 JS 读数让布局/浮层定位避开；chrome-top 恒为 0（上游该变量
+    /// 只为窗外原生 caption 留空，本壳顶带是窗内页面，随高度发布会把顶带排除在模态遮罩绘制之外）；
+    /// overlay-top 让对话框/菜单避开顶带（上游 overlay-top 语义；本壳无全屏状态源，恒按非全屏发布）。
+    /// 自带本壳自有变量供下方 calc 复用。</summary>
+    /// <param name="insets">三变量几何（Core 端口解出）。</param>
+    /// <returns><c>:root</c> 变量段 CSS 文本。</returns>
+    private static string BuildChromeVariables(ChromeInsets insets) =>
+        ":root{" + TopClearanceVar + ":" + insets.TopClearancePx + "px;" +
+        ChromeTopVar + ":" + insets.ChromeTopPx + "px;" +
+        OverlayTopVar + ":" + insets.OverlayTopPx + "px;" +
+        DeskCaptionHVar + ":" + insets.TopClearancePx + "px}";
+
+    /// <summary>侧栏列顶部让位：padding 在元素自身背景盒内，让位带由侧栏填充覆盖 → 无缝无带（macOS 观感）。
+    /// 侧栏列无稳定的 data-* 钩子（真实 DOM 实测：frame > .&lt;hash&gt;_sidebarCol），故双选择器兜底：类名后缀
+    /// （CSS Modules 原名后缀）+ 结构式。结构式用 :where() 归零权重、并要求父级至少有第二个孩子——
+    /// 侧栏列一旦挪位，最坏只让本规则不再命中（顶区无让位），绝不把让位间距打到内容列首元素上（评审 S3）。</summary>
+    /// <param name="heightPx">chrome 高度（CSS 像素）：让位高度。</param>
+    /// <returns>侧栏让位段 CSS 文本。</returns>
+    private static string BuildSidebarClearance(int heightPx) =>
+        "[class*=\"sidebarCol\"]," +
+        ":where(:has(> [data-shell-bottom]):has(> :nth-child(2)) > :first-child){" +
+        "padding-top:" + heightPx + "px!important}";
+
+    /// <summary>折叠按钮回到让位带右端（官方 darwin 布局把它放顶条里、与红绿灯同行）：先用 transform 上移
+    /// （不改布局盒，x 与侧栏宽度无关），但品牌行自带 overflow:hidden 会把它裁掉——故同批放开该行
+    /// 裁剪（实测：不放开则按钮几何到位却画不出来）；折叠态把裁剪与位移一并还原，按钮留在轨内可点。
+    /// 不新增自绘按钮（会与原生重复，实测踩过）。</summary>
+    /// <returns>折叠按钮归位段 CSS 文本。</returns>
+    private static string BuildToggleReturn() =>
+        "[class*=\"logoRow\"]{overflow:visible!important}" +
+        "[class*=\"collapsed\"] [class*=\"logoRow\"]{overflow:hidden!important}" +
+        "[class*=\"sidebarCol\"] button[class*=\"toggle\"]{" +
+        "transform:translateY(calc(-1 * (var(" + DeskCaptionHVar + ") + 10px)))}" +
+        "[class*=\"collapsed\"] button[class*=\"toggle\"]{transform:none}";
+
+    /// <summary>红绿灯：12px 系统色圆点，位置对齐官方 trafficLightPosition(16,18)，悬停出深色符号。
+    /// 官方 macOS/Windows 的窗口按钮都是宿主原生（AppKit / Chromium overlay），页面从不绘制——
+    /// 自绘灯没有那层「网页之外」的保障，故两态都要自己安排：展开时贴官方位（灯下有侧栏填充），
+    /// 折叠时侧栏收为窄轨，三点随之收进轨内（否则会漂到内容区上 = 显示在外面）。
+    /// 不用自绘底衬：底衬在两态宽度不同会露出色块补丁，收进窄轨后灯下天然是侧栏/轨道填充色。
+    /// 注入条<b>必须保持可命中</b>（不设 pointer-events:none）：三个圆点靠它承载点击。
+    /// 顶带拖拽<b>不由本条的命中面积决定</b>——判定已收归本壳（见 BuildDragBinding）：dsh 把顶带
+    /// 留给自顶带起算的流内 chrome（列容器与会话头部），Ryn 的自动拖拽条对「盖住条带却向下延伸」
+    /// 的元素一律按内容处理，故那条带在 Ryn 侧不可靠；注入条只是碰巧落在带内的一个小命中体，
+    /// 不再是拖拽面的唯一来源（条内非按钮区域仍算壳带，见判据的 fixed 例外）。</summary>
+    /// <param name="greenAttr">绿灯按钮属性名（绿底规则随之切换）。</param>
+    /// <param name="heightPx">chrome 高度（CSS 像素）：注入条高度。</param>
+    /// <returns>红绿灯段 CSS 文本。</returns>
+    private static string BuildTrafficLights(string greenAttr, int heightPx) =>
+        "#" + ElementId + "{position:fixed;top:0;left:0;height:" + heightPx + "px;display:flex;" +
+        "align-items:flex-start;gap:8px;padding:18px 0 0 16px;z-index:2147483647}" +
+        "#" + ElementId + " button{width:12px;height:12px;padding:0;border-radius:50%;" +
+        "position:relative;display:flex;align-items:center;justify-content:center;" +
+        "border:1px solid rgba(0,0,0,.12);cursor:default}" +
+        "#" + ElementId + " button[data-webview-close]{background:#ff5f57}" +
+        "#" + ElementId + " button[data-webview-minimize]{background:#febc2e}" +
+        "#" + ElementId + " button[" + greenAttr + "]{background:#28c840}" +
+        "#" + ElementId + " button svg{display:none;width:6px;height:6px;color:rgba(0,0,0,.55)}" +
+        "#" + ElementId + " button:hover svg{display:block}" +
+        // 折叠态（侧栏收窄轨）：三点收进轨宽（约 56px）内——内缩 10 + 3×10 + 2×6 = 52，落在轨的填充上
+        "html:has([class*=\"sidebarCol\"] [class*=\"collapsed\"]) #" + ElementId +
+        "{padding:20px 0 0 10px;gap:6px}" +
+        "html:has([class*=\"sidebarCol\"] [class*=\"collapsed\"]) #" + ElementId +
+        " button{width:10px;height:10px}";
+
+    /// <summary>macOS 毛玻璃（官方 vibrancy 观感）：窗/网页背景已由 RynOptions.Backdrop 清成透明，页面侧补
+    /// 官方那条透明链——html/body 透明 + 侧栏列改半透明色调，NSVisualEffectView 经此透出。官方侧栏
+    /// 色标取 --dsw-specific-sidebar-fill 的渐变叠加，且整链以 html[data-platform='darwin'] 门控，
+    /// 而该属性正是本壳禁用的宿主冒充开关（见类注）；故改为注入期按平台收录本段、色标改用通用
+    /// --dsw-alias-bg-base 的 80% 不透明 color-mix 近似（非 macOS 恒不含）。</summary>
+    /// <returns>毛玻璃透明链段 CSS 文本。</returns>
+    private static string BuildVibrancyChain() =>
+        "html,body{background:transparent!important}[class*=\"sidebarCol\"]{" +
+        "background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 80%,transparent)!important}";
 
     /// <summary>双击自判的时间窗（毫秒）：本壳起拖的原生移动抓取使 DOM 的 <c>dblclick</c> 在顶带上不可达
     /// （见 <see cref="BuildDragBinding"/>），故按两次带内左键按下的间隔自判。取各平台双击窗的<b>上界</b>

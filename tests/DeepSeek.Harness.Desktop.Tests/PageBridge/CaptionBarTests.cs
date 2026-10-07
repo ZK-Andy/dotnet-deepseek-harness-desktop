@@ -56,8 +56,10 @@ public class CaptionBarTests
 
     /// <summary>验证宿主 chrome 高度登进 dsh 公开变量：top-clearance 随高度发布（客户端 JS 无条件读取
     /// 让布局/浮层定位避开）；chrome-top 恒为 0——上游该变量只为窗外原生 caption 留空，本壳顶带是窗内
-    /// 页面（tab 条在内），随高度发布会把顶带排除在模态遮罩绘制之外。侧栏顶部让位与红绿灯带同高——
-    /// padding 属侧栏自身背景盒，让位带被其填充色无缝覆盖（macOS 观感的来源）。</summary>
+    /// 页面（tab 条在内），随高度发布会把顶带排除在模态遮罩绘制之外；overlay-top 让对话框/菜单避开
+    /// 顶带（台阶 + 20px，上游 overlay-top 语义，模型值见 <see cref="ChromeInsets"/>）。侧栏顶部让位
+    /// 与红绿灯带同高——padding 属侧栏自身背景盒，让位带被其填充色无缝覆盖（macOS 观感的来源）。
+    /// 运行时状态（data-fullscreen）静态不发。</summary>
     [Theory]
     [InlineData(52)]
     [InlineData(48)]
@@ -66,6 +68,10 @@ public class CaptionBarTests
         string script = CaptionBar.Build(height);
         Assert.Contains($"--dsh-frame-top-clearance:{height}px", script, StringComparison.Ordinal);
         Assert.Contains("--dsh-frame-chrome-top:0px", script, StringComparison.Ordinal);
+        // 取值不手抄：overlay-top 是模型值（唯一事实源在 ChromeInsets）。
+        Assert.Contains($"--dsh-frame-overlay-top:{height + ChromeInsets.OverlayTopExtraPx}px", script, StringComparison.Ordinal);
+        // 运行时状态静态不发（上游全屏分支靠该属性切换；本壳无状态源，静态发即说谎）。
+        Assert.DoesNotContain("data-fullscreen", script, StringComparison.Ordinal);
         Assert.Contains("sidebarCol", script, StringComparison.Ordinal);
         Assert.Contains($"padding-top:{height}px!important", script, StringComparison.Ordinal);
         // 结构式兜底收窄（评审 S3）：:where() 归零权重 + 父级须有第二个孩子——侧栏列一旦挪位只会
@@ -157,6 +163,8 @@ public class CaptionBarTests
         Assert.Contains("window.setFullscreen", mac, StringComparison.Ordinal);
         Assert.Contains("Full Screen", mac, StringComparison.Ordinal);
         Assert.Contains("bar.children[2].addEventListener('click'", mac, StringComparison.Ordinal);
+        // mac 恰是全屏语义所在分支：运行时状态仍静态不发（绿灯走自有属性 + 自绑点击，不走属性分支）。
+        Assert.DoesNotContain("data-fullscreen", mac, StringComparison.Ordinal);
         // 缩放语义不得出现在本壳三点的标记或样式里（注入条的交互排除表里出现属性名不算——
         // 那是与 Ryn 同款的语义表，不是本壳按钮的声明）
         Assert.DoesNotContain("button[data-webview-maximize]", mac, StringComparison.Ordinal);

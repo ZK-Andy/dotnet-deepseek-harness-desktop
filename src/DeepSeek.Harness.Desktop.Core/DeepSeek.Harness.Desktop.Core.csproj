@@ -18,6 +18,7 @@
     <Using Include="DeepSeek.Harness.Desktop.Core.PageHealth" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Localization" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Bootstrap" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.WindowChrome" />
   </ItemGroup>
 
   <ItemGroup>
