@@ -12,17 +12,10 @@ namespace DeepSeek.Harness.Desktop;
 /// </summary>
 public sealed partial class DesktopBootstrap
 {
-    // —— 装配期构造数据（注册闭包与编排服务的共同输入；非编排状态）——
-    // 运行时超时家（与 A 类启动配置同点解析一次，消费段收值；见 RuntimeTimeouts）。
-    private RuntimeTimeouts _timeouts = new();
-    // 自绘标题栏参数家（ADR frameless-uniform-caption-bar）：与超时家同点解析一次。
-    private CaptionBarOptions _captionBar = CaptionBarOptions.Default;
-    // 宿主 UI 语言单点（ADR host-ui-locale）：companion 上报 dsh locale，托盘/横幅/引导页据此出双语；
-    // 上次上报值经 profile 目录持久化（ADR ui-copy-bilingual-completion），dsh 起来前也能取到。
-    private UiLocale _uiLocale = null!;
-    // 壳转发器（应用单例：构造即备好 HttpClient，无 I/O；铸币由编排方法调用，
-    // 转发执行面在回环代理。经构造注入编排服务与代理装配）。
-    private readonly DshShellForward _shellForward = new();
+    // 2b 根字段归零：本类零字段（无状态接线层）。装配期构造数据只经 Run 方法局部流动；
+    // 长命共享态（超时/标题栏参数/语言单点/壳转发器）同时进容器单例（见 AddBootstrapSharedState），
+    // 编排期调用点经容器解析——每加一个功能不再加一个字段（代价：BuildApp/RegisterServices 签名各 +4
+    // 参数，终态随 step-3 容器自组装收回）。
 
     /// <summary>组合根入口：容器之前解析与仲裁，装配后把启动编排交显式组装的
     /// <see cref="Bootstrap.StartupSequence"/> 并返回进程退出码。跨阶段值只经运行期单例
@@ -33,23 +26,23 @@ public sealed partial class DesktopBootstrap
         // renderer 进程继承本进程 env；判定在 Core 纯策略，此处仅触发。
         WebkitSandboxFallback.Apply();
 
+        // 装配期共享态一次创建（见 ResolveSharedState）：前 Build 消费走局部，编排期经容器单例（同一实例）。
+        (RuntimeTimeouts timeouts, CaptionBarOptions captionBar, UiLocale uiLocale, DshShellForward shellForward) = ResolveSharedState();
+
         // 监督器取消令牌源（寿命 = 本次 Run；释放随本方法作用域，见末尾 using 语义）。
         using var supervisorCts = new CancellationTokenSource();
         // Build 后才就绪的值（窗口/Ryn 应用）：注册闭包只捕获提供者，调用点均晚于赋值。
         RynApplication? builtApp = null;
         CurrentWindowAccessor? builtAccessor = null;
 
-        Preflight preflight = ResolveRuntimeAndDev(
-            () => builtApp!.Services.GetRequiredService<HostSetup>().Host,
-            () => builtAccessor!);
-        if (!AcquireSingleInstance(preflight, () => builtApp, out PrimaryListener? instanceListener))
+        Preflight preflight = ResolveRuntimeAndDev(() => builtApp!.Services.GetRequiredService<HostSetup>().Host, () => builtAccessor!, () => uiLocale.IsEnglish);
+        if (!AcquireSingleInstance(preflight, () => builtApp, timeouts, out PrimaryListener? instanceListener))
         {
             return 0;
         }
 
-        // 回环代理源（ADR loopback-forward-proxy）：单实例仲裁后、Build 前启动（Build 的窗口 URL 依赖
-        // 代理源）；绑定失败 loud 后降级 wwwroot，不挡启动。产出结果对象随参数流动（值流：无字段回填）。
-        DshLoopbackProxy.ProxySetup proxy = StartProxy();
+        // 回环代理源（ADR loopback-forward-proxy）：单实例仲裁后、Build 前启动；绑定失败 loud 后降级 wwwroot，不挡启动。
+        DshLoopbackProxy.ProxySetup proxy = StartProxy(shellForward);
         HostSetup? hostSetup = null;
         try
         {
@@ -58,23 +51,22 @@ public sealed partial class DesktopBootstrap
                 supervisorCts,
                 () => builtApp!.Services.GetRequiredService<IRynWindow>(),
                 () => builtAccessor,
-                () => builtApp!.Services.GetRequiredService<ExitPipeline>());
-            AppSetup app = BuildApp(preflight, proxy.Proxy, update, tray, supervisorCts, instanceListener);
+                () => builtApp!.Services.GetRequiredService<ExitPipeline>(),
+                uiLocale);
+            AppSetup app = BuildApp(preflight, proxy.Proxy, update, tray, supervisorCts, instanceListener, uiLocale, captionBar, timeouts, shellForward);
             builtApp = app.App;
             builtAccessor = app.WindowAccessor;
-            // 宿主 + 崩溃标记（容器惰性单例，见 RunServicesRegistration.AddRunHost）：
-            // 首次解析即创建，时点在 Build 之后、编排之前，与原编排期创建等价。
+            // 宿主 + 崩溃标记（容器惰性单例，见 RunServicesRegistration.AddRunHost）：首次解析即创建；
             // 脏退播报在此（首次解析点之后；工厂只做构造，见 R2S3）。
             hostSetup = builtApp.Services.GetRequiredService<HostSetup>();
             if (hostSetup.Value.Marker.PreviousRunUnclean)
             {
                 HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
             }
-            // 编排服务显式组装（容器只给零件：post-Build 值 + 单例均已就绪）；
+            // 编排服务显式组装（容器只给零件）：共享态经容器回读（注册源即本方法局部，同一实例，单实例唯一）；
             // hostSetup 必已赋值——解析失败即抛，抛后直接进 finally，走不到组装。
-            var sequence = new Bootstrap.StartupSequence(
-                preflight, app, update, _uiLocale, _timeouts, _captionBar,
-                _shellForward, proxy.Proxy, instanceListener);
+            IServiceProvider container = builtApp.Services;
+            var sequence = new Bootstrap.StartupSequence(preflight, app, update, container.GetRequiredService<UiLocale>(), container.GetRequiredService<RuntimeTimeouts>(), container.GetRequiredService<CaptionBarOptions>(), container.GetRequiredService<DshShellForward>(), proxy.Proxy, instanceListener);
             return sequence.Run();
         }
         finally
@@ -86,20 +78,31 @@ public sealed partial class DesktopBootstrap
         }
     }
 
-    private Preflight ResolveRuntimeAndDev(Func<HarnessRuntimeHost> hostProvider, Func<CurrentWindowAccessor> accessorProvider)
+    /// <summary>装配期共享态一次创建（2b 根字段归零：替代四个根字段）：运行时超时家（与 A 类启动配置同点解析
+    /// 一次，见 <c>RuntimeTimeouts</c>）+ 自绘标题栏参数家（ADR frameless-uniform-caption-bar）+ 宿主 UI 语言
+    /// 单点（ADR host-ui-locale：上次上报值经 profile 目录持久化，dsh 起来前也能取到）+ 壳转发器（构造即备好
+    /// HttpClient，无 I/O）。纯创建无时序依赖；长命共享态同时进容器单例（见 AddBootstrapSharedState）。</summary>
+    private static (RuntimeTimeouts Timeouts, CaptionBarOptions CaptionBar, UiLocale UiLocale, DshShellForward ShellForward) ResolveSharedState() =>
+    (
+        RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write),
+        CaptionBarOptions.Load(AppContext.BaseDirectory, HostLog.Write),
+        new UiLocale(new DesktopUiLocaleStore(HostLog.Write)),
+        new DshShellForward()
+    );
+
+    private static Preflight ResolveRuntimeAndDev(
+        Func<HarnessRuntimeHost> hostProvider,
+        Func<CurrentWindowAccessor> accessorProvider,
+        Func<bool> isEnglishProvider)
     {
-        // 运行时超时家（见 RuntimeTimeouts；字段注释为唯一家）——先于单实例仲裁消费。
-        _timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
-        // 自绘标题栏参数（ADR frameless-uniform-caption-bar）：同点解析。
-        _captionBar = CaptionBarOptions.Load(AppContext.BaseDirectory, HostLog.Write);
         // 首启引导服务（R3 端口实现，ADR composition-root-value-flow-pipeline 批次 1）：全局 node/dsh
         // 引导、插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主/窗口以
         // 提供者延迟供给（调用点均晚于 Build 赋值，与原接线槽「注册早于赋值」语义等价）。
-        // UI 语言同样惰性：_uiLocale 在单实例仲裁处构造（本方法之后），引导任务实际启动时必已就绪。
+        // UI 语言同样惰性：isEnglishProvider 在引导任务实际启动时求值，调用点必已就绪。
         IFirstBootBootstrap bootstrap = new FirstBootBootstrapService(
             hostProvider,
             new FirstBootUi(accessorProvider),
-            () => _uiLocale.IsEnglish,
+            isEnglishProvider,
             HostLog.Write);
         bootstrap.Resolve();
 
@@ -111,9 +114,12 @@ public sealed partial class DesktopBootstrap
     /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：false = 已有主实例，调用方直接返回 0。
     /// 锁地址解析（XDG 回退/uid 隔离/dev 分域等平台策略）住 Infrastructure
     /// <see cref="LauncherActivation.ResolveInstanceSocketPath"/>；此处只仲裁。</summary>
-    private bool AcquireSingleInstance(Preflight preflight, Func<RynApplication?> appProvider, out PrimaryListener? instanceListener)
+    private static bool AcquireSingleInstance(
+        Preflight preflight,
+        Func<RynApplication?> appProvider,
+        RuntimeTimeouts timeouts,
+        out PrimaryListener? instanceListener)
     {
-        _uiLocale = new UiLocale(new DesktopUiLocaleStore(HostLog.Write));
         string? instanceSocketPath = LauncherActivation.ResolveInstanceSocketPath(preflight.Launch.IsDev);
         if (instanceSocketPath is not null)
         {
@@ -134,7 +140,7 @@ public sealed partial class DesktopBootstrap
                     HostLog.Write,
                     out instanceListener))
             {
-                bool notified = LauncherActivation.NotifyPrimary(instanceSocketPath, TimeSpan.FromSeconds(_timeouts.NotifyPrimaryTimeoutSeconds));
+                bool notified = LauncherActivation.NotifyPrimary(instanceSocketPath, TimeSpan.FromSeconds(timeouts.NotifyPrimaryTimeoutSeconds));
                 HostLog.Write(
                     $"[host] 已有主实例在运行（launcher 二次启动）：通知显示主窗{(notified ? "成功" : "未达（主实例可能正忙）")}，本次启动退出");
                 instanceListener = null;
@@ -153,6 +159,6 @@ public sealed partial class DesktopBootstrap
     /// （窗口走 wwwroot，行为与 dsh 未起一致，不挡启动）。引导静态根随代理装配
     /// （未铸币时本地 holder/指南面；Ryn IPC 自窗口创建即活，不依赖 dsh 时序）。
     /// 产出结果对象（组合根值流：消费段收参；绑定异常类型清单属协议/平台策略，在 Infrastructure）。</summary>
-    private DshLoopbackProxy.ProxySetup StartProxy() =>
-        DshLoopbackProxy.TryCreate(_shellForward, Path.Combine(AppContext.BaseDirectory, "wwwroot"), HostLog.Write);
+    private static DshLoopbackProxy.ProxySetup StartProxy(DshShellForward shellForward) =>
+        DshLoopbackProxy.TryCreate(shellForward, Path.Combine(AppContext.BaseDirectory, "wwwroot"), HostLog.Write);
 }

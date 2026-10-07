@@ -58,6 +58,7 @@ ALLOWED_METHODS = {
     "ExportDiagnostics",
     # DesktopBootstrap.cs — container-before startup head.
     "Run",
+    "ResolveSharedState",
     "ResolveRuntimeAndDev",
     "AcquireSingleInstance",
     "StartProxy",
@@ -71,7 +72,7 @@ _NEW_RE = re.compile(r"\bnew\s+(\w+)\s*\(")
 # `Type field = new();` — the assigned declared type gives target-typed new its owner.
 _TARGET_NEW_RE = re.compile(r"\bnew\s*\(\)")
 _GETAWAITER_RE = re.compile(r"\.GetAwaiter\(\)\.GetResult\(\)")
-_COMPOSE_METHOD_RE = re.compile(r"^\s*(?:public|private|protected|internal)\s+(?:[\w<>\[\],.?]+\s+)+(\w+)\s*\(")
+_COMPOSE_METHOD_RE = re.compile(r"^\s*(?:public|private|protected|internal)\s+(?:static\s+)?(?:\([^;{}]*\)\s+)?(?:[\w<>\[\],.?]+\s+)*(\w+)\s*\(")
 # Constructors (single token between modifiers and paren) and expression-bodied
 # members (`Type Name => ...`) both carry logic and belong in the C2 inventory.
 _COMPOSE_CTOR_RE = re.compile(r"^\s*(?:public|private|protected|internal)\s+(\w+)\s*\(")
@@ -203,6 +204,24 @@ public sealed partial class DesktopBootstrap
             print("  ok: C2 unknown root method flagged")
         else:
             print(f"  ✗ C2 not flagged: {rows}")
+            failed = 1
+        (root / "DesktopBootstrap.App.cs").unlink()
+
+        # C2: tuple-returning methods resolve to the method name, not `static`
+        # (2b ResolveSharedState returns a value tuple; the return parens must
+        # not shadow the method name).
+        (root / "DesktopBootstrap.App.cs").write_text(
+            """namespace Shell;
+public sealed partial class DesktopBootstrap
+{
+    private static (int A, int B) MakePair() => (1, 2);
+}
+""", encoding="utf-8")
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        if any("C2 " in r and "MakePair" in r for r in rows):
+            print("  ok: C2 tuple-returning root method flagged by name")
+        else:
+            print(f"  ✗ C2 tuple return not named: {rows}")
             failed = 1
         (root / "DesktopBootstrap.App.cs").unlink()
 

@@ -21,7 +21,7 @@ public class CompositionRootSequenceTests
             "WebkitSandboxFallback.Apply();",
             "ResolveRuntimeAndDev(",
             "AcquireSingleInstance(preflight, () => builtApp,",
-            "StartProxy();",
+            "StartProxy(shellForward);",
             "InitCloseGateAndUpdateStack(",
             "BuildApp(preflight, proxy.Proxy, update, tray,",
             "new Bootstrap.StartupSequence(",

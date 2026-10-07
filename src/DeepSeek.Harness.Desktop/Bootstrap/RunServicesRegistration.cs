@@ -3,11 +3,33 @@ using Ryn.Core;
 
 namespace DeepSeek.Harness.Desktop.Bootstrap;
 
-/// <summary>运行期单例注册（ADR 组合根机制收官 step-2a：接线槽删除）：宿主 + 崩溃标记、退出管道、
-/// 页面健康观测的生命周期还给容器。全部惰性工厂——首次解析（编排 Run 期）即创建，
-/// 与原编排期创建时序等价；路由闭包在调用期求值，注册期只存委托。</summary>
+/// <summary>运行期单例注册（ADR 组合根机制收官 step-2a：接线槽删除；2b：根字段归零）：宿主 + 崩溃标记、
+/// 退出管道、页面健康观测、装配期共享态的生命周期还给容器。惰性工厂首次解析（编排 Run 期）即创建，
+/// 与原编排期创建时序等价；实例单例（装配期已创建）在注册期只登记实例；路由闭包在调用期求值，注册期只存委托。</summary>
 internal static class RunServicesRegistration
 {
+    /// <summary>装配期共享态（单例，2b 根字段归零）：一次性配置（超时/标题栏参数）与跨阶段共享单例
+    /// （语言单点/壳转发器）。实例由组合根 <c>Run</c> 方法局部创建（前 Build 消费同一实例），此处只登记
+    /// 实例供编排期经容器解析——单实例唯一，每加一个功能不再加一个根字段。</summary>
+    /// <param name="services">服务集合。</param>
+    /// <param name="timeouts">运行时超时家（与 A 类启动配置同点解析一次）。</param>
+    /// <param name="captionBar">自绘标题栏参数家（ADR frameless-uniform-caption-bar）。</param>
+    /// <param name="uiLocale">宿主 UI 语言单点（ADR host-ui-locale）。</param>
+    /// <param name="shellForward">壳转发器（铸币态唯一家）。</param>
+    public static IServiceCollection AddBootstrapSharedState(
+        this IServiceCollection services,
+        RuntimeTimeouts timeouts,
+        CaptionBarOptions captionBar,
+        UiLocale uiLocale,
+        DshShellForward shellForward)
+    {
+        services.AddSingleton(timeouts);
+        services.AddSingleton(captionBar);
+        services.AddSingleton(uiLocale);
+        services.AddSingleton(shellForward);
+        return services;
+    }
+
     /// <summary>宿主装配产出（单例）：运行时宿主 + 崩溃取证 marker。原编排 <c>SetupHostAndMarker</c>
     /// 语义——遗留 marker 即判上轮非受控退出；正常退出路径在退出管道清除。释放由组合根拥有
     /// （单例寿命 = 本次 Run，见 <c>DesktopBootstrap.Run</c> finally）。</summary>

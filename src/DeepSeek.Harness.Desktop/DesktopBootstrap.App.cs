@@ -17,7 +17,8 @@ public sealed partial class DesktopBootstrap
         CancellationTokenSource supervisorCts,
         Func<IRynWindow> windowProvider,
         Func<CurrentWindowAccessor?> accessorProvider,
-        Func<ExitPipeline> exitProvider)
+        Func<ExitPipeline> exitProvider,
+        UiLocale uiLocale)
     {
         // 关窗闸门/自更新栈/托盘控制器装配（原编排阶段 8 随形态分离归位组合根装配面）：构造只收
         // 惰性委托与配置，与运行时产出无交互——装配移至 Build 之前（原 spawn→装配 反转为 装配→spawn，
@@ -43,7 +44,7 @@ public sealed partial class DesktopBootstrap
             () => supervisorCts.Token,
             state => PagePump.PushUpdateState(accessorProvider(), state),
             (version, token) => PagePump.ShowBannerWhenReadyAsync(
-                accessorProvider()!, UpdateBanner.ReadyScript(version, _uiLocale), token),
+                accessorProvider()!, UpdateBanner.ReadyScript(version, uiLocale), token),
             closeGate.ApproveExit,
             () => accessorProvider()?.Current?.Close(),
             ct => exitProvider().ScheduleExitFallback(ct),
@@ -57,14 +58,14 @@ public sealed partial class DesktopBootstrap
             accessorProvider,
             closeGate,
             closeBehavior,
-            _uiLocale,
+            uiLocale,
             updates.Machine,
             HostLog.Write);
 
         return (new UpdateSetup(updates), tray);
     }
 
-    private AppSetup BuildApp(Preflight preflight, DshLoopbackProxy? proxy, UpdateSetup update, TrayController tray, CancellationTokenSource supervisorCts, PrimaryListener? instanceListener)
+    private AppSetup BuildApp(Preflight preflight, DshLoopbackProxy? proxy, UpdateSetup update, TrayController tray, CancellationTokenSource supervisorCts, PrimaryListener? instanceListener, UiLocale uiLocale, CaptionBarOptions captionBar, RuntimeTimeouts timeouts, DshShellForward shellForward)
     {
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 IsReady）
         string iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
@@ -97,7 +98,7 @@ public sealed partial class DesktopBootstrap
                 // 同高。禁用 Overlay/TrafficLightPosition（原生红绿灯，mac x64 Rosetta segfault）与任何
                 // 宿主冒充（data-platform 会令 dsh 客户端插件加载失败）。
                 opts.TitleBarStyle = TitleBarStyle.Frameless;
-                opts.TitleBarAutoDragHeight = _captionBar.HeightPx;
+                opts.TitleBarAutoDragHeight = captionBar.HeightPx;
                 opts.Backdrop = MacNativeChrome.IsEnabled ? BackdropMaterial.Blur : BackdropMaterial.None; // macOS 毛玻璃（官方 vibrancy）；闸外恒 None（判据单点见 MacNativeChrome）
                 opts.PersistWindowState = true; // 几何持久化：rationale 见 ADR window-geometry-ryn-native-persist
                 // A 类启动配置经类型化值消费（批次 3）：dev 后缀规则封装进 LaunchOptions。
@@ -114,7 +115,7 @@ public sealed partial class DesktopBootstrap
                 // （ADR post-restructure-ledger-batch）。
                 opts.DevTools = preflight.Launch.DevTools;
             })
-            .ConfigureServices(services => RegisterServices(services, preflight, update, proxy, tray, supervisorCts, instanceListener))
+            .ConfigureServices(services => RegisterServices(services, preflight, update, proxy, tray, supervisorCts, instanceListener, uiLocale, captionBar, timeouts, shellForward))
             .Build();
 
         // 装配产出随值流动：窗口访问器由容器解析，调用方收进方法局部（不再回填共享槽）。
@@ -130,13 +131,17 @@ public sealed partial class DesktopBootstrap
         DshLoopbackProxy? proxy,
         TrayController tray,
         CancellationTokenSource supervisorCts,
-        PrimaryListener? instanceListener)
+        PrimaryListener? instanceListener,
+        UiLocale uiLocale,
+        CaptionBarOptions captionBar,
+        RuntimeTimeouts timeouts,
+        DshShellForward shellForward)
     {
         services.AddRynCommands();
         services.AddRynCallbacks();
         services.AddRynNavigationCallbacks();
         services.AddExternalLinkRouting(proxy);
-        services.AddLocaleCommands(_uiLocale);
+        services.AddLocaleCommands(uiLocale);
         services.AddCompanionReportCommand();
         services.AddDiagnosticsCommands();
         services.AddRecoveryCommands();
@@ -145,10 +150,11 @@ public sealed partial class DesktopBootstrap
         services.AddAppRestartCommand();
         services.AddSingleton(tray);
         services.AddSingleton(supervisorCts);
+        services.AddBootstrapSharedState(timeouts, captionBar, uiLocale, shellForward);
         services.AddRunHost();
         services.AddExitPipeline(supervisorCts, instanceListener);
         services.AddHealthMonitor(proxy);
-        services.AddTrayServices(update, tray, _uiLocale);
+        services.AddTrayServices(update, tray, uiLocale);
         services.AddUpdateCommands(update);
     }
 }
