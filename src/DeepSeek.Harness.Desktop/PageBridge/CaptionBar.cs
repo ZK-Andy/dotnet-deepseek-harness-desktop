@@ -3,9 +3,10 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// <summary>
 /// 无边框窗口 chrome 注入脚本的单一工厂：官方 macOS 观感由<b>壳自己</b>实现——侧栏列顶部让位
 /// （padding 属元素自身背景盒，让位带被侧栏填充色无缝覆盖）、左上角红绿灯三点（壳绘制，走 Ryn
-/// 声明式 <c>data-webview-*</c> 控制）、并把宿主 chrome 高度登进 dsh 的两枚公开变量
-/// （<c>--dsh-frame-top-clearance</c> 由客户端 JS 无条件读取、<c>--dsh-frame-chrome-top</c> 由浮层遮罩
-/// 消费），使 dsh 自己的浮层避开本带（ADR frameless-uniform-caption-bar）。
+/// 声明式 <c>data-webview-*</c> 控制）、并把宿主 chrome 高度登进 dsh 的公开变量
+/// （<c>--dsh-frame-top-clearance</c> 由客户端 JS 无条件读取承担布局让位；<c>--dsh-frame-chrome-top</c>
+/// 恒为 0，使模态遮罩画满全视口、顶栏随之变暗——上游该变量只为窗外原生 caption 留空
+/// （ADR frameless-uniform-caption-bar）。
 /// </summary>
 /// <remarks>
 /// <para><b>禁止设置 <c>data-platform</c></b>（v0.6.1/0.6.2 启动失败根因）：该属性是 dsh 客户端的
@@ -105,8 +106,10 @@ internal static class CaptionBar
     /// <returns>整段 CSS 文本（由调用方经 JsString 注入）。</returns>
     private static string BuildCss(int heightPx, string greenAttr, bool macChrome)
     {
-        // ① 宿主 chrome 高度登进 dsh 公开变量（客户端 JS 读 top-clearance 让浮层避开；chrome-top 供遮罩），
-        //    并自带 --dsh-desk-caption-h 供下方 calc 复用。
+        // ① 宿主 chrome 高度登进 dsh 公开变量：top-clearance 供客户端 JS 读数让布局/浮层定位避开；
+        //    chrome-top 恒为 0——上游该变量只为窗外原生 caption 留空（Windows 分支发布、全屏归零），
+        //    本壳顶带是窗内页面（含 dsh 自己的 tab 条），随高度发布会把顶带排除在模态遮罩绘制之外。
+        //    自带 --dsh-desk-caption-h 供下方 calc 复用。
         // ② 侧栏列顶部让位：padding 在元素自身背景盒内，让位带由侧栏填充覆盖 → 无缝无带（macOS 观感）。
         //    侧栏列无稳定的 data-* 钩子（真实 DOM 实测：frame > .<hash>_sidebarCol），故双选择器兜底：类名后缀
         //    （CSS Modules 原名后缀）+ 结构式。结构式用 :where() 归零权重、并要求父级至少有第二个孩子——
@@ -130,7 +133,7 @@ internal static class CaptionBar
         //    色标取 --dsw-specific-sidebar-fill 的渐变叠加，且整链以 html[data-platform='darwin'] 门控，
         //    而该属性正是本壳禁用的宿主冒充开关（见类注）；故改为注入期按平台收录本段、色标改用通用
         //    --dsw-alias-bg-base 的 80% 不透明 color-mix 近似（非 macOS 恒不含）。
-        return ":root{--dsh-frame-top-clearance:" + heightPx + "px;--dsh-frame-chrome-top:" + heightPx + "px;" +
+        return ":root{--dsh-frame-top-clearance:" + heightPx + "px;--dsh-frame-chrome-top:0px;" +
                "--dsh-desk-caption-h:" + heightPx + "px}" +
                "[class*=\"sidebarCol\"]," +
                ":where(:has(> [data-shell-bottom]):has(> :nth-child(2)) > :first-child){" +
