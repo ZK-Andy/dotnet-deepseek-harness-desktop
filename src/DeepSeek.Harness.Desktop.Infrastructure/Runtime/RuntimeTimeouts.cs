@@ -101,6 +101,12 @@ public sealed record RuntimeTimeouts
     /// <summary>进度/状态推送重试节拍（毫秒）。</summary>
     public int PushRetryDelayMilliseconds { get; init; } = 400;
 
+    /// <summary>顶栏脚本注册的到点预算（秒，节拍沿用 <see cref="PushRetryDelayMilliseconds"/>，按
+    /// <c>ceil(本值 / 节拍)</c> 折算成尝试次数）：按次数计的 6s 预算不够 mac x64（Rosetta）下的 webview
+    /// 创建（发版腿实证重试耗尽后 2s 才导航到达），故改到点（ADR frameless-uniform-caption-bar）。
+    /// 0 = 停用该注册路（不尝试）；节拍非正值时预算不可度量，按单次尝试处理。</summary>
+    public int CaptionBarRegisterSeconds { get; init; } = 60;
+
     /// <summary>从应用旁的 appsettings.json 读取 <c>RuntimeTimeouts</c> 节；文件缺失或节缺失时全默认；
     /// 文件不可读/损坏/取值不可用也回退全默认并留痕，不阻塞启动。</summary>
     /// <param name="baseDirectory">appsettings.json 所在目录。</param>
@@ -148,6 +154,7 @@ public sealed record RuntimeTimeouts
         options = options with { BannerRetryDelaySeconds = ConfigSectionJson.GetInt(section, nameof(BannerRetryDelaySeconds), options.BannerRetryDelaySeconds) };
         options = options with { PushMaxAttempts = ConfigSectionJson.GetInt(section, nameof(PushMaxAttempts), options.PushMaxAttempts) };
         options = options with { PushRetryDelayMilliseconds = ConfigSectionJson.GetInt(section, nameof(PushRetryDelayMilliseconds), options.PushRetryDelayMilliseconds) };
+        options = options with { CaptionBarRegisterSeconds = ConfigSectionJson.GetInt(section, nameof(CaptionBarRegisterSeconds), options.CaptionBarRegisterSeconds) };
         return options;
     }
 }

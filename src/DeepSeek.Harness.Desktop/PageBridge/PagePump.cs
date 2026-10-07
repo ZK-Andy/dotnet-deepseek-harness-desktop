@@ -14,113 +14,103 @@ internal static class PagePump
     private static readonly RuntimeTimeouts s_timeouts =
         RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
 
-    /// <summary>窗口就绪后注入横幅：Current 未就绪的 InvalidOperationException 按节拍重试（上限见配置）；
-    /// 其余异常记日志放弃——横幅是增强告知，绝不拖垮启动链路。</summary>
-    internal static Task ShowBannerWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct) =>
-        RetryInjectWhenReadyAsync(accessor, script, "banner", s_timeouts.BannerMaxAttempts,
-            TimeSpan.FromSeconds(s_timeouts.BannerRetryDelaySeconds), ct);
+    /// <summary>横幅重试节拍（秒键的 TimeSpan 形态单点，免各调用点各转一次）。</summary>
+    private static readonly TimeSpan s_bannerRetryDelay = TimeSpan.FromSeconds(s_timeouts.BannerRetryDelaySeconds);
+
+    /// <summary>注入/注册/推送的重试节拍（毫秒键的 TimeSpan 形态单点）。</summary>
+    private static readonly TimeSpan s_pushRetryDelay = TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds);
+
+    /// <summary>窗口就绪后注入横幅：Current 未就绪按节拍重试至次数用尽；其余异常记日志放弃——
+    /// 横幅是增强告知，绝不拖垮启动链路。</summary>
+    internal static async Task ShowBannerWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
+    {
+        RetryOutcome outcome = await RetryWhenReadyAsync(
+            _ => EvaluateAsync(accessor, script),
+            ex => HostLog.Write($"[host] banner 注入失败：{ex.Message}"),
+            s_timeouts.BannerMaxAttempts,
+            s_bannerRetryDelay,
+            ct).ConfigureAwait(false);
+        if (outcome == RetryOutcome.Exhausted)
+        {
+            HostLog.Write($"[host] banner 注入重试耗尽（{s_timeouts.BannerMaxAttempts} 次后窗口仍未就绪）");
+        }
+    }
 
     /// <summary>窗口就绪后注入自绘顶栏（ADR frameless-uniform-caption-bar）：重试语义与横幅同源
-    /// （未就绪按节拍重试至上限，其余异常记日志放弃——顶栏属增强面，绝不拖垮启动/导航链路；
+    /// （未就绪按节拍重试至次数用尽，其余异常记日志放弃——顶栏属增强面，绝不拖垮启动/导航链路；
     /// 失败退路是托盘菜单的唤回/最大化/退出命令）。脚本幂等，导航后重注入无副作用。</summary>
-    internal static Task InjectCaptionBarWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct) =>
-        RetryInjectWhenReadyAsync(accessor, script, "caption-bar", s_timeouts.PushMaxAttempts,
-            TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds), ct);
+    internal static async Task InjectCaptionBarWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
+    {
+        RetryOutcome outcome = await RetryWhenReadyAsync(
+            _ => EvaluateAsync(accessor, script),
+            ex => HostLog.Write($"[host] caption-bar 注入失败：{ex.Message}"),
+            s_timeouts.PushMaxAttempts,
+            s_pushRetryDelay,
+            ct).ConfigureAwait(false);
+        if (outcome == RetryOutcome.Exhausted)
+        {
+            HostLog.Write($"[host] caption-bar 注入重试耗尽（{s_timeouts.PushMaxAttempts} 次后窗口仍未就绪）");
+        }
+    }
 
     /// <summary>注册「每次页面加载执行」的顶栏脚本（ADR frameless-uniform-caption-bar「注入时机」条）：
     /// 三路注入里<b>唯一不靠导航事件覆盖后续每次加载</b>的一路——holder 页 <c>location.reload()</c> 进真 UI 是<b>同 URL
     /// 重载</b>，mac/win 的 <c>navigated</c> 回调在 URL/Source 未变时不发，真 UI 文档会因此拿不到顶栏
     /// （Linux 用户脚本逐文档重放，故该端导航钩子也覆盖）。webview 未就绪（<c>DeferredRynWebView</c> 在
-    /// RunAsync 前抛 InvalidOperationException）按节拍重试至上限，其余异常留痕放弃——顶栏属增强面，
-    /// 绝不拖垮启动链路。</summary>
+    /// RunAsync 前抛 InvalidOperationException）按节拍重试至<b>到点预算</b>折算出的次数
+    /// （<see cref="RuntimeTimeouts.CaptionBarRegisterSeconds"/> 经 <see cref="AttemptsForBudget"/> 折算；
+    /// mac x64/Rosetta 的 webview 创建晚于按次数计的 6s 预算，发版腿实证），其余异常留痕放弃——
+    /// 顶栏属增强面，绝不拖垮启动链路。</summary>
     internal static Task RegisterCaptionBarScriptWhenReadyAsync(Func<IRynWebView> webView, string script, CancellationToken ct) =>
-        RetryRegisterWhenReadyAsync(
-            webView, script, s_timeouts.PushMaxAttempts, TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds), ct);
+        RegisterCaptionBarScriptWhenReadyAsync(
+            webView, script,
+            AttemptsForBudget(TimeSpan.FromSeconds(s_timeouts.CaptionBarRegisterSeconds), s_pushRetryDelay),
+            s_pushRetryDelay,
+            ct);
 
-    /// <summary>同上，重试预算可注入（单测覆盖「预算耗尽」出口；生产走默认预算）。</summary>
-    internal static Task RegisterCaptionBarScriptWhenReadyAsync(
-        Func<IRynWebView> webView, string script, int maxAttempts, TimeSpan retryDelay, CancellationToken ct) =>
-        RetryRegisterWhenReadyAsync(webView, script, maxAttempts, retryDelay, ct);
-
-    /// <summary>脚本注册的有界重试单点：webview 未就绪按节拍重试，成功留一行取证日志（发版冒烟据此
-    /// 核对「真 UI 文档拿到了顶栏」）；预算耗尽同样留痕（同文件另两个重试助手的口径）；退出期已销毁与
-    /// 其余异常都放弃。</summary>
-    private static async Task RetryRegisterWhenReadyAsync(
+    /// <summary>同上，次数预算可注入（单测覆盖「次数用尽」出口；生产走 <see cref="AttemptsForBudget"/> 折算）。</summary>
+    internal static async Task RegisterCaptionBarScriptWhenReadyAsync(
         Func<IRynWebView> webView, string script, int maxAttempts, TimeSpan retryDelay, CancellationToken ct)
     {
-        for (int attempt = 0; attempt < maxAttempts && !ct.IsCancellationRequested; attempt++)
+        RetryOutcome outcome = await RetryWhenReadyAsync(
+            token => RegisterScriptAsync(webView, script, token),
+            ex => HostLog.Write($"[caption-bar] 每页加载脚本注册失败（放弃）：{ex.Message}"),
+            maxAttempts,
+            retryDelay,
+            ct).ConfigureAwait(false);
+        if (outcome == RetryOutcome.Succeeded)
         {
-            try
-            {
-                await webView().InjectScriptAsync(script, ct);
-                HostLog.Write("[caption-bar] 每页加载脚本已注册（同 URL 重载不再依赖导航事件）");
-                return;
-            }
-            catch (ObjectDisposedException)
-            {
-                // 退出期 webview 已销毁（本异常是 InvalidOperationException 的子类，须先于它捕获）：不再补注册
-                return;
-            }
-            catch (InvalidOperationException)
-            {
-                // webview 尚未创建：稍后重试（DeferredRynWebView 的就绪契约）
-            }
-            catch (Exception ex)
-            {
-                HostLog.Write($"[caption-bar] 每页加载脚本注册失败（放弃）：{ex.Message}");
-                return;
-            }
-
-            try
-            {
-                await Task.Delay(retryDelay, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+            HostLog.Write("[caption-bar] 每页加载脚本已注册（同 URL 重载不再依赖导航事件）");
         }
-
-        if (!ct.IsCancellationRequested)
+        else if (outcome == RetryOutcome.Exhausted)
         {
             HostLog.Write($"[caption-bar] 每页加载脚本注册重试耗尽（{maxAttempts} 次后网页视图仍未就绪）");
         }
     }
 
-    /// <summary>脚本注入的有界重试单点：Current 未就绪（InvalidOperationException）按节拍重试；
-    /// 其余异常记日志放弃。重试上限/节拍由调用方给（横幅与顶栏各配各的）。</summary>
-    private static async Task RetryInjectWhenReadyAsync(
-        CurrentWindowAccessor accessor, string script, string scenario, int maxAttempts, TimeSpan retryDelay, CancellationToken ct)
+    /// <summary>到点预算 → 尝试次数（ADR pagepump-retry-helper-unification）：不读墙钟，按节拍折算，
+    /// 故单测确定可复现。到点非正值 = 该路停用（0 次尝试）；节拍非正值 = 预算不可度量，按单次尝试处理
+    /// （防热循环）；商夹到 <see cref="int.MaxValue"/>（<c>CaptionBarRegisterSeconds</c> 取 int 上限 +
+    /// 1ms 节拍时商可达 2.1e12）。</summary>
+    /// <param name="deadline">到点预算。</param>
+    /// <param name="retryDelay">重试节拍。</param>
+    /// <returns>尝试次数。</returns>
+    internal static int AttemptsForBudget(TimeSpan deadline, TimeSpan retryDelay)
     {
-        for (int attempt = 0; attempt < maxAttempts && !ct.IsCancellationRequested; attempt++)
+        if (deadline <= TimeSpan.Zero)
         {
-            try
-            {
-                await accessor.Current.EvaluateJavaScriptAsync(script);
-                return;
-            }
-            catch (InvalidOperationException)
-            {
-                // 窗口尚未创建/已销毁：稍后重试（banner 与 caption-bar 两场景共用本助手，预算见调用点）。
-            }
-            catch (Exception ex)
-            {
-                HostLog.Write($"[host] {scenario} 注入失败：{ex.Message}");
-                return;
-            }
-
-            try
-            {
-                await Task.Delay(retryDelay, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+            return 0;
         }
+
+        if (retryDelay <= TimeSpan.Zero)
+        {
+            return 1;
+        }
+
+        return (int)Math.Min(int.MaxValue, Math.Ceiling(deadline.Ticks / (double)retryDelay.Ticks));
     }
 
-    /// <summary>推一条引导进度到 wwwroot 引导页；未就绪按配置重试，耗尽记日志放弃。</summary>
+    /// <summary>推一条引导进度到 wwwroot 引导页；未就绪按节拍重试至次数用尽，耗尽记日志放弃。</summary>
     internal static async Task PushBootstrapStateAsync(CurrentWindowAccessor accessor, string step, string message, bool failed)
     {
         // detail 必须是帧对象本身的 JSON（页面直接读 detail.step 等，无 JSON.parse）——
@@ -131,27 +121,16 @@ internal static class PagePump
         string script = "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-bootstrap',{detail:"
             + frameJson
             + "}));}catch(e){}})();";
-        for (int attempt = 0; attempt < s_timeouts.PushMaxAttempts; attempt++)
+        RetryOutcome outcome = await RetryWhenReadyAsync(
+            _ => EvaluateAsync(accessor, script),
+            ex => HostLog.Write($"[bootstrap] 进度推送失败（放弃）：{ex.Message}"),
+            s_timeouts.PushMaxAttempts,
+            s_pushRetryDelay,
+            CancellationToken.None).ConfigureAwait(false);
+        if (outcome == RetryOutcome.Exhausted)
         {
-            try
-            {
-                await accessor.Current.EvaluateJavaScriptAsync(script);
-                return;
-            }
-            catch (InvalidOperationException)
-            {
-                // 页面/窗口未就绪：稍后重试
-            }
-            catch (Exception ex)
-            {
-                HostLog.Write($"[bootstrap] 进度推送失败（放弃）：{ex.Message}");
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds));
+            HostLog.Write("[bootstrap] 进度推送重试耗尽（页面始终未就绪）");
         }
-
-        HostLog.Write("[bootstrap] 进度推送重试耗尽（页面始终未就绪）");
     }
 
     /// <summary>构建 <c>dsh-desktop-preinstall</c> CustomEvent 注入脚本（detail 为帧对象 JSON）。</summary>
@@ -163,31 +142,99 @@ internal static class PagePump
             + "}));}catch(e){}})();";
     }
 
-    /// <summary>推送一条插件引导状态（decision/installing/done）到引导页，带有限重试（同 PushBootstrapStateAsync）。</summary>
+    /// <summary>推送一条插件引导状态（decision/installing/done）到引导页，重试语义同 <see cref="PushBootstrapStateAsync"/>。</summary>
     internal static async Task RetryPushPreinstallAsync(CurrentWindowAccessor accessor, PreinstallFrame frame)
     {
         string script = PreinstallEventScript(frame);
-        for (int attempt = 0; attempt < s_timeouts.PushMaxAttempts; attempt++)
+        RetryOutcome outcome = await RetryWhenReadyAsync(
+            _ => EvaluateAsync(accessor, script),
+            ex => HostLog.Write($"[preinstall] 状态推送失败（放弃）：{ex.Message}"),
+            s_timeouts.PushMaxAttempts,
+            s_pushRetryDelay,
+            CancellationToken.None).ConfigureAwait(false);
+        if (outcome == RetryOutcome.Exhausted)
+        {
+            HostLog.Write("[preinstall] 状态推送重试耗尽（页面始终未就绪）");
+        }
+    }
+
+    /// <summary>就绪前重试的单一循环骨架（ADR pagepump-retry-helper-unification）：注入/注册/推送四路共用。
+    /// 次数上限与节拍由调用点给（次数口径是这三类配置键的既有语义）；到点预算只在注册路出现，由
+    /// <see cref="AttemptsForBudget"/> 单点折算成次数后同样以次数入参——绕开「次数 × 节拍 → TimeSpan」往返
+    /// （节拍为 0 时该往返会把次数塌成 0）。</summary>
+    /// <param name="op">单次尝试；抛 <see cref="InvalidOperationException"/> 视为「尚未就绪」。</param>
+    /// <param name="onGiveUp">其余异常的一次性放弃留痕（场景前缀由调用点给）。</param>
+    /// <param name="maxAttempts">尝试次数上限（≤0 即不尝试，直接进入耗尽终态）。</param>
+    /// <param name="retryDelay">重试节拍（非正值即不等待，尝试背靠背）。</param>
+    /// <param name="ct">取消令牌（监督器终止/退出路径）。</param>
+    /// <returns>终态：成功 / 次数用尽 / 终止（已销毁、其余异常或取消）。</returns>
+    private static async Task<RetryOutcome> RetryWhenReadyAsync(
+        Func<CancellationToken, Task> op,
+        Action<Exception> onGiveUp,
+        int maxAttempts,
+        TimeSpan retryDelay,
+        CancellationToken ct)
+    {
+        for (int attempt = 0; attempt < maxAttempts && !ct.IsCancellationRequested; attempt++)
         {
             try
             {
-                await accessor.Current.EvaluateJavaScriptAsync(script);
-                return;
+                await op(ct).ConfigureAwait(false);
+                return RetryOutcome.Succeeded;
+            }
+            catch (ObjectDisposedException)
+            {
+                // 退出期已销毁（本异常是 InvalidOperationException 的子类，须先于它捕获）：不再补尝试
+                return RetryOutcome.Stopped;
             }
             catch (InvalidOperationException)
             {
-                // 页面/窗口未就绪：稍后重试
+                // 尚未就绪：计入一次节拍后重试
             }
             catch (Exception ex)
             {
-                HostLog.Write($"[preinstall] 状态推送失败（放弃）：{ex.Message}");
-                return;
+                onGiveUp(ex);
+                return RetryOutcome.Stopped;
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds));
+            if (attempt + 1 >= maxAttempts)
+            {
+                break;
+            }
+
+            try
+            {
+                await Task.Delay(retryDelay, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return RetryOutcome.Stopped;
+            }
         }
 
-        HostLog.Write("[preinstall] 状态推送重试耗尽（页面始终未就绪）");
+        return ct.IsCancellationRequested ? RetryOutcome.Stopped : RetryOutcome.Exhausted;
+    }
+
+    /// <summary>对当前窗口求值注入脚本（窗口未就绪时 Current 抛 InvalidOperationException，交重试单点）。</summary>
+    private static Task EvaluateAsync(CurrentWindowAccessor accessor, string script) =>
+        accessor.Current.EvaluateJavaScriptAsync(script).AsTask();
+
+    /// <summary>向 webview 注册「每次页面加载执行」的脚本（未就绪时惰性解析抛 InvalidOperationException，交重试单点）。</summary>
+    private static Task RegisterScriptAsync(Func<IRynWebView> webView, string script, CancellationToken ct) =>
+        webView().InjectScriptAsync(script, ct).AsTask();
+
+    /// <summary>重试单点的终态（调用点只区分「成功」与「次数用尽」两种需留痕的结局）。</summary>
+    private enum RetryOutcome
+    {
+        /// <summary>尝试成功（注册路据此留「已注册」取证行）。</summary>
+        Succeeded,
+
+        /// <summary>次数用尽而仍未就绪（调用点据此留「重试耗尽」行；<c>maxAttempts ≤ 0</c> 的配置形态也落此）。</summary>
+        Exhausted,
+
+        /// <summary>终止且不尝试补：退出期已销毁、其余异常（已由 <c>onGiveUp</c> 留痕）或取消——三者对调用点
+        /// 不可区分，均不再记行（退出期常规路径，逐次留痕是噪音）。</summary>
+        Stopped,
     }
 
     /// <summary>推送一行安装日志到引导页日志区（fire-and-forget，失败仅丢一行、不阻断主链路）。</summary>

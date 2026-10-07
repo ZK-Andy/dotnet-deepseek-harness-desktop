@@ -23,6 +23,8 @@ internal sealed partial class StartupSequence : IStartupSequence
     private readonly DshLoopbackProxy? _proxy;
     private readonly StartupWiring _wiring;
     private readonly PrimaryListener? _instanceListener;
+    // 「首次导航到达补注册顶栏脚本」的一次性闩（见 StartupSequence.Supervision 的 SetupCaptionBar）。
+    private int _captionBarReregistered;
 
     /// <summary>创建编排服务（构造数据注入；由组合根在 Build 后经容器工厂解析）。</summary>
     public StartupSequence(

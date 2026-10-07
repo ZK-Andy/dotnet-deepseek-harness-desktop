@@ -7,8 +7,9 @@ namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 /// PagePump 注册式注入契约（ADR frameless-uniform-caption-bar「注入时机」条）：顶栏脚本另经
 /// <c>IRynWebView.InjectScriptAsync</c> 注册为「每次页面加载执行」——三路里唯一不靠导航事件覆盖后续每次加载的一路
 /// （holder 页 <c>location.reload()</c> 进真 UI 是同 URL 重载，mac/win 的导航回调不发）。就绪前的
-/// InvalidOperationException（DeferredRynWebView 契约）须按节拍重试；退出期销毁、其余异常与预算耗尽
-/// 一律放弃，绝不外抛拖垮启动链路。
+/// InvalidOperationException（DeferredRynWebView 契约）须按节拍重试至次数用尽（注册路的次数由
+/// <c>CaptionBarRegisterSeconds</c> 经 <c>AttemptsForBudget</c> 折算）；退出期销毁、其余异常与次数
+/// 耗尽一律放弃、绝不上抛（四路共用同一循环，语义见 ADR pagepump-retry-helper-unification）。
 /// </summary>
 public class PagePumpTests
 {
@@ -38,7 +39,8 @@ public class PagePumpTests
     }
 
     /// <summary>退出期 webview 已销毁：ObjectDisposedException 是 InvalidOperationException 的<b>子类</b>，
-    /// 须先于它被捕获——否则会白跑满重试预算。</summary>
+    /// 须先于它被捕获——否则会白跑满重试预算。本用例钉的是四路共用的循环骨架（ADR
+    /// pagepump-retry-helper-unification：「已销毁即放弃」由此对全部调用点生效）。</summary>
     [Fact]
     public async Task RegisterCaptionBarScriptWhenReadyAsync_StopsWhenWebViewDisposed()
     {
@@ -76,10 +78,10 @@ public class PagePumpTests
         Assert.Equal(0, view.InjectCalls);
     }
 
-    /// <summary>预算耗尽出口（可注入预算的重载；`GivesUpOnOtherFailures` 走的是其余异常分支，不是本出口）：
-    /// 跑满尝试次数后放弃、不再发起，且不留成功痕——这条是「网页视图久不就绪」时的终态。</summary>
+    /// <summary>次数用尽出口（可注入次数的重载；`GivesUpOnOtherFailures` 走的是其余异常分支，不是本出口）：
+    /// 跑满次数即放弃且不留成功痕——这条是「网页视图久不就绪」时的终态。</summary>
     [Fact]
-    public async Task RegisterCaptionBarScriptWhenReadyAsync_GivesUpWhenBudgetExhausted()
+    public async Task RegisterCaptionBarScriptWhenReadyAsync_GivesUpWhenAttemptsExhausted()
     {
         var view = new FakeWebView();
         view.Enqueue(
@@ -93,6 +95,37 @@ public class PagePumpTests
         Assert.Equal(3, view.InjectCalls);
         Assert.Null(view.LastScript);
     }
+
+    /// <summary>次数预算 ≤0（配置把次数配成 0）即一次都不尝试：直接进入次数用尽终态，不空转。</summary>
+    [Fact]
+    public async Task RegisterCaptionBarScriptWhenReadyAsync_SkipsWhenNoAttemptsBudget()
+    {
+        var view = new FakeWebView();
+
+        await PagePump.RegisterCaptionBarScriptWhenReadyAsync(
+            () => view, "SCRIPT", maxAttempts: 0, retryDelay: TimeSpan.FromMilliseconds(400), CancellationToken.None);
+
+        Assert.Equal(0, view.InjectCalls);
+    }
+
+    /// <summary>到点预算 → 次数折算（ADR pagepump-retry-helper-unification）：不读墙钟，纯算式故确定可复现。
+    /// 前三条钉「与旧次数上限逐次一致」（次数×节拍往返不引入漂移）；后三条钉边界——节拍非正值单次尝试
+    /// （防热循环）、到点非正值停用该路、商夹到 int 上限（int 上限秒 + 1ms 节拍可达 2.1e12）。</summary>
+    /// <param name="deadlineSeconds">到点预算（秒）。</param>
+    /// <param name="delayMilliseconds">节拍（毫秒）。</param>
+    /// <param name="expected">期望次数。</param>
+    [Theory]
+    [InlineData(30, 1000, 30)]
+    [InlineData(6, 400, 15)]
+    [InlineData(60, 400, 150)]
+    [InlineData(60, 0, 1)]
+    [InlineData(0, 400, 0)]
+    [InlineData(int.MaxValue, 1, int.MaxValue)]
+    public void AttemptsForBudget_MapsDeadlineToAttempts(int deadlineSeconds, int delayMilliseconds, int expected) =>
+        Assert.Equal(
+            expected,
+            PagePump.AttemptsForBudget(
+                TimeSpan.FromSeconds(deadlineSeconds), TimeSpan.FromMilliseconds(delayMilliseconds)));
 
     /// <summary>IRynWebView 假体：本路径只消费 <c>InjectScriptAsync</c>，其余成员为接口完备性占位。</summary>
     private sealed class FakeWebView : IRynWebView

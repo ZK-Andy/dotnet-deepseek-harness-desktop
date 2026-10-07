@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 /// 缺节/坏 JSON/逐键覆盖/类型不符回退与 UpdateOptions 同哲学。</summary>
 public class RuntimeTimeoutsTests
 {
-    /// <summary>验证全部 28 项默认值与收归前字面量一致：任一漂移即行为变更，测试先红。</summary>
+    /// <summary>验证全部 29 项默认值与收归前字面量一致：任一漂移即行为变更，测试先红。</summary>
     [Fact]
     public void Defaults_MatchPreMigrationLiterals()
     {
@@ -39,6 +39,7 @@ public class RuntimeTimeoutsTests
         Assert.Equal(1, o.BannerRetryDelaySeconds);
         Assert.Equal(15, o.PushMaxAttempts);
         Assert.Equal(400, o.PushRetryDelayMilliseconds);
+        Assert.Equal(60, o.CaptionBarRegisterSeconds);
     }
 
     /// <summary>验证无 RuntimeTimeouts 键或节非对象时返回全默认值。</summary>
@@ -83,7 +84,7 @@ public class RuntimeTimeoutsTests
             "AuthProbeTimeoutSeconds":25,"AuthProbeAttempts":28,"WindowReadyTimeoutSeconds":26,"WindowReadyPollIntervalSeconds":27,
             "IpcServeTimeoutSeconds":18,"IpcAcceptRetryDelaySeconds":19,
             "VersionProbeTimeoutSeconds":20,"BannerMaxAttempts":21,"BannerRetryDelaySeconds":22,
-            "PushMaxAttempts":23,"PushRetryDelayMilliseconds":24}}
+            "PushMaxAttempts":23,"PushRetryDelayMilliseconds":24,"CaptionBarRegisterSeconds":29}}
             """);
 
         Assert.Equal(3, o.RelayWaitIntervalSeconds);
@@ -114,6 +115,7 @@ public class RuntimeTimeoutsTests
         Assert.Equal(22, o.BannerRetryDelaySeconds);
         Assert.Equal(23, o.PushMaxAttempts);
         Assert.Equal(24, o.PushRetryDelayMilliseconds);
+        Assert.Equal(29, o.CaptionBarRegisterSeconds);
     }
 
     /// <summary>验证部分键覆盖时其余键保持默认；类型不符的键回退默认不影响其余键。</summary>

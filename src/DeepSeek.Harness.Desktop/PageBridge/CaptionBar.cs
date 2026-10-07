@@ -23,7 +23,8 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// 事件覆盖后续每次加载</b>的一路（mac/win 的 <c>navigated</c> 挂在 URL/Source 变化上，holder 页
 /// <c>location.reload()</c> 进真 UI 这类同 URL 重载不发；Linux 用户脚本同样逐文档重放，故该端 ③ 也覆盖）；
 /// ② 接线时对当前文档立即注入一次（注册脚本只对<b>后续</b>文档生效）；③
-/// <c>SetOnNavigatedPersistent</c> 导航到达后重挂（Linux 每跳都发、并带一次按当时 locale 重建）。
+/// <c>SetOnNavigatedPersistent</c> 导航到达后重挂（Linux 每跳都发；三路共用同一份脚本——语言由执行期按
+/// <c>html[lang]</c> 现取，构建期 locale 只是该属性缺失时的回落，故无需按到达重建）。
 /// 幂等守卫保证三路叠加只建一条。</para>
 /// <para><b>顶带拖拽判定收归本壳</b>（见 <see cref="BuildDragBinding"/>）：Ryn 的自动拖拽条在 dsh 的
 /// 顶带 chrome（列容器与会话头部）上不可靠——全高列恒不满足其底边判据、条状头部的底边跨在该界线上，

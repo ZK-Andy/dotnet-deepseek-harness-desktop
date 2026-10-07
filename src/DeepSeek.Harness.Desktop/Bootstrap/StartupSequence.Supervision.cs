@@ -134,7 +134,8 @@ internal sealed partial class StartupSequence
     /// <see cref="PagePump.RegisterCaptionBarScriptWhenReadyAsync"/>——三路里唯一不靠导航事件覆盖后续每次加载的一路
     /// （holder 页 <c>location.reload()</c> 进真 UI 是同 URL 重载，mac/win 的导航回调不发；Linux 用户脚本
     /// 逐文档重放，故该端导航钩子也覆盖）；<b>接线即注入</b>覆盖「注册只对后续文档生效」的当窗空档；
-    /// <b>常驻导航钩子</b>每次到达后重挂并按当时 locale 重建（Linux 每跳都发）。
+    /// <b>常驻导航钩子</b>每次到达后重挂（Linux 每跳都发；三路共用同一份脚本——语言由脚本执行期按
+    /// <c>html[lang]</c> 现取，构建期 locale 只是该属性缺失时的回落，故无需按到达重建）。
     /// 三路都幂等（脚本自带守卫）；失败仅留痕——窗口控制退路是托盘菜单的唤回/最大化/退出
     /// （hide-to-tray 关窗闸门不依赖注入）。</summary>
     private void SetupCaptionBar(SupervisorSetup supervisor)
@@ -144,12 +145,19 @@ internal sealed partial class StartupSequence
         // macChrome = 是否启用原生 macOS chrome（判据单点见 MacNativeChrome）。
         bool macChrome = MacNativeChrome.IsEnabled;
         string script = CaptionBar.Build(_captionBar.HeightPx, _uiLocale, macChrome);
+        Func<IRynWebView> webView = () => _app.App.Services.GetRequiredService<IRynWebView>();
         callbacks.SetOnNavigatedPersistent(() => Task.Run(() =>
-            PagePump.InjectCaptionBarWhenReadyAsync(
-                _app.WindowAccessor, CaptionBar.Build(_captionBar.HeightPx, _uiLocale, macChrome), ct)));
+        {
+            _ = PagePump.InjectCaptionBarWhenReadyAsync(_app.WindowAccessor, script, ct);
+            // 首次到达补注册一次（该事件只在 webview 就绪后发）：到点预算折算出的注册之外再保一路「后到
+            // 但确实活着」的注册时机；只补一次，避免每次导航都新增一条引擎注册。
+            if (Interlocked.Exchange(ref _captionBarReregistered, 1) == 0)
+            {
+                _ = PagePump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct);
+            }
+        }));
         _ = Task.Run(() => PagePump.InjectCaptionBarWhenReadyAsync(_app.WindowAccessor, script, ct));
-        _ = Task.Run(() => PagePump.RegisterCaptionBarScriptWhenReadyAsync(
-            () => _app.App.Services.GetRequiredService<IRynWebView>(), script, ct));
+        _ = Task.Run(() => PagePump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct));
     }
 
     /// <summary>启动期告知任务接线（ADR shared-home-desktop-profile）：版本底线 + 旧 home 提示 +
