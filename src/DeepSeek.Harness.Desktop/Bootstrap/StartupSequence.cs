@@ -23,6 +23,9 @@ internal sealed partial class StartupSequence : IStartupSequence
     private readonly DshLoopbackProxy? _proxy;
     private readonly StartupWiring _wiring;
     private readonly PrimaryListener? _instanceListener;
+    // 运行时起步用例（ADR 组合根机制收官先行批）：spawn→铸币→收 URL 下沉 Core 可单测；
+    // 缺省实现以本编排器既有字段组装（测试经构造注入 fake）。
+    private readonly IRuntimeStarter _runtimeStarter;
     // 「首次导航到达补注册顶栏脚本」的一次性闩（见 StartupSequence.Supervision 的 SetupCaptionBar）。
     private int _captionBarReregistered;
 
@@ -37,7 +40,8 @@ internal sealed partial class StartupSequence : IStartupSequence
         DshShellForward shellForward,
         DshLoopbackProxy? proxy,
         StartupWiring wiring,
-        PrimaryListener? instanceListener)
+        PrimaryListener? instanceListener,
+        IRuntimeStarter? runtimeStarter = null)
     {
         _preflight = preflight;
         _app = app;
@@ -49,6 +53,11 @@ internal sealed partial class StartupSequence : IStartupSequence
         _proxy = proxy;
         _wiring = wiring;
         _instanceListener = instanceListener;
+        _runtimeStarter = runtimeStarter ?? new RuntimeStarter(
+            _preflight.Bootstrap,
+            TimeSpan.FromSeconds(_timeouts.SpawnTimeoutSeconds),
+            _shellForward.MintAsync,
+            HostLog.Write);
     }
 
     /// <summary>组合根入口：按原 <c>Program.Main</c> 语句序执行全部编排并返回进程退出码。</summary>
@@ -101,33 +110,10 @@ internal sealed partial class StartupSequence : IStartupSequence
 
     private void StartRuntime(HostSetup host)
     {
-        // CLI shim 注册（ADR simple-shell-single-global-dsh）：dsh 已全局在 PATH，仅注册 pnpm shim。
-        // best-effort——注册内部吞预期异常（见 CliShimRegistrar），此处再兜底意外异常。
-        _preflight.Bootstrap.RegisterCliShim();
-
-        DshWebUrl? webUrl = _preflight.Bootstrap.IsNeeded
-            ? null
-            : DshWebUrl.FromNullable(host.Host.StartAsync(timeout: TimeSpan.FromSeconds(_timeouts.SpawnTimeoutSeconds)).GetAwaiter().GetResult());
-        if (!_preflight.Bootstrap.IsNeeded)
-        {
-            HostLog.Write($"[host] runtime = {host.Host.RuntimeDescription}");
-            if (webUrl is not null)
-            {
-                HostLog.Write($"[host] dsh web = {webUrl}");
-            }
-            else
-            {
-                HostLog.Write($"[host] dsh 未在时限内给出 URL；降级加载 wwwroot。stderr 尾巴：\n{string.Join('\n', host.Host.StderrTail.TakeLast(8))}");
-            }
-        }
-
-        if (webUrl is not null)
-        {
-            // 壳铸币（对齐上游 authenticateWebHost）：窗口/导航一律走壳 origin，先铸后载；
-            // 失败 loud，窗口照开（转发 401/502 → 探针/恢复面按错误页处理，不挡启动）。
-            // 同步编排沿用既有 GetAwaiter 形态；上限由转发器内部超时兜底。
-            _ = _shellForward.MintAsync(webUrl.Value, HostLog.Write, CancellationToken.None).GetAwaiter().GetResult();
-        }
+        // 用例下沉 Core（ADR 组合根机制收官先行批）：shim 注册→spawn 等 URL→壳铸币由 IRuntimeStarter
+        // 承载、可单测（实现见 Core.Bootstrap.RuntimeStarter，搬运前语句逐句等价）。
+        // 同步阻塞点仍在本方法：Run 链整体 async 化待 Ryn 线程模型审查，不在本批。
+        _ = _runtimeStarter.StartAsync(host.Host, CancellationToken.None).GetAwaiter().GetResult();
 
         // dsh web URL 就此收官：下游（监督器/收养导航）各自从宿主或回调取得 URL，
         // 无跨阶段消费点——不设阶段产出（死载荷会被 CompositionRootSequenceTests 拦下）。

@@ -10,8 +10,14 @@ public interface IRuntimeHost
     /// <summary>子进程 stderr 内存尾巴（死前落盘留证用）。</summary>
     IReadOnlyList<string> StderrTail { get; }
 
+    /// <summary>本次采用的运行时描述（日志/恢复屏用，如 <c>PATH dsh</c>）。</summary>
+    string RuntimeDescription { get; }
+
     /// <summary>残留预检：verified 僵尸存在且杀不掉/不敢杀时 true（监督器跳过本轮重启，fail loud）。</summary>
     bool TryDetectUnreapableResidue();
+
+    /// <summary>启动 dsh 并等待其 web URL；时限内未给出返回 null（冷启动语义，含残留收敛与交接处置）。</summary>
+    Task<Uri?> StartAsync(TimeSpan timeout, CancellationToken ct = default);
 
     /// <summary>重启 dsh 并等待其 web URL；时限内未给出返回 null。</summary>
     Task<Uri?> RestartAsync(TimeSpan timeout, CancellationToken ct = default);

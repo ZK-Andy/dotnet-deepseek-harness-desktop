@@ -10,7 +10,9 @@ public class RuntimeSupervisorTests
         private TaskCompletionSource? _parked;
         private int _exitSignals;
         public IReadOnlyList<string> StderrTail { get; init; } = Array.Empty<string>();
+        public string RuntimeDescription => "fake dsh";
         public bool TryDetectUnreapableResidue() => Residue;
+        public Task<Uri?> StartAsync(TimeSpan timeout, CancellationToken ct = default) => Task.FromResult(NextUrl);
         public Task<Uri?> RestartAsync(TimeSpan timeout, CancellationToken ct = default) => Task.FromResult(NextUrl);
 
         // 模拟子进程生命周期：前 N 次调用立即完成（每次=一次子进程退出），之后挂起
@@ -36,7 +38,10 @@ public class RuntimeSupervisorTests
         private int _calls;
         private int _exitSignals;
         public IReadOnlyList<string> StderrTail => Array.Empty<string>();
+        public string RuntimeDescription => "fake dsh";
         public bool TryDetectUnreapableResidue() => false;
+
+        public Task<Uri?> StartAsync(TimeSpan timeout, CancellationToken ct = default) => Task.FromResult<Uri?>(null);
 
         public Task<Uri?> RestartAsync(TimeSpan timeout, CancellationToken ct = default)
         {
