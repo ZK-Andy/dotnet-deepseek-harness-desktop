@@ -8,21 +8,23 @@ namespace DeepSeek.Harness.Desktop.Recovery;
 internal static class RecoveryRegistration
 {
     /// <summary>诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）。
-    /// <paramref name="healthSnapshot"/> 导出时刻求值页面健康快照（page-health-monitor 接线，惰性读 wiring）。</summary>
-    public static IServiceCollection AddDiagnosticsCommands(this IServiceCollection services, Func<string?> healthSnapshot)
+    /// 健康快照在调用期经容器解析（调用点必在观测启动之后；观测未起时快照为 null）。</summary>
+    public static IServiceCollection AddDiagnosticsCommands(this IServiceCollection services)
     {
-        services.AddSingleton<ICommandRouter>(new DesktopDiagnosticsCommandRouter(
-            log: HostLog.Write, healthSnapshot: healthSnapshot));
+        services.AddSingleton<ICommandRouter>(sp => new DesktopDiagnosticsCommandRouter(
+            log: HostLog.Write,
+            healthSnapshot: () => sp.GetRequiredService<PageHealthMonitor>().Snapshot));
         return services;
     }
 
     /// <summary>恢复页退出（desktop.recovery.exit）：先批准关窗闸门再 Close——hide-to-tray 拦截下
-    /// 未批准的 Close 会吞成隐藏；顺序契约与托盘退出同款（ADR diag-masking-and-recovery-page）。</summary>
-    public static IServiceCollection AddRecoveryCommands(this IServiceCollection services, StartupWiring wiring)
+    /// 未批准的 Close 会吞成隐藏；顺序契约与托盘退出同款（ADR diag-masking-and-recovery-page）。
+    /// 关窗闸门在调用期经容器解析（调用点必在编排接线之后）。</summary>
+    public static IServiceCollection AddRecoveryCommands(this IServiceCollection services)
     {
         services.AddSingleton<ICommandRouter>(sp => new RecoveryCommandRouter(
             closeWindow: () => sp.GetRequiredService<IRynWindow>().Close(),
-            wiring.Tray!.CloseGate,
+            sp.GetRequiredService<TrayController>().CloseGate,
             HostLog.Write));
         return services;
     }

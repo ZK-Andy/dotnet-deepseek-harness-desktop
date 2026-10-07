@@ -19,12 +19,13 @@ public class CompositionRootSequenceTests
         string[] chain =
         [
             "WebkitSandboxFallback.Apply();",
-            "ResolveRuntimeAndDev(wiring)",
-            "AcquireSingleInstance(preflight, wiring)",
+            "ResolveRuntimeAndDev(",
+            "AcquireSingleInstance(preflight, () => builtApp,",
             "StartProxy();",
-            "InitCloseGateAndUpdateStack(preflight, wiring)",
-            "BuildApp(preflight, proxy.Proxy, update, wiring)",
-            "GetRequiredService<Core.Bootstrap.IStartupSequence>().Run()",
+            "InitCloseGateAndUpdateStack(",
+            "BuildApp(preflight, proxy.Proxy, update, tray,",
+            "new Bootstrap.StartupSequence(",
+            "sequence.Run()",
         ];
 
         AssertChainOrder(source, chain);
@@ -41,7 +42,7 @@ public class CompositionRootSequenceTests
         string[] chain =
         [
             "ProfileLifecycle.EnsureReady();",
-            "SetupHostAndMarker()",
+            "GetRequiredService<HostSetup>()",
             "CompanionPreSpawn.EnsureInstalled(",
             "StartRuntime(host)",
             "RunBootstrapIfNeeded()",
@@ -65,7 +66,7 @@ public class CompositionRootSequenceTests
         string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
             "src/DeepSeek.Harness.Desktop/Bootstrap/StartupSequence.Supervision.cs"));
 
-        int anchor = source.IndexOf("_wiring.LastRecoveryShownAtUtc = DateTimeOffset.UtcNow;", StringComparison.Ordinal);
+        int anchor = source.IndexOf("_lastRecoveryShownAtUtc = DateTimeOffset.UtcNow;", StringComparison.Ordinal);
         Assert.True(anchor >= 0, "恢复周期起点打点未找到（ShowRecoveryPageAsync 被重排？）");
         Assert.True(
             source.IndexOf("_shellForward.InvalidateRoute()", anchor, StringComparison.Ordinal) > anchor,

@@ -12,7 +12,12 @@ namespace DeepSeek.Harness.Desktop;
 /// </summary>
 public sealed partial class DesktopBootstrap
 {
-    private UpdateSetup InitCloseGateAndUpdateStack(Preflight preflight, StartupWiring wiring)
+    private (UpdateSetup Updates, TrayController Tray) InitCloseGateAndUpdateStack(
+        Preflight preflight,
+        CancellationTokenSource supervisorCts,
+        Func<IRynWindow> windowProvider,
+        Func<CurrentWindowAccessor?> accessorProvider,
+        Func<ExitPipeline> exitProvider)
     {
         // 关窗闸门/自更新栈/托盘控制器装配（原编排阶段 8 随形态分离归位组合根装配面）：构造只收
         // 惰性委托与配置，与运行时产出无交互——装配移至 Build 之前（原 spawn→装配 反转为 装配→spawn，
@@ -27,6 +32,7 @@ public sealed partial class DesktopBootstrap
         // 自更新协调器在此构造并装载（早于 BuildApp）：Application 用例住 Core（ADR
         // update-coordinator-core-port），栈协作经 UpdateStackAdapter 四端口注入（一个适配器同型实现），
         // UI 交接以委托闭包接线（PagePump/横幅/关窗闸门/退出管道）——根只装配，编排策略随用例可单测。
+        // 委托均在调用期求值（页面交互/后台任务），提供者赋值晚于本方法返回，与原接线槽语义等价。
         var updateStack = new UpdateStackAdapter(HostLog.Write);
         var updates = new UpdateCoordinator(
             preflight.Launch.IsDev,
@@ -34,36 +40,36 @@ public sealed partial class DesktopBootstrap
             updateStack,
             updateStack,
             updateStack,
-            () => wiring.SupervisorToken,
-            state => PagePump.PushUpdateState(wiring.WindowAccessor, state),
+            () => supervisorCts.Token,
+            state => PagePump.PushUpdateState(accessorProvider(), state),
             (version, token) => PagePump.ShowBannerWhenReadyAsync(
-                wiring.WindowAccessor!, UpdateBanner.ReadyScript(version, _uiLocale), token),
+                accessorProvider()!, UpdateBanner.ReadyScript(version, _uiLocale), token),
             closeGate.ApproveExit,
-            () => wiring.WindowAccessor?.Current?.Close(),
-            ct => wiring.Exit!.ScheduleExitFallback(ct),
+            () => accessorProvider()?.Current?.Close(),
+            ct => exitProvider().ScheduleExitFallback(ct),
             HostLog.Write);
         updates.Load();
 
         // 托盘控制器在此构造（早于 BuildApp/ShowTray），窗口与 Ryn 服务以惰性委托注入——
         // 控制器持有 hide-to-tray 拦截、唤回采样、菜单重建与关窗闸门/偏好（供路由构造注入）。
-        wiring.Tray = new TrayController(
-            () => wiring.App!.Services.GetRequiredService<IRynWindow>(),
-            () => wiring.WindowAccessor,
+        var tray = new TrayController(
+            windowProvider,
+            accessorProvider,
             closeGate,
             closeBehavior,
             _uiLocale,
             updates.Machine,
             HostLog.Write);
 
-        return new UpdateSetup(updates);
+        return (new UpdateSetup(updates), tray);
     }
 
-    private AppSetup BuildApp(Preflight preflight, DshLoopbackProxy? proxy, UpdateSetup update, StartupWiring wiring)
+    private AppSetup BuildApp(Preflight preflight, DshLoopbackProxy? proxy, UpdateSetup update, TrayController tray, CancellationTokenSource supervisorCts, PrimaryListener? instanceListener)
     {
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 IsReady）
         string iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
         bool trayAvailable = File.Exists(iconPath); // verify-code-conventions: ignore 组合根装配：icon 存在性探测是配置面，非业务/领域直调
-        wiring.Tray!.ConfigureIcon(iconPath, trayAvailable);
+        tray.ConfigureIcon(iconPath, trayAvailable);
 
         RynApplication app = RynApplication.CreateBuilder()
             .ConfigureOptions(opts =>
@@ -108,18 +114,23 @@ public sealed partial class DesktopBootstrap
                 // （ADR post-restructure-ledger-batch）。
                 opts.DevTools = preflight.Launch.DevTools;
             })
-            .ConfigureServices(services => RegisterServices(services, preflight, update, proxy, wiring))
+            .ConfigureServices(services => RegisterServices(services, preflight, update, proxy, tray, supervisorCts, instanceListener))
             .Build();
 
-        // 装配产出回填接线槽（托盘控制器/引导页的惰性委托此后可解引用），阶段产出随值流动
-        wiring.App = app;
+        // 装配产出随值流动：窗口访问器由容器解析，调用方收进方法局部（不再回填共享槽）。
         CurrentWindowAccessor windowAccessor = app.Services.GetRequiredService<CurrentWindowAccessor>();
-        wiring.WindowAccessor = windowAccessor;
 
         return new AppSetup(app, windowAccessor);
     }
 
-    private void RegisterServices(IServiceCollection services, Preflight preflight, UpdateSetup update, DshLoopbackProxy? proxy, StartupWiring wiring)
+    private void RegisterServices(
+        IServiceCollection services,
+        Preflight preflight,
+        UpdateSetup update,
+        DshLoopbackProxy? proxy,
+        TrayController tray,
+        CancellationTokenSource supervisorCts,
+        PrimaryListener? instanceListener)
     {
         services.AddRynCommands();
         services.AddRynCallbacks();
@@ -127,25 +138,17 @@ public sealed partial class DesktopBootstrap
         services.AddExternalLinkRouting(proxy);
         services.AddLocaleCommands(_uiLocale);
         services.AddCompanionReportCommand();
-        services.AddDiagnosticsCommands(() => wiring.HealthMonitor?.Snapshot);
-        services.AddRecoveryCommands(wiring);
+        services.AddDiagnosticsCommands();
+        services.AddRecoveryCommands();
         services.AddBootstrapCommands(preflight.Bootstrap);
         services.AddAutostartCommands();
-        services.AddAppRestartCommand(wiring);
-        services.AddTrayServices(update, wiring, _uiLocale);
-        services.AddUpdateCommands(update, wiring);
-        // 启动编排服务（容器解析；工厂惰性求值——wiring.App/WindowAccessor 在 Build 完成后才回填，
-        // 解析时点必晚于 Build，届时求值安全）。
-        services.AddSingleton<Core.Bootstrap.IStartupSequence>(_ => new Bootstrap.StartupSequence(
-            preflight,
-            new AppSetup(wiring.App!, wiring.WindowAccessor!),
-            update,
-            _uiLocale,
-            _timeouts,
-            _captionBar,
-            _shellForward,
-            proxy,
-            wiring,
-            _instanceListener));
+        services.AddAppRestartCommand();
+        services.AddSingleton(tray);
+        services.AddSingleton(supervisorCts);
+        services.AddRunHost();
+        services.AddExitPipeline(supervisorCts, instanceListener);
+        services.AddHealthMonitor(proxy);
+        services.AddTrayServices(update, tray, _uiLocale);
+        services.AddUpdateCommands(update);
     }
 }

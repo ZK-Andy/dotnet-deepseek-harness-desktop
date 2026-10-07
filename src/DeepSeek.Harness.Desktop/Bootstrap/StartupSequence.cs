@@ -6,8 +6,8 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 /// <summary>
 /// 启动编排服务（ADR compose-root-form-separation）：阶段主链与用例编排自组合根整体搬迁至此
 /// （语句序/分支/异常边界逐一对应，纯搬家零行为变更）；组合根只装配与触发（R1）。Ryn 无 hosted-service
-/// 机制，编排器由组合根 Build 后经 <see cref="IStartupSequence"/> 显式触发（结构必然，见 ADR Alternatives）。
-/// 长命惰性接线槽在 <see cref="StartupWiring"/>；阶段产出为正式类型（<see cref="Preflight"/> 等）。
+/// 机制，编排器由组合根在 Build 后显式组装并触发（结构必然，见 ADR Alternatives）。
+/// 跨阶段值经构造与运行期单例双通道供给（单例在调用点幂等解析，见 Run/ShowTray/SetupSupervisor）；阶段产出为正式类型（<see cref="Preflight"/> 等）。
 /// 本文件承载启动主链与产生段；监督/退出接线在 <c>StartupSequence.Supervision.cs</c>，
 /// 导航原语与窗口就绪等待在 <c>StartupSequence.Navigation.cs</c>，网页会话自愈在 <c>StartupSequence.WebSession.cs</c>。
 /// </summary>
@@ -21,15 +21,17 @@ internal sealed partial class StartupSequence : IStartupSequence
     private readonly CaptionBarOptions _captionBar;
     private readonly DshShellForward _shellForward;
     private readonly DshLoopbackProxy? _proxy;
-    private readonly StartupWiring _wiring;
     private readonly PrimaryListener? _instanceListener;
     // 运行时起步用例（ADR 组合根机制收官先行批）：spawn→铸币→收 URL 下沉 Core 可单测；
     // 缺省实现以本编排器既有字段组装（测试经构造注入 fake）。
     private readonly IRuntimeStarter _runtimeStarter;
+    // 恢复周期起点（恢复屏展示时刻写入、收养导航读出：周期内有导航到达即页内已自刷）。
+    private DateTimeOffset _lastRecoveryShownAtUtc;
     // 「首次导航到达补注册顶栏脚本」的一次性闩（见 StartupSequence.Supervision 的 SetupCaptionBar）。
     private int _captionBarReregistered;
 
-    /// <summary>创建编排服务（构造数据注入；由组合根在 Build 后经容器工厂解析）。</summary>
+    /// <summary>创建编排服务（构造数据注入；由组合根在 Build 后显式组装，容器只给零件）。
+    /// 运行期单例（宿主/令牌源/托盘）在调用点经应用容器解析——组装时点必晚于 Build，届时求值安全。</summary>
     public StartupSequence(
         Preflight preflight,
         AppSetup app,
@@ -39,7 +41,6 @@ internal sealed partial class StartupSequence : IStartupSequence
         CaptionBarOptions captionBar,
         DshShellForward shellForward,
         DshLoopbackProxy? proxy,
-        StartupWiring wiring,
         PrimaryListener? instanceListener,
         IRuntimeStarter? runtimeStarter = null)
     {
@@ -51,7 +52,6 @@ internal sealed partial class StartupSequence : IStartupSequence
         _captionBar = captionBar;
         _shellForward = shellForward;
         _proxy = proxy;
-        _wiring = wiring;
         _instanceListener = instanceListener;
         _runtimeStarter = runtimeStarter ?? new RuntimeStarter(
             _preflight.Bootstrap,
@@ -60,52 +60,26 @@ internal sealed partial class StartupSequence : IStartupSequence
             HostLog.Write);
     }
 
-    /// <summary>组合根入口：按原 <c>Program.Main</c> 语句序执行全部编排并返回进程退出码。</summary>
+    /// <summary>组合根入口：按原 <c>Program.Main</c> 语句序执行全部编排并返回进程退出码。
+    /// 宿主/令牌源寿命由组合根拥有（构造注入），此处不释放。</summary>
     public int Run()
     {
-        try
-        {
-            // profile 前置（migrate→recover→ensure→reconcile 用例编排住 Infrastructure.ProfileLifecycle）
-            ProfileLifecycle.EnsureReady();
-            HostSetup host = SetupHostAndMarker();
-            // 随包插件 spawn 前安装（策略谓词与安装住 Infrastructure.CompanionPreSpawn；偏序 = 宿主已建、spawn 前）
-            CompanionPreSpawn.EnsureInstalled(_preflight.Bootstrap.IsNeeded, _preflight.Launch);
-            StartRuntime(host);
-            RunBootstrapIfNeeded();
-            ShowTray();
-            SupervisorSetup supervisor = SetupSupervisor(host);
-            SetupHealthMonitor(supervisor);
-            SetupCaptionBar(supervisor);
-            StartUpdateCheck();
-            StartupNoticeTask(host, supervisor);
-            return RunAppLoop(supervisor);
-        }
-        finally
-        {
-            // 原 `using var host` / `using var supervisorCts` 作用域到 Run 末尾；编排搬迁后释放随编排走。
-            // 代理资源不在此——代理在容器之前启动，释放留在组合根 Run 的 finally（ProxySetup.Dispose）。
-            _wiring.Host?.Dispose();
-            _wiring.SupervisorCts?.Dispose();
-        }
-    }
-
-    /// <summary>宿主与崩溃标记创建（阶段产出）。</summary>
-    private HostSetup SetupHostAndMarker()
-    {
-        // 原 `using var host`：生命周期由 Run 的 finally 释放（接线 wiring.Host，引导服务惰性读）。
-        // 全局 dsh 模型：宿主恒以 PATH dsh（bundled=null）形态运行（ADR simple-shell-single-global-dsh）。
-        HarnessRuntimeHost host = new(HostLog.Write);
-        _wiring.Host = host;
-
-        // 崩溃取证 marker（ADR shell-observability-diagnostics）：遗留即判定上轮非受控退出；
-        // 正常退出路径在退出管道清除
-        RunMarkerResult marker = RunMarker.Acquire(HarnessRuntimeHost.ResolveDshHome());
-        if (marker.PreviousRunUnclean)
-        {
-            HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
-        }
-
-        return new HostSetup(host, marker);
+        // profile 前置（migrate→recover→ensure→reconcile 用例编排住 Infrastructure.ProfileLifecycle）
+        ProfileLifecycle.EnsureReady();
+        // 宿主装配产出（容器惰性单例）：首次解析即创建；必须先于随包插件安装与 spawn（偏序 = 宿主已建、spawn 前），
+        // 偏序在本方法内自洽，不依赖组合根的 eager 解析兜底。
+        HostSetup host = _app.App.Services.GetRequiredService<HostSetup>();
+        // 随包插件 spawn 前安装（策略谓词与安装住 Infrastructure.CompanionPreSpawn；偏序 = 宿主已建、spawn 前）
+        CompanionPreSpawn.EnsureInstalled(_preflight.Bootstrap.IsNeeded, _preflight.Launch);
+        StartRuntime(host);
+        RunBootstrapIfNeeded();
+        ShowTray();
+        SupervisorSetup supervisor = SetupSupervisor(host);
+        SetupHealthMonitor(supervisor);
+        SetupCaptionBar(supervisor);
+        StartUpdateCheck();
+        StartupNoticeTask(host, supervisor);
+        return RunAppLoop(supervisor);
     }
 
     private void StartRuntime(HostSetup host)
@@ -130,8 +104,8 @@ internal sealed partial class StartupSequence : IStartupSequence
     /// <summary>托盘就绪化（装配壳）：解析 Ryn 托盘服务并交给控制器（无托盘环境传 null）。</summary>
     private void ShowTray()
     {
-        // 托盘在组合根装配期构造（wiring.Tray），ShowTray 必然晚于它
-        Tray.TrayController tray = _wiring.Tray!;
+        // 托盘在组合根装配期构造（容器单例），ShowTray 必然晚于它
+        Tray.TrayController tray = _app.App.Services.GetRequiredService<TrayController>();
         tray.Show(tray.IsAvailable
             ? () => _app.App.Services.GetRequiredService<TrayService>()
             : null);
@@ -168,8 +142,8 @@ internal sealed partial class StartupSequence : IStartupSequence
         }
 
         // 非 orderly 退出路径（用户直接关窗使 Run 返回）与托盘有序退出共用同一单实例管道：
-        // once-guard 使已回收路径的重复调用为 no-op（退出管道在 SetupSupervisor 的 WireExitHandlers 接线）
-        _wiring.Exit!.ReapRuntime();
+        // once-guard 使已回收路径的重复调用为 no-op（退出管道由容器单例供给）
+        _app.App.Services.GetRequiredService<ExitPipeline>().ReapRuntime();
         // 非 orderly 退出路径也要释放单实例锁地址：orderly 路径已 Dispose 过，幂等守卫保证此处安全
         _instanceListener?.Dispose();
         return 0;

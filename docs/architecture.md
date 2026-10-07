@@ -18,8 +18,8 @@
 ## 分层与组合根
 
 * 三工程：`Core`（纯逻辑，零外层引用）/ `Infrastructure`（Ryn、dsh 进程、文件/网络、更新适配器）/ 壳工程（Presentation + 组合根）。
-* **组合根只装配**（ADR `2026-09-28-compose-root-form-separation`；规范见 [architecture-standards.md](architecture-standards.md) R1，语义闸 `verify-compose-root.py`）：`Program.cs` 薄壳 + `DesktopBootstrap.cs` 只保留容器之前的启动头部（WebKit 沙箱降级 / 运行时与 dev 解析 / 单实例仲裁 / 回环代理启动）+ 唯一 dot 分部 `DesktopBootstrap.App.cs` 按域 `AddXxx()` 注册。启动编排搬出根成容器解析的 `Core.Bootstrap.IStartupSequence`（实现在 `Bootstrap/StartupSequence*`，阶段产出为正式类型：`Preflight`/`UpdateSetup`/`AppSetup` 等）。
-* **端口在 Core，实现在 Infrastructure**：`IRuntimeHost`（监督，ADR `2026-09-28-runtime-supervisor-core-port`）、`IReleaseFeed`/`IPackageDownloader`/`IPackageInstaller`/`IUpdateEnvironment`（自更新，ADR `2026-09-28-update-coordinator-core-port`）、`IFirstBootBootstrap` 等；`Core.RuntimeSupervisor`/`Core.Update.UpdateCoordinator` 构造注入消费。跨界 ID 强类型，IPC 帧经源生成上下文（`AppJsonContext`/`UpdateJsonContext`）。
+* **组合根只装配**（ADR `2026-09-28-compose-root-form-separation`；规范见 [architecture-standards.md](architecture-standards.md) R1，语义闸 `verify-compose-root.py`）：`Program.cs` 薄壳 + `DesktopBootstrap.cs` 只保留容器之前的启动头部（WebKit 沙箱降级 / 运行时与 dev 解析 / 单实例仲裁 / 回环代理启动）+ 唯一 dot 分部 `DesktopBootstrap.App.cs` 按域 `AddXxx()` 注册。启动编排搬出根成显式组装的 `Bootstrap.StartupSequence`（容器只给零件：post-Build 值 + 运行期单例；阶段产出为正式类型：`Preflight`/`UpdateSetup`/`AppSetup` 等）。
+* **端口在 Core，实现在 Infrastructure**：`IRuntimeHost`（监督，ADR `2026-09-28-runtime-supervisor-core-port`）、`IReleaseFeed`/`IPackageDownloader`/`IPackageInstaller`/`IUpdateEnvironment`（自更新，ADR `2026-09-28-update-coordinator-core-port`）、`IFirstBootBootstrap` 等；`Core.RuntimeSupervisor`/`Core.Update.UpdateCoordinator` 构造注入消费，起步用例 `Core.Bootstrap.RuntimeStarter` 同例（端口 + 委托注入）。跨界 ID 强类型，IPC 帧经源生成上下文（`AppJsonContext`/`UpdateJsonContext`）。
 
 ## 启动模型：回环代理源
 

@@ -9,10 +9,10 @@ namespace DeepSeek.Harness.Desktop.Tray;
 internal static class TrayRegistration
 {
     /// <summary>托盘服务注册（ADR shell-tray-hide-to-tray）：图标+菜单 + 事件路由（窗口动作经委托接 deferred 代理）。
-    /// 注册时点托盘控制器已在组合根装配（<see cref="StartupWiring.Tray"/> 回填），可用性就此定稿。</summary>
-    public static IServiceCollection AddTrayServices(this IServiceCollection services, UpdateSetup update, StartupWiring wiring, UiLocale uiLocale)
+    /// 托盘控制器由组合根装配并注册为单例（<see cref="TrayController"/>），退出管道在调用期经容器解析
+    /// （注册期尚未接线；托盘交互必晚于编排接线，与原接线注释同理）。</summary>
+    public static IServiceCollection AddTrayServices(this IServiceCollection services, UpdateSetup update, TrayController tray, UiLocale uiLocale)
     {
-        TrayController tray = wiring.Tray!;
         // 托盘（批次三）：图标+菜单；点击语义经 companion 中继
         // 回 desktop.tray.event 在宿主解析——EmitEvent 是 Ryn 插件内部属性，不在源生成通道
         if (tray.IsAvailable)
@@ -30,15 +30,15 @@ internal static class TrayRegistration
             showWindow: () => tray.RecallAsync(),
             closeWindow: () =>
             {
-                // 管道在 supervisorCts 声明后接线，而托盘退出必经托盘菜单的用户交互、
-                // 必然晚于接线，故此处不可能为 null
-                wiring.Exit!.OrderlyQuit();
+                // 管道在编排 Run 期经容器就绪，而托盘退出必经托盘菜单的用户交互、
+                // 必然晚于接线，故此处解析必命中
+                sp.GetRequiredService<ExitPipeline>().OrderlyQuit();
             },
             restart: () =>
             {
                 // 同上：托盘重启必经菜单交互，接线时点必已就绪。
                 // Restart 内部先回收再 spawn（旧 dsh 树不死透会死于看门狗，ADR app-restart-native-switch）
-                wiring.Exit!.Restart(AppRelaunch.SpawnSelf);
+                sp.GetRequiredService<ExitPipeline>().Restart(AppRelaunch.SpawnSelf);
             },
             tray.CloseGate,
             update.Updates.Machine,

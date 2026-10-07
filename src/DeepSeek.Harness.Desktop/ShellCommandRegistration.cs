@@ -55,13 +55,13 @@ internal static class ShellCommandRegistration
     }
 
     /// <summary>应用重启（desktop.app.restart，ADR app-restart-native-switch）：受理即回帧、
-    /// 延迟冲刷窗口后先批准关窗闸门再走退出管道重启。管道与托盘控制器在编排期回填，
+    /// 延迟冲刷窗口后先批准关窗闸门再走退出管道重启。管道与托盘控制器在调用期经容器解析，
     /// 命令必经页面交互触发，调用时点必已就绪（与 TrayRegistration 的接线注释同理）。</summary>
-    public static IServiceCollection AddAppRestartCommand(this IServiceCollection services, StartupWiring wiring)
+    public static IServiceCollection AddAppRestartCommand(this IServiceCollection services)
     {
-        services.AddSingleton<ICommandRouter>(new AppRestartCommandRouter(
-            closeGate: wiring.Tray!.CloseGate,
-            restart: () => wiring.Exit!.Restart(AppRelaunch.SpawnSelf),
+        services.AddSingleton<ICommandRouter>(sp => new AppRestartCommandRouter(
+            closeGate: sp.GetRequiredService<TrayController>().CloseGate,
+            restart: () => sp.GetRequiredService<ExitPipeline>().Restart(AppRelaunch.SpawnSelf),
             log: HostLog.Write));
         return services;
     }

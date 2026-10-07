@@ -11,9 +11,8 @@ internal sealed partial class StartupSequence
 {
     private SupervisorSetup SetupSupervisor(HostSetup host)
     {
-        // 原 `using var supervisorCts`：生命周期由 Run 的 finally 释放（本方法接线 wiring.SupervisorCts）。
-        var cts = new CancellationTokenSource();
-        _wiring.SupervisorCts = cts; // 自更新后台任务 token 持有器接线（见 StartupWiring）
+        // 监督器取消令牌源由组合根拥有（容器单例，寿命 = 本次 Run；释放随组合根作用域）。
+        CancellationTokenSource cts = _app.App.Services.GetRequiredService<CancellationTokenSource>();
         RynNavigationCallbacks navCallbacks = _app.App.Services.GetRequiredService<RynNavigationCallbacks>();
         var supervisor = new RuntimeSupervisor(
             host.Host,
@@ -37,23 +36,7 @@ internal sealed partial class StartupSequence
             await supervisor.RunAsync(cts.Token);
         });
 
-        // 有序退出编排 + 自更新兜底收割器接线（WireExitHandlers）
-        WireExitHandlers(_app.App.Services.GetRequiredService<IRynWindow>(), host, cts);
-
         return new SupervisorSetup(cts, supervisorTask);
-    }
-
-    /// <summary>单实例退出管道接线（ADR composition-root-value-flow-pipeline）：有序退出步骤即构造数据，
-    /// 托盘有序退出与 Run 尾部共用同一实例，幂等由 once-guard 保证；运行时回收先于关窗。</summary>
-    private void WireExitHandlers(IRynWindow quitWindow, HostSetup host, CancellationTokenSource supervisorCts)
-    {
-        _wiring.Exit = new ExitPipeline(
-            supervisorCts.Cancel,
-            host.Host.Stop,
-            () => RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), host.Marker.Token),
-            () => _instanceListener?.Dispose(),
-            quitWindow.Close,
-            log: HostLog.Write);
     }
 
     /// <summary>恢复屏展示 + 恢复周期起点打点（ADR adopt-skip-navigate-on-self-reload）。</summary>
@@ -62,7 +45,7 @@ internal sealed partial class StartupSequence
     {
         // 周期起点：子进程退出后、RestartAsync 等待前。周期内的导航到达即页内自刷
         // （市场 doRestart 轮询到新 boot 即 reload），收养 navigate 据此免导航。
-        _wiring.LastRecoveryShownAtUtc = DateTimeOffset.UtcNow;
+        _lastRecoveryShownAtUtc = DateTimeOffset.UtcNow;
         // 铸币态 epoch 化（ADR mint-epoch-mux-gate）：dsh 死即 route 失效——代理 `/` 回落 holder、
         // 页面自刷落进门控（旧 route 指向已死进程时自刷只会落进 502 错误页）。失效幂等：残留锁死分支
         // 逐轮重入只在首轮翻转留痕，cookie 保留供收养重验。
@@ -96,7 +79,7 @@ internal sealed partial class StartupSequence
         // 免导航（ADR adopt-skip-navigate-on-self-reload）：周期内有到达即视为页内自刷
         // （市场 doRestart 轮询到新 boot 即 location.reload；谓词只比时间戳，同源靠前提假设），
         // 再导航即多余——只做收养登记，跳过实际导航。无到达时走壳单跳。
-        if (AdoptNavigateGate.ShouldSkipAdoptNavigate(navCallbacks.LastNavigatedAtUtc, _wiring.LastRecoveryShownAtUtc))
+        if (AdoptNavigateGate.ShouldSkipAdoptNavigate(navCallbacks.LastNavigatedAtUtc, _lastRecoveryShownAtUtc))
         {
             HostLog.Write($"[nav] 收养时恢复周期内已有页面到达（视为页内自刷，{url.GetLeftPart(UriPartial.Authority)}），跳过代理侧导航");
             return ValueTask.CompletedTask;
@@ -120,13 +103,8 @@ internal sealed partial class StartupSequence
         // 首拍延迟（HealthInitialDelaySeconds）避开启动空窗，探针异常按 Unknown 续跑。reload 委托
         // 恒为当前代理靶点（代理源恒定，未铸币时 holder 自 reload）；代理绑定失败时该窗口页面是
         // wwwroot 引导页（有内容 → Alive），不会进入 Dead 恢复分支——空态只是防御性兜底。
-        _wiring.HealthMonitor = new PageHealthMonitor(
-            _app.WindowAccessor,
-            HostLog.Write,
-            reload: ct => _proxy is null
-                ? ValueTask.CompletedTask
-                : _app.WindowAccessor.Current.NavigateAsync(_proxy.Url, ct));
-        _ = _wiring.HealthMonitor.RunAsync(TimeSpan.FromSeconds(_timeouts.HealthInitialDelaySeconds), supervisor.Cts.Token);
+        PageHealthMonitor monitor = _app.App.Services.GetRequiredService<PageHealthMonitor>();
+        _ = monitor.RunAsync(TimeSpan.FromSeconds(_timeouts.HealthInitialDelaySeconds), supervisor.Cts.Token);
     }
 
     /// <summary>无边框窗口 chrome 注入接线（ADR frameless-uniform-caption-bar「注入时机」条，该条按
