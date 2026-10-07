@@ -5,8 +5,8 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
 /// 页面注入辅助（ADR 组合根只装配）：把 JS 注入类操作（横幅/引导进度/插件引导状态/日志回流/自更新状态）
-/// 从组合根抽出为静态单点。均以 <see cref="CurrentWindowAccessor"/>
-/// 为参数（未就绪的重试/丢弃语义在方法内），不依赖组合根实例状态。
+/// 从组合根抽出为静态单点。均以 <see cref="CurrentWindowAccessor"/>（或就绪前会抛的
+/// <see cref="IRynWebView"/> 惰性解析）为参数（未就绪的重试/丢弃语义在方法内），不依赖组合根实例状态。
 /// </summary>
 internal static class PagePump
 {
@@ -26,6 +26,66 @@ internal static class PagePump
     internal static Task InjectCaptionBarWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct) =>
         RetryInjectWhenReadyAsync(accessor, script, "caption-bar", s_timeouts.PushMaxAttempts,
             TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds), ct);
+
+    /// <summary>注册「每次页面加载执行」的顶栏脚本（ADR frameless-uniform-caption-bar「注入时机」条）：
+    /// 三路注入里<b>唯一不靠导航事件覆盖后续每次加载</b>的一路——holder 页 <c>location.reload()</c> 进真 UI 是<b>同 URL
+    /// 重载</b>，mac/win 的 <c>navigated</c> 回调在 URL/Source 未变时不发，真 UI 文档会因此拿不到顶栏
+    /// （Linux 用户脚本逐文档重放，故该端导航钩子也覆盖）。webview 未就绪（<c>DeferredRynWebView</c> 在
+    /// RunAsync 前抛 InvalidOperationException）按节拍重试至上限，其余异常留痕放弃——顶栏属增强面，
+    /// 绝不拖垮启动链路。</summary>
+    internal static Task RegisterCaptionBarScriptWhenReadyAsync(Func<IRynWebView> webView, string script, CancellationToken ct) =>
+        RetryRegisterWhenReadyAsync(
+            webView, script, s_timeouts.PushMaxAttempts, TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds), ct);
+
+    /// <summary>同上，重试预算可注入（单测覆盖「预算耗尽」出口；生产走默认预算）。</summary>
+    internal static Task RegisterCaptionBarScriptWhenReadyAsync(
+        Func<IRynWebView> webView, string script, int maxAttempts, TimeSpan retryDelay, CancellationToken ct) =>
+        RetryRegisterWhenReadyAsync(webView, script, maxAttempts, retryDelay, ct);
+
+    /// <summary>脚本注册的有界重试单点：webview 未就绪按节拍重试，成功留一行取证日志（发版冒烟据此
+    /// 核对「真 UI 文档拿到了顶栏」）；预算耗尽同样留痕（同文件另两个重试助手的口径）；退出期已销毁与
+    /// 其余异常都放弃。</summary>
+    private static async Task RetryRegisterWhenReadyAsync(
+        Func<IRynWebView> webView, string script, int maxAttempts, TimeSpan retryDelay, CancellationToken ct)
+    {
+        for (int attempt = 0; attempt < maxAttempts && !ct.IsCancellationRequested; attempt++)
+        {
+            try
+            {
+                await webView().InjectScriptAsync(script, ct);
+                HostLog.Write("[caption-bar] 每页加载脚本已注册（同 URL 重载不再依赖导航事件）");
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                // 退出期 webview 已销毁（本异常是 InvalidOperationException 的子类，须先于它捕获）：不再补注册
+                return;
+            }
+            catch (InvalidOperationException)
+            {
+                // webview 尚未创建：稍后重试（DeferredRynWebView 的就绪契约）
+            }
+            catch (Exception ex)
+            {
+                HostLog.Write($"[caption-bar] 每页加载脚本注册失败（放弃）：{ex.Message}");
+                return;
+            }
+
+            try
+            {
+                await Task.Delay(retryDelay, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+
+        if (!ct.IsCancellationRequested)
+        {
+            HostLog.Write($"[caption-bar] 每页加载脚本注册重试耗尽（{maxAttempts} 次后网页视图仍未就绪）");
+        }
+    }
 
     /// <summary>脚本注入的有界重试单点：Current 未就绪（InvalidOperationException）按节拍重试；
     /// 其余异常记日志放弃。重试上限/节拍由调用方给（横幅与顶栏各配各的）。</summary>

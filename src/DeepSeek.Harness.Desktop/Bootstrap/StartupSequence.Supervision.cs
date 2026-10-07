@@ -129,10 +129,13 @@ internal sealed partial class StartupSequence
         _ = _wiring.HealthMonitor.RunAsync(TimeSpan.FromSeconds(_timeouts.HealthInitialDelaySeconds), supervisor.Cts.Token);
     }
 
-    /// <summary>无边框窗口 chrome 注入接线（ADR frameless-uniform-caption-bar）：脚本自绘 macOS 观感
-    /// （红绿灯 + 侧栏顶部让位 + 宿主 chrome 高度变量，幂等，三端同款）。常驻导航钩子负责每次页面到达后的
-    /// 重挂（初次加载/自愈重载/引导后接管都会触发导航到达），脚本在钩子内按当时 locale 现取（随语言切换）；
-    /// 接线时另起一轮注入尝试，窗口就绪即生效。注入失败仅留痕——窗口控制退路是托盘菜单的唤回/最大化/退出
+    /// <summary>无边框窗口 chrome 注入接线（ADR frameless-uniform-caption-bar「注入时机」条，该条按
+    /// 注册／接线即注入／导航钩子编号，本方法按调用序排列）：<b>注册</b>走
+    /// <see cref="PagePump.RegisterCaptionBarScriptWhenReadyAsync"/>——三路里唯一不靠导航事件覆盖后续每次加载的一路
+    /// （holder 页 <c>location.reload()</c> 进真 UI 是同 URL 重载，mac/win 的导航回调不发；Linux 用户脚本
+    /// 逐文档重放，故该端导航钩子也覆盖）；<b>接线即注入</b>覆盖「注册只对后续文档生效」的当窗空档；
+    /// <b>常驻导航钩子</b>每次到达后重挂并按当时 locale 重建（Linux 每跳都发）。
+    /// 三路都幂等（脚本自带守卫）；失败仅留痕——窗口控制退路是托盘菜单的唤回/最大化/退出
     /// （hide-to-tray 关窗闸门不依赖注入）。</summary>
     private void SetupCaptionBar(SupervisorSetup supervisor)
     {
@@ -140,12 +143,13 @@ internal sealed partial class StartupSequence
         RynNavigationCallbacks callbacks = _app.App.Services.GetRequiredService<RynNavigationCallbacks>();
         // macChrome = 是否启用原生 macOS chrome（判据单点见 MacNativeChrome）。
         bool macChrome = MacNativeChrome.IsEnabled;
+        string script = CaptionBar.Build(_captionBar.HeightPx, _uiLocale, macChrome);
         callbacks.SetOnNavigatedPersistent(() => Task.Run(() =>
             PagePump.InjectCaptionBarWhenReadyAsync(
                 _app.WindowAccessor, CaptionBar.Build(_captionBar.HeightPx, _uiLocale, macChrome), ct)));
-        _ = Task.Run(() =>
-            PagePump.InjectCaptionBarWhenReadyAsync(
-                _app.WindowAccessor, CaptionBar.Build(_captionBar.HeightPx, _uiLocale, macChrome), ct));
+        _ = Task.Run(() => PagePump.InjectCaptionBarWhenReadyAsync(_app.WindowAccessor, script, ct));
+        _ = Task.Run(() => PagePump.RegisterCaptionBarScriptWhenReadyAsync(
+            () => _app.App.Services.GetRequiredService<IRynWebView>(), script, ct));
     }
 
     /// <summary>启动期告知任务接线（ADR shared-home-desktop-profile）：版本底线 + 旧 home 提示 +

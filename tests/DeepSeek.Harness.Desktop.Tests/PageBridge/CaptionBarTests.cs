@@ -1,7 +1,8 @@
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 
 /// <summary>CaptionBar 工厂契约（ADR frameless-uniform-caption-bar）：壳自绘 macOS 观感（红绿灯 +
-/// 侧栏顶部让位 + 宿主 chrome 高度变量）、幂等守卫、可达名双语与转义纪律；并钉死「禁冒充 dsh 桌面宿主」红线。</summary>
+/// 侧栏顶部让位 + 宿主 chrome 高度变量）、幂等守卫、顶层文档守卫、带内拖拽判定（判定权收归本壳）、
+/// 可达名双语与转义纪律；并钉死「禁冒充 dsh 桌面宿主」红线。</summary>
 public class CaptionBarTests
 {
     /// <summary>红线回归钉（v0.6.1/0.6.2 启动失败根因）：注入脚本<b>绝不</b>设置 <c>data-platform</c>——
@@ -87,9 +88,8 @@ public class CaptionBarTests
         Assert.Contains("\\u003Cbutton data-webview-close\\u003E", script, StringComparison.Ordinal);
         Assert.Contains("\\u003Cbutton data-webview-minimize\\u003E", script, StringComparison.Ordinal);
         Assert.Contains("\\u003Cbutton data-webview-maximize\\u003E", script, StringComparison.Ordinal);
-        // 注入条必须保持可命中（回归钉）：Ryn 自动拖拽条按 mousedown 活体命中判定，盖住条带却全高的元素
-        // 按「内容」处理；本壳侧栏被 padding-top 推下 52px，故这条自绘条是顶带唯一的拖拽面——设
-        // pointer-events:none 会让顶区失去窗口拖拽（Ryn docs/custom-title-bars.md「overlays…content」）。
+        // 注入条必须保持可命中（回归钉）：三个圆点的点击落点在这条自绘条上，设 pointer-events:none 会
+        // 让三键点不到（顶带拖拽面已由本壳自持判据承担，见 Build_OwnsTopBandDragJudgement 与 ADR）。
         Assert.DoesNotContain("pointer-events:none", script, StringComparison.Ordinal);
     }
 
@@ -112,23 +112,34 @@ public class CaptionBarTests
         Assert.DoesNotContain("innerHTML='<", script, StringComparison.Ordinal);
     }
 
-    /// <summary>验证按钮可达名随宿主 locale 切换：en 出英文、缺省中文经 JsString 转义
-    /// （读屏可达性不落在硬编码文案上）。</summary>
-    [Fact]
-    public void Build_AriaLabels_LocalizedViaJsString()
+    /// <summary>可达名：两套语言都进脚本、执行期按 <c>html[lang]</c> 现取（注册式脚本由引擎在<b>每次页面
+    /// 加载</b>时执行，构建期语言不再是执行期语言）；<c>html[lang]</c> 缺失时回落宿主当时 locale——该参数的
+    /// 真实作用点就是这一处回落布尔（英文集恒在脚本里，故「含 Minimize」不再能判 locale）。字面量单一
+    /// 事实源仍是 UiCopy：中文经 JsString 转义，不以裸 CJK 出现。</summary>
+    /// <param name="hostEnglish">宿主 locale 是否英文（null locale 即缺省中文）。</param>
+    /// <param name="hostFallback">期望写进脚本的回落布尔字面量。</param>
+    [Theory]
+    [InlineData(false, "false")]
+    [InlineData(true, "true")]
+    public void Build_AriaLabels_TwoLocaleSetsWithDocumentPick(bool hostEnglish, string hostFallback)
     {
-        string zh = CaptionBar.Build(52);
-        Assert.DoesNotContain("最小化", zh, StringComparison.Ordinal);
-        Assert.DoesNotContain("关闭", zh, StringComparison.Ordinal);
-        // 「最」= U+6700：JsString 转义后的中文可达名（编码器输出大写十六进制）
-        Assert.Contains("\\u6700", zh, StringComparison.Ordinal);
+        UiLocale? locale = null;
+        if (hostEnglish)
+        {
+            locale = new UiLocale();
+            locale.Set("en");
+        }
 
-        var en = new UiLocale();
-        en.Set("en");
-        string enScript = CaptionBar.Build(52, en);
-        Assert.Contains("Minimize", enScript, StringComparison.Ordinal);
-        Assert.Contains("Maximize", enScript, StringComparison.Ordinal);
-        Assert.Contains("Close", enScript, StringComparison.Ordinal);
+        string script = CaptionBar.Build(52, locale);
+        Assert.Contains("var L={zh:[", script, StringComparison.Ordinal);
+        Assert.Contains("en:[", script, StringComparison.Ordinal);
+        Assert.Contains("Minimize", script, StringComparison.Ordinal);
+        Assert.Contains("var lg=document.documentElement.lang||'';", script, StringComparison.Ordinal);
+        Assert.Contains($"indexOf('en')===0):{hostFallback})?L.en:L.zh;", script, StringComparison.Ordinal);
+        // 中文可达名经 JsString 转义（「最」= U+6700）——构建期不落裸 CJK 字面量
+        Assert.DoesNotContain("最小化", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("关闭", script, StringComparison.Ordinal);
+        Assert.Contains("\\u6700", script, StringComparison.Ordinal);
     }
 
     /// <summary>macOS 绿灯＝原生全屏（官方 macOS 绿灯是 Enter Full Screen，窗口缩放另有其键）：
@@ -145,7 +156,10 @@ public class CaptionBarTests
         Assert.Contains("window.setFullscreen", mac, StringComparison.Ordinal);
         Assert.Contains("Full Screen", mac, StringComparison.Ordinal);
         Assert.Contains("bar.children[2].addEventListener('click'", mac, StringComparison.Ordinal);
-        Assert.DoesNotContain("data-webview-maximize", mac, StringComparison.Ordinal);
+        // 缩放语义不得出现在本壳三点的标记或样式里（注入条的交互排除表里出现属性名不算——
+        // 那是与 Ryn 同款的语义表，不是本壳按钮的声明）
+        Assert.DoesNotContain("button[data-webview-maximize]", mac, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\u003Cbutton data-webview-maximize\\u003E", mac, StringComparison.Ordinal);
         // 透明链只此一支：mac 脚本同样不得关掉注入条的命中（拖拽面回归钉，见红绿灯用例）
         Assert.DoesNotContain("pointer-events:none", mac, StringComparison.Ordinal);
 
@@ -170,5 +184,48 @@ public class CaptionBarTests
         string other = CaptionBar.Build(52);
         Assert.DoesNotContain("background:transparent", other, StringComparison.Ordinal);
         Assert.DoesNotContain("color-mix(", other, StringComparison.Ordinal);
+    }
+
+    /// <summary>顶层文档守卫：同一份脚本还经 Ryn 的 <c>InjectScriptAsync</c> 注册为「每次页面加载执行」，
+    /// 而该注册按 no_frames=false 注入<b>所有 frame</b>；没有这条守卫时 dsh 的每个层级子文档都会长出
+    /// 一条壳顶栏。</summary>
+    [Fact]
+    public void Build_GuardsTopFrameOnly()
+    {
+        Assert.Contains("if(window.top!==window.self)return;", CaptionBar.Build(52), StringComparison.Ordinal);
+    }
+
+    /// <summary>顶带拖拽判定收归本壳（回归钉）：Ryn 的自动拖拽条要求命中元素底边（bottom）≤ strip×1.5，而 dsh 把
+    /// 整条顶带留给全高容器（侧栏/内容列的 padding 区）——该判据在我们这条带上从不成立。四条接管判据
+    /// （带内 / 非 html·body / 非交互 / 流内全高）与两条 capture 监听缺一即退化回「整条拖不动」；
+    /// <c>bandClaim</c> 是 dblclick 的仲裁（Ryn 的 dblclick 不 preventDefault，矮窗交集下没有它就会
+    /// 双派发 <c>toggleMaximize</c> 而净零）。</summary>
+    [Fact]
+    public void Build_OwnsTopBandDragJudgement()
+    {
+        string script = CaptionBar.Build(52);
+        Assert.Contains("var bandClaim=false;", script, StringComparison.Ordinal);
+        Assert.Contains("function bandPoint(e){", script, StringComparison.Ordinal);
+        Assert.Contains("if(e.clientY>52)return false;", script, StringComparison.Ordinal);
+        Assert.Contains("if(t===document.documentElement||t===document.body)return false;", script, StringComparison.Ordinal);
+        Assert.Contains(
+            "if(t.closest(INTERACTIVE)||t.closest('[data-webview-drag]'))return false;", script, StringComparison.Ordinal);
+        Assert.Contains("if(r.height<window.innerHeight*0.9)return false;", script, StringComparison.Ordinal);
+        Assert.Contains("if(p==='fixed'||p==='absolute')return false;", script, StringComparison.Ordinal);
+        Assert.Contains("[data-webview-ignore]", script, StringComparison.Ordinal);
+        Assert.Contains("e.defaultPrevented", script, StringComparison.Ordinal);
+        Assert.Contains("bandClaim=true;", script, StringComparison.Ordinal);
+        // 承重不变量：claim 的复位须在回调最前（先于 defaultPrevented/bandPoint 的早退），置真须在
+        // preventDefault 之后——挪动任一处，矮窗交集的双派发都会回来（验轮 R2-S1）。
+        Assert.Contains("document.addEventListener('mousedown',function(e){bandClaim=false;", script, StringComparison.Ordinal);
+        Assert.Contains("e.preventDefault();bandClaim=true;", script, StringComparison.Ordinal);
+        Assert.Contains("if(!bandClaim||!bandPoint(e))return;", script, StringComparison.Ordinal);
+        Assert.Contains("document.addEventListener('mousedown',function(e){", script, StringComparison.Ordinal);
+        Assert.Contains("document.addEventListener('dblclick',function(e){", script, StringComparison.Ordinal);
+        Assert.Contains("w.invoke('window.startDrag');", script, StringComparison.Ordinal);
+        Assert.Contains("w.invoke('window.beginNativeDrag',{x:e.clientX,y:e.clientY});", script, StringComparison.Ordinal);
+        Assert.Contains("w.invoke('window.toggleMaximize');", script, StringComparison.Ordinal);
+        // 判据上界跟配置高度走（禁硬编码 52）
+        Assert.Contains("if(e.clientY>48)return false;", CaptionBar.Build(48), StringComparison.Ordinal);
     }
 }

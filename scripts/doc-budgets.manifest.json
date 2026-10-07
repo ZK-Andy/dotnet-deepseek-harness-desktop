@@ -14,8 +14,8 @@
     },
     {
       "path": "docs/cookbook.md",
-      "max_words": 2761,
-      "_justify_bump": "2026-10-01 提额 2700->2761：baseline 已贴顶（2698/2700），仅容纳 windows-smoke-npm-install-speedup 的判别条目（压到「慢 vs 卡」判别本身，63 词；量测与方案进 ADR，cookbook 只留判别 + 链接）。上一轮 —— 2026-08-31 提额 2565->2700：pnpm-store-alignment-with-terminal 行为级变更新增一条上游/踩坑诊断（终端 dsh plugin 与桌面 pnpm store 不一致的判别 + 解法），baseline 已贴预算，仅提额容纳该净增量"
+      "max_words": 2804,
+      "_justify_bump": "2026-10-01 提额 2700->2761：baseline 已贴顶（2698/2700），仅容纳 windows-smoke-npm-install-speedup 的判别条目（压到「慢 vs 卡」判别本身，63 词；量测与方案进 ADR，cookbook 只留判别 + 链接）。上一轮 —— 2026-08-31 提额 2565->2700：pnpm-store-alignment-with-terminal 行为级变更新增一条上游/踩坑诊断（终端 dsh plugin 与桌面 pnpm store 不一致的判别 + 解法），baseline 已贴预算，仅提额容纳该净增量；2026-10-07 提额 2761->2804：补两条上游判别（saucer navigated 三端语义差异、GTK 标题栏 decorated 才创建，源码对照与解法进 ADR frameless-uniform-caption-bar，cookbook 只留判别 + 指针，共 118 词）+ 同批评审要求的三处口径修正（底边而非盒高 / 主档冻结语义 / 计数观测锚，+5 词）；同批迁出四条与 AGENTS.md/脚本文档重复的条目与一条被 development.md 承接的指针条目（共 78 词）"
     },
     {
       "path": "docs/cookbook-archive.md",

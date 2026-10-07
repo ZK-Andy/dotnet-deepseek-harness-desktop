@@ -4,7 +4,7 @@
 > 每条带**阶段标签**（封闭集：`[脚本]/[打包]/[调试]/[环境]/[上游]/[产品]`），供检索/统计/沉淀。格式由 `scripts/verify-cookbook.py` 机器强制（缺省校验本页 + 冷归档层，含 `--self-test`），违约即 FAIL。
 > 条目格式：`- **[标签] 主题（yyyy-mm-dd 来源）**：正文…`。
 > 脚本级单点坑就近留脚本注释（fail loud 提醒）；ADR Consequences 承载决策代价——三者各司其职不重复。
-> 机制已从仓库移除的条目收在冷归档层 [cookbook-archive.md](cookbook-archive.md)（冻结：只减不增，新条目一律进本页）。
+> 机制已从仓库移除的条目收在冷归档层 [cookbook-archive.md](cookbook-archive.md)（冻结层：只收退役条目，语义见冷归档层文件头；新条目一律进本页）。
 
 ## 脚本
 
@@ -13,11 +13,7 @@
 - **[脚本] dev 门禁验证盲区（2026-08-24）**：「命令路由不存在即降级」的功能，沙箱只能验降级分支——成功分支需真机或 force 开关（如 `DSH_DESKTOP_UPDATE_FORCE=1`）走一遍，否则把优雅降级误当功能验证。
 - **[脚本] dsh 插件客户端三连坑（Self-Update 实机调试沉淀，2026-08-22）**：①factory 必须带 `require` 形参且返回带 `apply` 的 exports——缺 `apply` 整个 web boot 白屏、缺 `require` 内部功能静默跳过；②访问 `ctx.slots` 必须在 exports 声明 `inject:['slots']`（cordis 守卫："cannot get property without inject"）；③页面 invoke 的命令命名空间必须在壳侧 `ryn.json` 的 `capabilities` 声明（未声明 500 + Command failed，无任何插件侧报错）。三者共同点：拒绝都发生在插件无感位置——调试用 `window.__ddc.setupUpdateUI()` 手动句柄把装配过程炸出来（DevTools 开启晚于启动期日志，历史消息不保留）。
 - **[脚本] invoke 调用规范（2026-08-22）**：统一带第二参数 `{}`；命令处理返回 JSON 字符串帧。
-- **[脚本] `verify-md-links` 默认排除 `skills/` 路径（2026-08-20）**，上游技能内的路径引用不误报。
-- **[脚本] 改写历史必须 `--force-with-lease`（2026-08-20）**；raw `--force` 禁止。当前尚未推送远程，历史仍可 amend。
-- **[脚本] 非平凡变更必须携带 ADR（2026-08-20）**；implemented 笔记禁用 `## Proposal`/`## Acceptance criteria`；ADR 头块真实约定为"标题/空行/Status"（verify-adr-format 已按此修正）。
 - **[脚本] Ryn 命令注册（2026-08-20）**：`Ryn.Ipc.Generator` 需在 csproj 显式 `PackageReference ... OutputItemType="Analyzer"`；（`966a26c` 已删 demo `AppCommands`/`GreetingService`，`Program.ConfigureServices` 仅留 `AddRynCommands()`）。
-- **[脚本] verify-md-links 已扩展排除（2026-08-23）**：`.dotnet-cache`/`bin`/`obj`/`node_modules`（NuGet 包 README 带仓库相对链接会误报）。
 
 ## 打包
 
@@ -56,7 +52,6 @@
 - **[环境] DSH 技能真实宿主 = 官方仓库 `.agents/skills/`（2026-08-20）**，运行时不内置（用户级只有 4 个元技能）；拷贝进项目 `.agents/skills/` 随仓库走。
 - **[环境] `.agents/skills/` 内勿放 README.md（2026-08-20）**：（DSH 把发现根下的根级 `.md` 当"扁平技能"解析）。出处声明放 `.agents/AGENTS.md`。
 - **[环境] 沙箱 `/home` 只读是命名空间绑定（2026-08-20）**：（非物理只读）：写 `~/.gitconfig` 需提升权限，已提权完成。
-- **[环境] 沙箱 dotnet 缓存（2026-08-20）**：操作步骤单一事实源在 [development.md](development.md)（`DOTNET_CLI_HOME`/`NUGET_PACKAGES` 重定向），此处只留指针。
 - **[环境] Linux 运行依赖 WebKitGTK（2026-08-20）**；沙箱里 `RynApplication` 能起 + WebView 初始化，但渲染受 `/run/user/1000` 只读与无 GPU 影响（dconf/EGL/Vulkan 警告是环境问题）；生成的 `.saucer`（SQLite）已进 .gitignore。
 - **[环境] dsh 运行时要点（2026-08-20）**：`dsh --profile web --port 0` 在 stdout 打 `dsh web: http://127.0.0.1:<port>`（port 0=OS 分配）；需要**可写 `DSH_HOME`**（沙箱下用 `DSH_DESKTOP_DSH_HOME` 覆盖）+ `DEEPSEEK_API_KEY`（启动必需，可 placeholder）；Ryn 用 `opts.Url = <uri>` 加载远程 loopback URL（`wwwroot/index.html` 静态降级页仅 `dsh web:` 超时显示，不涉 Ryn IPC）。
 - **[环境] WebView 调试窗默认关闭（2026-08-20）**：DevTools 由环境变量 `DSH_DEVTOOLS=1` 开启（`966a26c` 已删 appsettings `Ryn` 死段，窗口宽度等为 `DesktopBootstrap.BuildApp` 常量）。
@@ -74,6 +69,8 @@
 - **[上游] dsh `plugin` 经 `spawnSync("pnpm")` 从 PATH 调 pnpm（2026-08-29 源码实证）**：故「桌面捆绑 pnpm」的假设都错——CLI pnpm shim 只转发用户自装 pnpm。**pnpm 11 对 `store-dir` 只认环境变量/CLI flag、不读 `.npmrc`**；一旦 pnpm 换 store 装包、而 `node_modules` 是旧 store 链接，即报 `ERR_PNPM_UNEXPECTED_STORE`（判别：看报错里两个 store 路径是否一致，不一致即为换 store 后冲突）。注入 `pnpm_config_store_dir` 对齐 store 会制造两套 store，已否决（见 [ADR](../.agents/notes/archived/bug-fix/2026-08-31-pnpm-store-alignment-with-terminal.md)）；现状 = 不注入、用系统默认 store。
 
 - **[上游] dsh 0.1.2-alpha.2 破坏性升级：旧插件崩溃先查 dsh-llm/dsh-settings API 迁移（2026-08-31 实机实证，PR dsh-commandcode-provider#13）**：dsh-llm `CallId`→`ToolCallId`；dsh-settings 的 `installSettingsSection`/`settingsNamespace` 改 `SettingsProvider` 服务（`ctx.inject(['settings'])`+`installSection`，ns 纯字符串）；`dsh-client-runtime`/`dsh-client-ui-primitives` 从 alpha.2 移除（旧客户端加载白屏）。判别：升级后插件树加载失败先查这三处；兼容写法=运行时择取品牌函数+settings 双路径。
+- **[上游] saucer 的 navigated 三端语义不同：同 URL 重载只有 Linux 会发（2026-10-07 源码对照）**：macOS/Windows 只在 URL/Source 变化时发（WKWebView `URL` KVO / WebView2 `add_SourceChanged`），Linux 每次加载都发（`WEBKIT_LOAD_COMMITTED`）。判别：`[nav] 导航已到达` 行数 Linux 2 / mac·win 1（v0.5.21–v0.6.3 四轮冒烟腿 host.log 观测）。同 URL reload 的注入别押导航回调，改用 `InjectScriptAsync`（每页加载执行、注入所有 frame → 脚本须自带顶层守卫）。指针见 [ADR](../.agents/notes/implemented/feature/2026-10-07-frameless-uniform-caption-bar.md)。
+- **[上游] GTK 标题栏「decorated 才创建」：Frameless 后拖拽必须应用自备（2026-10-07 源码对照）**：`gtk_window_should_use_csd()` 首行即 `if (!priv->decorated) return FALSE;`，故 `TitleBarStyle.Frameless` 下 GTK 不再插默认标题栏（拖拽无从继承）；Ryn 的自动拖拽条又要求命中元素底边（`bottom`）≤ `strip×1.5`，对「盖住条带却向下延伸」的全高容器一律按内容处理（dsh 顶带即是），须应用自持判据。指针见 [ADR](../.agents/notes/implemented/feature/2026-10-07-frameless-uniform-caption-bar.md)。
 
 ## 产品
 
