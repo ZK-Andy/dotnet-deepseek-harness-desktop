@@ -39,6 +39,10 @@ internal static class CaptionBar
     /// （先渲染者胜，注入脚本遇之即让位）。</summary>
     public const string ElementId = "dsh-desktop-caption-bar";
 
+    /// <summary>窗口边缘描边环元素 id（ADR window-edge-ring）：独立幂等守卫，不复用顶栏守卫——
+    /// 顶栏守卫命中即整段返回，描边环须有自己的存在性判断，否则顶栏先建的文档永远长不出环。</summary>
+    public const string EdgeRingId = "dsh-desktop-edge-ring";
+
     /// <summary>绿灯按钮属性（macOS）：本壳自有名——Ryn 注入脚本只识 <c>data-webview-maximize</c>
     /// （语义＝窗口缩放），原生全屏必须换名并自绑点击（语义见 <see cref="FullscreenClickBinding"/>）。</summary>
     private const string MacGreenAttr = "data-dsh-fullscreen";
@@ -107,6 +111,10 @@ internal static class CaptionBar
                "bar.children[1].setAttribute('aria-label',names[1]);" +
                "bar.children[2].setAttribute('aria-label',names[2]);" +
                "(document.body||document.documentElement).appendChild(bar);" +
+               // 描边环独立守卫（id 与顶栏不同，存在性各判各的；见 EdgeRingId）。
+               "if(!document.getElementById('" + EdgeRingId + "')){" +
+               "var ring=document.createElement('div');ring.id='" + EdgeRingId + "';" +
+               "(document.body||document.documentElement).appendChild(ring);}" +
                // 带上界取自 Core 模型（值恒等于 HeightPx，见 ChromeInsets）：渲染只消费，不重算。
                BuildDragBinding(insets.TopClearancePx) +
                (macChrome ? FullscreenClickBinding : "") +
@@ -114,7 +122,7 @@ internal static class CaptionBar
     }
 
     /// <summary>注入样式的总装（只拼装不计算）：三变量发布 + 侧栏让位 + 折叠按钮归位 + 红绿灯几何
-    /// （macChrome 追加透明链）。拖拽判定另见 <see cref="BuildDragBinding"/>（行为保持——删除主张已
+    /// + 窗口边缘描边环（macChrome 追加透明链）。拖拽判定另见 <see cref="BuildDragBinding"/>（行为保持——删除主张已
     /// 在订正中落败，见 ADR）。</summary>
     /// <param name="insets">三变量几何（Core 端口解出，本方法只渲染）。</param>
     /// <param name="heightPx">chrome 高度（CSS 像素）。</param>
@@ -126,6 +134,7 @@ internal static class CaptionBar
         BuildSidebarClearance(heightPx) +
         BuildToggleReturn() +
         BuildTrafficLights(greenAttr, heightPx) +
+        BuildEdgeRing() +
         (macChrome ? BuildVibrancyChain() : "");
 
     /// <summary>三变量发布（语义归 <see cref="Core.WindowChrome.ChromeInsets"/>，本方法只渲染模型值、
@@ -193,6 +202,19 @@ internal static class CaptionBar
         "{padding:20px 0 0 10px;gap:6px}" +
         "html:has([class*=\"sidebarCol\"] [class*=\"collapsed\"]) #" + ElementId +
         " button{width:10px;height:10px}";
+
+    /// <summary>窗口边缘描边环（ADR window-edge-ring）：无边框 + 不透明窗在合成器侧无阴影时（如 Linux
+    /// Mutter），白内容落在白背景上即无边界可辨——与 ZCode 的透明窗 + 内层圆角不同，本壳不切透明窗，
+    /// 只在视口内侧描 1px 发丝线。色标借 dsh 自有 <c>--dsw-alias-border-l3</c>（侧栏分割线同源，
+    /// 明暗主题自动跟；缺失回退中灰——双主题都可见）。<c>pointer-events:none</c> 是承重要求：
+    /// 环贴在视口四边，可命中即吞掉无边框窗口的边缘 resize 与边缘点击，故它是全脚本<b>唯一</b>允许
+    /// 该声明的规则（注入条与 leading 座——如有——永远可命中）。<c>z-index</c> 紧贴顶栏之下、
+    /// 浮于模态遮罩之上：窗口边缘任何时候可见。</summary>
+    /// <returns>描边环段 CSS 文本。</returns>
+    private static string BuildEdgeRing() =>
+        "#" + EdgeRingId + "{position:fixed;inset:0;pointer-events:none;" +
+        "box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l3,rgba(127,127,127,.4));" +
+        "z-index:2147483646}";
 
     /// <summary>macOS 毛玻璃（官方 vibrancy 观感）：窗/网页背景已由 RynOptions.Backdrop 清成透明，页面侧补
     /// 官方那条透明链——html/body 透明 + 侧栏列改半透明色调，NSVisualEffectView 经此透出。官方侧栏

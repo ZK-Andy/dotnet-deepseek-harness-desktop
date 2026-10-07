@@ -97,7 +97,27 @@ public class CaptionBarTests
         Assert.Contains("\\u003Cbutton data-webview-maximize\\u003E", script, StringComparison.Ordinal);
         // 注入条必须保持可命中（回归钉）：三个圆点的点击落点在这条自绘条上，设 pointer-events:none 会
         // 让三键点不到（顶带拖拽面已由本壳自持判据承担，见 Build_OwnsTopBandDragJudgement 与 ADR）。
-        Assert.DoesNotContain("pointer-events:none", script, StringComparison.Ordinal);
+        // 注入条必须保持可命中（回归钉）：三个圆点的点击落点在这条自绘条上；全脚本唯一允许
+        // pointer-events:none 的是窗口边缘描边环（纯装饰层，见 Build_DrawsWindowEdgeRing）。
+        Assert.Equal(1, CountOccurrences(script, "pointer-events:none"));
+    }
+
+    /// <summary>窗口边缘描边环（ADR window-edge-ring）：无边框 + 不透明窗在合成器侧无阴影时，
+    /// 白内容落白背景上无边界可辨，视口内侧 1px 发丝线兜底。色标借 dsh 自有 --dsw-alias-border-l3
+    /// （侧栏分割线同源，明暗主题自动跟；缺失回退中灰）；纯装饰层 pointer-events:none 且是全脚本
+    /// 唯一一处；z-index 紧贴顶栏之下（顶栏 2147483647，环 2147483646）；独立幂等守卫；
+    /// 与平台无关，三端同款。</summary>
+    [Fact]
+    public void Build_DrawsWindowEdgeRing()
+    {
+        string script = CaptionBar.Build(52);
+        Assert.Contains("#dsh-desktop-edge-ring{position:fixed;inset:0;pointer-events:none;", script, StringComparison.Ordinal);
+        Assert.Contains("box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l3,", script, StringComparison.Ordinal);
+        Assert.Contains("z-index:2147483646}", script, StringComparison.Ordinal);
+        Assert.Contains("getElementById('dsh-desktop-edge-ring')", script, StringComparison.Ordinal);
+        Assert.Equal(1, CountOccurrences(script, "pointer-events:none"));
+        // 闸内分支同样带环（描边环不分平台）。
+        Assert.Contains("#dsh-desktop-edge-ring{", CaptionBar.Build(52, macChrome: true), StringComparison.Ordinal);
     }
 
     /// <summary>验证样式注入带查重守卫 + 元素 id 幂等守卫（双路注入不重复追加）。</summary>
@@ -169,8 +189,9 @@ public class CaptionBarTests
         // 那是与 Ryn 同款的语义表，不是本壳按钮的声明）
         Assert.DoesNotContain("button[data-webview-maximize]", mac, StringComparison.Ordinal);
         Assert.DoesNotContain("\\u003Cbutton data-webview-maximize\\u003E", mac, StringComparison.Ordinal);
-        // 透明链只此一支：mac 脚本同样不得关掉注入条的命中（拖拽面回归钉，见红绿灯用例）
-        Assert.DoesNotContain("pointer-events:none", mac, StringComparison.Ordinal);
+        // 透明链只此一支：mac 脚本同样不得关掉注入条的命中（拖拽面回归钉，见红绿灯用例；
+        // pointer-events:none 的唯一合法出处是描边环）。
+        Assert.Equal(1, CountOccurrences(mac, "pointer-events:none"));
 
         // 非 macOS 不得出现全屏语义（缩放面已由既有红绿灯用例钉住，此处只钉「不越界」）
         string other = CaptionBar.Build(52, en);
@@ -275,4 +296,8 @@ public class CaptionBarTests
         // 兜底路的 claim 闸门（同一不变量只在此钉一次，见 Build_OwnsTopBandDragJudgement）。
         Assert.Contains("if(!bandClaim||!bandPoint(e))return;", script, StringComparison.Ordinal);
     }
+
+    /// <summary>子串出现次数计数（唯一事实源在被测脚本字面量，不手抄生产常量）。</summary>
+    private static int CountOccurrences(string text, string needle) =>
+        text.Split(needle, StringSplitOptions.None).Length - 1;
 }
