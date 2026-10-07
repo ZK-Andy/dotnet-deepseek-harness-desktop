@@ -26,7 +26,9 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// <c>SetOnNavigatedPersistent</c> 导航到达后重挂（Linux 每跳都发、并带一次按当时 locale 重建）。
 /// 幂等守卫保证三路叠加只建一条。</para>
 /// <para><b>顶带拖拽判定收归本壳</b>（见 <see cref="BuildDragBinding"/>）：Ryn 的自动拖拽条在 dsh 的
-/// 全高容器上从不触发，故本条带另挂自持判据，与 Ryn 判据互补。</para>
+/// 顶带 chrome（列容器与会话头部）上不可靠——全高列恒不满足其底边判据、条状头部的底边跨在该界线上，
+/// 故本条带另挂自持判据，与 Ryn 判据互补；双击缩放同由该判据自判（本壳起拖的原生移动抓取会吞掉 DOM
+/// 的 click/dblclick 序列【推断 · 未证：机制面在合成器，本机只有「拖拽管用、双击不缩放」的现象级证据】）。</para>
 /// </remarks>
 internal static class CaptionBar
 {
@@ -119,8 +121,9 @@ internal static class CaptionBar
         //    不用自绘底衬：底衬在两态宽度不同会露出色块补丁，收进窄轨后灯下天然是侧栏/轨道填充色。
         //    注入条<b>必须保持可命中</b>（不设 pointer-events:none）：三个圆点靠它承载点击。
         //    顶带拖拽<b>不由本条的命中面积决定</b>——判定已收归本壳（见 BuildDragBinding）：dsh 把顶带
-        //    留给全高容器，Ryn 的自动拖拽条对「盖住条带却向下延伸」的元素一律按内容处理，故那条带
-        //    在 Ryn 侧从不触发；注入条只是碰巧落在带内的一个小命中体，不再是拖拽面的唯一来源。
+        //    留给自顶带起算的流内 chrome（列容器与会话头部），Ryn 的自动拖拽条对「盖住条带却向下延伸」
+        //    的元素一律按内容处理，故那条带在 Ryn 侧不可靠；注入条只是碰巧落在带内的一个小命中体，
+        //    不再是拖拽面的唯一来源（条内非按钮区域仍算壳带，见判据的 fixed 例外）。
         // ⑤ macOS 毛玻璃（官方 vibrancy 观感）：窗/网页背景已由 RynOptions.Backdrop 清成透明，页面侧补
         //    官方那条透明链——html/body 透明 + 侧栏列改半透明色调，NSVisualEffectView 经此透出。官方侧栏
         //    色标取 --dsw-specific-sidebar-fill 的渐变叠加，且整链以 html[data-platform='darwin'] 门控，
@@ -157,30 +160,33 @@ internal static class CaptionBar
                    : "");
     }
 
-    /// <summary>带内拖拽判定（判定权收归本壳，ADR frameless-uniform-caption-bar）：Ryn 的自动拖拽条对
-    /// 「盖住条带却向下延伸」的命中元素一律按内容处理（docs/custom-title-bars.md「overlays…content」），
-    /// 而 dsh 把整条顶带留给<b>流内全高容器</b>（侧栏列/内容列的 padding 区）——Ryn 判据在我们这条带上
-    /// 从不成立，顶带整条拖不动。此处补一条<b>互补</b>判据：命中元素是流内全高容器时才接管。
-    /// <para>接管面（四条同时成立）：<c>clientY ≤ heightPx</c>；命中元素不是 html/body（那是 Ryn 的）；
-    /// 不在交互元素内（表与 Ryn 的 INTERACTIVE 同款——语义元素照常点击）；命中元素<b>盒高 ≥ 0.9 视口高</b>
-    /// 且<b>自身上溯无 fixed/absolute</b>（全高容器＝布局列；浮层/模态/侧栏分隔手柄都是定位元素 →
-    /// 仍按内容处理，不吞事件）。</para>
-    /// <para>与 Ryn 判据的关系与仲裁：Ryn 接管的点底边（`bottom`）≤ `strip×1.5`（非全高），本判据要求盒高 ≥ 0.9 视口高——
-    /// 两者在正常窗高下<b>无交集</b>；唯一交集是「0.9 × 视口高 ≤ strip×1.5」的矮窗（约 &lt; 87px），
-    /// 由两处仲裁闭合：<b>mousedown</b> 用 <c>defaultPrevented</c>（Ryn 的注入脚本在 CREATION 期先注册、
-    /// 且先 <c>preventDefault()</c>），<b>dblclick</b> 用 <c>bandClaim</c>——本轮 <c>mousedown</c> 是否真的
-    /// 由本壳接管（Ryn 的 dblclick 监听既不 <c>preventDefault</c> 也不可抢先，故对它
-    /// <c>defaultPrevented</c> 无效；矮窗交集下正是 claim=false 关掉本壳的第二次 <c>toggleMaximize</c>）。
-    /// <c>[data-webview-drag]</c> 命中一律让给 Ryn 的显式声明。</para>
-    /// <para>最大化窗<b>不做</b>「先还原再拖」：GTK 的 <c>gdk_wayland_toplevel_begin_move</c> 无最大化守卫
-    /// （只发 <c>xdg_toplevel.move</c> + 隐式抓取 serial），mutter 对最大化 surface 照常起抓取并按
-    /// shake-loose 语义处置；壳先替它还原反而与原生标题栏行为相左（依据见 ADR 的 Alternatives）。</para>
+    /// <summary>双击自判的时间窗（毫秒）：本壳起拖的原生移动抓取使 DOM 的 <c>dblclick</c> 在顶带上不可达
+    /// （见 <see cref="BuildDragBinding"/>），故按两次带内左键按下的间隔自判。取各平台双击窗的<b>上界</b>
+    /// （Windows/macOS 默认 500ms；GTK 默认 400ms）：宽出的唯一效果是两次快速独立按下被当作双击——
+    /// 正是原生标题栏语义；窄了则慢双击丢缩放（兜底路在顶带上不可达）。</summary>
+    internal const int DoubleClickMs = 500;
+
+    /// <summary>双击自判的位移窗（CSS 像素）：两次按下的点位漂移超过它即视为两次独立起拖。</summary>
+    internal const int DoubleClickSlopPx = 4;
+
+    /// <summary>带内拖拽判定（判定权收归本壳，ADR frameless-uniform-caption-bar）：命中元素属于顶带
+    /// chrome 才接管——dsh 把整条顶带留给自顶带起算的流内 chrome（侧栏列的 padding 区、内容列的会话
+    /// 头部），Ryn 的自动拖拽条对「盖住条带却向下延伸」的命中元素一律按内容处理
+    /// （docs/custom-title-bars.md「overlays…content」），在我们这条带上不可靠。
+    /// <para>接管面：<c>clientY ≤ heightPx</c>；命中元素不是 html/body（那是 Ryn 的）；不在交互元素内
+    /// （Ryn 的 INTERACTIVE 表 + dsh 声明的 darwin no-drag 簇——顶带内的语义控件照常点击）；命中元素
+    /// <b>盒顶在带内起算</b>（<c>rect.top ≤ heightPx</c>，按盒高判「全高」会漏掉条状会话头部）；自身上溯
+    /// 无 fixed/absolute（浮层/模态/分隔手柄都是定位元素 → 仍按内容处理；本壳自绘条自身是 fixed，条内
+    /// 非按钮区域仍算壳带——本壳 chrome 由本壳负责，不依赖 Ryn 是否接管该点）。</para>
+    /// <para>与 Ryn 判据的仲裁、双击自判的机制与取值理由、以及「最大化窗不先还原再拖」的依据，单一
+    /// 事实源在 ADR（Decision「顶带拖拽判定收归本壳」条与 Alternatives）。</para>
     /// </summary>
-    /// <param name="heightPx">chrome 高度（CSS 像素）：带内判据上界。</param>
-    /// <returns>拖拽判定与两条 capture 监听（mousedown 起拖、dblclick 缩放）的 JS 段。</returns>
+    /// <param name="heightPx">chrome 高度（CSS 像素）：带内判据上界与盒顶判据上界。</param>
+    /// <returns>拖拽判定与两条 capture 监听（mousedown 起拖/自判双击、dblclick 兜底）的 JS 段。</returns>
     private static string BuildDragBinding(int heightPx) =>
-        // 交互元素表与 Ryn 注入脚本同款（RynWebView 的 INTERACTIVE）：本判据只接管「非交互」的点，
-        // 语义控件（含本壳三个圆点、dsh 折叠按钮）照旧走各自点击语义。
+        // 交互元素表与 Ryn 注入脚本同款（RynWebView 的 INTERACTIVE），再并上 dsh 的 no-drag 簇（会话头部
+        // 座位：官方在 darwin 下整座 no-drag，类名在所有平台都渲染）：本判据只接管「非交互」的点，
+        // 语义控件照旧走各自点击语义。
         "var INTERACTIVE='button,a[href],input,select,textarea,summary,label," +
         "[contenteditable]:not([contenteditable=\"false\"]),audio[controls],video[controls]," +
         "[role=\"button\"],[role=\"link\"],[role=\"menuitem\"],[role=\"menuitemcheckbox\"]," +
@@ -188,33 +194,38 @@ internal static class CaptionBar
         "[role=\"slider\"],[role=\"combobox\"],[role=\"option\"],[role=\"textbox\"],[onclick]," +
         "[draggable=\"true\"],[data-webview-ignore],[data-webview-minimize],[data-webview-maximize]," +
         "[data-webview-close],[data-webview-resize]';" +
-        "var bandClaim=false;" +
+        "var NODRAG=INTERACTIVE+',[class*=\"headerLeading\"],[class*=\"headerActions\"]," +
+        "[class*=\"headerUtilities\"],[class*=\"headerCorner\"]';" +
+        "var bandClaim=false,lastDown=0,lastX=0,lastY=0;" +
+        "var DBL_MS=" + DoubleClickMs + ",DBL_SLOP=" + DoubleClickSlopPx + ";" +
         "function bandPoint(e){" +
         "if(e.clientY>" + heightPx + ")return false;" +
         "var t=e.target;" +
         "if(!t||!t.closest)return false;" +
         "if(t===document.documentElement||t===document.body)return false;" +
-        "if(t.closest(INTERACTIVE)||t.closest('[data-webview-drag]'))return false;" +
-        "var r=t.getBoundingClientRect();" +
-        "if(r.height<window.innerHeight*0.9)return false;" +
+        "if(t.closest(NODRAG)||t.closest('[data-webview-drag]'))return false;" +
+        "if(t.getBoundingClientRect().top>" + heightPx + ")return false;" +
         "for(var n=t;n&&n!==document.documentElement;n=n.parentElement){" +
         "var p=window.getComputedStyle(n).position;" +
-        "if(p==='fixed'||p==='absolute')return false;}" +
+        "if(p==='fixed'||p==='absolute')return n.id===id;}" +
         "return true;}" +
         "document.addEventListener('mousedown',function(e){" +
         "bandClaim=false;" +
         "if(e.button!==0||e.defaultPrevented)return;" +
         "if(!bandPoint(e))return;" +
         "var w=window.__ryn;if(!w||!w.invoke)return;" +
+        "var now=Date.now();" +
+        "var dbl=now-lastDown<=DBL_MS&&Math.abs(e.clientX-lastX)<=DBL_SLOP&&" +
+        "Math.abs(e.clientY-lastY)<=DBL_SLOP;" +
+        "lastDown=dbl?0:now;lastX=e.clientX;lastY=e.clientY;" +
         "e.preventDefault();" +
+        "if(dbl){w.invoke('window.toggleMaximize');return;}" +
         "bandClaim=true;" +
         "var tb=window.__ryn_titlebar||{};" +
         "if(tb.mac)w.invoke('window.beginNativeDrag',{x:e.clientX,y:e.clientY});" +
         "else w.invoke('window.startDrag');" +
         "},true);" +
         "document.addEventListener('dblclick',function(e){" +
-        // 双击另需 claim 仲裁：Ryn 的 dblclick 监听既不 preventDefault 也不可抢先（注册在先且无法观察其决定），
-        // 故 defaultPrevented 对它无效——只有「本次点位上本壳 mousedown 真的接管了」才能证明双击归本壳。
         "if(!bandClaim||!bandPoint(e))return;" +
         "var w=window.__ryn;if(w&&w.invoke)w.invoke('window.toggleMaximize');" +
         "},true);";

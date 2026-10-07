@@ -195,37 +195,75 @@ public class CaptionBarTests
         Assert.Contains("if(window.top!==window.self)return;", CaptionBar.Build(52), StringComparison.Ordinal);
     }
 
-    /// <summary>顶带拖拽判定收归本壳（回归钉）：Ryn 的自动拖拽条要求命中元素底边（bottom）≤ strip×1.5，而 dsh 把
-    /// 整条顶带留给全高容器（侧栏/内容列的 padding 区）——该判据在我们这条带上从不成立。四条接管判据
-    /// （带内 / 非 html·body / 非交互 / 流内全高）与两条 capture 监听缺一即退化回「整条拖不动」；
-    /// <c>bandClaim</c> 是 dblclick 的仲裁（Ryn 的 dblclick 不 preventDefault，矮窗交集下没有它就会
-    /// 双派发 <c>toggleMaximize</c> 而净零）。</summary>
+    /// <summary>顶带拖拽判定收归本壳（回归钉）：Ryn 的自动拖拽条要求命中元素底边（bottom）≤ strip×1.5，
+    /// 而 dsh 把整条顶带留给自顶带起算的流内 chrome（侧栏 padding 区、<b>会话头部</b>）——该判据在我们这条带上
+    /// 不成立。四条接管判据（带内 / 非 html·body / 非交互 / 盒顶在带内起算且上溯流内）与两条 capture 监听
+    /// 缺一即退化回「整条拖不动」；按盒高判「全高」会把会话头部（<c>min-height:76px</c>）漏掉，中间内容列
+    /// 因此整条不动——故此处钉的是<b>盒顶</b>判据。</summary>
     [Fact]
     public void Build_OwnsTopBandDragJudgement()
     {
         string script = CaptionBar.Build(52);
-        Assert.Contains("var bandClaim=false;", script, StringComparison.Ordinal);
+        Assert.Contains("var bandClaim=false,lastDown=0,lastX=0,lastY=0;", script, StringComparison.Ordinal);
         Assert.Contains("function bandPoint(e){", script, StringComparison.Ordinal);
         Assert.Contains("if(e.clientY>52)return false;", script, StringComparison.Ordinal);
         Assert.Contains("if(t===document.documentElement||t===document.body)return false;", script, StringComparison.Ordinal);
         Assert.Contains(
-            "if(t.closest(INTERACTIVE)||t.closest('[data-webview-drag]'))return false;", script, StringComparison.Ordinal);
-        Assert.Contains("if(r.height<window.innerHeight*0.9)return false;", script, StringComparison.Ordinal);
-        Assert.Contains("if(p==='fixed'||p==='absolute')return false;", script, StringComparison.Ordinal);
+            "if(t.closest(NODRAG)||t.closest('[data-webview-drag]'))return false;", script, StringComparison.Ordinal);
+        Assert.Contains("if(t.getBoundingClientRect().top>52)return false;", script, StringComparison.Ordinal);
+        // 定位元素（浮层/模态/列宽手柄）仍按内容处理；唯一例外是本壳自绘条自身（条内非按钮区域算壳带）。
+        Assert.Contains("if(p==='fixed'||p==='absolute')return n.id===id;", script, StringComparison.Ordinal);
         Assert.Contains("[data-webview-ignore]", script, StringComparison.Ordinal);
+        // dsh 自己声明的 darwin no-drag 簇（会话头部按钮与角落座位）随 INTERACTIVE 一并让行。
+        Assert.Contains(
+            "var NODRAG=INTERACTIVE+',[class*=\"headerLeading\"],[class*=\"headerActions\"]," +
+            "[class*=\"headerUtilities\"],[class*=\"headerCorner\"]';",
+            script,
+            StringComparison.Ordinal);
         Assert.Contains("e.defaultPrevented", script, StringComparison.Ordinal);
         Assert.Contains("bandClaim=true;", script, StringComparison.Ordinal);
-        // 承重不变量：claim 的复位须在回调最前（先于 defaultPrevented/bandPoint 的早退），置真须在
-        // preventDefault 之后——挪动任一处，矮窗交集的双派发都会回来（验轮 R2-S1）。
+        // 承重不变量：claim 的复位须在回调最前（先于 defaultPrevented/bandPoint 的早退），置真须在双击
+        // 自判之后——双击路一旦命中就 return 且本轮不复位 claim，DOM 的 dblclick 因此不再二次派发。
         Assert.Contains("document.addEventListener('mousedown',function(e){bandClaim=false;", script, StringComparison.Ordinal);
-        Assert.Contains("e.preventDefault();bandClaim=true;", script, StringComparison.Ordinal);
-        Assert.Contains("if(!bandClaim||!bandPoint(e))return;", script, StringComparison.Ordinal);
-        Assert.Contains("document.addEventListener('mousedown',function(e){", script, StringComparison.Ordinal);
+        Assert.Contains(
+            "e.preventDefault();if(dbl){w.invoke('window.toggleMaximize');return;}bandClaim=true;",
+            script,
+            StringComparison.Ordinal);
         Assert.Contains("document.addEventListener('dblclick',function(e){", script, StringComparison.Ordinal);
         Assert.Contains("w.invoke('window.startDrag');", script, StringComparison.Ordinal);
         Assert.Contains("w.invoke('window.beginNativeDrag',{x:e.clientX,y:e.clientY});", script, StringComparison.Ordinal);
-        Assert.Contains("w.invoke('window.toggleMaximize');", script, StringComparison.Ordinal);
         // 判据上界跟配置高度走（禁硬编码 52）
         Assert.Contains("if(e.clientY>48)return false;", CaptionBar.Build(48), StringComparison.Ordinal);
+        Assert.Contains(
+            "if(t.getBoundingClientRect().top>48)return false;", CaptionBar.Build(48), StringComparison.Ordinal);
+    }
+
+    /// <summary>双击缩放自判（回归钉）：本壳 mousedown 起的原生窗口移动由合成器隐式抓取承接，随后的
+    /// click/dblclick 序列不再到达页面——等 DOM 的 <c>dblclick</c> 就等于顶带永远不缩放。故双击按两次
+    /// 带内左键按下的间隔/位移自判，自判窗取各平台双击窗上界（<see cref="CaptionBar.DoubleClickMs"/>）。</summary>
+    [Fact]
+    public void Build_SelfJudgesDoubleClickOnSecondPress()
+    {
+        string script = CaptionBar.Build(52);
+        // 取值不手抄：判据是「生产常量进了脚本」（唯一事实源在 CaptionBar）。
+        Assert.Contains(
+            $"var DBL_MS={CaptionBar.DoubleClickMs},DBL_SLOP={CaptionBar.DoubleClickSlopPx};",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "var dbl=now-lastDown<=DBL_MS&&Math.abs(e.clientX-lastX)<=DBL_SLOP&&" +
+            "Math.abs(e.clientY-lastY)<=DBL_SLOP;",
+            script,
+            StringComparison.Ordinal);
+        // 命中双击即清账（三连击重新起算），未命中则记下本轮点位作下一次的比较基准。
+        Assert.Contains("lastDown=dbl?0:now;lastX=e.clientX;lastY=e.clientY;", script, StringComparison.Ordinal);
+        // 承重不变量（R2-S2）：双击分支的整段内容——派发后立刻 return，分支内不置 claim；claim 的置真
+        // 只可能在分支之后的起拖路上。挪成「先置 claim 再判 dbl」即在此拦下（净零双派发回归）。
+        Assert.Contains(
+            "e.preventDefault();if(dbl){w.invoke('window.toggleMaximize');return;}bandClaim=true;",
+            script,
+            StringComparison.Ordinal);
+        // 兜底路的 claim 闸门（同一不变量只在此钉一次，见 Build_OwnsTopBandDragJudgement）。
+        Assert.Contains("if(!bandClaim||!bandPoint(e))return;", script, StringComparison.Ordinal);
     }
 }

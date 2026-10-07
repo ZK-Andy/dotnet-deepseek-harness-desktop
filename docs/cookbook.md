@@ -70,7 +70,7 @@
 
 - **[上游] dsh 0.1.2-alpha.2 破坏性升级：旧插件崩溃先查 dsh-llm/dsh-settings API 迁移（2026-08-31 实机实证，PR dsh-commandcode-provider#13）**：dsh-llm `CallId`→`ToolCallId`；dsh-settings 的 `installSettingsSection`/`settingsNamespace` 改 `SettingsProvider` 服务（`ctx.inject(['settings'])`+`installSection`，ns 纯字符串）；`dsh-client-runtime`/`dsh-client-ui-primitives` 从 alpha.2 移除（旧客户端加载白屏）。判别：升级后插件树加载失败先查这三处；兼容写法=运行时择取品牌函数+settings 双路径。
 - **[上游] saucer 的 navigated 三端语义不同：同 URL 重载只有 Linux 会发（2026-10-07 源码对照）**：macOS/Windows 只在 URL/Source 变化时发（WKWebView `URL` KVO / WebView2 `add_SourceChanged`），Linux 每次加载都发（`WEBKIT_LOAD_COMMITTED`）。判别：`[nav] 导航已到达` 行数 Linux 2 / mac·win 1（v0.5.21–v0.6.3 四轮冒烟腿 host.log 观测）。同 URL reload 的注入别押导航回调，改用 `InjectScriptAsync`（每页加载执行、注入所有 frame → 脚本须自带顶层守卫）。指针见 [ADR](../.agents/notes/implemented/feature/2026-10-07-frameless-uniform-caption-bar.md)。
-- **[上游] GTK 标题栏「decorated 才创建」：Frameless 后拖拽必须应用自备（2026-10-07 源码对照）**：`gtk_window_should_use_csd()` 首行即 `if (!priv->decorated) return FALSE;`，故 `TitleBarStyle.Frameless` 下 GTK 不再插默认标题栏（拖拽无从继承）；Ryn 的自动拖拽条又要求命中元素底边（`bottom`）≤ `strip×1.5`，对「盖住条带却向下延伸」的全高容器一律按内容处理（dsh 顶带即是），须应用自持判据。指针见 [ADR](../.agents/notes/implemented/feature/2026-10-07-frameless-uniform-caption-bar.md)。
+- **[上游] Frameless 顶带：拖拽应用自备 + 双击自判（2026-10-07 源码 + 实机）**：`gtk_window_should_use_csd()` 首行即 `!decorated` 时 `return FALSE;`——GTK 不插默认标题栏（拖拽无从继承）；Ryn 自动拖拽条又把自顶带 chrome（列与会话头部）按内容处理——须应用自持判据（量**盒顶**而非盒高）。双击**别等 DOM `dblclick`**：mousedown 起的原生移动由合成器隐式抓取承接，序列不再到达页面（拖拽管用、双击不缩放）。指针见 [ADR](../.agents/notes/implemented/feature/2026-10-07-frameless-uniform-caption-bar.md)。
 
 ## 产品
 
