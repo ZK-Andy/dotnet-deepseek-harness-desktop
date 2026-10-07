@@ -7,11 +7,11 @@ guards against (ADR compose-root-form-separation, replaying 1434271): stage
 methods and business predicates accrete on the composition root as new partial
 files, each dodging a per-file size budget.
 
-The root set is `Program.cs` + `DesktopBootstrap*.cs` under the Presentation
-project. Four checks:
+The root set is `Program.cs` + `DesktopAdapter*.cs` under the Presentation
+project. Five checks:
 
   C1  dot partials ≤ `--max-dot-partials` (default 1): the root is pinned to
-      Program.cs + DesktopBootstrap.cs + at most one dot partial.
+      Program.cs + DesktopAdapter.cs + at most one dot partial.
   C2  every method declared in the root set must be in the ALLOWED_METHODS
       inventory. A NEW method name in the root is a violation — orchestration
       belongs in `Bootstrap/StartupSequence` or a domain service; a genuinely
@@ -24,6 +24,14 @@ project. Four checks:
   C4  no sync-over-async in the root: `.GetAwaiter().GetResult()` lived on the
       root's stage methods historically and must stay in the orchestration
       service after the separation.
+  C5  every self-owned type CONSTRUCTED in the root must be in the
+      ROOT_CONSTRUCTIBLE inventory (step-3 direction gate: the wiring layer
+      only references ports + Options + adapters + the frozen assembly
+      surface). A NEW constructed type name is a violation — resolve via DI
+      or register the construction in `*Registration.cs`; a genuinely
+      assembly-level construction updates the inventory deliberately (+ ADR).
+      C3 caps volume, C5 caps direction; the shipped baseline is
+      grandfathered while new coupling fails `--enforce`.
 
 Default is report-only (exit 0). `--enforce` exits 1 on any violation.
 `--self-test` runs offline fixtures.
@@ -56,19 +64,59 @@ ALLOWED_METHODS = {
     # Program.cs — CLI branch only.
     "Main",
     "ExportDiagnostics",
-    # DesktopBootstrap.cs — container-before startup head.
+    # DesktopAdapter.cs — container-before startup head.
     "Run",
     "ResolveSharedState",
     "ResolveRuntimeAndDev",
     "AcquireSingleInstance",
     "StartProxy",
-    # DesktopBootstrap.App.cs — app assembly + registration call site.
+    # DesktopAdapter.App.cs — app assembly + registration call site.
     "InitCloseGateAndUpdateStack",
     "BuildApp",
     "RegisterServices",
 }
 
-_NEW_RE = re.compile(r"\bnew\s+(\w+)\s*\(")
+# Self-owned types the wiring layer may construct, frozen at step-3 of
+# ADR composition-mechanism-container-assembly. Entries are bare
+# type names; a name here asserts "this construction is assembly, not a new
+# coupling vector". New features resolve via DI; additions update this set
+# deliberately (+ ADR). Reference-shape params/locals stay R1 review scope.
+ROOT_CONSTRUCTIBLE = {
+    # Trigger itself (Program.cs).
+    "DesktopAdapter",
+    # Stage values (Bootstrap/StartupStages.cs value flow).
+    "Preflight",
+    "UpdateSetup",
+    "AppSetup",
+    # Container-registered singletons constructed here pre-Build
+    # (RunServicesRegistration + AddBootstrapSharedState): created once,
+    # resolved post-Build. Options (RuntimeTimeouts/CaptionBarOptions) load
+    # via fail-safe `Load`, never `new` — deliberately absent below.
+    "UiLocale",
+    "DshShellForward",
+    # Pre-Build assembly surface (wiring-only construction, no orchestration):
+    # bootstrap/bootstrap-UI, tray/update stacks, locale store, runtime-starter
+    # instance (registered, resolved by the sequence assembly). Dotted sites
+    # attribute by last segment (`Tray.CloseGate` -> `CloseGate`).
+    "DesktopUiLocaleStore",
+    "FirstBootBootstrapService",
+    "FirstBootUi",
+    "CloseGate",
+    "CloseBehaviorPreference",
+    "UpdateStackAdapter",
+    "UpdateCoordinator",
+    "TrayController",
+    "RuntimeStarter",
+    # The single trigger construction (wiring layer assembles the orchestrator
+    # once; dotted `new Bootstrap.StartupSequence(...)` attributes here).
+    "StartupSequence",
+}
+
+# `new X(` and dotted `new Ns.X(` both attribute to the last segment
+# (B1: `new Tray.CloseGate()` / `new Bootstrap.StartupSequence(...)` were
+# invisible before); one-level generics stay covered, deeper nesting is a
+# documented skip (same as verify-registration-discipline.py).
+_NEW_RE = re.compile(r"\bnew\s+([\w.]+)(?:<[^()<>]*>)?\s*\(")
 # `Type field = new();` — the assigned declared type gives target-typed new its owner.
 _TARGET_NEW_RE = re.compile(r"\bnew\s*\(\)")
 _GETAWAITER_RE = re.compile(r"\.GetAwaiter\(\)\.GetResult\(\)")
@@ -82,7 +130,7 @@ _COMPOSE_PROPERTY_RE = re.compile(r"^\s*(?:public|private|protected|internal)\s+
 def _root_files(src: Path) -> list[Path]:
     return sorted(p for p in src.rglob("*.cs")
                   if "obj" not in p.parts and "bin" not in p.parts
-                  and (p.name == "Program.cs" or p.name.startswith("DesktopBootstrap")))
+                  and (p.name == "Program.cs" or p.name.startswith("DesktopAdapter")))
 
 
 def _owned_types(owned_srcs: list[Path]) -> set[str]:
@@ -103,7 +151,7 @@ def _violations(src: Path, owned_srcs: list[Path],
                 max_new: int, max_dot_partials: int) -> tuple[list[str], int]:
     files = _root_files(src)
     if not files:
-        return ([f"  compose-root set is empty under {src} (Program.cs / DesktopBootstrap*.cs)"], 0)
+        return ([f"  compose-root set is empty under {src} (Program.cs / DesktopAdapter*.cs)"], 0)
 
     out: list[str] = []
     dot_partials = [p.name for p in files if p.name != "Program.cs" and "." in p.stem]
@@ -118,12 +166,25 @@ def _violations(src: Path, owned_srcs: list[Path],
         raws = path.read_text(encoding="utf-8").splitlines()
         for code in CSharpLineScanner(raws).iter_cleaned():
             for m in _NEW_RE.finditer(code):
-                if m.group(1) in owned:
+                # Dotted construction attributes to the last segment
+                # (`new Tray.CloseGate()` -> `CloseGate`).
+                constructed = m.group(1).split(".")[-1]
+                if constructed in owned:
                     new_count += 1
+                    if constructed not in ROOT_CONSTRUCTIBLE:
+                        out.append(
+                            f"  C5 {path.name}: root constructs unlisted type `{constructed}`"
+                            " (resolve via DI or register the construction in *Registration.cs; "
+                            "assembly-level additions update ROOT_CONSTRUCTIBLE deliberately)")
             if _TARGET_NEW_RE.search(code):
                 owner = TARGET_OWNER_RE.search(code)
-                if owner and owner.group(1) in owned:
+                attributed = owner.group(1).split(".")[-1] if owner else None
+                if attributed and attributed in owned:
                     new_count += 1
+                    if attributed not in ROOT_CONSTRUCTIBLE:
+                        out.append(
+                            f"  C5 {path.name}: root constructs unlisted type `{attributed}`"
+                            " (target-typed `new()`; resolve via DI or update ROOT_CONSTRUCTIBLE deliberately)")
                 elif owner is None:
                     out.append(
                         f"  C3 {path.name}: unattributable target-typed `new()` "
@@ -167,9 +228,9 @@ public static class Program
 
         # Passing fixture: inventory methods, few news, one dot partial, no GetAwaiter.
         (root / "Program.cs").write_text(base_program(), encoding="utf-8")
-        (root / "DesktopBootstrap.cs").write_text(
+        (root / "DesktopAdapter.cs").write_text(
             """namespace Shell;
-public sealed partial class DesktopBootstrap
+public sealed partial class DesktopAdapter
 {
     private ShellEntry _entry = new ShellEntry();
     public int Run() { return _entry.Run(); }
@@ -192,9 +253,9 @@ internal sealed class StartupSequence
             print("  ok: conforming root -> pass")
 
         # C2: a new method on the root (orchestration accretion).
-        (root / "DesktopBootstrap.App.cs").write_text(
+        (root / "DesktopAdapter.App.cs").write_text(
             """namespace Shell;
-public sealed partial class DesktopBootstrap
+public sealed partial class DesktopAdapter
 {
     private void EnsureDesktopProfile() { }
 }
@@ -205,14 +266,14 @@ public sealed partial class DesktopBootstrap
         else:
             print(f"  ✗ C2 not flagged: {rows}")
             failed = 1
-        (root / "DesktopBootstrap.App.cs").unlink()
+        (root / "DesktopAdapter.App.cs").unlink()
 
         # C2: tuple-returning methods resolve to the method name, not `static`
         # (2b ResolveSharedState returns a value tuple; the return parens must
         # not shadow the method name).
-        (root / "DesktopBootstrap.App.cs").write_text(
+        (root / "DesktopAdapter.App.cs").write_text(
             """namespace Shell;
-public sealed partial class DesktopBootstrap
+public sealed partial class DesktopAdapter
 {
     private static (int A, int B) MakePair() => (1, 2);
 }
@@ -223,28 +284,45 @@ public sealed partial class DesktopBootstrap
         else:
             print(f"  ✗ C2 tuple return not named: {rows}")
             failed = 1
-        (root / "DesktopBootstrap.App.cs").unlink()
+        # C2: generic-heavy tuple returns (Func<…> has no parens) stay named —
+        # R2S2 robustness note verified: only nested-PAREN returns would fall
+        # back, and none exist in the tree.
+        (root / "DesktopAdapter.App.cs").write_text(
+            """namespace Shell;
+using System;
+public sealed partial class DesktopAdapter
+{
+    private static (Func<int> F, int G) MakeFn() => (null, 1);
+}
+""", encoding="utf-8")
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        if any("C2 " in r and "MakeFn" in r for r in rows):
+            print("  ok: C2 generic tuple return flagged by name")
+        else:
+            print(f"  ✗ C2 generic tuple return not named: {rows}")
+            failed = 1
+        (root / "DesktopAdapter.App.cs").unlink()
 
         # C1: two dot partials exceed the cap of one.
-        (root / "DesktopBootstrap.App.cs").write_text(
-            "namespace Shell;\npublic sealed partial class DesktopBootstrap\n{\n}\n", encoding="utf-8")
-        (root / "DesktopBootstrap.Extra.cs").write_text(
-            "namespace Shell;\npublic sealed partial class DesktopBootstrap\n{\n}\n", encoding="utf-8")
+        (root / "DesktopAdapter.App.cs").write_text(
+            "namespace Shell;\npublic sealed partial class DesktopAdapter\n{\n}\n", encoding="utf-8")
+        (root / "DesktopAdapter.Extra.cs").write_text(
+            "namespace Shell;\npublic sealed partial class DesktopAdapter\n{\n}\n", encoding="utf-8")
         rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
         if any("C1 " in r for r in rows):
             print("  ok: C1 extra dot partial flagged")
         else:
             print(f"  ✗ C1 not flagged: {rows}")
             failed = 1
-        (root / "DesktopBootstrap.App.cs").unlink()
-        (root / "DesktopBootstrap.Extra.cs").unlink()
+        (root / "DesktopAdapter.App.cs").unlink()
+        (root / "DesktopAdapter.Extra.cs").unlink()
 
         # C3: new-of-owned over the cap (fixture cap = 1; ShellEntry twice).
         (domain / "ShellEntry.cs").write_text(
             "namespace Shell.Bootstrap;\npublic sealed class ShellEntry\n{\n}\n", encoding="utf-8")
-        (root / "DesktopBootstrap.C3.cs").write_text(
+        (root / "DesktopAdapter.C3.cs").write_text(
             """namespace Shell;
-public sealed partial class DesktopBootstrap
+public sealed partial class DesktopAdapter
 {
     private ShellEntry _a = new ShellEntry();
     private ShellEntry _b = new ShellEntry();
@@ -257,17 +335,39 @@ public sealed partial class DesktopBootstrap
         else:
             print(f"  ✗ C3 not flagged: {rows}")
             failed = 1
-        (root / "DesktopBootstrap.C3.cs").unlink()
+        # C5: the same unlisted construction is flagged by type name (direction,
+        # not just volume — a single `new Foo()` of a new type trips C5).
+        if any(r.startswith("  C5 ") and "`ShellEntry`" in r for r in rows):
+            print("  ok: C5 unlisted constructed type flagged by name")
+        else:
+            print(f"  ✗ C5 not flagged: {rows}")
+            failed = 1
+        # C5/B1: dotted construction attributes to the last segment —
+        # `new Whatever.ShellEntry()` counts C3 and trips C5 like the bare form.
+        (root / "DesktopAdapter.C3.cs").write_text(
+            """namespace Shell;
+public sealed partial class DesktopAdapter
+{
+    public int Resolve() { var e = new Whatever.ShellEntry(); return 0; }
+}
+""", encoding="utf-8")
+        rows, count = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        if count >= 1 and any(r.startswith("  C5 ") and "`ShellEntry`" in r for r in rows):
+            print("  ok: C5 dotted construction attributed to last segment")
+        else:
+            print(f"  ✗ C5 dotted not attributed: {rows}")
+            failed = 1
+        (root / "DesktopAdapter.C3.cs").unlink()
 
         # C3 (target-typed): `Type field = new();` counts via the declared type;
         # an unattributable `new()` is reported, not skipped.
-        # 基线计数取自跨夹具残留（Program/DesktopBootstrap 的 ShellEntry 构造）——
+        # 基线计数取自跨夹具残留（Program/DesktopAdapter 的 ShellEntry 构造）——
         # 断言以增量锚定，避免夹具间耦合读数漂移。
         _, base_count = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
-        (root / "DesktopBootstrap.TN.cs").write_text(
+        (root / "DesktopAdapter.TN.cs").write_text(
             """
 namespace Shell;
-public sealed partial class DesktopBootstrap
+public sealed partial class DesktopAdapter
 {
     private ShellEntry _c = new();
     private ShellEntry _d = new();
@@ -282,12 +382,12 @@ public sealed partial class DesktopBootstrap
         else:
             print(f"  ✗ C3 target-typed wrong (count={count}, rows={rows})")
             failed = 1
-        (root / "DesktopBootstrap.TN.cs").unlink()
+        (root / "DesktopAdapter.TN.cs").unlink()
 
         # C4: sync-over-async in the root.
-        (root / "DesktopBootstrap.C4.cs").write_text(
+        (root / "DesktopAdapter.C4.cs").write_text(
             """namespace Shell;
-public sealed partial class DesktopBootstrap
+public sealed partial class DesktopAdapter
 {
     public int Run() { return 0; }
     private void Boot() { var x = Wait().GetAwaiter().GetResult(); }

@@ -6,7 +6,7 @@ Implements the size health gate from the architecture-mechanization ADR
 
   F1  any file > `--file-limit` physical lines (default 400)
   F2  any method > `--method-limit` lines (default 80)
-  F3  compose-root SET (DesktopBootstrap*.cs + Program.cs) total
+  F3  compose-root SET (DesktopAdapter*.cs + Program.cs) total
       > `--compose-total-limit` lines (default 500) — the root is gated by
       what it holds in aggregate, not by per-file budgets that fragment
       orchestration into new partials (ADR compose-root-form-separation)
@@ -177,8 +177,8 @@ def _file_ignore(lines: list[str], limit: int = 12) -> bool:
 
 
 def _is_compose_root(path: Path) -> bool:
-    """Compose-root set membership: Program.cs + any DesktopBootstrap partial."""
-    return path.name == "Program.cs" or path.name.startswith("DesktopBootstrap")
+    """Compose-root set membership: Program.cs + any DesktopAdapter partial."""
+    return path.name == "Program.cs" or path.name.startswith("DesktopAdapter")
 
 
 def _violations(path: Path, file_limit: int, method_limit: int,
@@ -220,7 +220,7 @@ def _scan(src: Path, file_limit: int, method_limit: int,
     if compose_total > compose_total_limit:
         rows.append(
             f"  F3 compose-root set {compose_total} lines > {compose_total_limit} "
-            f"(Program.cs + DesktopBootstrap*.cs; orchestration belongs in domain services, not new partials)")
+            f"(Program.cs + DesktopAdapter*.cs; orchestration belongs in domain services, not new partials)")
     return rows
 
 
@@ -291,13 +291,13 @@ def _self_test() -> int:
             print(f"  ✗ F2 not flagged: {rows}")
             failed = 1
 
-        # compose-root method: a DesktopBootstrap file whose method exceeds
+        # compose-root method: a DesktopAdapter file whose method exceeds
         # the tighter compose limit even though it is under the general one.
         compose_body = ["    public void Big() {"] + [
             f"        var i{n} = {n};" for n in range(70)
         ] + ["    }"]
         compose = ["namespace Foo;", "public class C {"] + compose_body + ["}"]
-        (root / "DesktopBootstrap.cs").write_text("\n".join(compose) + "\n",
+        (root / "DesktopAdapter.cs").write_text("\n".join(compose) + "\n",
                                                   encoding="utf-8")
         rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                      DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
@@ -314,7 +314,7 @@ def _self_test() -> int:
             return ["namespace Foo;", "public partial class C {"] + [
                 f"    // line {i}" for i in range(n)] + ["}"]
         # 两文件自足超帽（303+253=556 > 500），不依赖前序夹具残留行数。
-        (root / "DesktopBootstrap.App.cs").write_text("\n".join(padded(300)) + "\n", encoding="utf-8")
+        (root / "DesktopAdapter.App.cs").write_text("\n".join(padded(300)) + "\n", encoding="utf-8")
         (root / "Program.cs").write_text("\n".join(padded(250)) + "\n", encoding="utf-8")
         rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                      DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)

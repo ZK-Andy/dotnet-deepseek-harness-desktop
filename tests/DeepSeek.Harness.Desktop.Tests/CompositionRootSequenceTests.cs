@@ -14,7 +14,7 @@ public class CompositionRootSequenceTests
     public void ComposeRoot_PreContainerChain_IsInContractOrder()
     {
         string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
-            "src/DeepSeek.Harness.Desktop/DesktopBootstrap.cs"));
+            "src/DeepSeek.Harness.Desktop/DesktopAdapter.cs"));
 
         string[] chain =
         [
@@ -79,7 +79,7 @@ public class CompositionRootSequenceTests
     public void BuildApp_EnablesRynWindowStatePersistence()
     {
         string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
-            "src/DeepSeek.Harness.Desktop/DesktopBootstrap.App.cs"));
+            "src/DeepSeek.Harness.Desktop/DesktopAdapter.App.cs"));
 
         Assert.Contains("opts.PersistWindowState = true;", source, StringComparison.Ordinal);
         // 注释失效同红（R2 评审建议）：源锚只防删除不防注释，补一发防注释锚
@@ -114,7 +114,7 @@ public class CompositionRootSequenceTests
         // 阶段产出变量/形参名（主链与各消费段共用同名 preflight/host/update/app/supervisor，
         // 编排服务内为私有字段 _ 前缀形态），否则无关同名成员（wiring.App、文档注释里的文件名）
         // 会误判为已消费——前视字符类拦截标识符中段假匹配。
-        string[] sources = Directory.GetFiles(dir, "DesktopBootstrap*.cs")
+        string[] sources = Directory.GetFiles(dir, "DesktopAdapter*.cs")
             .Concat(Directory.GetFiles(Path.Combine(dir, "Bootstrap"), "StartupSequence*.cs"))
             .OrderBy(p => p, StringComparer.Ordinal)
             .Select(File.ReadAllText)

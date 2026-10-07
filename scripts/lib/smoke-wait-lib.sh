@@ -20,7 +20,7 @@ BOOT_RE='\[bootstrap\] 引导开始：'
 # 导航到达行：只作诊断回显（FAIL 证据打印），不判门——新链路零 host 导航，
 # holder 自 reload 不产生到达回调（dispatch 36300876224 双腿实证：代理流量
 # 证明 reload 发生，到达计数 0 新增）。token 第二跳已随转发模型退役
-# （token 永不进导航靶点，见 DesktopBootstrap.App 注释），此处不再检查。
+# （token 永不进导航靶点，见 DesktopAdapter.App 注释），此处不再检查。
 NAV_RE='\[nav\] 导航已到达'
 # 铸币行（ADR loopback-forward-proxy）：`MintAsync` 成功即打印，
 # `token 跳 → 303` 是转发路由存在的唯一机器可读信号。

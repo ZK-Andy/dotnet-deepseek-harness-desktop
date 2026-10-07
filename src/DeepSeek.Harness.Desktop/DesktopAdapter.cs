@@ -4,21 +4,20 @@ using Ryn.Core;
 namespace DeepSeek.Harness.Desktop;
 
 /// <summary>
-/// 桌面壳组合根（ADR split-program-main-god-function；形态分离见 ADR compose-root-form-separation）：
-/// 只装配、启动、接线与兜底（R1）。注册下沉为按域 <c>AddXxx()</c> 扩展、启动编排搬出根成显式组装的
-/// <see cref="Bootstrap.StartupSequence"/>（容器只给零件：post-Build 值 + 运行期单例）——本文件只保留
-/// 容器之前的启动头部（沙箱降级 / 运行时与 dev 解析 / 单实例仲裁 / 回环代理），应用装配与命令路由
-/// 注册在唯一的 dot 分部 <c>DesktopBootstrap.App.cs</c>。
+/// 桌面壳 Ryn 适配接线层（Ryn 拥有真正的组合根 <c>RynApplication.CreateBuilder().Build()</c>，
+/// 本类只是它的适配器；命名依据与沿革见 ADR split-program-main-god-function、compose-root-form-separation、
+/// composition-mechanism-container-assembly）：容器之前的启动头部（沙箱降级 / 运行时与 dev 解析 / 单实例仲裁 / 回环代理）+ 应用装配触发
+/// + 启动编排触发（R1 只做装配、启动、接线与兜底）。注册下沉为按域 <c>AddXxx()</c> 扩展，启动编排由容器组装对象图
+/// （<see cref="Bootstrap.StartupSequence"/> 自解析共享态、起步用例经容器供给）；应用装配与命令路由注册在唯一的
+/// dot 分部 <c>DesktopAdapter.App.cs</c>。
 /// </summary>
-public sealed partial class DesktopBootstrap
+public sealed partial class DesktopAdapter
 {
-    // 2b 根字段归零：本类零字段（无状态接线层）。装配期构造数据只经 Run 方法局部流动；
+    // 根字段归零：本类零字段（无状态接线层）。装配期构造数据只经 Run 方法局部流动；
     // 长命共享态（超时/标题栏参数/语言单点/壳转发器）同时进容器单例（见 AddBootstrapSharedState），
-    // 编排期调用点经容器解析——每加一个功能不再加一个字段（代价：BuildApp/RegisterServices 签名各 +4
-    // 参数，终态随 step-3 容器自组装收回）。
+    // 编排期由序列自解析——每加一个功能不再加一个字段。
 
-    /// <summary>组合根入口：容器之前解析与仲裁，装配后把启动编排交显式组装的
-    /// <see cref="Bootstrap.StartupSequence"/> 并返回进程退出码。跨阶段值只经运行期单例
+    /// <summary>接线层入口：容器之前解析与仲裁，装配后触发启动编排并返回进程退出码。跨阶段值只经运行期单例
     /// 与本方法局部变量流动，不再经共享接线包。</summary>
     public int Run()
     {
@@ -63,10 +62,9 @@ public sealed partial class DesktopBootstrap
             {
                 HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
             }
-            // 编排服务显式组装（容器只给零件）：共享态经容器回读（注册源即本方法局部，同一实例，单实例唯一）；
-            // hostSetup 必已赋值——解析失败即抛，抛后直接进 finally，走不到组装。
-            IServiceProvider container = builtApp.Services;
-            var sequence = new Bootstrap.StartupSequence(preflight, app, update, container.GetRequiredService<UiLocale>(), container.GetRequiredService<RuntimeTimeouts>(), container.GetRequiredService<CaptionBarOptions>(), container.GetRequiredService<DshShellForward>(), proxy.Proxy, instanceListener);
+            // 编排触发（容器组装对象图：共享态由序列自解析，起步用例经容器供给；
+            // hostSetup 必已赋值——解析失败即抛，抛后直接进 finally，走不到组装）。
+            var sequence = new Bootstrap.StartupSequence(preflight, app, update, proxy.Proxy, instanceListener, builtApp.Services.GetRequiredService<IRuntimeStarter>());
             return sequence.Run();
         }
         finally

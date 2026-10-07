@@ -6,11 +6,11 @@ using Ryn.Ipc;
 namespace DeepSeek.Harness.Desktop;
 
 /// <summary>
-/// <see cref="DesktopBootstrap"/> 的应用装配面（唯一 dot 分部）：Ryn 应用构建、关窗闸门/自更新栈/托盘
+/// <see cref="DesktopAdapter"/> 的应用装配面（唯一 dot 分部）：Ryn 应用构建、关窗闸门/自更新栈/托盘
 /// 控制器装配、命令路由注册（按域下沉为 <c>AddXxx()</c> 扩展，ADR compose-root-form-separation）。
-/// 启动头部在 <c>DesktopBootstrap.cs</c>；启动编排已搬出根（<c>Bootstrap.StartupSequence</c>）。
+/// 启动头部在 <c>DesktopAdapter.cs</c>；启动编排由容器组装（<c>Bootstrap.StartupSequence</c> 自解析）。
 /// </summary>
-public sealed partial class DesktopBootstrap
+public sealed partial class DesktopAdapter
 {
     private (UpdateSetup Updates, TrayController Tray) InitCloseGateAndUpdateStack(
         Preflight preflight,
@@ -151,6 +151,13 @@ public sealed partial class DesktopBootstrap
         services.AddSingleton(tray);
         services.AddSingleton(supervisorCts);
         services.AddBootstrapSharedState(timeouts, captionBar, uiLocale, shellForward);
+        // 运行时起步用例（ADR 组合根机制收官终态装配）：spawn→铸币→收 URL 的依赖全在手
+        // （引导服务来自 Preflight，超时/铸币来自共享单例），此处登记实例，编排组装经容器供给。
+        services.AddSingleton<IRuntimeStarter>(new RuntimeStarter(
+            preflight.Bootstrap,
+            TimeSpan.FromSeconds(timeouts.SpawnTimeoutSeconds),
+            shellForward.MintAsync,
+            HostLog.Write));
         services.AddRunHost();
         services.AddExitPipeline(supervisorCts, instanceListener);
         services.AddHealthMonitor(proxy);

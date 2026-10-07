@@ -33,7 +33,7 @@ one-level generic in `_NEW_RE` and are skipped; short-alias qualification
 construction shapes stay covered here.
 
 Registration files are `*Registration.cs` (per-domain `AddXxx` extensions)
-plus the root set (`Program.cs` / `DesktopBootstrap*.cs`, same mouth as
+plus the root set (`Program.cs` / `DesktopAdapter*.cs`, same mouth as
 verify-compose-root.py — root construction keeps counting under C3, not
 here, so the two gates never double-count). `HostLog.*` is exempt: the
 sanctioned ambient facility (D004 mandates logging via HostLog).
@@ -74,7 +74,7 @@ IGNORE_MARK = "verify-registration-discipline: ignore"
 # Sanctioned cross-layer facility, not coupling (see module docstring).
 EXEMPT_TYPES = {"HostLog"}
 
-_NEW_RE = re.compile(r"\bnew\s+(\w+)(?:<[^()<>]*>)?\s*\(")
+_NEW_RE = re.compile(r"\bnew\s+([\w.]+)(?:<[^()<>]*>)?\s*\(")
 _TARGET_NEW_RE = re.compile(r"\bnew\s*\(\)")
 _STATIC_RE = re.compile(r"\b([A-Z]\w*)\s*\.\s*(\w+)")
 _QUALIFIED_RE = re.compile(r"\bInfrastructure\s*\.[\w.]+")
@@ -85,7 +85,7 @@ def _is_registration(path: Path) -> bool:
     """Per-domain `AddXxx` extensions plus the root set (see module docstring)."""
     return (path.name.endswith("Registration.cs")
             or path.name == "Program.cs"
-            or path.name.startswith("DesktopBootstrap"))
+            or path.name.startswith("DesktopAdapter"))
 
 
 def _infra_types(infra_src: Path) -> set[str]:
@@ -126,9 +126,12 @@ def _violations(src: Path, infra_src: Path,
             if _USING_DIRECTIVE_RE.match(code):
                 continue
             for m in _NEW_RE.finditer(code):
-                if m.group(1) in infra and m.group(1) not in EXEMPT_TYPES:
+                # Dotted construction attributes to the last segment
+                # (same B1 blind spot as verify-compose-root.py C5).
+                constructed = m.group(1).split(".")[-1]
+                if constructed in infra and constructed not in EXEMPT_TYPES:
                     news += 1
-                    notes.append(f"  note R1a {rel}:{lineno}: `new {m.group(1)}(` outside registration")
+                    notes.append(f"  note R1a {rel}:{lineno}: `new {constructed}(` outside registration")
             if _TARGET_NEW_RE.search(code):
                 owner = TARGET_OWNER_RE.search(code)
                 if owner and owner.group(1) in infra and owner.group(1) not in EXEMPT_TYPES:
@@ -215,6 +218,18 @@ def _self_test() -> int:
             print("  ok: R1a explicit new counted")
         else:
             print(f"  ✗ R1a not counted: {rows} {notes}")
+            failed = 1
+
+        # R1a: dotted new attributes to the last segment (B1 shared blind spot:
+        # `new Ns.Engine()` counts like the bare form).
+        rows, notes, _, _ = run(extra_shell=[("BadDotted.cs",
+                                        "namespace Shell;\ninternal sealed class BadDotted\n{\n"
+                                        "    private Engine _e = new Ns.Engine();\n"
+                                        "}\n")])
+        if not rows and any("note R1a " in r and "new Engine(" in r for r in notes):
+            print("  ok: R1a dotted new attributed to last segment")
+        else:
+            print(f"  ✗ R1a dotted not attributed: {rows} {notes}")
             failed = 1
 
         # R1a: target-typed new attributed via the declared type.

@@ -18,7 +18,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// 并回调「到达」信号（<see cref="SetOnNavigated"/>，当前无宿主消费者，作可扩展能力保留）。</item>
 /// </list>
 /// 本类为 instance：源生成器把依赖方法经 DI 解析 <c>GetRequiredService&lt;RynNavigationCallbacks&gt;</c>
-/// 后调用，故构造函数依赖必须在 DI 注册（DesktopBootstrap.RegisterServices 用工厂覆盖无参注册）。
+/// 后调用，故构造函数依赖必须在 DI 注册（DesktopAdapter.RegisterServices 用工厂覆盖无参注册）。
 /// </remarks>
 public sealed class RynNavigationCallbacks
 {
@@ -56,7 +56,7 @@ public sealed class RynNavigationCallbacks
     /// <param name="opener">打开外部 URL 的委托；null 时默认用系统默认浏览器（见 <see cref="SystemBrowser"/>）。</param>
     /// <param name="log">日志输出（可选）。</param>
     /// <param name="currentOrigin">当前页面 origin（如 <c>http://127.0.0.1:41449</c>）初始值；供同源判定。null 时 <see cref="ExternalLinkPolicy"/> 保守地把一切绝对 http(s) 视为外部。</param>
-    /// <param name="notifyLinkFail">外部链接打开失败通知（可选）：携带失败的 URL。由 DesktopBootstrap 接
+    /// <param name="notifyLinkFail">外部链接打开失败通知（可选）：携带失败的 URL。由 DesktopAdapter 接
     /// <c>IRynWebView.EmitEvent</c> 推给页面经 companion 渲染 toast（R2 N2）。委托注入保持本类可单测。</param>
     public RynNavigationCallbacks(
         Func<string, bool>? opener = null,

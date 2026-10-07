@@ -42,7 +42,7 @@
 
 - **[调试] 测试本地失败CI绿先查机器状态短路（2026-08-31）**：走下载路径测试须钉NodeGlobalPrefix。
 
-- **[调试] 注册点闸（verify-registration-discipline）红的判别（2026-10-02 门禁上线沉淀）**：Presentation 在注册文件（`*Registration.cs`/`DesktopBootstrap.RegisterServices`/根集合）之外**直接 `new` Infrastructure 具体类型或静态调用**即红（R1a/R1b 计数超帽）；DI 形参/字段声明是注入不是耦合（放行），`HostLog.*` 按设计豁免。帽是零余量冻结帽——新增即红，降帽走脚本变更（FULL 面）；已知盲区（collection-element `new()`/嵌套泛型/短别名）见脚本 docstring，误报处置 = 改脚本即 FULL 评审（[ADR](../.agents/notes/implemented/process/2026-10-01-coupling-shift-left-gates.md)）。
+- **[调试] 注册点闸（verify-registration-discipline）红的判别（2026-10-02 门禁上线沉淀）**：Presentation 在注册文件（`*Registration.cs`/`DesktopAdapter.RegisterServices`/根集合）之外**直接 `new` Infrastructure 具体类型或静态调用**即红（R1a/R1b 计数超帽）；DI 形参/字段声明是注入不是耦合（放行），`HostLog.*` 按设计豁免。帽是零余量冻结帽——新增即红，降帽走脚本变更（FULL 面）；已知盲区（collection-element `new()`/嵌套泛型/短别名）见脚本 docstring，误报处置 = 改脚本即 FULL 评审（[ADR](../.agents/notes/implemented/process/2026-10-01-coupling-shift-left-gates.md)）。
 - **[调试] dsh 网关的 Host/Origin 门与「同形探测」定位法（2026-09-27 remote.mux 实证；事实源 [ADR](../.agents/notes/implemented/bug-fix/2026-09-27-upgrade-tunnel-host-authority.md)）**：dsh 先判源头门再谈 cookie——`Host` 须是 dsh 自己的 authority、`Origin` 须是 dsh 自源，不符即 `403 forbidden`；过门后才 `401 unauthorized`（缺 cookie）。定位法：发与故障请求**同形**的握手，逐组只改一个头，应答从 403 翻成 401 的翻点即被拒的头。`Referer` 不在门上；裸 TCP 重放不自动补 `Host`（`HttpClient` 才补），页源 `Origin` 须改写为 dsh 自源。
 
 ## 环境

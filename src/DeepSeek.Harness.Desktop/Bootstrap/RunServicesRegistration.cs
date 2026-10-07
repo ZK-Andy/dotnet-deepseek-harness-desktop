@@ -32,7 +32,7 @@ internal static class RunServicesRegistration
 
     /// <summary>宿主装配产出（单例）：运行时宿主 + 崩溃取证 marker。原编排 <c>SetupHostAndMarker</c>
     /// 语义——遗留 marker 即判上轮非受控退出；正常退出路径在退出管道清除。释放由组合根拥有
-    /// （单例寿命 = 本次 Run，见 <c>DesktopBootstrap.Run</c> finally）。</summary>
+    /// （单例寿命 = 本次 Run，见 <c>DesktopAdapter.Run</c> finally）。</summary>
     public static IServiceCollection AddRunHost(this IServiceCollection services)
     {
         // HostSetup 是 readonly record struct（值流阶段产出，见 StartupStages.cs），无 class 约束的

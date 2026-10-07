@@ -35,7 +35,7 @@ Diff scope (caller picks the mode matching the git moment):
 Tier classification (no executor discretion):
 
   FULL (full three-way review R1/R2/R3 required):
-    - compose-root core: any-depth DesktopBootstrap*.cs / Program.cs under src/
+    - compose-root core: any-depth DesktopAdapter*.cs / Program.cs under src/
     - gate criteria touched: ArchitectureTests.cs, verify-*.py / verify-*.sh,
       .editorconfig, .githooks/** (removing a hook call must itself be FULL)
     - proposed ADR added/changed whose body commits to "三重审核"
@@ -105,7 +105,7 @@ REVIEW_LINE_RE = re.compile(
 # FULL-tier path triggers. Predicates take (path-string, pathlib.Path) and
 # return True when the path forces the FULL tier.
 FULL_TRIGGERS = (
-    ("compose-root", lambda rel, p: (p.name.startswith("DesktopBootstrap") or p.name == "Program.cs") and p.suffix == ".cs"),
+    ("compose-root", lambda rel, p: (p.name.startswith("DesktopAdapter") or p.name == "Program.cs") and p.suffix == ".cs"),
     ("gate-criteria", lambda rel, p: p.name == "ArchitectureTests.cs"),
     ("gate-criteria", lambda rel, p: p.name.startswith("verify-") and p.suffix in (".py", ".sh")),
     ("gate-criteria", lambda rel, p: p.name == ".editorconfig"),
@@ -462,7 +462,7 @@ def _self_test() -> int:
 
         # 2) FULL compose-root change is blocked without evidence
         r = _new_repo(Path(td), "f2")
-        _write(r, "src/App/DesktopBootstrap.cs", "// x")
+        _write(r, "src/App/DesktopAdapter.cs", "// x")
         rows = _scan(r)
         st.ok(any("FULL-tier change lacks review evidence" in x for x in rows),
            "FULL compose-root change blocked without evidence")
@@ -470,7 +470,7 @@ def _self_test() -> int:
         # 3) FULL compose-root passes when the SAME change carries an implemented
         #    ADR with a valid Review line
         r = _new_repo(Path(td), "f3")
-        _write(r, "src/App/DesktopBootstrap.cs", "// x")
+        _write(r, "src/App/DesktopAdapter.cs", "// x")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md", EVIDENCE)
         st.ok(_scan(r) == [], "FULL change passes when change carries Review evidence")
 
@@ -492,7 +492,7 @@ def _self_test() -> int:
         # 6) committed + clean tree: --since must catch an outgoing FULL change
         r = _new_repo(Path(td), "f6")
         _commit_all(r, "base")
-        _write(r, "src/App/DesktopBootstrap.cs", "// new FULL change")
+        _write(r, "src/App/DesktopAdapter.cs", "// new FULL change")
         _commit_all(r, "full change w/o evidence")
         rows = _scan(r, since="HEAD~1")
         st.ok(any("FULL-tier change lacks review evidence" in x for x in rows),
@@ -502,7 +502,7 @@ def _self_test() -> int:
         r = _new_repo(Path(td), "f7")
         _commit_all(r, "base")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md", EVIDENCE)
-        _write(r, "src/App/DesktopBootstrap.cs", "// new FULL change")
+        _write(r, "src/App/DesktopAdapter.cs", "// new FULL change")
         _commit_all(r, "full change w/ evidence")
         rows = _scan(r, since="HEAD~1")
         st.ok(rows == [], "--since passes when the range carries Review evidence")
@@ -516,7 +516,7 @@ def _self_test() -> int:
         # touch the evidence ADR (a comment) together with a brand-new FULL change
         (r / NOTES_DIR / "implemented" / "process" / "2026-09-03-x.md").write_text(
             EVIDENCE + "\n<!-- touched later -->\n", encoding="utf-8")
-        _write(r, "src/App/DesktopBootstrap.cs", "// brand new")
+        _write(r, "src/App/DesktopAdapter.cs", "// brand new")
         _commit_all(r, "touch evidence + new FULL change")
         rows = _scan(r, since="HEAD~1")
         st.ok(any("FULL-tier change lacks review evidence" in x for x in rows),
@@ -524,7 +524,7 @@ def _self_test() -> int:
 
         # 9) review values strictly checked: R1=fail does NOT count as evidence
         r = _new_repo(Path(td), "f9")
-        _write(r, "src/App/DesktopBootstrap.cs", "// x")
+        _write(r, "src/App/DesktopAdapter.cs", "// x")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
                EVIDENCE.replace("R1=ok", "R1=fail"))
         rows = _scan(r)
@@ -533,7 +533,7 @@ def _self_test() -> int:
 
         # 10) proposed ADR self-adding a Review line does NOT clear (must be implemented)
         r = _new_repo(Path(td), "f10")
-        _write(r, "src/App/DesktopBootstrap.cs", "// x")
+        _write(r, "src/App/DesktopAdapter.cs", "// x")
         _write(r, NOTES_DIR + "/proposed/architecture/2026-09-03-y.md",
                "# Agent Note: y\n\nStatus: proposed\n\nReview: FULL/2026-09-03/R1=ok R2=ok R3=ok\n")
         rows = _scan(r)
@@ -548,7 +548,7 @@ def _self_test() -> int:
         (r / NOTES_DIR / "implemented" / "process" / "2026-09-03-x.md").write_text(
             EVIDENCE + "\n<!-- touched later -->\n", encoding="utf-8")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-13-y.md", EVIDENCE)
-        _write(r, "src/App/DesktopBootstrap.cs", "// brand new")
+        _write(r, "src/App/DesktopAdapter.cs", "// brand new")
         _commit_all(r, "touch old evidence + new evidence + FULL change")
         rows = _scan(r, since="HEAD~1")
         st.ok(rows == [],
@@ -571,7 +571,7 @@ def _self_test() -> int:
             "\n\n## Alternatives considered\n\n- b\n\n## Consequences\n\n" + body_new + "\n",
             encoding="utf-8")
         old.unlink()
-        _write(r, "src/App/DesktopBootstrap.cs", "// brand new")
+        _write(r, "src/App/DesktopAdapter.cs", "// brand new")
         _commit_all(r, "rename+rewrite evidence + FULL change")
         rows = _scan(r, since="HEAD~1")
         st.ok(any("FULL-tier change lacks review evidence" in x for x in rows),
@@ -587,7 +587,7 @@ def _self_test() -> int:
         #     deleting the working-tree copy (a partial-commit flow) still clears
         r = _new_repo(Path(td), "f14")
         _commit_all(r, "base")
-        _write(r, "src/App/DesktopBootstrap.cs", "// new FULL change")
+        _write(r, "src/App/DesktopAdapter.cs", "// new FULL change")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md", EVIDENCE)
         (r / NOTES_DIR / "implemented" / "process" / "2026-09-03-x.md").unlink()
         st.ok(_scan(r, staged_only=True) == [],
@@ -597,7 +597,7 @@ def _self_test() -> int:
         #     untracked, so it counts as fully added (ad-hoc local check)
         r = _new_repo(Path(td), "f15")
         _commit_all(r, "base")
-        (r / "src" / "App" / "DesktopBootstrap.cs").write_text("// new FULL change",
+        (r / "src" / "App" / "DesktopAdapter.cs").write_text("// new FULL change",
                                                                encoding="utf-8")
         note = r / NOTES_DIR / "implemented" / "process" / "2026-09-03-x.md"
         note.parent.mkdir(parents=True, exist_ok=True)
@@ -626,7 +626,7 @@ def _self_test() -> int:
         _write(r, NOTES_DIR + "/implemented/process/2026-09-13-beta.md",
                header_alpha.replace("alpha", "beta") + "## Problem\n\n" + body +
                "\n\n## Alternatives considered\n\n- a\n\n## Consequences\n\n" + body + "\n")
-        _write(r, "src/App/DesktopBootstrap.cs", "// brand new")
+        _write(r, "src/App/DesktopAdapter.cs", "// brand new")
         _commit_all(r, "rename + retitle evidence + FULL change")
         rows = _scan(r, since="HEAD~1")
         st.ok(any("FULL-tier change lacks review evidence" in x for x in rows),
@@ -645,7 +645,7 @@ def _self_test() -> int:
                header_alpha.replace("alpha", "beta").replace("2026-09-03/R1", "2026-09-14/R1")
                + "## Problem\n\n" + body +
                "\n\n## Alternatives considered\n\n- a\n\n## Consequences\n\n" + body + "\n")
-        _write(r, "src/App/DesktopBootstrap.cs", "// brand new")
+        _write(r, "src/App/DesktopAdapter.cs", "// brand new")
         _commit_all(r, "rename + fresh evidence + FULL change")
         st.ok(_scan(r, since="HEAD~1") == [],
            "a rename destination carrying a fresh Review: line clears")
@@ -654,7 +654,7 @@ def _self_test() -> int:
         #     invisible-byte edit that used to manufacture a "newly added" line on a
         #     second same-day FULL batch is closed
         r = _new_repo(Path(td), "f19")
-        _write(r, "src/App/DesktopBootstrap.cs", "// x")
+        _write(r, "src/App/DesktopAdapter.cs", "// x")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
                EVIDENCE.replace("R1=ok R2=ok", "R1=ok  R2=ok"))
         rows = _scan(r)
@@ -663,7 +663,7 @@ def _self_test() -> int:
 
         # 20) the same-day ordinal `#N` is the visible token a second FULL batch uses
         r = _new_repo(Path(td), "f20")
-        _write(r, "src/App/DesktopBootstrap.cs", "// x")
+        _write(r, "src/App/DesktopAdapter.cs", "// x")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
                EVIDENCE.replace("2026-09-03/R1", "2026-09-03#2/R1"))
         st.ok(_scan(r) == [], "a `FULL/<date>#2/...` ordinal line is valid evidence")
@@ -675,14 +675,14 @@ def _self_test() -> int:
         _commit_all(r, "first FULL batch, ordinal-less evidence")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
                EVIDENCE.replace("2026-09-03/R1", "2026-09-03#2/R1"))
-        _write(r, "src/App/DesktopBootstrap.cs", "// second same-day batch")
+        _write(r, "src/App/DesktopAdapter.cs", "// second same-day batch")
         _commit_all(r, "second batch reuses the same ADR with an ordinal")
         st.ok(_scan(r, since="HEAD~1") == [],
            "a #N ordinal is newly added evidence even in the same ADR")
 
         # 22) the ordinal is a positive integer: `#0` is not evidence
         r = _new_repo(Path(td), "f22")
-        _write(r, "src/App/DesktopBootstrap.cs", "// x")
+        _write(r, "src/App/DesktopAdapter.cs", "// x")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md",
                EVIDENCE.replace("2026-09-03/R1", "2026-09-03#0/R1"))
         rows = _scan(r)
@@ -701,7 +701,7 @@ def _self_test() -> int:
                base_note.replace(
                    "Review: FULL/2026-09-03/R1=ok R2=ok R3=ok\n\n" + bilingual + "\n\n",
                    bilingual + "\n\nReview: FULL/2026-09-03/R1=ok R2=ok R3=ok\n\n"))
-        _write(r, "src/App/DesktopBootstrap.cs", "// new FULL change")
+        _write(r, "src/App/DesktopAdapter.cs", "// new FULL change")
         _commit_all(r, "header reorder shifts the evidence line")
         rows = _scan(r, since="HEAD~1")
         st.ok(any("FULL-tier change lacks review evidence" in x for x in rows),
@@ -717,7 +717,7 @@ def _self_test() -> int:
                    "## Problem\n\nx", "## Problem\n\nx\n\n" + line, 1))
         _commit_all(r, "canonical line in the body")
         _write(r, NOTES_DIR + "/implemented/process/2026-09-03-x.md", EVIDENCE)
-        _write(r, "src/App/DesktopBootstrap.cs", "// new FULL change")
+        _write(r, "src/App/DesktopAdapter.cs", "// new FULL change")
         _commit_all(r, "line moved up into the header")
         rows = _scan(r, since="HEAD~1")
         st.ok(any("FULL-tier change lacks review evidence" in x for x in rows),

@@ -11,7 +11,7 @@
 ## 目录与配置
 
 ```
-src/DeepSeek.Harness.Desktop/  Program.cs, DesktopBootstrap*, Commands/*, ryn.json, wwwroot/
+src/DeepSeek.Harness.Desktop/  Program.cs, DesktopAdapter*, Commands/*, ryn.json, wwwroot/
 src/DeepSeek.Harness.Desktop.Core/  纯逻辑（零外层引用）
 src/DeepSeek.Harness.Desktop.Infrastructure/  适配器（Update/Runtime/CliShim/Plugins/Platform/*）
 tests/DeepSeek.Harness.Desktop{.Core,.Infrastructure,}.Tests/  xunit（清单见 testing.md）

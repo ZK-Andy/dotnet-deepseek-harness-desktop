@@ -4,7 +4,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Plugins;
 
 /// <summary>
 /// 子进程执行器（ADR 组合根只装配）：spawn、双流读、逐行转发、取消/异常整树击杀集中在此，
-/// 组合根（<c>DesktopBootstrap</c>）不再直跑进程。形态对齐 <c>RuntimeBootstrap.RunCaptureAsync</c>
+/// 桌面适配层（<c>DesktopAdapter</c>）不再直跑进程。形态对齐 <c>RuntimeBootstrap.RunCaptureAsync</c>
 /// 的防御不变量——<c>WaitForExitAsync</c>/<c>ReadLineAsync</c> 的 OCE 会跳过等待、using dispose
 /// 只关句柄不杀进程，取消/异常必须整树击杀，否则 <c>dsh plugin add</c> 带 profile 写权成孤儿。
 /// </summary>

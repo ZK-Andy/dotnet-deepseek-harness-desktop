@@ -30,16 +30,14 @@ internal sealed partial class StartupSequence : IStartupSequence
     // 「首次导航到达补注册顶栏脚本」的一次性闩（见 StartupSequence.Supervision 的 SetupCaptionBar）。
     private int _captionBarReregistered;
 
-    /// <summary>创建编排服务（构造数据注入；由组合根在 Build 后显式组装，容器只给零件）。
-    /// 运行期单例（宿主/令牌源/托盘）在调用点经应用容器解析——组装时点必晚于 Build，届时求值安全。</summary>
+    /// <summary>创建编排服务（构造数据注入；由接线层在 Build 后显式组装，容器组装对象图）。
+    /// 共享态（语言/超时/标题栏参数/转发器）经应用容器自解析——构造时点必晚于 Build，届时求值安全；
+    /// 解析的是接线层同一局部登记的单例（见 AddBootstrapSharedState），单实例唯一。
+    /// 运行期单例（宿主/令牌源/托盘）同样在调用点经应用容器解析。</summary>
     public StartupSequence(
         Preflight preflight,
         AppSetup app,
         UpdateSetup updates,
-        UiLocale uiLocale,
-        RuntimeTimeouts timeouts,
-        CaptionBarOptions captionBar,
-        DshShellForward shellForward,
         DshLoopbackProxy? proxy,
         PrimaryListener? instanceListener,
         IRuntimeStarter? runtimeStarter = null)
@@ -47,10 +45,10 @@ internal sealed partial class StartupSequence : IStartupSequence
         _preflight = preflight;
         _app = app;
         _updates = updates;
-        _uiLocale = uiLocale;
-        _timeouts = timeouts;
-        _captionBar = captionBar;
-        _shellForward = shellForward;
+        _uiLocale = app.App.Services.GetRequiredService<UiLocale>();
+        _timeouts = app.App.Services.GetRequiredService<RuntimeTimeouts>();
+        _captionBar = app.App.Services.GetRequiredService<CaptionBarOptions>();
+        _shellForward = app.App.Services.GetRequiredService<DshShellForward>();
         _proxy = proxy;
         _instanceListener = instanceListener;
         _runtimeStarter = runtimeStarter ?? new RuntimeStarter(

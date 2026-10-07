@@ -7,10 +7,10 @@ public static class Program
     /// <summary>
     /// 壳启动流程：托管 dsh web（OS 分配端口）→ 解析 `dsh web:` URL → Ryn WebView 加载；
     /// 后台监督 dsh 子进程——崩溃只重启子进程并导航新 URL（不重启桌面进程）；dsh 起不来时降级加载本地 wwwroot。
-    /// 组合根编排见 <see cref="DesktopBootstrap"/>。无 UI 诊断导出先于一切启动逻辑
+    /// 桌面适配接线见 <see cref="DesktopAdapter"/>。无 UI 诊断导出先于一切启动逻辑
     /// （不 spawn dsh、不开窗、不做 dev 隔离，ADR shell-observability-diagnostics）。
     /// </summary>
     [STAThread]
     public static int Main(string[] args) =>
-        DiagnosticsCli.TryRun(args) ?? new DesktopBootstrap().Run();
+        DiagnosticsCli.TryRun(args) ?? new DesktopAdapter().Run();
 }
