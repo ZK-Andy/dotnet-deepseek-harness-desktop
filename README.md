@@ -118,3 +118,5 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）—— 本壳托管的运行时。
 - [Ryn](https://github.com/Yupmoh/Ryn)（MIT）—— 桌面壳框架。
 - 打包思路参考 [pilot-harness](https://github.com/op7418/pilot-harness)。
+
+[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

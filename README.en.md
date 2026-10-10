@@ -118,3 +118,5 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) — the runtime this shell hosts.
 - [Ryn](https://github.com/Yupmoh/Ryn) (MIT) — the desktop-shell framework.
 - Packaging approach references [pilot-harness](https://github.com/op7418/pilot-harness).
+
+[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
