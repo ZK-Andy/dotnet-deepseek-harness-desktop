@@ -27,7 +27,7 @@ Counted R1a/R1b sites print as `note:` lines with file:line
 `--enforce` on their own. Known limitations: collection-element `new()`
 (`items.Add(new() {...})`) cannot be attributed single-line and is
 skipped; nested generic arguments (`new Foo<Bar<T>>(`) exceed the
-one-level generic in `_NEW_RE` and are skipped; short-alias qualification
+one-level generic in `NEW_EXPR_RE` and are skipped; short-alias qualification
 (`using Infra = ...; new Infra.Engine(`) is invisible without the
 `Infrastructure` token — C3 covers the root set; the dominant
 construction shapes stay covered here.
@@ -58,25 +58,25 @@ import re
 import sys
 from pathlib import Path
 
-from gate_common import CSharpLineScanner, TARGET_OWNER_RE, TYPE_DECL_RE
+from gate_common import (CSharpLineScanner, NEW_EXPR_RE, STATIC_ACCESS_RE,
+                          TARGET_OWNER_RE, TYPE_DECL_RE)
 
 DEFAULT_SRC = "src/DeepSeek.Harness.Desktop"
 DEFAULT_INFRA_SRC = "src/DeepSeek.Harness.Desktop.Infrastructure"
 # Frozen 2026-10-01 from the real tree with this scanner: R1a = 1
 # (`new StartupNoticeService` in StartupSequence.Supervision.cs — migration
-# is out of this gate's scope, the cap freezes it), R1b = 15 shipped static
-# sites. Zero headroom by design: any NEW direct construction or static
-# call fails --enforce; lowering/raising a cap is a deliberate script edit.
+# is out of this gate's scope, the cap freezes it), R1b shipped static
+# sites. Lowered 15 -> 11 on 2026-10-12 (composition-root收官顺手清掉 4 处，
+# ADR coupling-increment-baseline 执行半)：零余量如初——新增即红，
+# 再降走迁移（进 DI/端口）+ 脚本变更（FULL 面）。
 DEFAULT_MAX_NEWS = 1
-DEFAULT_MAX_STATIC_CALLS = 15
+DEFAULT_MAX_STATIC_CALLS = 11
 IGNORE_MARK = "verify-registration-discipline: ignore"
 
 # Sanctioned cross-layer facility, not coupling (see module docstring).
 EXEMPT_TYPES = {"HostLog"}
 
-_NEW_RE = re.compile(r"\bnew\s+([\w.]+)(?:<[^()<>]*>)?\s*\(")
 _TARGET_NEW_RE = re.compile(r"\bnew\s*\(\)")
-_STATIC_RE = re.compile(r"\b([A-Z]\w*)\s*\.\s*(\w+)")
 _QUALIFIED_RE = re.compile(r"\bInfrastructure\s*\.[\w.]+")
 _USING_DIRECTIVE_RE = re.compile(r"^\s*(?:global\s+)?using\s+[A-Za-z_][\w.]*\s*;")
 
@@ -125,7 +125,7 @@ def _violations(src: Path, infra_src: Path,
                 continue
             if _USING_DIRECTIVE_RE.match(code):
                 continue
-            for m in _NEW_RE.finditer(code):
+            for m in NEW_EXPR_RE.finditer(code):
                 # Dotted construction attributes to the last segment
                 # (same B1 blind spot as verify-compose-root.py C5).
                 constructed = m.group(1).split(".")[-1]
@@ -138,7 +138,7 @@ def _violations(src: Path, infra_src: Path,
                     news += 1
                     notes.append(f"  note R1a {rel}:{lineno}: target-typed `new()` of `{owner.group(1)}`"
                                  " outside registration")
-            for m in _STATIC_RE.finditer(code):
+            for m in STATIC_ACCESS_RE.finditer(code):
                 if m.group(1) in infra and m.group(1) not in EXEMPT_TYPES:
                     statics += 1
                     notes.append(f"  note R1b {rel}:{lineno}: static `{m.group(1)}.{m.group(2)}`"
@@ -280,7 +280,7 @@ def _self_test() -> int:
             failed = 1
         (infra / "Box.cs").unlink()
 
-        # R1q: fully qualified construction trips at once (pinned: _NEW_RE
+        # R1q: fully qualified construction trips at once (pinned: NEW_EXPR_RE
         # cannot see past the dotted path, R1q is the only net).
         rows, _, _, _ = run(extra_shell=[("BadQualified.cs",
                                         "namespace Shell;\ninternal sealed class BadQualified\n{\n"

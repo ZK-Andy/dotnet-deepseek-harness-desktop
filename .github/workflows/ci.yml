@@ -100,6 +100,7 @@ jobs:
           python3 scripts/gate_common.py --self-test
           python3 scripts/verify-md-links.py --self-test
           python3 scripts/verify-doc-budgets.py --self-test
+          python3 scripts/verify-increment-discipline.py --self-test
       - name: UI 文案单一词典（批次 A）
         run: |
           python3 scripts/verify-ui-copy.py --self-test
@@ -120,6 +121,17 @@ jobs:
       - name: 注册点纪律闸（R1：基础设施具体类型只许出现在注册处；ADR coupling-shift-left-gates）
         run: |
           python3 scripts/verify-registration-discipline.py --enforce
+      - name: 增量纪律闸（耦合左移②，report 先行：只打印 OVER 行；--enforce 转正另走 FULL 变更）
+        env:
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          BASE="$REVIEW_BASE"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "::warning::增量闸无 base 可比（首推/新建分支），本次跳过" >&2
+          else
+            echo "increment-discipline --since $BASE"
+            python3 scripts/verify-increment-discipline.py --since "$BASE"
+          fi
       - name: 评审档位硬闸（FULL 档变更须携 Review 证据；ADR review-tier-escape-proofing）
         env:
           REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}

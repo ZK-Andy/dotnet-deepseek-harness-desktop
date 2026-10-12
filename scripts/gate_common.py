@@ -71,6 +71,13 @@ TYPE_DECL_RE = re.compile(r"^\s*(?:[\w.]+\s+)*(?:class|struct|record|interface|e
 # two gates: captures the declared type on the left of `= new(`.
 TARGET_OWNER_RE = re.compile(r"(?:[\w.]+\s+)?(\w+)(?:<[^=]*>)?\s+\w+\s*=\s*(?:[\w.]+\s+)?new\s*\(")
 
+# Explicit/target-typed construction + static member access, shared by the
+# registration-discipline (R1a/R1b) and increment-discipline (fan-out)
+# gates: single home for the shape, so a syntax fix lands in both
+# (R1-S5 convergence precedent — same reason TYPE_DECL_RE lives here).
+NEW_EXPR_RE = re.compile(r"\bnew\s+([\w.]+)(?:<[^()<>]*>)?\s*\(")
+STATIC_ACCESS_RE = re.compile(r"\b([A-Z]\w*)\s*\.\s*(\w+)")
+
 
 class CSharpLineScanner:
     """Yield cleaned C# lines: comment text and string-literal contents blanked.
