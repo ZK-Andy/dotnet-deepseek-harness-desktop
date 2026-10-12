@@ -209,7 +209,7 @@ public static partial class MarketInstallHelper
         }
         catch
         {
-            try { File.Delete(temp); } catch { /* 临时文件清理失败不影响结果 */ }
+            try { File.Delete(temp); } catch (Exception) { /* 临时文件清理失败不影响结果 */ }
             throw;
         }
     }

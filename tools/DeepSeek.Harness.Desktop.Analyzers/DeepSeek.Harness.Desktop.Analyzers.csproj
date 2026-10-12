@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Roslyn 自研分析器工程（D003 机器化，ADR d003-empty-catch-analyzer）：
+         netstandard2.0（分析器宿主最低兼容面）+ 最新语言版本；不打包、不进产品依赖——
+         消费方一律 Analyzer 引用（OutputItemType="Analyzer" + ReferenceOutputAssembly="false"，
+         Ryn.Ipc.Generator 先例），R2 程序集引用图不变（ArchitectureTests 程序集级互证仍过）。 -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- 分析器工程卫生（RS1036）：开扩展分析器规则；发布跟踪（RS2007/RS2008）不做——单规则分析器，
+         发布史 = ADR + git tag（见 ADR d003-empty-catch-analyzer Alternatives）。 -->
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <NoWarn>$(NoWarn);RS2007;RS2008</NoWarn>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+    <PackageReference Include="StyleCop.Analyzers" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

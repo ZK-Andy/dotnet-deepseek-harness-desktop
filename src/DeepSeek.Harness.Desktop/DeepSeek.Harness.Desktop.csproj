@@ -25,6 +25,10 @@
     <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
     <PackageReference Include="Ryn.Ipc.Generator"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <!-- D003 机器化（DSH0001，自研分析器）：编译期工具引用，不产生程序集引用（R2 图不变，
+         ArchitectureTests 只计程序集引用）。 -->
+    <ProjectReference Include="..\..\tools\DeepSeek.Harness.Desktop.Analyzers\DeepSeek.Harness.Desktop.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

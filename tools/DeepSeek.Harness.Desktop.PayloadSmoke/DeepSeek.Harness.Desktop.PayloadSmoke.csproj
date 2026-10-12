@@ -13,4 +13,10 @@
     <PackageReference Include="StyleCop.Analyzers" PrivateAssets="all" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- D003 机器化（DSH0001，自研分析器）：纯编译期工具引用，不产生程序集引用。 -->
+    <ProjectReference Include="..\DeepSeek.Harness.Desktop.Analyzers\DeepSeek.Harness.Desktop.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
 </Project>

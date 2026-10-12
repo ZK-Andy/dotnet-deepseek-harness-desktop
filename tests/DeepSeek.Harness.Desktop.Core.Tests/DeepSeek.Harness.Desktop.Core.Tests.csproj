@@ -39,6 +39,9 @@
   <ItemGroup>
     <!-- 镜像拆分（官方判据 7）：Core 单测只引用 Core（无基础设施 mock，纯逻辑可单测）。 -->
     <ProjectReference Include="..\..\src\DeepSeek.Harness.Desktop.Core\DeepSeek.Harness.Desktop.Core.csproj" />
+    <!-- D003 机器化（DSH0001，自研分析器）：纯编译期工具引用，不产生程序集引用。 -->
+    <ProjectReference Include="..\..\tools\DeepSeek.Harness.Desktop.Analyzers\DeepSeek.Harness.Desktop.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

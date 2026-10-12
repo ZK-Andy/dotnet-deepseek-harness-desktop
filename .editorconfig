@@ -88,6 +88,11 @@ dotnet_diagnostic.VSTHRD110.severity = none
 dotnet_diagnostic.VSTHRD100.severity = warning # async void（D002 机器化；事件处理器白名单语义由评审面复核）
 dotnet_diagnostic.VSTHRD200.severity = warning
 
+# ======== 空 catch 命名所吞异常（D003 的机器化：自研 DSH0001，error 即红） ========
+# 自研分析器（tools/DeepSeek.Harness.Desktop.Analyzers）：只红无类型空 catch（注释不计语句）；
+# 具名类型空 catch（如 catch (InvalidOperationException)）即合规，不在此限。
+dotnet_diagnostic.DSH0001.severity = error
+
 # ======== 类型设计：static/sealed（审计项「类型 static/sealed」的强制载体） ========
 dotnet_diagnostic.CA1052.severity = warning   # 静态持有者类型应声明 static/NotInheritable
 dotnet_diagnostic.CA1813.severity = warning   # 特性类应 sealed（避免无谓派生面）

@@ -1,13 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- Core 的硬约束：项目引用必须为空（R2 依赖方向，编译器强制 + ArchitectureTests 项目引用断言）。 -->
+    <!-- Core 的硬约束：程序集项目引用必须为空（R2 依赖方向，编译器强制 + ArchitectureTests 项目引用断言；
+         DSH0001 分析器引用是纯编译期工具（ReferenceOutputAssembly="false"），不计入）。 -->
     <NoWarn>$(NoWarn);EnableGenerateDocumentationFile</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="StyleCop.Analyzers" PrivateAssets="all" />
     <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- D003 机器化（DSH0001，自研分析器）：纯编译期工具引用（ReferenceOutputAssembly="false"，
+         不产生程序集引用）——R2「Core 零引用」指程序集依赖方向，此处不违（ArchitectureTests
+         只计程序集引用，程序集级互证仍过）。 -->
+    <ProjectReference Include="..\..\tools\DeepSeek.Harness.Desktop.Analyzers\DeepSeek.Harness.Desktop.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

@@ -14,6 +14,9 @@
     <PackageVersion Include="Ryn.Ipc.Generator" Version="0.38.0" />
     <PackageVersion Include="StyleCop.Analyzers" Version="1.1.118" />
     <PackageVersion Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23" />
+    <!-- D003 自研分析器（DSH0001）的编译期依赖：钉 4.13.0（分析器引用版本 ≤ 编译器版本即前向兼容；
+         本地 .dotnet-cache 已有该版，离线可还原；CI 在线还原同版）。 -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.13.0" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />

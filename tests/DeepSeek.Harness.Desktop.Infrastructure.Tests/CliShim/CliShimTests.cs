@@ -254,7 +254,7 @@ public class CliShimRegistrarTests : IDisposable
         Environment.SetEnvironmentVariable("DSH_DESKTOP_CLI_BIN_DIR", _oldBinDir);
         Environment.SetEnvironmentVariable("DSH_DESKTOP_CLI_RC_HOME", _oldRcHome);
         Environment.SetEnvironmentVariable("DSH_DESKTOP_DSH_HOME", _oldDshHome);
-        try { Directory.Delete(Path.GetDirectoryName(_binDir)!, recursive: true); } catch { }
+        try { Directory.Delete(Path.GetDirectoryName(_binDir)!, recursive: true); } catch (Exception) { /* 夹具目录清理失败不影响断言 */ }
     }
 
     private bool IsWindows() => OperatingSystem.IsWindows();

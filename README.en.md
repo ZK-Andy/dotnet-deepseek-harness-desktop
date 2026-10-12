@@ -25,7 +25,7 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-1035%2F1035-brightgreen" alt="tests"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-1042%2F1042-brightgreen" alt="tests"></a>
   <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-63.59%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
@@ -108,6 +108,8 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ├── tests/DeepSeek.Harness.Desktop.Tests/          # xunit: shell / composition root
 ├── tests/DeepSeek.Harness.Desktop.Core.Tests/     # xunit: Core
 ├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit: Infrastructure
+├── tests/DeepSeek.Harness.Desktop.Analyzers.Tests/      # xunit: DSH0001 analyzer behavior contract
+├── tools/DeepSeek.Harness.Desktop.Analyzers/            # Roslyn custom analyzer (D003 machine enforcement)
 ├── scripts/                                    # gates + package-*.sh + release-preflight.sh + release-notes.sh
 └── docs/architecture.md、testing.md、development.md
 ```

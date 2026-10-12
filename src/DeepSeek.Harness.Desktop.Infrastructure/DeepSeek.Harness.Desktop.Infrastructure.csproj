@@ -31,6 +31,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DeepSeek.Harness.Desktop.Core\DeepSeek.Harness.Desktop.Core.csproj" />
+    <!-- D003 机器化（DSH0001，自研分析器）：纯编译期工具引用，不产生程序集引用（R2 图不变）。 -->
+    <ProjectReference Include="..\..\tools\DeepSeek.Harness.Desktop.Analyzers\DeepSeek.Harness.Desktop.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

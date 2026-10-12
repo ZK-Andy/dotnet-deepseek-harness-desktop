@@ -4,8 +4,8 @@
 Implements the contract-scan channel from the architecture-mechanization ADR
 (`.agents/notes/proposed/process/2026-08-30-architecture-mechanization.md`).
 Unlike raw `grep`, this scanner strips comments, so a `Process.Start` inside a
-`///` doc comment or a `//` note does not count. D001–D003 stay with human
-review (needs Roslyn semantics); only D004/D005 are machine-scanned.
+`///` doc comment or a `//` note does not count. D003 is machine-enforced by the
+custom Roslyn analyzer (DSH0001, error); this script still covers only D004/D005.
 
   D004  log not via HostLog — `System.Console.WriteLine`/`Console.Write` in a
         file other than the whitelist (HostLog, compose-root diagnostics).

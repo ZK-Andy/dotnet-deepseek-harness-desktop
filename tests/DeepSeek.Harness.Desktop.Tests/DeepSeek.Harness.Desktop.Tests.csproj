@@ -54,6 +54,9 @@
     <ProjectReference Include="..\..\src\DeepSeek.Harness.Desktop\DeepSeek.Harness.Desktop.csproj" />
     <ProjectReference Include="..\..\src\DeepSeek.Harness.Desktop.Core\DeepSeek.Harness.Desktop.Core.csproj" />
     <ProjectReference Include="..\..\src\DeepSeek.Harness.Desktop.Infrastructure\DeepSeek.Harness.Desktop.Infrastructure.csproj" />
+    <!-- D003 机器化（DSH0001，自研分析器）：纯编译期工具引用，不产生程序集引用。 -->
+    <ProjectReference Include="..\..\tools\DeepSeek.Harness.Desktop.Analyzers\DeepSeek.Harness.Desktop.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

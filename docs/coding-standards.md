@@ -49,7 +49,7 @@
 
 ## 行为契约（async / 异常 / 日志）
 
-> 跨切面行为约定（代码级）的单一事实源。机器无法完全强制（D001–D003 靠评审/三重审核，见根 `AGENTS.md` 评审检查项）；`dotnet format`/build 门禁兜底格式面。
+> 跨切面行为约定（代码级）的单一事实源。D001（VSTHRD200）/D002（VSTHRD100）/D003（自研 DSH0001）由 build 门禁机器强制；`dotnet format`/build 门禁兜底格式面。
 
 **async / 取消**
 - `async` 方法以 `Async` 结尾（D001）；非事件处理器禁止 `async void`（D002）。
