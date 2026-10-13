@@ -37,6 +37,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-shell-standards.sh` | 脚本规范 S1-S6（errexit / 尺寸 ≤250 行 / 库不可执行且不自设选项 / 旋钮声明 / 共享库单源 / `shellcheck -S warning`），规范见 [script-standards](script-standards.md) | `bash scripts/verify-shell-standards.sh`（`--self-test` 夹具） |
 | `install-linters.sh` + `actionlint` | 脚本层静态检查工具（shellcheck + actionlint，版本与 sha256 双钉）与工作流静态检查（对 `run:` 块跑 `shellcheck -S warning`） | `bash scripts/install-linters.sh` → `actionlint -shellcheck="shellcheck -S warning"` |
 | `verify-compose-root.py` | 组合根语义闸（根只装配：方法清单封闭 / new 自有类型 ≤16 / 单 dot 分部 / 禁同步编排；`--enforce` 才 fail） | `python3 scripts/verify-compose-root.py` |
+| `verify-upstream-anchors.py` | 注入面依赖的上游锚点（DOM 类名后缀 / `--dsw-*` 设计变量）在已装 dsh 的客户端资产里是否仍在；required 缺失 `--enforce` 才 fail，另两条恒红（显式 `--dsh-root` 非包根 / 包根下无客户端资产） | `python3 scripts/verify-upstream-anchors.py` |
 | `verify-review-brief.py` | 评审简报形状 + 评审对象冻结 + 轮次纪律（轮次上限、标题↔文件名互校、处置段与条目、验轮 `base` 须为上一轮冻结 tree 且增量非空）（`--enforce`；简报是 gitignore 本地文档） | `python3 scripts/verify-review-brief.py --enforce` |
 | `change-scope.sh` | `push` 前最小证据（`merge-base` diff） | `scripts/change-scope.sh` |
 
@@ -58,10 +59,11 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-code-health.py` / `verify-code-conventions.py` | ✓（`--enforce`） | ✓ | — |
 | `verify-review-tier.py` | ✓（`--since`） | ✓（`--staged`） | ✓（`--since origin/main`） |
 | `verify-ui-copy.py` | ✓（`--self-test` + 全量） | — | — |
+| `verify-upstream-anchors.py` | —（探本地已装 dsh；`docs` job 无全局 dsh——走另立的 `upstream-anchors.yml`） | — | — |
 | `package-version.sh` | ✓（`--self-test`；判据本体在打包腿调用链上） | — | — |
 | `change-scope.sh` | — | — | ✓（取证型，非判据：`\|\| true` 只打印范围） |
 
-`CI` (`ci.yml`)：`docs` job 无条件跑上表全部门禁，另跑两道**工具门**（`actionlint` 工作流静态检查 + `shellcheck -S warning`，工具由 `install-linters.sh` 钉版装）与**离线夹具自测**（三平台冒烟共用面、包布局三平台分支、三包脚本共用头部与 Inno 模板渲染——这些逻辑平时只在 tag/dispatch 打包腿上执行）；`build-test` job 三平台矩阵（ubuntu/windows/macos，`fail-fast: false`；ADR cross-process-filelock-semantics），只在 code 面命中时跑——code 面含 `src/**`、`tests/**`、`scripts/**`、`*.slnx`、`.editorconfig`、`Directory.*.props`、`global.json` 与 `ci.yml` 自身（结构级构建输入都能翻转 build/format 结论，漏判即整条 format 门禁跳过）。format 门禁与 `test with coverage`（每测试工程一个 cobertura，`coverage summary` 步合并后**比对基线**，`upload-artifact 7d`）仅 ubuntu 腿，windows/macos 腿跑清扫/资产锁两测试类全量。
+`CI` (`ci.yml`)：`docs` job 无条件跑上表全部门禁，另跑两道**工具门**（`actionlint` 工作流静态检查 + `shellcheck -S warning`，工具由 `install-linters.sh` 钉版装）与**离线夹具自测**（三平台冒烟共用面、包布局三平台分支、三包脚本共用头部与 Inno 模板渲染——这些逻辑平时只在 tag/dispatch 打包腿上执行）；`build-test` job 三平台矩阵（ubuntu/windows/macos，`fail-fast: false`；ADR cross-process-filelock-semantics），只在 code 面命中时跑——code 面含 `src/**`、`tests/**`、`scripts/**`、`*.slnx`、`.editorconfig`、`Directory.*.props`、`global.json` 与 `ci.yml` 自身（结构级构建输入都能翻转 build/format 结论，漏判即整条 format 门禁跳过）。format 门禁与 `test with coverage`（每测试工程一个 cobertura，`coverage summary` 步合并后**比对基线**，`upload-artifact 7d`）仅 ubuntu 腿，windows/macos 腿跑清扫/资产锁两测试类全量。另一条独立工作流 [`.github/workflows/upstream-anchors.yml`](../.github/workflows/upstream-anchors.yml)（`schedule` 每周 + `workflow_dispatch` + 改自身路径时 `push`）装 `@deepseek-ai/dsh@next` 后跑 `verify-upstream-anchors.py --enforce`，盯注入面依赖的上游锚是否被上游改名——独出于 `ci.yml` 是因为它探的是上游包、需要一次 npm 安装，不该压在每次 push 上（判据、tier 语义与通道规则见 [ADR](../.agents/notes/implemented/process/2026-10-13-upstream-anchor-probe.md)）。
 
 ## 冒烟与集成
 

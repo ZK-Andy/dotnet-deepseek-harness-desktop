@@ -84,6 +84,7 @@ python3 scripts/verify-compose-root.py   # 组合根语义闸（根只装配：�
 python3 scripts/verify-registration-discipline.py # 注册点纪律闸（R1：基础设施具体类型只许出现在注册处：Presentation 注册外直接 new ≤1/静态调用 ≤11；--enforce 才 fail）
 python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）
 python3 scripts/verify-ui-copy.py    # UI 文案单一词典（UiCopy.cs 为唯一家；四条不变量：消费文件零 CJK 字面量 + index.html 登记 + EN 字典↔`*En` 常量全等 + client.js zh/en 键集相等）
+python3 scripts/verify-upstream-anchors.py # 上游锚点探测（注入面依赖的 DOM 类名后缀/`--dsw-*` 设计变量在已装 dsh 客户端资产里是否仍在；required 缺失 report 默认、--enforce 才 fail；另两条恒红：显式 --dsh-root 非包根、包根下无客户端资产）
 python3 scripts/verify-skill-format.py    # 技能格式（frontmatter/目录束/内链/结构）
 python3 scripts/verify-review-tier.py     # 评审档机械判定（--staged/--since；FULL 缺 Review 证据即拦——进 pre-commit/pre-push/CI）
 python3 scripts/verify-review-brief.py    # 评审简报（本地评审启动门禁：FULL 需 R1/R2/R3 简报齐、LIGHT 需 R2；简报 gitignore 不入 CI——见 review-scope-narrowing §4）

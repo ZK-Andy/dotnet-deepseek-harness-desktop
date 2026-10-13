@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-14 — 本篇的通道结论（跟版到 `@alpha`）已失效：通道经 [`2026-09-29-dsh-follow-next-channel`](2026-09-29-dsh-follow-next-channel.md) 收敛为 `@next`，语义（`@next` = 正式版通道、`@alpha` = 预览版、不作产品默认）由 [`2026-10-13-upstream-anchor-probe`](../process/2026-10-13-upstream-anchor-probe.md) 锁定。正文其余决定（单份全局 dsh、node 走系统全局、删除独立运行时）仍现行，不改。
+
 ## Problem
 
 早期"自带运行时/闭包"模型虽有转向 online-first，但转向**不彻底**：桌面仍维护一份**独立的下载运行时**（`~/.dsh-desktop/runtime`），与用户自装的 CLI dsh 并存，两者共用同一 `~/.dsh` 共享 home，存在**版本分叉 → 会话数据不兼容**的隐患（历史上出现过）。用户在讨论中明确：我们要的是**一台机器只有一份 dsh**，桌面依赖它，不要自己的运行时。

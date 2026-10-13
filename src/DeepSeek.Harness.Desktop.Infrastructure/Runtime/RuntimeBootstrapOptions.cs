@@ -10,7 +10,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// </summary>
 public sealed record RuntimeBootstrapOptions
 {
-    /// <summary>dsh 的安装 spec（跟随 next 预发布通道，见 ADR simple-shell-single-global-dsh）。</summary>
+    /// <summary>dsh 的安装 spec（正式版通道 = <c>@next</c>；<c>@alpha</c> 为预览版，不作产品默认。见 ADR simple-shell-single-global-dsh）。</summary>
     public string DshSpec { get; init; } = "@deepseek-ai/dsh@next";
 
     /// <summary>单个下载/安装步骤的超时（分钟）。</summary>

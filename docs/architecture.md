@@ -29,8 +29,8 @@
 
 ## 运行时来源（系统全局 node + 全局 dsh）
 
-* **运行时 = 全机唯一一份全局 dsh**（用户 PATH，`@deepseek-ai/dsh@next`；ADR `2026-08-31-simple-shell-single-global-dsh`）：安装器不携带运行时闭包，dsh 版本只读探测走 PATH（`RuntimeVersionGate.ProbeAsync`）。
-* PATH 上无全局 dsh 时进入**首启引导**（`RuntimeBootstrap`，spawn dsh 前完成）：确保系统全局 node（复用 PATH 上用户 node/npm；无则下载官方 node 装到系统全局前缀，写系统位需 sudo 时提示手动命令）→ `npm install -g @deepseek-ai/dsh@next` → 验证 `dsh --version`。进度页可见、失败可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
+* **运行时 = 全机唯一一份全局 dsh**（用户 PATH 上自装；ADR `2026-08-31-simple-shell-single-global-dsh`）：安装器不携带运行时闭包，dsh 版本探测走 PATH（`RuntimeVersionGate.ProbeAsync`，只读、不改动用户已有的安装）。
+* PATH 上无全局 dsh、或探测到的版本低于兼容底线时进入**首启引导**（`RuntimeBootstrap`，spawn dsh 前完成）：确保系统全局 node（复用 PATH 上用户 node/npm；无则下载官方 node 装到系统全局前缀，写系统位需 sudo 时提示手动命令）→ `npm install -g @deepseek-ai/dsh@next`（**`@next` = 正式版通道；`@alpha` 为预览版，不作产品默认**；引导只在此二条件之一成立时写通道）→ 验证 `dsh --version`。进度页可见、失败可重试（`desktop.bootstrap.retry`）；引导落定前监督器与插件安装均被门控。
 
 ## 监督、单实例与退出
 
