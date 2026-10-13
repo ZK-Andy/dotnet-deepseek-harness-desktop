@@ -54,6 +54,10 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 
 web 检索一律 anysearch 插件（唯一搜索后端，已 Provider 级接管）；GitHub 归 gh。路由表见 [.agents/workflows/search-routing.md](.agents/workflows/search-routing.md)。
 
+## 工具调用纪律（强制）
+
+探索性命令必须合并为单次复合调用；结构未知时最多两跳（一次 dump 结构、一次按结构取数）。禁止「猜一层、看一层」的串行探测：每次工具结果与中间判断都永久留在上下文里，拆得越碎占用涨得越快。本纪律覆盖本机文件排查、插件检查、日志定位等一切探索，不限于 GitHub 调研——gh 场景的截断与并行细则见 [.agents/workflows/github-research.md](.agents/workflows/github-research.md)。门禁无法校验此项（机器看不到工具调用形态），违反即视为工具使用缺陷。
+
 ## Git 纪律
 
 - **等待纪律**：任何 shell 等待单次 ≤ 30 秒；等 CI 等长事件用 `gh run watch` / 间隔轮询，期间并行做收尾作业，禁止长 sleep。
