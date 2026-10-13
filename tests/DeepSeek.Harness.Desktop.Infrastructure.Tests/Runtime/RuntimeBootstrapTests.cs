@@ -205,7 +205,7 @@ public class RuntimeBootstrapTests
         Assert.DoesNotContain(calls, c => c.StartsWith("run:tar", StringComparison.Ordinal));
     }
 
-    /// <summary>验证 npm install -g 参数含全局标志与 @next spec（装/更新到 next 预发布通道）。</summary>
+    /// <summary>验证 npm install -g 参数含全局标志与 @next spec（装/更新到 @next 正式版通道）。</summary>
     [Fact]
     public async Task RunAsync_InstallArgs_ContainGlobalAndNextSpec()
     {

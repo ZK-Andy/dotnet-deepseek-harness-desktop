@@ -35,7 +35,7 @@
 
 ## 功能
 
-- ⚡️ **简单壳、依赖系统全局 node + 全局 dsh（online-first）** — 安装器只带壳（约 30MB 级），不运输行时闭包。首启检测用户 PATH 上的全局 dsh：没有 → 经全局 node 的 `npm install -g @deepseek-ai/dsh@next` 装到系统全局位；落后 `@next` → 更新到 `@next`；已最新 → 直接用。**dsh 跟随 next 预发布通道，不钉版**。node 检查/下载只在"需要确保 dsh"时做一次（复用系统全局 node；无则桌面下载最新官方 node 装到系统全局位，写系统位需 sudo 时给出手动安装命令），不做重复联网。壳在共享数据目录 `~/.dsh` 以专属 `desktop` profile 拉起 dsh。会话/凭据/插件与 CLI、TUI、Web **同一宇宙互通**。
+- ⚡️ **简单壳、依赖系统全局 node + 全局 dsh（online-first）** — 安装器只带壳（约 30MB 级），不运输行时闭包。首启检测用户 PATH 上的全局 dsh：没有 → 经全局 node 的 `npm install -g @deepseek-ai/dsh@next` 装到系统全局位；落后 `@next` → 更新到 `@next`；已最新 → 直接用。**dsh 跟随 `@next` 正式版通道，不钉版**。node 检查/下载只在"需要确保 dsh"时做一次（复用系统全局 node；无则桌面下载最新官方 node 装到系统全局位，写系统位需 sudo 时给出手动安装命令），不做重复联网。壳在共享数据目录 `~/.dsh` 以专属 `desktop` profile 拉起 dsh。会话/凭据/插件与 CLI、TUI、Web **同一宇宙互通**。
 - ⌨️ **终端命令（CLI shim 注册）** — dsh 已全局在 PATH；壳把内容恒定的 `pnpm` shim 注册到用户 `PATH`（Windows `%LOCALAPPDATA%\deepseek-harness\bin` + `HKCU\Environment\Path` 幂等合并；mac/linux `~/.local/bin` + shell rc 幂等块；dsh 无需 shim），终端可直接用 `pnpm`。不覆盖用户自己的同名命令。
 
 - 🔒 **原生轻量壳** — C# 后端跑在系统 WebView（WebView2 / WKWebView / WebKitGTK），NativeAOT 就绪，能力沙箱 deny-by-default（`ryn.json`）。
