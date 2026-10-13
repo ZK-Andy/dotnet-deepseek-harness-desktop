@@ -57,13 +57,15 @@ else
   echo "  (origin/main 不存在，跳过——CI 仍会全量拦截)"
 fi
 
-# 增量纪律闸（耦合左移②，report 先行：outgoing 区间 gross/单文件/扇出/新包只打印
-# OVER 行；超大气泡在 push 前给早信号，CI 端同口径复核）
-echo "-> verify-increment-discipline.py --since origin/main"
+# 增量纪律闸（耦合左移②：outgoing 区间四帽，超帽在 push 前拦下；CI 端同口径复核）。
+# base 取 merge-base：origin/main 已前进而本支未合并时，两点区间会把上游提交算作
+# 本批的删除行、gross 虚高（上方 OUTGOING 变更面的三点区间同理）。
 if git rev-parse --verify origin/main >/dev/null 2>&1; then
-  python3 scripts/verify-increment-discipline.py --since origin/main
+  BASE="$(git merge-base origin/main HEAD)"
+  echo "-> verify-increment-discipline.py --since $BASE --enforce"
+  python3 scripts/verify-increment-discipline.py --since "$BASE" --enforce
 else
-  echo "  (origin/main 不存在，跳过——CI 仍会全量拦截)"
+  echo "-> verify-increment-discipline.py 跳过（origin/main 不存在——CI 仍会全量拦截）"
 fi
 
 echo "pre-push OK"

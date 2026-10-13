@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify PR increment discipline (coupling shift-left gate ②, report-first).
+"""Verify PR increment discipline (coupling shift-left gate ②, enforcing).
 
 Large diffs are where coupling hides: a 500-line PR is unreviewable no
 matter how clean each hunk looks, and new references to Infrastructure
@@ -10,24 +10,31 @@ gross p90=545/max=1812, single-file-net p90=170/max=360,
 fan-out(code-only short-name refs) nonzero in 27/100 with max=76,
 new package refs in 1/100. Caps below sit near p90: sensitive enough
 to flag, loose enough that every historical OVER passed FULL review
-anyway — so the gate ships report-first and `--enforce` stays unwired
-until one batch of live report data firms the lines (see ADR).
+anyway. Report-first ran from 2026-10-12 to the first live batch, whose
+only OVER was a brand-new 362-line gate script — a shape with nothing to
+split or trim, since a file the diff adds has its whole length as net
+gain. So `--enforce` is live (hooks + CI) and file-max reads growth of
+files that already existed at BASE only (ADR coupling-increment-enforce).
 
 Metrics over one diff moment (`--staged` = index vs HEAD for pre-commit,
 `--since BASE` = BASE..HEAD for pre-push/CI, default = worktree vs HEAD):
 
-  gross      added + deleted lines over the diff (numstat).
-  file-max   largest single-file net gain (added - deleted).
+  gross      added + deleted lines over the diff (numstat), new files
+             included.
+  file-max   largest net gain (added - deleted) among files that existed
+             at BASE (ADR coupling-increment-enforce); gross already
+             bounds what a new file can contribute.
   fanout     added code references to Infrastructure-declared types
              (short names via the live type inventory, comments/strings/
              usings stripped by `gate_common.CSharpLineScanner`; one line
              can yield several refs).
   packages   added `PackageReference`/`PackageVersion` lines (.csproj/props,
              XML comments not stripped — a commented-out reference still
-             counts; acceptable at report level).
+             counts).
 
-Default is report-only (exit 0). `--enforce` exits 1 on any OVER.
-`--self-test` runs offline fixtures (no git needed).
+`--enforce` (what the hook/CI wiring passes) exits 1 on any OVER; without
+it a run is report-only. `--self-test` runs offline fixtures (one of them
+builds a throwaway git repo).
 A git failure is fail-loud (exit 1): an undeterminable diff is an error,
 never an empty change set.
 
@@ -37,23 +44,30 @@ Exit code 0 = pass, 1 = violations.
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gate_common import (CSharpLineScanner, NEW_EXPR_RE, STATIC_ACCESS_RE,
                           TYPE_DECL_RE)
 
-# Draft caps from the n=100 calibration (see module docstring): near-p90
-# report markers. --enforce compares against the same lines; wiring it is
-# a deliberate later change (FULL面) once live report data lands.
+# Caps from the n=100 calibration (2026-09-28..2026-10-12, ADR
+# coupling-increment-baseline): near-p90 lines, unchanged when `--enforce`
+# went live. Under the existing-only file-max measure that same window gives
+# p90=89/max=187, so 150 still sits between the two
+# (ADR coupling-increment-enforce).
 DEFAULT_MAX_GROSS = 600
 DEFAULT_MAX_FILE_NET = 150
 DEFAULT_MAX_FANOUT = 15
 DEFAULT_MAX_PACKAGES = 1
 DEFAULT_INFRA_SRC = "src/DeepSeek.Harness.Desktop.Infrastructure"
+# file-max is measured over pre-existing files only: `--diff-filter` takes an
+# include-list, so leaving `A` out drops exactly the files this diff adds.
+_EXISTING_DIFF_FILTER = "--diff-filter=CDMRTUXB"
 
 _USING_RE = re.compile(r"^\s*(?:global\s+)?using\s+")
 _PKG_RE = re.compile(r"PackageReference|PackageVersion")
@@ -74,10 +88,9 @@ def _diff_args(mode: str, since: str) -> list[str]:
     return ["diff", "HEAD"]
 
 
-def _metrics(numstat: str) -> tuple[int, int, str, int]:
-    """Return (gross, net, top_path, file_max) from `git diff --numstat` text."""
+def _metrics(numstat: str) -> tuple[int, str, int]:
+    """Return (gross, top_path, file_max) from `git diff --numstat` text."""
     gross = 0
-    net = 0
     top_path = ""
     file_max = 0
     for line in numstat.splitlines():
@@ -89,11 +102,29 @@ def _metrics(numstat: str) -> tuple[int, int, str, int]:
         except ValueError:
             continue  # binary files report `- -`
         gross += added + deleted
-        net += added - deleted
         if added - deleted > file_max:
             file_max = added - deleted
             top_path = parts[2]
-    return gross, net, top_path, file_max
+    return gross, top_path, file_max
+
+
+def _numstat_args(diff_args: list[str], existing_only: bool) -> list[str]:
+    """`--numstat` argv for one diff moment; existing_only drops added files."""
+    extra = [_EXISTING_DIFF_FILTER] if existing_only else []
+    return [*diff_args, "--numstat", *extra]
+
+
+def _sizes(numstat_all: str, numstat_existing: str) -> tuple[int, str, int]:
+    """(gross, top_path, file_max): volume over all files, file-max over existing.
+
+    A file the diff adds has no pre-existing size to grow — its whole length
+    is net gain, it cannot be split or trimmed, and gross already bounds it —
+    so only files present at BASE feed file-max
+    (ADR coupling-increment-enforce).
+    """
+    gross, _top, _file_max = _metrics(numstat_all)
+    _gross, top_path, file_max = _metrics(numstat_existing)
+    return gross, top_path, file_max
 
 
 def _infra_inventory(infra_src: Path, extra_lines: list[str]) -> set[str]:
@@ -178,8 +209,9 @@ def _plus_lines(diff_text: str) -> list[str]:
 
 def _measure(mode: str, since: str) -> dict:
     args = _diff_args(mode, since)
-    numstat = _git([*args, "--numstat"])
-    gross, net, top_path, file_max = _metrics(numstat)
+    numstat = _git(_numstat_args(args, existing_only=False))
+    numstat_existing = _git(_numstat_args(args, existing_only=True))
+    gross, top_path, file_max = _sizes(numstat, numstat_existing)
     cs_diff = _git([*args, "-U0", "--", "*.cs"])
     cs_sections = _plus_sections(cs_diff)
     cs_plus = [line for _, lines in cs_sections for line in lines]
@@ -188,7 +220,7 @@ def _measure(mode: str, since: str) -> dict:
     inventory = _infra_inventory(Path(DEFAULT_INFRA_SRC), cs_plus)
     fanout, examples = _fanout(cs_sections, inventory)
     packages = _packages(proj_plus)
-    return {"gross": gross, "net": net, "top_path": top_path,
+    return {"gross": gross, "top_path": top_path,
             "file_max": file_max, "fanout": fanout,
             "fanout_examples": examples, "packages": packages}
 
@@ -198,7 +230,7 @@ def _check(m: dict, caps: dict) -> list[str]:
     if m["gross"] > caps["gross"]:
         rows.append(f"  gross {m['gross']} > {caps['gross']} (split the PR or justify in the ADR)")
     if m["file_max"] > caps["file"]:
-        rows.append(f"  single-file net +{m['file_max']} > +{caps['file']} ({m['top_path'] or '?'})")
+        rows.append(f"  file-max(existing) +{m['file_max']} > +{caps['file']} ({m['top_path'] or '?'})")
     if m["fanout"] > caps["fanout"]:
         rows.append(f"  new infra refs {m['fanout']} > {caps['fanout']}")
         rows.extend(f"    e.g. {e}" for e in m["fanout_examples"])
@@ -210,12 +242,68 @@ def _check(m: dict, caps: dict) -> list[str]:
 def _self_test() -> int:
     failed = 0
 
-    gross, _, top, fmax = _metrics("10\t2\ta.cs\n0\t30\tb.cs\n-\t-\tbin.dat\n")
+    gross, top, fmax = _metrics("10\t2\ta.cs\n0\t30\tb.cs\n-\t-\tbin.dat\n")
     if (gross, top, fmax) == (42, "a.cs", 8):
         print("  ok: numstat gross/file-max (binary skipped)")
     else:
         print(f"  ✗ numstat: {(gross, top, fmax)}")
         failed = 1
+
+    # A file the diff adds is not file growth: only files present at BASE feed
+    # file-max, while gross still counts every file (ADR coupling-increment-enforce).
+    args_all = _numstat_args(["diff", "--cached"], existing_only=False)
+    args_existing = _numstat_args(["diff", "--cached"], existing_only=True)
+    if (args_all == ["diff", "--cached", "--numstat"]
+            and args_existing == ["diff", "--cached", "--numstat", _EXISTING_DIFF_FILTER]):
+        print("  ok: existing-only numstat args carry the filter that drops added files")
+    else:
+        print(f"  ✗ numstat args: all={args_all} existing={args_existing}")
+        failed = 1
+
+    sizes = _sizes("400\t0\tnew.py\n100\t20\texisting.py\n", "100\t20\texisting.py\n")
+    if sizes == (520, "existing.py", 80):
+        print("  ok: new-file net excluded from file-max, kept in gross")
+    else:
+        print(f"  ✗ sizes: {sizes}")
+        failed = 1
+
+    # End-to-end on a throwaway repo: the real git path decides which files the
+    # filter drops, so a dropped or inverted `--diff-filter` (lowercase letters
+    # are an EXCLUDE list) cannot pass unnoticed — the argv fixture above only
+    # states the intent, it compares the constant to itself.
+    with tempfile.TemporaryDirectory() as td:
+        repo = Path(td) / "e2e"
+        repo.mkdir()
+
+        def _e2e_git(*argv: str) -> None:
+            subprocess.run(["git", "-C", str(repo), *argv],
+                           check=True, capture_output=True, text=True)
+
+        _e2e_git("init", "-q")
+        _e2e_git("config", "user.email", "t@t")
+        _e2e_git("config", "user.name", "t")
+        (repo / "old.txt").write_text("base\n", encoding="utf-8")
+        (repo / "big.txt").write_text("x\n" * 100, encoding="utf-8")
+        _e2e_git("add", ".")
+        _e2e_git("commit", "-qm", "base")
+        (repo / "old.txt").write_text("base\n" + "added\n" * 80, encoding="utf-8")
+        (repo / "new.py").write_text("n\n" * 400, encoding="utf-8")
+        (repo / "big.txt").write_text("y\n" * 300, encoding="utf-8")
+        _e2e_git("mv", "big.txt", "rew.txt")
+        _e2e_git("add", "-A")
+        cwd = Path.cwd()
+        os.chdir(repo)
+        try:
+            m = _measure("staged", "")
+        finally:
+            os.chdir(cwd)
+        # old.txt +80 is the only pre-existing growth: new.py (added) and
+        # rew.txt (added side of a rename split at <50% similarity) are out.
+        if (m["gross"], m["top_path"], m["file_max"]) == (880, "old.txt", 80):
+            print("  ok: e2e — added files and rename add-side stay out of file-max")
+        else:
+            print(f"  ✗ e2e: gross={m['gross']} file_max={m['file_max']} top={m['top_path']}")
+            failed = 1
 
     inv = {"Engine"}
     n, _ = _fanout([("Shell/Bad.cs", ["var e = new Engine();",
@@ -249,7 +337,7 @@ def _self_test() -> int:
         print("  ✗ in-diff declarations missed")
         failed = 1
 
-    m = {"gross": 700, "net": 100, "top_path": "a.cs",
+    m = {"gross": 700, "top_path": "a.cs",
          "file_max": 200, "fanout": 20, "fanout_examples": ["e"],
          "packages": 2}
     rows = _check(m, {"gross": 600, "file": 150, "fanout": 15, "packages": 1})
@@ -270,7 +358,7 @@ def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--self-test":
         return _self_test()
 
-    parser = argparse.ArgumentParser(description="Verify PR increment discipline (gate ②, report-first)")
+    parser = argparse.ArgumentParser(description="Verify PR increment discipline (gate ②, enforcing)")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--staged", action="store_true", help="index vs HEAD (pre-commit)")
     group.add_argument("--since", default="", help="BASE..HEAD (pre-push/CI)")
@@ -279,7 +367,7 @@ def main() -> int:
     parser.add_argument("--max-fanout", type=int, default=DEFAULT_MAX_FANOUT)
     parser.add_argument("--max-packages", type=int, default=DEFAULT_MAX_PACKAGES)
     parser.add_argument("--enforce", action="store_true",
-                        help="exit 1 on any OVER (default: report only; wiring it is a later FULL change)")
+                        help="exit 1 on any OVER (default: report only)")
     args = parser.parse_args()
     mode = "staged" if args.staged else ("since" if args.since else "worktree")
 
@@ -292,13 +380,15 @@ def main() -> int:
     caps = {"gross": args.max_gross, "file": args.max_file,
             "fanout": args.max_fanout, "packages": args.max_packages}
     print(f"  gross: {m['gross']} (cap {caps['gross']}) | "
-          f"file-max: +{m['file_max']} {m['top_path'] or ''}(cap +{caps['file']}) | "
+          f"file-max(existing): +{m['file_max']} {m['top_path'] or ''}(cap +{caps['file']}) | "
           f"fanout: {m['fanout']} (cap {caps['fanout']}) | packages: {m['packages']} (cap {caps['packages']})")
     rows = _check(m, caps)
     for r in rows:
         print(r if r.startswith("  ") else f"  {r}")
     if rows:
-        print(f"increment-discipline: {len([r for r in rows if not r.startswith('    ')])} OVER (report-only)")
+        over = len([r for r in rows if not r.startswith("    ")])
+        mode = "enforced" if args.enforce else "report-only"
+        print(f"increment-discipline: {over} OVER ({mode})")
         if args.enforce:
             return 1
     else:

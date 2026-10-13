@@ -12,7 +12,7 @@ Review: FULL/2026-10-12/R1=ok R2=ok R3=ok
 
 1. 分类法五维（判据 + 本仓当前计数，2026-10-12 实测）：①注册外直构 R1a=1/1 ②注册外静态调用 R1b=11/11（本批降帽，零余量如初）③层内跨域引用（零机器覆盖，占位）④BCL 直调 D005（零命中）⑤单 PR 净增膨胀（本闸覆盖）。
 2. 基线分布（n=100，2026-09-28 至今全量提交）：gross p90=545/max=1812，净增 p90=+362/max=+618，单文件净增 p90=170/max=360；跨层扇出（短名法，注释/字符串/using/同层剔除）27/100 非零、max=76；新增包引用 1/100（本仓 D003 批自身）。token 字面法已实测证伪（n=100 得 0/100——global using 下代码面恒无 `Infrastructure.` 字面）。
-3. 闸 `scripts/verify-increment-discipline.py`：四 metric（gross/单文件净增/跨层扇出/新包）+ 帽（600/150/15/1，近 p90 报告线）+ `--staged`（pre-commit）/`--since`（CI）/默认 worktree + `--self-test` 5 夹具（numstat/扇出纯度/多引用逐计+`+++`头/in-diff 声明/四帽齐红）。report 先行：默认 exit 0 只打 OVER 行；`--enforce` 同帽比较、暂无接线，转正另走 FULL 变更。接线：pre-commit `--staged`（毫秒级）+ pre-push `--since origin/main`（outgoing 早信号，同 review-tier 口径）+ CI `--since $BASE`（与 review-tier 同 base；无 base 报 warning 跳过）+ CI 自测块。
+3. 闸 `scripts/verify-increment-discipline.py`：四 metric（gross/单文件净增/跨层扇出/新包）+ 帽（600/150/15/1，近 p90 报告线）+ `--staged`（pre-commit）/`--since`（CI）/默认 worktree + `--self-test` 8 夹具（numstat/既有文件过滤参数/新文件不入 file-max/临时仓库端到端/扇出纯度/多引用逐计+`+++`头/in-diff 声明/四帽齐红）。四帽同帽比较、三处接线均带 `--enforce`（转正经过与单文件帽只计既有文件的语义见 [increment-gate-enforce](2026-10-14-increment-gate-enforce.md)）。接线：pre-commit `--staged`（毫秒级）+ pre-push（base 取 `git merge-base origin/main HEAD`，outgoing 早信号）+ CI `--since $BASE`（与 review-tier 同 base；无 base 报 warning 跳过）+ CI 自测块。
 4. R1b 帽 15→11：组合根收官顺走 4 处后的自然冻结，改 `DEFAULT_MAX_STATIC_CALLS` 一行（注释同步）；`--enforce` 实仓 11/11 绿。
 5. 诚实局限：inventory 取当前树 + diff 内新增声明（历史 rename 致旧提交轻微欠计数）；多 commit 区间下单文件净增为区间累计（帽按单 PR 校准，区间用为近似）；扇出只计 Presentation/tests/tools 跨层。
 
@@ -27,8 +27,7 @@ Review: FULL/2026-10-12/R1=ok R2=ok R3=ok
 
 ## Consequences
 
-- 第②闸上线（report 位）：pre-commit `--staged` + pre-push `--since origin/main` + CI `--since` 三接线；OVER 行只提示拆分/评审，不拦路。
-- `--enforce` 转正条件：一批 report 活数据后另起 FULL 批（pre-commit/pre-push/CI 三处改 `--enforce` +R1b 式复核），本批不预埋。
+- 第②闸三接线（pre-commit `--staged` / pre-push / CI `--since`）均 `--enforce`：OVER 拦路，提示拆批或在 ADR 记理由；单文件帽只量既有文件（转正经过见 [increment-gate-enforce](2026-10-14-increment-gate-enforce.md)）。
 - R1b 回到零余量：新增静态调用即红；再降走迁移（进 DI/端口）。
 - cookbook 主档 2820（+16）：执行半记账落 `[调试]` 耦合条目续写；冻结 archive 不动。
 

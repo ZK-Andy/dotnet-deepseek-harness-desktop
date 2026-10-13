@@ -55,11 +55,10 @@ python3 scripts/verify-compose-root.py --enforce
 echo "-> verify-registration-discipline.py"
 python3 scripts/verify-registration-discipline.py --enforce
 
-# 9a3) 增量纪律闸（耦合左移②，report 先行：暂存集 gross/单文件净增/跨层扇出/新包引用
-#      只打印 OVER 行；OVER 不拦路，唯不可判定 diff（fail-loud）拦——见 ADR
-#      coupling-increment-baseline）
-echo "-> verify-increment-discipline.py --staged"
-python3 scripts/verify-increment-discipline.py --staged
+# 9a3) 增量纪律闸（耦合左移②：暂存集 gross/既有文件净增/跨层扇出/新包引用四帽，
+#      超帽即拦；不可判定 diff（fail-loud）亦拦——见 ADR coupling-increment-enforce）
+echo "-> verify-increment-discipline.py --staged --enforce"
+python3 scripts/verify-increment-discipline.py --staged --enforce
 
 # 9b) 脚本规范门禁（docs/script-standards.md 的机器强制面 S1-S6，含 shellcheck -S warning）。
 #     执行点与 CI 的 docs job 同源；缺 shellcheck 判红并提示 scripts/install-linters.sh
