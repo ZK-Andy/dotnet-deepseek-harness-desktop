@@ -2,7 +2,8 @@ namespace DeepSeek.Harness.Desktop.Core;
 
 /// <summary>
 /// 运行时监督（ADR runtime-supervisor-core-port：监督策略属 Core，宿主交互经 <see cref="IRuntimeHost"/> 端口）：
-/// dsh 子进程退出时自动恢复——先展示恢复屏，再重启 dsh，拿到新 URL 后由导航回调接回壳侧。
+/// dsh 子进程退出时自动恢复——先展示失败面，再重启 dsh，拿到新 URL 后交壳侧（重验铸币态，并按承载面
+/// 是否覆写过活动页决定是否补一次收口导航；本类自身不碰窗口，ADR 2026-10-14-recovery-navigation-gate-retirement）。
 /// 只重启子进程、不重启桌面进程（对应 proposed architecture ADR 的崩溃恢复）。
 /// </summary>
 public sealed class RuntimeSupervisor
@@ -13,7 +14,7 @@ public sealed class RuntimeSupervisor
     private readonly TimeSpan _failedRetryDelay;
     private readonly int _blockedLogEveryRounds;
     private readonly Func<bool, ValueTask> _showRecovery;
-    private readonly Func<Uri, ValueTask> _navigate;
+    private readonly Func<Uri, ValueTask> _onRecovered;
     private readonly Action<string>? _log;
 
     /// <summary>创建监督器。</summary>
@@ -23,9 +24,11 @@ public sealed class RuntimeSupervisor
     /// <param name="failedRetryDelay">恢复失败后的重试延迟（可调参数，同上）。</param>
     /// <param name="blockedLogEveryRounds">残留锁死同因重试的留痕步长：首轮必留痕，此后每隔该轮数
     /// 留痕一次（可调参数，同上；锁死重探本身仍按 failedRetryDelay 每轮执行，用户清理后秒级恢复）。</param>
-    /// <param name="showRecovery">展示恢复屏：参数为是否因残留锁死而展示（true = 带锁原因，
-    /// 恢复屏即 fail loud 界面；false = 普通崩溃原因）。</param>
-    /// <param name="navigate">导航 WebView 到新 URL。</param>
+    /// <param name="showRecovery">展示失败面：参数为是否因残留锁死而展示（true = 带锁原因，
+    /// 失败面即 fail loud 界面；false = 普通崩溃原因）。</param>
+    /// <param name="onRecovered">恢复回调：重启给出新 URL 后调用。壳侧据此重验铸币态（epoch 可能已换：
+    /// 新 secret/端口），并按失败面是否覆写过活动页决定是否补一次收口导航——**由壳侧实现决定，本类不自持窗口**
+    /// （ADR 2026-10-14-recovery-navigation-gate-retirement）。</param>
     /// <param name="log">日志回调（可选）。</param>
     public RuntimeSupervisor(
         IRuntimeHost host,
@@ -33,7 +36,7 @@ public sealed class RuntimeSupervisor
         TimeSpan recoveredRetryDelay,
         TimeSpan failedRetryDelay,
         Func<bool, ValueTask> showRecovery,
-        Func<Uri, ValueTask> navigate,
+        Func<Uri, ValueTask> onRecovered,
         Action<string>? log = null,
         int blockedLogEveryRounds = 60)
     {
@@ -43,7 +46,7 @@ public sealed class RuntimeSupervisor
         _failedRetryDelay = failedRetryDelay;
         _blockedLogEveryRounds = blockedLogEveryRounds;
         _showRecovery = showRecovery;
-        _navigate = navigate;
+        _onRecovered = onRecovered;
         _log = log;
     }
 
@@ -64,9 +67,8 @@ public sealed class RuntimeSupervisor
             try
             {
                 // 残留预检（ADR residue-lock-fail-loud）：verified 僵尸顺手杀；杀不掉/不敢杀
-                // 即跳过本轮重启——盲目 spawn 只会端口碰撞。恢复屏带锁原因（恢复页提示），
-                // failedRetryDelay 后重探（用户手动清理后自动恢复）。重探每轮照跑，只有同因
-                // 留痕按步长节流（首轮必留痕）。
+                // 即跳过本轮重启——盲目 spawn 只会端口碰撞。失败面带锁原因，failedRetryDelay 后重探
+                // （用户手动清理后自动恢复）。重探每轮照跑，只有同因留痕按步长节流（首轮必留痕）。
                 if (_host.TryDetectUnreapableResidue())
                 {
                     blockedRounds++;
@@ -74,7 +76,7 @@ public sealed class RuntimeSupervisor
                     {
                         _log?.Invoke("[supervisor] dsh 子进程退出，执行恢复…");
                         LogStderrTail();
-                        _log?.Invoke("[supervisor] 残留无法安全回收，跳过本轮重启（fail loud，恢复屏已带锁原因）");
+                        _log?.Invoke("[supervisor] 残留无法安全回收，跳过本轮重启（fail loud，失败面已带锁原因）");
                     }
 
                     await _showRecovery(true);
@@ -91,7 +93,7 @@ public sealed class RuntimeSupervisor
                 if (url is not null)
                 {
                     _log?.Invoke($"[supervisor] 重启成功 → {url}");
-                    await _navigate(url);
+                    await _onRecovered(url);
                 }
                 else
                 {

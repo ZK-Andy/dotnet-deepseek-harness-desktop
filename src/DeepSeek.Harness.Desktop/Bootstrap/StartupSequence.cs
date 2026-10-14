@@ -25,8 +25,6 @@ internal sealed partial class StartupSequence : IStartupSequence
     // 运行时起步用例（ADR 组合根机制收官先行批）：spawn→铸币→收 URL 下沉 Core 可单测；
     // 缺省实现以本编排器既有字段组装（测试经构造注入 fake）。
     private readonly IRuntimeStarter _runtimeStarter;
-    // 恢复周期起点（恢复屏展示时刻写入、收养导航读出：周期内有导航到达即页内已自刷）。
-    private DateTimeOffset _lastRecoveryShownAtUtc;
     // 「首次导航到达补注册顶栏脚本」的一次性闩（见 StartupSequence.Supervision 的 SetupCaptionBar）。
     private int _captionBarReregistered;
 
@@ -87,7 +85,7 @@ internal sealed partial class StartupSequence : IStartupSequence
         // 同步阻塞点仍在本方法：Run 链整体 async 化待 Ryn 线程模型审查，不在本批。
         _ = _runtimeStarter.StartAsync(host.Host, CancellationToken.None).GetAwaiter().GetResult();
 
-        // dsh web URL 就此收官：下游（监督器/收养导航）各自从宿主或回调取得 URL，
+        // dsh web URL 就此收官：下游（监督器/健康面）各自从宿主或回调取得 URL，
         // 无跨阶段消费点——不设阶段产出（死载荷会被 CompositionRootSequenceTests 拦下）。
     }
 

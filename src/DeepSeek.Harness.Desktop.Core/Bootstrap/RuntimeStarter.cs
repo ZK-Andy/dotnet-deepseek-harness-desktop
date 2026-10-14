@@ -62,7 +62,7 @@ public sealed class RuntimeStarter : IRuntimeStarter
             _ = await _mintAsync(webUrl.Value, _log ?? DropLog, ct).ConfigureAwait(false);
         }
 
-        // dsh web URL 就此收官：下游（监督器/收养导航）各自从宿主或回调取得 URL，
+        // dsh web URL 就此收官：下游（监督器/健康面）各自从宿主或回调取得 URL，
         // 无跨阶段消费点——调用方不设阶段产出（死载荷会被 CompositionRootSequenceTests 拦下）。
         return webUrl;
     }

@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
 /// <see cref="StartupSequence"/> 的监督与退出接线面：监督器装配（引导落定门控）、退出管道、
-/// 恢复屏、收养导航、页面健康观测与启动期告知接线。启动主链在 <c>StartupSequence.cs</c>。
+/// 失败面承载、恢复后铸币重验、页面健康观测与启动期告知接线。启动主链在 <c>StartupSequence.cs</c>。
 /// </summary>
 internal sealed partial class StartupSequence
 {
@@ -13,18 +13,17 @@ internal sealed partial class StartupSequence
     {
         // 监督器取消令牌源由组合根拥有（容器单例，寿命 = 本次 Run；释放随组合根作用域）。
         CancellationTokenSource cts = _app.App.Services.GetRequiredService<CancellationTokenSource>();
-        RynNavigationCallbacks navCallbacks = _app.App.Services.GetRequiredService<RynNavigationCallbacks>();
         var supervisor = new RuntimeSupervisor(
             host.Host,
             restartTimeout: TimeSpan.FromSeconds(_timeouts.SupervisorRestartTimeoutSeconds),
             recoveredRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorRecoveredRetryDelaySeconds),
             failedRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorFailedRetryDelaySeconds),
-            showRecovery: isLockBlocked => ShowRecoveryPageAsync(host, isLockBlocked),
-            navigate: url => NavigateAfterAdoptAsync(navCallbacks, url),
+            showRecovery: isLockBlocked => ShowFailureSurfaceAsync(host, isLockBlocked),
+            onRecovered: RevalidateAfterRecoveryAsync,
             log: HostLog.Write,
             blockedLogEveryRounds: _timeouts.SupervisorBlockedLogEveryRounds);
         // 引导期门控：宿主尚无 dsh 进程时 WaitForExitAsync 立即完成，监督器会空转进恢复循环
-        // 并用恢复屏覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
+        // 并覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
         var supervisorTask = Task.Run(async () =>
         {
             // 引导落定握手（理由见上方「引导期门控」注释；网 = BootstrapSettleGateTests）。
@@ -39,20 +38,20 @@ internal sealed partial class StartupSequence
         return new SupervisorSetup(cts, supervisorTask);
     }
 
-    /// <summary>恢复屏展示 + 恢复周期起点打点（ADR adopt-skip-navigate-on-self-reload）。</summary>
-    /// <param name="isLockBlocked">残留锁死跳过重启（ADR residue-lock-fail-loud）：原因取锁文案（恢复页提示），否则普通崩溃原因。</param>
-    private ValueTask ShowRecoveryPageAsync(HostSetup host, bool isLockBlocked = false)
+    /// <summary>失败面承载（ADR 2026-10-14-recovery-navigation-gate-retirement）：dsh 退出/重启等待期展示失败原因与
+    /// stderr 尾部。<b>以脚本覆写活动页 DOM</b>——页面与其 SPA 状态就此被毁，故恢复成功后的收口导航必需
+    /// （承载面切到不碰 DOM 的原生框后这次导航才可省，见该篇 Decision 3）。起手失效铸币态（ADR mint-epoch-mux-gate）：
+    /// dsh 死即 route 失效——代理 <c>/</c> 回落 holder，页面自刷落进门控（旧 route 指向已死进程时自刷只会落进 502 错误页）；
+    /// 失效幂等，cookie 保留待收养重验。</summary>
+    /// <param name="host">宿主（stderr 尾部来源）。</param>
+    /// <param name="isLockBlocked">残留锁死跳过重启（ADR residue-lock-fail-loud）：原因取锁文案，否则普通崩溃原因。</param>
+    private ValueTask ShowFailureSurfaceAsync(HostSetup host, bool isLockBlocked = false)
     {
-        // 周期起点：子进程退出后、RestartAsync 等待前。周期内的导航到达即页内自刷
-        // （市场 doRestart 轮询到新 boot 即 reload），收养 navigate 据此免导航。
-        _lastRecoveryShownAtUtc = DateTimeOffset.UtcNow;
-        // 铸币态 epoch 化（ADR mint-epoch-mux-gate）：dsh 死即 route 失效——代理 `/` 回落 holder、
-        // 页面自刷落进门控（旧 route 指向已死进程时自刷只会落进 502 错误页）。失效幂等：残留锁死分支
-        // 逐轮重入只在首轮翻转留痕，cookie 保留供收养重验。
         if (_shellForward.InvalidateRoute())
         {
             HostLog.Write("[shell] dsh 进程退出：铸币态失效，holder 门控重新武装（cookie 保留待收养重验）");
         }
+
         // 恢复页三件套（ADR diag-masking-and-recovery-page）：失败原因 + stderr 尾部展示 +
         // 导出诊断/退出动作。desktop.* 走 Ryn 层 IPC 不依赖 dsh 存活；数据经 textContent
         // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）。原因选择是域决策（UiCopy.RecoveryReason）；
@@ -65,32 +64,22 @@ internal sealed partial class StartupSequence
         return ValueTask.CompletedTask;
     }
 
-    /// <summary>收养后导航：epoch 可能已换（新 secret/端口）→ 先重验铸币态，再定导航。
-    /// 页内已自刷即免导航，只做收养登记（导航靶点恒为代理根）。</summary>
-    private ValueTask NavigateAfterAdoptAsync(RynNavigationCallbacks navCallbacks, Uri url)
+    /// <summary>恢复回调（监督器重启给出新 URL）：重验铸币态——epoch 可能已换（新 secret/端口），
+    /// 收养重验走 token-free 路径（ADR mint-epoch-mux-gate）；随后补一次回代理根的收口导航。
+    /// 本次导航在此<b>必需</b>：失败面以脚本覆写活动页 DOM（页面与其 SPA 状态已毁），导航是唯一回程；
+    /// 待失败面改由不碰 DOM 的原生承载，这次导航随之退场（ADR 2026-10-14-recovery-navigation-gate-retirement
+    /// 的 Alternatives 与承载面对照篇）。重验内部有超时兜底、失败 loud（转发 401/502 → 探针/失败面按错误页处理）。</summary>
+    /// <param name="url">重启后的 dsh 端点（仅供重验与日志；导航靶点恒为代理根）。</param>
+    private ValueTask RevalidateAfterRecoveryAsync(Uri url)
     {
-        // webUrl 恒代理根（导航靶点与健康 reload 靶点）；收养登记只刷新铸币态，dsh 旧 URL 不再进导航。
-        // 页面永驻代理内：Ryn dev-server 分支已自动信任代理源，无需逐跳授权；
-        // dsh 自指 3xx 由代理内部跟完，页内绝对 dsh 链接走导航回调外部策略（fail-closed），外链照走系统浏览器。
-        // 同步编排沿用既有形态：重验内部超时兜底，无 ct 位（收养回调无取消语义）；失败 loud，导航照发
-        // （转发 401/502 → 探针/恢复面按错误页处理）。
-        // 收养重验走 token-free 路径（ADR mint-epoch-mux-gate）。
         _ = _shellForward.RevalidateAsync(DshWebUrl.From(url), HostLog.Write, CancellationToken.None).GetAwaiter().GetResult();
-        // 免导航（ADR adopt-skip-navigate-on-self-reload）：周期内有到达即视为页内自刷
-        // （市场 doRestart 轮询到新 boot 即 location.reload；谓词只比时间戳，同源靠前提假设），
-        // 再导航即多余——只做收养登记，跳过实际导航。无到达时走壳单跳。
-        if (AdoptNavigateGate.ShouldSkipAdoptNavigate(navCallbacks.LastNavigatedAtUtc, _lastRecoveryShownAtUtc))
-        {
-            HostLog.Write($"[nav] 收养时恢复周期内已有页面到达（视为页内自刷，{url.GetLeftPart(UriPartial.Authority)}），跳过代理侧导航");
-            return ValueTask.CompletedTask;
-        }
-
         if (_proxy is null)
         {
-            HostLog.Write("[nav] 收养导航无代理源（回环绑定失败），跳过本次导航");
+            HostLog.Write("[nav] 恢复收口无代理源（回环绑定失败），跳过本次导航");
             return ValueTask.CompletedTask;
         }
 
+        HostLog.Write($"[nav] 恢复后重验铸币态并收口回代理根（{url.GetLeftPart(UriPartial.Authority)}）");
         return _app.WindowAccessor.Current.NavigateAsync(_proxy.Url);
     }
 

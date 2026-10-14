@@ -13,9 +13,9 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// <list type="bullet">
 /// <item><see cref="OnWebViewNavigating"/>：在原生引擎提交导航前裁决——用户发起的站外 http(s) 一律
 /// <see cref="NavigationDecision.Block"/> 并交给系统浏览器（经 <see cref="SystemBrowser"/>），同源 SPA
-/// 路由 / <c>ryn://</c> / <c>data:</c> 等非 http(s) scheme 放行；宿主程序化导航（崩溃恢复）放行。</item>
+/// 路由 / <c>ryn://</c> / <c>data:</c> 等非 http(s) scheme 放行；宿主程序化导航（鉴权重载/健康 reload）放行。</item>
 /// <item><see cref="OnWebViewNavigated"/>：导航已到达（内容实际提交）后留痕、刷新当前 origin，
-/// 并回调「到达」信号（<see cref="SetOnNavigated"/>，当前无宿主消费者，作可扩展能力保留）。</item>
+/// 并回调「到达」信号（<see cref="SetOnNavigated"/>；宿主消费者见该成员说明）。</item>
 /// </list>
 /// 本类为 instance：源生成器把依赖方法经 DI 解析 <c>GetRequiredService&lt;RynNavigationCallbacks&gt;</c>
 /// 后调用，故构造函数依赖必须在 DI 注册（DesktopAdapter.RegisterServices 用工厂覆盖无参注册）。
@@ -31,26 +31,11 @@ public sealed class RynNavigationCallbacks
     private string? _currentOrigin;
     private Action? _onNavigatedImpl;
     private Action? _onNavigatedPersistent;
-    private DateTimeOffset? _lastNavigatedAtUtc;
-    private readonly object _navStampGate = new();
     // 宿主亲手授权过的 origin（spawn 的 dsh loopback authority 形态，如 http://127.0.0.1:41449）：
     // 宿主编排的页内跳转（eval 首跳）在引擎眼里与用户点击无异，但目标本就是自家后端——放行。
     // 只增不减（端口漂移由新实例/新授权覆盖，旧端口留集无害：环回本机，无外站可冒充）。
     private readonly HashSet<string> _authorizedOrigins = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _originsGate = new();
-
-    /// <summary>最近一次导航到达时刻（UTC；尚无到达即 null）。收养免导航裁决的观测信号
-    /// （ADR adopt-skip-navigate-on-self-reload）：恢复周期内有到达即页内已自刷。</summary>
-    public DateTimeOffset? LastNavigatedAtUtc
-    {
-        get
-        {
-            lock (_navStampGate)
-            {
-                return _lastNavigatedAtUtc;
-            }
-        }
-    }
 
     /// <summary>创建导航回调。</summary>
     /// <param name="opener">打开外部 URL 的委托；null 时默认用系统默认浏览器（见 <see cref="SystemBrowser"/>）。</param>
@@ -122,8 +107,8 @@ public sealed class RynNavigationCallbacks
     [RynCallback(RynCallbackKind.WebViewNavigating)]
     public NavigationDecision OnWebViewNavigating(WebViewNavigatingContext context)
     {
-        // 只拦「用户主动发起」的导航：宿主程序化导航（崩溃恢复 NavigateAsync、SPA 内部重定向）
-        // 是 IsUserInitiated=false，必须放行，否则恢复流程会被本回调误拦（B1）。
+        // 只拦「用户主动发起」的导航：宿主程序化导航（鉴权重载/健康 reload、SPA 内部重定向）
+        // 是 IsUserInitiated=false，必须放行，否则自愈/重载会被本回调误拦（B1）。
         if (!context.IsUserInitiated)
         {
             return NavigationDecision.Allow;
@@ -171,10 +156,6 @@ public sealed class RynNavigationCallbacks
     public void OnWebViewNavigated(WebViewNavigatedContext context)
     {
         _currentOrigin = context.Url.GetLeftPart(UriPartial.Authority);
-        lock (_navStampGate)
-        {
-            _lastNavigatedAtUtc = DateTimeOffset.UtcNow;
-        }
 
         _log?.Invoke($"[nav] 导航已到达：{context.Url}（origin → {_currentOrigin}）");
         Volatile.Read(ref _onNavigatedImpl)?.Invoke();

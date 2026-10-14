@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-14 — 「母篇四步全落地／剩余：无」不成立：母篇第 1 条的导航/监督用例下沉未落（`StartupSequence` 构造期仍自解析共享态、`StartRuntime` 仍同步阻塞、`SetupCaptionBar` 仍在编排面拼脚本），母篇维持 proposed。正文与决定不动。
+
 Review: FULL/2026-10-08/R1=ok R2=ok R3=ok
 
 方案母篇见 [composition-mechanism-container-assembly](../../proposed/architecture/2026-10-08-composition-mechanism-container-assembly.md)（本篇落其 step-3"改名 + 闸改向"与递延的终态装配；step-1 见 [runtime-starter-core-usecase](2026-10-08-runtime-starter-core-usecase.md)，step-2a 见 [startupwiring-deletion-run-singletons](2026-10-08-startupwiring-deletion-run-singletons.md)，2b 见 [root-fields-zero-shared-state-singletons](2026-10-08-root-fields-zero-shared-state-singletons.md)）。

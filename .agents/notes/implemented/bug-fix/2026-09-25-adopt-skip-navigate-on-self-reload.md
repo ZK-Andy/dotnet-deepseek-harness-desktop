@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-14 — 免导航机制整体删除：判据最后一次命中为 2026-10-02，10-04 起每日 1–4 次收养全未命中，壳侧收养导航与 `AdoptNavigateGate`、到达时间戳观测一并退场（恢复路径零壳导航）。正文与决定保留为删除依据。见 [recovery-navigation-gate-retirement](../architecture/2026-10-14-recovery-navigation-gate-retirement.md)。
+
 Review: FULL/2026-09-25/R1=ok R2=ok R3=ok
 
 ## Problem
