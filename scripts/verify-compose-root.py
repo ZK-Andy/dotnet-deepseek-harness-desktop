@@ -8,7 +8,7 @@ methods and business predicates accrete on the composition root as new partial
 files, each dodging a per-file size budget.
 
 The root set is `Program.cs` + `DesktopAdapter*.cs` under the Presentation
-project. Six checks:
+project. Seven checks:
 
   C1  dot partials ≤ `--max-dot-partials` (default 1): the root is pinned to
       Program.cs + DesktopAdapter.cs + at most one dot partial.
@@ -16,7 +16,7 @@ project. Six checks:
       inventory. A NEW method name in the root is a violation — orchestration
       belongs in `Bootstrap/StartupSequence` or a domain service; a genuinely
       assembly-level method is added here deliberately (update inventory + ADR).
-  C3  `new` of self-owned concrete types in the root ≤ `--max-new` (default 16).
+  C3  `new` of self-owned concrete types in the root ≤ `--max-new` (default 6).
       Self-owned = a type declared anywhere under `--owned-src` (Core/
       Infrastructure/Presentation); Ryn/BCL types do not count. Target-typed
       `new()` is attributed via the assigned field/property type on the same
@@ -37,6 +37,12 @@ project. Six checks:
       attributed via the declared owner, unattributable ones reported;
       SEQUENCER_VALUE_TYPES is empty — reopening it needs its own ADR), and the
       sync bridge is capped at one.
+  C7  pre-Build assembly inventory: `Bootstrap/PreBuildRegistration*.cs` (the
+      registration-layer home that took over the root's pre-Build assembly,
+      ADR sequencer-resolution-injection) may construct only types listed in
+      PREBUILD_CONSTRUCTIBLE. C3 counts the root set alone, so without C7 the
+      moved constructions would sit outside every gate; here they stay a
+      deliberate inventory (reopening it needs its own ADR).
 
 Default is report-only (exit 0). `--enforce` exits 1 on any violation.
 `--self-test` runs offline fixtures.
@@ -59,7 +65,7 @@ DEFAULT_OWNED_SRC = (
     "src/DeepSeek.Harness.Desktop.Core",
     "src/DeepSeek.Harness.Desktop.Infrastructure",
 )
-DEFAULT_MAX_NEW = 16
+DEFAULT_MAX_NEW = 6
 DEFAULT_MAX_DOT_PARTIALS = 1
 
 # Assembly-level surface of the root, frozen at the form separation
@@ -68,50 +74,36 @@ DEFAULT_MAX_DOT_PARTIALS = 1
 ALLOWED_METHODS = {
     # Program.cs — CLI branch only.
     "Main",
-    "ExportDiagnostics",
     # DesktopAdapter.cs — container-before startup head.
     "Run",
     "ResolveSharedState",
-    "ResolveRuntimeAndDev",
     "AcquireSingleInstance",
     "StartProxy",
     # DesktopAdapter.App.cs — app assembly + registration call site.
-    "InitCloseGateAndUpdateStack",
     "BuildApp",
     "RegisterServices",
 }
 
-# Self-owned types the wiring layer may construct, frozen at step-3 of
-# ADR composition-mechanism-container-assembly. Entries are bare
-# type names; a name here asserts "this construction is assembly, not a new
+# Self-owned types the wiring layer may construct. Frozen at step-3 of
+# ADR composition-mechanism-container-assembly, then cut to six by ADR
+# sequencer-resolution-injection (C3 ballast): bootstrap head, update/tray
+# assembly and the runtime starter moved to `Bootstrap/PreBuildRegistration.cs`,
+# which is not in the root set (C7 guards that file's constructions). Entries are
+# bare type names; a name here asserts "this construction is assembly, not a new
 # coupling vector". New features resolve via DI; additions update this set
 # deliberately (+ ADR). Reference-shape params/locals stay R1 review scope.
 ROOT_CONSTRUCTIBLE = {
     # Trigger itself (Program.cs).
     "DesktopAdapter",
-    # Stage values (Bootstrap/StartupStages.cs value flow).
-    "Preflight",
-    "UpdateSetup",
-    "AppSetup",
-    # Container-registered singletons constructed here pre-Build
-    # (RunServicesRegistration + AddBootstrapSharedState): created once,
-    # resolved post-Build. Options (RuntimeTimeouts/CaptionBarOptions) load
-    # via fail-safe `Load`, never `new` — deliberately absent below.
+    # Container-before head: three of the four shared singletons are constructed
+    # here pre-Build (the fourth — RuntimeTimeouts — loads via fail-safe `Load`,
+    # so it costs no `new`); the shell forwarder is consumed by the proxy start
+    # before Build. Kept by design — ADR sequencer-resolution-injection.
     "UiLocale",
-    "DshShellForward",
-    # Pre-Build assembly surface (wiring-only construction, no orchestration):
-    # bootstrap/bootstrap-UI, tray/update stacks, locale store, runtime-starter
-    # instance (registered, resolved by the sequence assembly). Dotted sites
-    # attribute by last segment (`Tray.CloseGate` -> `CloseGate`).
     "DesktopUiLocaleStore",
-    "FirstBootBootstrapService",
-    "FirstBootUi",
-    "CloseGate",
-    "CloseBehaviorPreference",
-    "UpdateStackAdapter",
-    "UpdateCoordinator",
-    "TrayController",
-    "RuntimeStarter",
+    "DshShellForward",
+    # The Build product (Ryn returns the application; it cannot be resolved).
+    "AppSetup",
     # The single trigger construction, through the DI factory channel
     # (`ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>`): the wiring
     # layer assembles the orchestrator once. C3/C5 count that channel like `new`.
@@ -124,6 +116,26 @@ ROOT_CONSTRUCTIBLE = {
 SEQUENCER_VALUE_TYPES: set[str] = set()
 SEQUENCER_SYNC_BRIDGE_CAP = 1  # the runtime-starter step bridge; full async is separate
 SEQUENCER_GLOB = "StartupSequence*.cs"
+
+# Pre-Build assembly inventory (C7): `PreBuildRegistration*.cs` is the home that
+# took over the root's pre-Build assembly (ADR sequencer-resolution-injection).
+# C3 counts the root set only, so these constructions would otherwise be outside
+# every gate. They stay a deliberate inventory; reopening needs its own ADR.
+# DI-resolved services are absent by construction — only `new` sites (and the DI
+# factory channel) are listed.
+PREBUILD_GLOB = "PreBuildRegistration*.cs"
+PREBUILD_CONSTRUCTIBLE = {
+    "CloseBehaviorPreference",
+    "CloseGate",
+    "FirstBootBootstrapService",
+    "FirstBootUi",
+    "Preflight",
+    "RuntimeStarter",
+    "TrayController",
+    "UpdateCoordinator",
+    "UpdateSetup",
+    "UpdateStackAdapter",
+}
 
 # `Run()` must read as a call list: no branches/loops/exception structure.
 _SEQUENCER_CONTROL_RE = re.compile(
@@ -248,6 +260,43 @@ def _sequencer_violations(src: Path, owned: set[str]) -> list[str]:
     return out
 
 
+def _prebuild_files(src: Path) -> list[Path]:
+    bootstrap = src / "Bootstrap"
+    if not bootstrap.is_dir():
+        return []
+    return sorted(bootstrap.glob(PREBUILD_GLOB))
+
+
+def _prebuild_violations(src: Path, owned: set[str]) -> list[str]:
+    """C7: constructions in the pre-Build assembly home must be inventoried.
+
+    Both channels (`new` / DI factory, target-typed `new()`) count; the message
+    mirrors C5's remedy (resolve via DI or update the inventory deliberately).
+    """
+    out: list[str] = []
+    for path in _prebuild_files(src):
+        raws = path.read_text(encoding="utf-8").splitlines()
+        for code in CSharpLineScanner(raws).iter_cleaned():
+            for constructed in _constructed_names(code):
+                if constructed in owned and constructed not in PREBUILD_CONSTRUCTIBLE:
+                    out.append(
+                        f"  C7 {path.name}: pre-Build assembly constructs `{constructed}`"
+                        " (assembly moved here is a deliberate inventory — resolve via DI or"
+                        " update PREBUILD_CONSTRUCTIBLE + ADR)")
+            if _TARGET_NEW_RE.search(code):
+                owner = TARGET_OWNER_RE.search(code)
+                attributed = owner.group(1).split(".")[-1] if owner else None
+                if attributed in owned and attributed not in PREBUILD_CONSTRUCTIBLE:
+                    out.append(
+                        f"  C7 {path.name}: pre-Build assembly constructs `{attributed}`"
+                        " (target-typed `new()`; add it to PREBUILD_CONSTRUCTIBLE deliberately)")
+                elif owner is None:
+                    out.append(
+                        f"  C7 {path.name}: unattributable target-typed `new()` "
+                        "(attribute the declared type or write it explicitly)")
+    return out
+
+
 def _violations(src: Path, owned_srcs: list[Path],
                 max_new: int, max_dot_partials: int) -> tuple[list[str], int]:
     files = _root_files(src)
@@ -263,6 +312,7 @@ def _violations(src: Path, owned_srcs: list[Path],
 
     owned = _owned_types(owned_srcs)
     out.extend(_sequencer_violations(src, owned))
+    out.extend(_prebuild_violations(src, owned))
     new_count = 0
     for path in files:
         raws = path.read_text(encoding="utf-8").splitlines()
@@ -539,6 +589,35 @@ public sealed partial class DesktopAdapter
             failed = 1
         else:
             print("  ok: C6 stage-value whitelist empty")
+
+        # C7: the pre-Build assembly home is a deliberate inventory (ADR
+        # sequencer-resolution-injection) — C3 counts the root set only, so the
+        # constructions moved there need this closure. An unlisted owned type is
+        # flagged; the listed ones are not.
+        (domain / "PreBuildRegistration.cs").write_text(
+            "namespace Shell.Bootstrap;\ninternal static class PreBuildRegistration\n{\n"
+            "    public static object Make() => new StageValue(1);\n}\n", encoding="utf-8")
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        if any("C7 " in r and "StageValue" in r for r in rows):
+            print("  ok: C7 unlisted pre-Build construction flagged")
+        else:
+            print(f"  ✗ C7 not flagged: {rows}")
+            failed = 1
+        (domain / "PreBuildRegistration.cs").unlink()
+
+        # C7: the unattributable target-typed channel is reported too (parity with
+        # C5/C6) — a `new()` without a declared owner must not slip through silently.
+        (domain / "PreBuildRegistration.cs").write_text(
+            "namespace Shell.Bootstrap;\ninternal static class PreBuildRegistration\n{\n"
+            "    public static object Make() => Wrap(new());\n"
+            "    private static object Wrap(object value) => value;\n}\n", encoding="utf-8")
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        if any("C7 " in r and "unattributable" in r for r in rows):
+            print("  ok: C7 unattributable target-typed new flagged")
+        else:
+            print(f"  ✗ C7 unattributable not flagged: {rows}")
+            failed = 1
+        (domain / "PreBuildRegistration.cs").unlink()
 
         # C6: a source root without the sequencer set is reported, not skipped.
         missing = _sequencer_violations(Path(td) / "Nope", set())

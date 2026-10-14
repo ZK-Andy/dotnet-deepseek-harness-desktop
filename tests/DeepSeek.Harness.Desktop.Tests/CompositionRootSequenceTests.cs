@@ -20,10 +20,10 @@ public class CompositionRootSequenceTests
         string[] chain =
         [
             "WebkitSandboxFallback.Apply();",
-            "ResolveRuntimeAndDev(",
+            "PreBuildRegistration.CreatePreflight(",
             "AcquireSingleInstance(preflight, () => builtApp,",
             "StartProxy(shellForward);",
-            "InitCloseGateAndUpdateStack(",
+            "PreBuildRegistration.CreateUpdateAndTrayAssembly(",
             "BuildApp(preflight, proxy.Proxy, update, tray,",
             "ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>(builtApp.Services, app)",
             ".Run();",
@@ -42,9 +42,9 @@ public class CompositionRootSequenceTests
 
         string[] chain =
         [
-            "ProfileLifecycle.EnsureReady();",
-            "GetRequiredService<HostSetup>()",
-            "CompanionPreSpawn.EnsureInstalled(",
+            "_resolutions.Profile.EnsureReady();",
+            "_resolutions.Host.Value;",
+            "_resolutions.Companion.EnsureInstalled(",
             "StartRuntime(host)",
             "RunBootstrapIfNeeded()",
             "ShowTray()",
@@ -119,6 +119,7 @@ public class CompositionRootSequenceTests
         string[] sources = Directory.GetFiles(dir, "DesktopAdapter*.cs")
             .Concat(Directory.GetFiles(Path.Combine(dir, "Bootstrap"), "StartupSequence*.cs"))
             .Concat(Directory.GetFiles(Path.Combine(dir, "Bootstrap"), "StartupUseCaseRegistration.cs"))
+            .Concat(Directory.GetFiles(Path.Combine(dir, "Bootstrap"), "PreBuildRegistration.cs"))
             .OrderBy(p => p, StringComparer.Ordinal)
             .Select(File.ReadAllText)
             .ToArray();

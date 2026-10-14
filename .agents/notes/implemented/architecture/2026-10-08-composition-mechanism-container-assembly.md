@@ -6,7 +6,7 @@ Erratum: 2026-10-15 — Problem 段落点换家：`DesktopBootstrap.App.cs`/`Des
 
 Review: FULL/2026-10-15#3/R1=ok R2=ok R3=ok
 
-四步落地篇（按序）：[runtime-starter-core-usecase](2026-10-08-runtime-starter-core-usecase.md)、[startupwiring-deletion-run-singletons](2026-10-08-startupwiring-deletion-run-singletons.md)、[root-fields-zero-shared-state-singletons](2026-10-08-root-fields-zero-shared-state-singletons.md)、[desktop-adapter-rename-final-assembly](2026-10-08-desktop-adapter-rename-final-assembly.md)、step-1 的 [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md) 与 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)。
+四步落地篇（按序）：[runtime-starter-core-usecase](2026-10-08-runtime-starter-core-usecase.md)、[startupwiring-deletion-run-singletons](2026-10-08-startupwiring-deletion-run-singletons.md)、[root-fields-zero-shared-state-singletons](2026-10-08-root-fields-zero-shared-state-singletons.md)、[desktop-adapter-rename-final-assembly](2026-10-08-desktop-adapter-rename-final-assembly.md)、step-1 的 [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md) 与 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)；残留批 [sequencer-stage-value-retirement](2026-10-15-sequencer-stage-value-retirement.md)（波 A）与 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md)（波 B）。
 
 ## Problem
 

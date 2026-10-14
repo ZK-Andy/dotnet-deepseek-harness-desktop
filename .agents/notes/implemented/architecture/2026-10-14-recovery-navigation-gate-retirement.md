@@ -5,6 +5,8 @@ Status: implemented
 Erratum: 2026-10-15 — Testing 段引用的测试锚改名：`CompositionRootSequenceTests.StartupSequence_RecoveryStart_InvalidatesMintRoute` → `RuntimeSupervision_RecoveryStart_InvalidatesMintRoute`（锚移 `Core/Bootstrap/RuntimeSupervision.cs`；ADR [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md)）。正文与决定不动。
 Review: FULL/2026-10-14/R1=ok R2=ok R3=ok
 
+Erratum: 2026-10-15 — Testing 的门禁读数已变：compose-root 16/16 → **6/6**、registration 11/11 → **9/11**（[sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md)）。正文与决定不动。
+
 ## Problem
 
 窗口 URL 恒为回环代理根（[loopback-forward-proxy](2026-09-27-loopback-forward-proxy.md)）：路由不在 URL 里，落在哪由客户端自己的持久状态决定。恢复成功后壳导航回代理根重建整页——桌面形态下这次导航必然丢弃原路由，重建落点不受壳控制。

@@ -5,14 +5,16 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Bootstrap;
 /// post-packaging-churn-restructure 余批）。引导路径的孪生实现见
 /// <see cref="FirstBootBootstrapService.InstallBootstrapPluginsAsync"/>（同一
 /// <see cref="MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync"/>，日志口径按路径区分）。
+/// 实例用例（容器登记、编排器构造注入——ADR sequencer-resolution-injection）：原静态入口是 R1b
+/// 静态调用面；调用契约（宿主已建、spawn 前）仍由排序器语句序锚定。
 /// </summary>
-public static class CompanionPreSpawn
+public sealed class CompanionPreSpawn
 {
     /// <summary>安装随包插件（companion）到共享 home。调用时点契约：宿主已建、dsh spawn 之前
     /// （启动主链位置锚定该偏序，对齐参照 dsh-tauri-desk launch.rs：绝不「启动后 3s 装 → 重启」）。</summary>
     /// <param name="bootstrapNeeded">首启引导是否待执行（引导路径自含插件装配，此路径须让位防双装）。</param>
     /// <param name="launch">启动期 A 类配置：dev 显式覆盖共享 home 时跳过（防串扰）。</param>
-    public static void EnsureInstalled(bool bootstrapNeeded, LaunchOptions launch)
+    public void EnsureInstalled(bool bootstrapNeeded, LaunchOptions launch)
     {
         // 全局 dsh 模型（ADR simple-shell-single-global-dsh）：dsh 在 PATH 上，nodeExe/dshEntry 传 null，
         // EnsureBundledPluginsBeforeSpawnAsync 内回退到 PATH 上的 dsh 命令。跳过条件：

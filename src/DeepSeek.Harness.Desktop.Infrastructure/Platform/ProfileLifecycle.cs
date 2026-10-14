@@ -5,12 +5,14 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Platform;
 /// post-packaging-churn-restructure 余批）：migrate → 事务 recover → ensure → reconcile 四步用例编排，
 /// 与各步实现（<see cref="DesktopProfileBootstrap"/> / <see cref="PluginProfileTransaction"/>）同层共址。
 /// 必须在 spawn 前确保 profile 就绪；失败不阻断启动（dsh 起不来的后果由降级链路兜底）。
+/// 实例用例（容器登记、编排器构造注入——ADR sequencer-resolution-injection）：原静态入口是 R1b
+/// 静态调用面，实例化后调用点不再直呼基础设施类型；内部协作者（FS / 上游 CLI）端口化另立条目。
 /// </summary>
-public static class ProfileLifecycle
+public sealed class ProfileLifecycle
 {
     /// <summary>确保桌面 profile 就绪（幂等，已存在则零写入）。各步语义见方法内注释；任何一步抛出
     /// 均收口为命名日志（<c>catch</c> 命名所吞：profile 初始化失败，dsh 可能拒启）。</summary>
-    public static void EnsureReady()
+    public void EnsureReady()
     {
         // 桌面专属 profile 前置（ADR shared-home-desktop-profile / desktop-profile-rename）：
         // 先迁移旧名目录（上游 0.1.5-alpha.1 起 CLI 圈占字面名 desktop），再自举——上游对自定义 profile 名

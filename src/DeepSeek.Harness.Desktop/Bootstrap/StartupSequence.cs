@@ -1,6 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using Ryn.Plugins.Tray;
-
 namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
@@ -28,11 +25,15 @@ internal sealed partial class StartupSequence : IStartupSequence
     private readonly RuntimeTimeouts _timeouts;
     // 监督器取消令牌源（装配期创建、容器单例；寿命 = 本次 Run）：退出路径取消 + 监督/健康/告知任务共用。
     private readonly CancellationTokenSource _supervisorCts;
+    // 运行期解析面（ADR sequencer-resolution-injection）：受时点约束的运行期单例收成一份构造数据，
+    // Value 落在原解析点；排序器不持 IServiceProvider。
+    private readonly RuntimeResolutions _resolutions;
 
     /// <summary>创建编排服务（构造参数经容器解图，ADR 组合根机制收官终局的 B3）：共享态与用例依赖由
     /// 容器供给，接线层不再逐个手传；唯一例外是 <see cref="AppSetup"/>——Ryn 不把 <c>RynApplication</c>
     /// 登记进容器（<c>RynApplicationBuilder.Build()</c> 只返回实例），Build 后才存在的应用产出装不进解图，
-    /// 由接线层解析时显式供给。运行期单例中宿主/托盘在调用点经容器解析，取消令牌源经构造注入。</summary>
+    /// 由接线层解析时显式供给。运行期解析面经构造注入（<see cref="RuntimeResolutions"/>，Value 落在原解析点），
+    /// 取消令牌源亦经构造注入。</summary>
     /// <param name="app">应用装配产出（Build 后唯一装不进容器的值，显式供给）。</param>
     /// <param name="preflight">容器之前的头部产出（引导服务与启动配置）。</param>
     /// <param name="updates">自更新栈装配产出（协调器已装载）。</param>
@@ -40,6 +41,7 @@ internal sealed partial class StartupSequence : IStartupSequence
     /// <param name="runtimeStarter">运行时起步用例（spawn→铸币→收 URL）。</param>
     /// <param name="timeouts">运行时超时家（配置模型单例；编排期留痕与 join 预算消费）。</param>
     /// <param name="supervisorCts">监督器取消令牌源（容器单例；退出取消与监督/健康/告知任务共用）。</param>
+    /// <param name="resolutions">运行期解析面（Lazy 携带；Value 落在原解析点）。</param>
     public StartupSequence(
         AppSetup app,
         Preflight preflight,
@@ -47,7 +49,8 @@ internal sealed partial class StartupSequence : IStartupSequence
         InstanceListenerSetup instanceListener,
         IRuntimeStarter runtimeStarter,
         RuntimeTimeouts timeouts,
-        CancellationTokenSource supervisorCts)
+        CancellationTokenSource supervisorCts,
+        RuntimeResolutions resolutions)
     {
         _app = app;
         _preflight = preflight;
@@ -56,6 +59,7 @@ internal sealed partial class StartupSequence : IStartupSequence
         _runtimeStarter = runtimeStarter;
         _timeouts = timeouts;
         _supervisorCts = supervisorCts;
+        _resolutions = resolutions;
     }
 
     /// <summary>启动编排入口（排序器主链）：按语句序触发全部用例并返回进程退出码。
@@ -63,12 +67,12 @@ internal sealed partial class StartupSequence : IStartupSequence
     public int Run()
     {
         // profile 前置（migrate→recover→ensure→reconcile 用例编排住 Infrastructure.ProfileLifecycle）
-        ProfileLifecycle.EnsureReady();
+        _resolutions.Profile.EnsureReady();
         // 宿主装配产出（容器惰性单例）：首次解析即创建；必须先于随包插件安装与 spawn（偏序 = 宿主已建、spawn 前），
         // 偏序在本方法内自洽，不依赖组合根的 eager 解析兜底。
-        HostSetup host = _app.App.Services.GetRequiredService<HostSetup>();
+        HostSetup host = _resolutions.Host.Value;
         // 随包插件 spawn 前安装（策略谓词与安装住 Infrastructure.CompanionPreSpawn；偏序 = 宿主已建、spawn 前）
-        CompanionPreSpawn.EnsureInstalled(_preflight.Bootstrap.IsNeeded, _preflight.Launch);
+        _resolutions.Companion.EnsureInstalled(_preflight.Bootstrap.IsNeeded, _preflight.Launch);
         StartRuntime(host);
         RunBootstrapIfNeeded();
         ShowTray();
@@ -97,7 +101,7 @@ internal sealed partial class StartupSequence : IStartupSequence
         // 检测/下载/安装/验证后起 dsh，并把就位 URL 交回调接回壳侧导航；失败推错误态等待用户重试
         // （desktop.bootstrap.retry 经闸门放行）。引导未落定前监督器/插件安装均被门控——依赖序即插入位。
         // 就位后的铸币/等窗/终页裁决是 Core 用例（ADR 组合根机制收官 step-1 的 B1）。
-        Core.Ui.MainUiEntry entry = _app.App.Services.GetRequiredService<Core.Ui.MainUiEntry>();
+        Core.Ui.MainUiEntry entry = _resolutions.MainUiEntry.Value;
         _preflight.Bootstrap.Start((url, ct) => entry.RunAsync(url, ct));
     }
 
@@ -105,9 +109,9 @@ internal sealed partial class StartupSequence : IStartupSequence
     private void ShowTray()
     {
         // 托盘在组合根装配期构造（容器单例），ShowTray 必然晚于它
-        Tray.TrayController tray = _app.App.Services.GetRequiredService<TrayController>();
+        Tray.TrayController tray = _resolutions.Tray.Value;
         tray.Show(tray.IsAvailable
-            ? () => _app.App.Services.GetRequiredService<TrayService>()
+            ? () => _resolutions.TrayService.Value
             : null);
     }
 
@@ -143,7 +147,7 @@ internal sealed partial class StartupSequence : IStartupSequence
 
         // 非 orderly 退出路径（用户直接关窗使 Run 返回）与托盘有序退出共用同一单实例管道：
         // once-guard 使已回收路径的重复调用为 no-op（退出管道由容器单例供给）
-        _app.App.Services.GetRequiredService<ExitPipeline>().ReapRuntime();
+        _resolutions.ExitPipeline.Value.ReapRuntime();
         // 非 orderly 退出路径也要释放单实例锁地址：orderly 路径已 Dispose 过，幂等守卫保证此处安全
         _instanceListener?.Dispose();
         return 0;

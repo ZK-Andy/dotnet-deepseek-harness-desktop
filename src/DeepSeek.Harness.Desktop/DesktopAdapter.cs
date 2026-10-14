@@ -34,7 +34,7 @@ public sealed partial class DesktopAdapter
         RynApplication? builtApp = null;
         CurrentWindowAccessor? builtAccessor = null;
 
-        Preflight preflight = ResolveRuntimeAndDev(() => builtApp!.Services.GetRequiredService<HostSetup>().Host, () => builtAccessor!, () => uiLocale.IsEnglish);
+        Preflight preflight = PreBuildRegistration.CreatePreflight(() => builtApp!.Services.GetRequiredService<HostSetup>().Host, () => builtAccessor!, () => uiLocale.IsEnglish);
         if (!AcquireSingleInstance(preflight, () => builtApp, timeouts, out PrimaryListener? instanceListener))
         {
             return 0;
@@ -45,7 +45,7 @@ public sealed partial class DesktopAdapter
         HostSetup? hostSetup = null;
         try
         {
-            (UpdateSetup update, TrayController tray) = InitCloseGateAndUpdateStack(
+            (UpdateSetup update, TrayController tray) = PreBuildRegistration.CreateUpdateAndTrayAssembly(
                 preflight,
                 supervisorCts,
                 () => builtApp!.Services.GetRequiredService<IRynWindow>(),
@@ -79,7 +79,9 @@ public sealed partial class DesktopAdapter
     /// <summary>装配期共享态一次创建（2b 根字段归零：替代四个根字段）：运行时超时家（与 A 类启动配置同点解析
     /// 一次，见 <c>RuntimeTimeouts</c>）+ 自绘标题栏参数家（ADR frameless-uniform-caption-bar）+ 宿主 UI 语言
     /// 单点（ADR host-ui-locale：上次上报值经 profile 目录持久化，dsh 起来前也能取到）+ 壳转发器（构造即备好
-    /// HttpClient，无 I/O）。纯创建无时序依赖；长命共享态同时进容器单例（见 AddBootstrapSharedState）。</summary>
+    /// HttpClient，无 I/O）。纯创建无时序依赖；长命共享态同时进容器单例（见 AddBootstrapSharedState）。
+    /// 留在组合根是刻意的（ADR sequencer-resolution-injection）：这三笔构造属「容器之前头部」的一步，且壳转发器
+    /// 在 Build 前即被代理启动消费；其余装配期构造（引导装配、更新/托盘装配、运行时起步用例）归注册层。</summary>
     private static (RuntimeTimeouts Timeouts, CaptionBarOptions CaptionBar, UiLocale UiLocale, DshShellForward ShellForward) ResolveSharedState() =>
     (
         RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write),
@@ -87,27 +89,6 @@ public sealed partial class DesktopAdapter
         new UiLocale(new DesktopUiLocaleStore(HostLog.Write)),
         new DshShellForward()
     );
-
-    private static Preflight ResolveRuntimeAndDev(
-        Func<HarnessRuntimeHost> hostProvider,
-        Func<CurrentWindowAccessor> accessorProvider,
-        Func<bool> isEnglishProvider)
-    {
-        // 首启引导服务（R3 端口实现，ADR composition-root-value-flow-pipeline 批次 1）：全局 node/dsh
-        // 引导、插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主/窗口以
-        // 提供者延迟供给（调用点均晚于 Build 赋值，与原接线槽「注册早于赋值」语义等价）。
-        // UI 语言同样惰性：isEnglishProvider 在引导任务实际启动时求值，调用点必已就绪。
-        IFirstBootBootstrap bootstrap = new FirstBootBootstrapService(
-            hostProvider,
-            new FirstBootUi(accessorProvider),
-            isEnglishProvider,
-            HostLog.Write);
-        bootstrap.Resolve();
-
-        // A 类启动配置（批次 3 IOptions 化）：dev 判定与自动隔离下沉 Infrastructure（LaunchOptions.Resolve），
-        // 组合根不再散读 dev 标记环境变量。
-        return new Preflight(bootstrap, LaunchOptions.Resolve(HostLog.Write));
-    }
 
     /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：false = 已有主实例，调用方直接返回 0。
     /// 锁地址解析（XDG 回退/uid 隔离/dev 分域等平台策略）住 Infrastructure

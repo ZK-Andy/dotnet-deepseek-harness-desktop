@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-10-12/R1=ok R2=ok R3=ok
 
+Erratum: 2026-10-15 — Decision 1 的「R1b=11/11（零余量如初）」与 Consequences 的「R1b 回到零余量」已失准：静态域入口实例化后实仓 **9/11**（[sequencer-resolution-injection](../architecture/2026-10-15-sequencer-resolution-injection.md)）；帽值 11 未动，余量为 2。正文与决定不动。
+
 ## Problem
 
 耦合左移三闸只落了第①闸（注册点扫描）：第②闸（PR 增量闸：依赖扇出 diff + 单文件单 PR 净增上限，对标上游 `benchmark-next-package-dependency`）缺分类记账与基线分布。记账半（n=15）已落本篇 proposed；执行半需扩样、定帽、落闸、转（半）执行。

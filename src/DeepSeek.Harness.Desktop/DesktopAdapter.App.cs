@@ -6,65 +6,13 @@ using Ryn.Ipc;
 namespace DeepSeek.Harness.Desktop;
 
 /// <summary>
-/// <see cref="DesktopAdapter"/> 的应用装配面（唯一 dot 分部）：Ryn 应用构建、关窗闸门/自更新栈/托盘
-/// 控制器装配、命令路由注册（按域下沉为 <c>AddXxx()</c> 扩展，ADR compose-root-form-separation）。
+/// <see cref="DesktopAdapter"/> 的应用装配面（唯一 dot 分部）：Ryn 应用构建与命令路由注册（按域下沉为
+/// <c>AddXxx()</c> 扩展，ADR compose-root-form-separation）；关窗闸门/自更新栈/托盘控制器装配与引导装配
+/// 搬进 <c>Bootstrap/PreBuildRegistration.cs</c>（ADR sequencer-resolution-injection 的 C3 压舱）。
 /// 启动头部在 <c>DesktopAdapter.cs</c>；启动编排由容器组装（<c>Bootstrap.StartupSequence</c> 自解析）。
 /// </summary>
 public sealed partial class DesktopAdapter
 {
-    private (UpdateSetup Updates, TrayController Tray) InitCloseGateAndUpdateStack(
-        Preflight preflight,
-        CancellationTokenSource supervisorCts,
-        Func<IRynWindow> windowProvider,
-        Func<CurrentWindowAccessor?> accessorProvider,
-        Func<ExitPipeline> exitProvider,
-        UiLocale uiLocale)
-    {
-        // 关窗闸门/自更新栈/托盘控制器装配（原编排阶段 8 随形态分离归位组合根装配面）：构造只收
-        // 惰性委托与配置，与运行时产出无交互——装配移至 Build 之前（原 spawn→装配 反转为 装配→spawn，
-        // 见 ADR compose-root-form-separation 的等价排列论证）。
-        // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：托盘「退出」与自更新安装路径
-        // 先批准再 Close。用户普通关窗是否转隐藏由 closeBehavior 偏好裁决（默认 true 保持
-        // 历史行为）；托盘未就绪时拦截不生效（关窗直退）。
-        var closeGate = new Tray.CloseGate();
-        var closeBehavior = new CloseBehaviorPreference(
-            Path.Combine(HarnessRuntimeHost.ResolveDshHome(), CloseBehaviorPreference.FileName));
-
-        // 自更新协调器在此构造并装载（早于 BuildApp）：Application 用例住 Core（ADR
-        // update-coordinator-core-port），栈协作经 UpdateStackAdapter 四端口注入（一个适配器同型实现），
-        // UI 交接以委托闭包接线（PagePump/横幅/关窗闸门/退出管道）——根只装配，编排策略随用例可单测。
-        // 委托均在调用期求值（页面交互/后台任务），提供者赋值晚于本方法返回，与原接线槽语义等价。
-        var updateStack = new UpdateStackAdapter(HostLog.Write);
-        var updates = new UpdateCoordinator(
-            preflight.Launch.IsDev,
-            updateStack,
-            updateStack,
-            updateStack,
-            updateStack,
-            () => supervisorCts.Token,
-            state => PagePump.PushUpdateState(accessorProvider(), state),
-            (version, token) => PagePump.ShowBannerWhenReadyAsync(
-                accessorProvider()!, UpdateBanner.ReadyScript(version, uiLocale), token),
-            closeGate.ApproveExit,
-            () => accessorProvider()?.Current?.Close(),
-            ct => exitProvider().ScheduleExitFallback(ct),
-            HostLog.Write);
-        updates.Load();
-
-        // 托盘控制器在此构造（早于 BuildApp/ShowTray），窗口与 Ryn 服务以惰性委托注入——
-        // 控制器持有 hide-to-tray 拦截、唤回采样、菜单重建与关窗闸门/偏好（供路由构造注入）。
-        var tray = new TrayController(
-            windowProvider,
-            accessorProvider,
-            closeGate,
-            closeBehavior,
-            uiLocale,
-            updates.Machine,
-            HostLog.Write);
-
-        return (new UpdateSetup(updates), tray);
-    }
-
     private AppSetup BuildApp(Preflight preflight, DshLoopbackProxy? proxy, UpdateSetup update, TrayController tray, CancellationTokenSource supervisorCts, PrimaryListener? instanceListener, UiLocale uiLocale, CaptionBarOptions captionBar, RuntimeTimeouts timeouts, DshShellForward shellForward)
     {
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 IsReady）
@@ -159,12 +107,8 @@ public sealed partial class DesktopAdapter
         // 接线层只解析触发（R1）。
         services.AddStartupUseCases(preflight.Bootstrap, proxy);
         // 运行时起步用例（ADR 组合根机制收官终态装配）：spawn→铸币→收 URL 的依赖全在手
-        // （引导服务来自 Preflight，超时/铸币来自共享单例），此处登记实例，编排组装经容器供给。
-        services.AddSingleton<IRuntimeStarter>(new RuntimeStarter(
-            preflight.Bootstrap,
-            TimeSpan.FromSeconds(timeouts.SpawnTimeoutSeconds),
-            shellForward.MintAsync,
-            HostLog.Write));
+        // （引导服务来自启动头部，超时/铸币来自共享单例），构造住 Bootstrap.PreBuildRegistration。
+        services.AddSingleton<IRuntimeStarter>(PreBuildRegistration.CreateRuntimeStarter(preflight, timeouts, shellForward));
         services.AddRunHost();
         services.AddExitPipeline(supervisorCts, instanceListener);
         services.AddHealthMonitor(proxy);

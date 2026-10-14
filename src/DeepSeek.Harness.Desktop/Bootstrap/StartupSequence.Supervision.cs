@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
@@ -17,8 +15,7 @@ internal sealed partial class StartupSequence
         // 引导落定门控、监督循环、失败面承载与恢复回调全在 Core 用例（ADR 组合根机制收官 step-1 的 B2）；
         // 宿主经阶段产出收参，其余依赖容器供给。返回任务以局部流转，供退出路径 join
         // （ADR sequencer-stage-value-retirement）。
-        Core.Bootstrap.RuntimeSupervision supervision =
-            _app.App.Services.GetRequiredService<Core.Bootstrap.RuntimeSupervision>();
+        Core.Bootstrap.RuntimeSupervision supervision = _resolutions.Supervision.Value;
         return supervision.RunAsync(host.Host, _supervisorCts.Token);
     }
 
@@ -31,7 +28,7 @@ internal sealed partial class StartupSequence
         // 首拍延迟（HealthInitialDelaySeconds）避开启动空窗，探针异常按 Unknown 续跑。reload 委托
         // 恒为当前代理靶点（代理源恒定，未铸币时 holder 自 reload）；代理绑定失败时该窗口页面是
         // wwwroot 引导页（有内容 → Alive），不会进入 Dead 恢复分支——空态只是防御性兜底。
-        PageHealthMonitor monitor = _app.App.Services.GetRequiredService<PageHealthMonitor>();
+        PageHealthMonitor monitor = _resolutions.HealthMonitor.Value;
         _ = monitor.RunAsync(TimeSpan.FromSeconds(_timeouts.HealthInitialDelaySeconds), _supervisorCts.Token);
     }
 
@@ -39,14 +36,14 @@ internal sealed partial class StartupSequence
     /// 收官终局的 B3；注入时机与三路语义见该类）：解析用例即装。</summary>
     private void InstallCaptionBar()
     {
-        _app.App.Services.GetRequiredService<CaptionBarInstaller>().Install();
+        _resolutions.CaptionBarInstaller.Value.Install();
     }
 
     /// <summary>启动期告知任务触发（ADR shared-home-desktop-profile）：用例编排住 <see cref="StartupNoticeService"/>，
     /// 展示面闭包与脏退标志在注册处（<c>StartupUseCaseRegistration</c>）装配；此处只按序触发。</summary>
     private void StartupNoticeTask()
     {
-        StartupNoticeService notices = _app.App.Services.GetRequiredService<StartupNoticeService>();
+        StartupNoticeService notices = _resolutions.StartupNotices.Value;
         _ = Task.Run(() => notices.RunAsync(_supervisorCts.Token));
     }
 }

@@ -1,6 +1,7 @@
 using DeepSeek.Harness.Desktop.Core.Ui;
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Core;
+using Ryn.Plugins.Tray;
 
 namespace DeepSeek.Harness.Desktop.Bootstrap;
 
@@ -75,6 +76,24 @@ internal static class StartupUseCaseRegistration
                 ct => PagePump.ShowBannerWhenReadyAsync(
                     accessor, DesktopBanner.BuildUncleanExitBanner(uiLocale), ct));
         });
+        // 排序器运行期解析面（ADR sequencer-resolution-injection）：两个基础设施用例为实例单例
+        // （原静态入口是 R1b 静态调用面），九项运行期单例以 Lazy 携带——Value 落在原解析点，
+        // 保「宿主首解即建宿主、晚于 profile 前置」与「窗口就绪后才碰页面面」两处时点。
+        services.AddSingleton<ProfileLifecycle>();
+        services.AddSingleton<CompanionPreSpawn>();
+        services.AddSingleton(sp => new RuntimeResolutions(
+            sp.GetRequiredService<ProfileLifecycle>(),
+            sp.GetRequiredService<CompanionPreSpawn>(),
+            new Lazy<HostSetup>(() => sp.GetRequiredService<HostSetup>()),
+            new Lazy<Core.Bootstrap.RuntimeSupervision>(
+                () => sp.GetRequiredService<Core.Bootstrap.RuntimeSupervision>()),
+            new Lazy<ExitPipeline>(() => sp.GetRequiredService<ExitPipeline>()),
+            new Lazy<Core.Ui.MainUiEntry>(() => sp.GetRequiredService<Core.Ui.MainUiEntry>()),
+            new Lazy<CaptionBarInstaller>(() => sp.GetRequiredService<CaptionBarInstaller>()),
+            new Lazy<StartupNoticeService>(() => sp.GetRequiredService<StartupNoticeService>()),
+            new Lazy<PageHealthMonitor>(() => sp.GetRequiredService<PageHealthMonitor>()),
+            new Lazy<Tray.TrayController>(() => sp.GetRequiredService<Tray.TrayController>()),
+            new Lazy<TrayService>(() => sp.GetRequiredService<TrayService>())));
         return services;
     }
 

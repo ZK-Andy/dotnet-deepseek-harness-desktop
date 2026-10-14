@@ -4,7 +4,7 @@ Status: implemented
 
 Review: FULL/2026-10-15#3/R1=ok R2=ok R3=ok
 
-Erratum: 2026-10-15 — C6 的 `SEQUENCER_VALUE_TYPES` 已收紧为空集（阶段值 `SupervisorSetup` 退役，见 [sequencer-stage-value-retirement](2026-10-15-sequencer-stage-value-retirement.md)）；正文把它称作 deliberate inventory 的表述不再适用，判据与闸结构不动。Testing 节的「`--self-test` 16 条 ok……阶段值白名单」现为 17 条：原「阶段值白名单」夹具改为「unattributable target-typed `new()`」，并新增「白名单必须为空」夹具；该节的 run 记录本身不改。
+Erratum: 2026-10-15 — C6 的 `SEQUENCER_VALUE_TYPES` 已收紧为空集（阶段值 `SupervisorSetup` 退役，见 [sequencer-stage-value-retirement](2026-10-15-sequencer-stage-value-retirement.md)）；正文把它称作 deliberate inventory 的表述不再适用，判据与闸结构不动。Testing 节的「`--self-test` 16 条 ok……阶段值白名单」现为 19 条：原「阶段值白名单」夹具改为「unattributable target-typed `new()`」，另新增「白名单必须为空」、「装配期构造清单」（C7）与「C7 未归属 target-typed `new()`」三条夹具；该节的 run 记录本身不改。Testing 的 `C3 16/16` 读数已由 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md) 的 C3 压舱降为 **6/6**。
 
 方案母篇见 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)——本篇落其 step-1 余项 B3/B4 并把母篇转 implemented（step-1 的 B1/B2 见 [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md)）。
 

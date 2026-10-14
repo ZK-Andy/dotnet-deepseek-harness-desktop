@@ -6,6 +6,8 @@ Erratum: 2026-10-14 — 「母篇四步全落地／剩余：无」不成立：�
 
 Erratum: 2026-10-15 — 上一行的失效判据已部分消解：母篇第 1 条的导航/监督两件已落（B1/B2，ADR [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md)；B3/B4 仍缺）。本文引用的 `StartupSequence.Navigation.cs`/`StartupSequence.WebSession.cs` 两分部已删（内容入 `Core.Ui.MainUiEntry`），`StartupSequence` 构造签名已少 `proxy` 参。正文与决定不动。
 
+Erratum: 2026-10-15 — Decision 的 C5 清单不再是 16 项：`ROOT_CONSTRUCTIBLE` 随 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md) 的 C3 压舱收成 **6 项**（触发器/共享态三件/Build 产物/排序器触发）、C3 帽 16→**6**，装配期构造另立 **C7** 清单（`Bootstrap/PreBuildRegistration*.cs` 的构造须在册）。正文与决定不动。
+
 Review: FULL/2026-10-08/R1=ok R2=ok R3=ok
 
 方案母篇见 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)（本篇落其 step-3"改名 + 闸改向"与递延的终态装配；step-1 见 [runtime-starter-core-usecase](2026-10-08-runtime-starter-core-usecase.md)，step-2a 见 [startupwiring-deletion-run-singletons](2026-10-08-startupwiring-deletion-run-singletons.md)，2b 见 [root-fields-zero-shared-state-singletons](2026-10-08-root-fields-zero-shared-state-singletons.md)）。

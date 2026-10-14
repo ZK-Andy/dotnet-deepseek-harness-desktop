@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-10-15#4/R1=ok R2=ok R3=ok
 
+Erratum: 2026-10-15 — Testing 的「C3 16/16」读数已由 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md) 的 C3 压舱降为 **6/6**（帽 16→6），同批 `--self-test` 夹具由 **17 增至 19**（C7「装配期构造清单」两条）；本篇记的是当时读数，判据面结论不变。
+
 组合根残留批的波 A。母篇见 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)，前序两篇见 [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md) 与 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)。
 
 ## Problem

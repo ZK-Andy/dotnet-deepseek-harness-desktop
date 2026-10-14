@@ -1,0 +1,110 @@
+using Ryn.Core;
+
+namespace DeepSeek.Harness.Desktop.Bootstrap;
+
+/// <summary>
+/// 装配期（Build 之前）接线产物的构造函数（ADR sequencer-resolution-injection 的 C3 压舱）：引导装配、
+/// 关窗闸门/自更新栈/托盘控制器、运行时起步用例都是「容器之前的运行期产物」——它们必须在 Build 前就位
+/// （引导服务要宿主/窗口提供者），装不进解图；但把构造写在组合根里会让 C3 的「根 new 自有类型」读数长期顶格。
+/// 此处按注册层的构造纪律收拢（<c>verify-compose-root</c> 的 C5 文案即「resolve via DI or register the
+/// construction in *Registration.cs」），组合根只调用并登记实例。装配期共享态是例外，它留在组合根
+/// （容器之前头部的一步、壳转发器在 Build 前即被消费，见 <c>DesktopAdapter.ResolveSharedState</c>）。
+/// 语句与搬迁前逐句等价：调用位、次序与既有 I/O 语义都不变（`bootstrap.Resolve()` 读配置/PATH 并同步跑
+/// dsh 版本探测、`CloseBehaviorPreference` 读偏好文件、`updates.Load()` 装载状态），搬的只是文件归属。
+/// </summary>
+internal static class PreBuildRegistration
+{
+    /// <summary>首启引导服务与启动期 A 类配置（原组合根 <c>ResolveRuntimeAndDev</c>）：全局 node/dsh 引导、
+    /// 插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主/窗口以提供者延迟供给
+    /// （调用点均晚于 Build 赋值），UI 语言同样惰性（引导任务实际启动时求值）。</summary>
+    /// <param name="hostProvider">宿主提供者（Build 后可用）。</param>
+    /// <param name="accessorProvider">窗口访问器提供者（Build 后可用）。</param>
+    /// <param name="isEnglishProvider">UI 语言提供者（惰性求值）。</param>
+    /// <returns>启动头部产出（引导服务 + 启动配置）。</returns>
+    public static Preflight CreatePreflight(
+        Func<HarnessRuntimeHost> hostProvider,
+        Func<CurrentWindowAccessor> accessorProvider,
+        Func<bool> isEnglishProvider)
+    {
+        IFirstBootBootstrap bootstrap = new FirstBootBootstrapService(
+            hostProvider,
+            new FirstBootUi(accessorProvider),
+            isEnglishProvider,
+            HostLog.Write);
+        bootstrap.Resolve();
+        return new Preflight(bootstrap, LaunchOptions.Resolve(HostLog.Write));
+    }
+
+    /// <summary>关窗闸门/自更新栈/托盘控制器装配（原组合根 <c>InitCloseGateAndUpdateStack</c>）：构造只收惰性
+    /// 委托与配置，与运行时产出无交互——装配在 Build 之前（原 spawn→装配 反转为 装配→spawn）。委托均在调用期
+    /// 求值（页面交互/后台任务），提供者赋值晚于本方法返回，与原接线槽语义等价。</summary>
+    /// <param name="preflight">启动头部产出（dev 判定）。</param>
+    /// <param name="supervisorCts">监督器取消令牌源（自更新后台任务的取消面）。</param>
+    /// <param name="windowProvider">原生窗口提供者（惰性）。</param>
+    /// <param name="accessorProvider">窗口访问器提供者（惰性；未就绪时为 null）。</param>
+    /// <param name="exitProvider">退出管道提供者（惰性）。</param>
+    /// <param name="uiLocale">宿主 UI 语言单点。</param>
+    /// <returns>自更新栈装配产出与托盘控制器。</returns>
+    public static (UpdateSetup Updates, TrayController Tray) CreateUpdateAndTrayAssembly(
+        Preflight preflight,
+        CancellationTokenSource supervisorCts,
+        Func<IRynWindow> windowProvider,
+        Func<CurrentWindowAccessor?> accessorProvider,
+        Func<ExitPipeline> exitProvider,
+        UiLocale uiLocale)
+    {
+        // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：托盘「退出」与自更新安装路径
+        // 先批准再 Close。用户普通关窗是否转隐藏由 closeBehavior 偏好裁决（默认 true 保持
+        // 历史行为）；托盘未就绪时拦截不生效（关窗直退）。
+        var closeGate = new Tray.CloseGate();
+        var closeBehavior = new CloseBehaviorPreference(
+            Path.Combine(HarnessRuntimeHost.ResolveDshHome(), CloseBehaviorPreference.FileName));
+
+        // 自更新协调器在此构造并装载（早于 BuildApp）：Application 用例住 Core（ADR
+        // update-coordinator-core-port），栈协作经 UpdateStackAdapter 四端口注入（一个适配器同型实现），
+        // UI 交接以委托闭包接线（PagePump/横幅/关窗闸门/退出管道）——装配层只装配，编排策略随用例可单测。
+        var updateStack = new UpdateStackAdapter(HostLog.Write);
+        var updates = new UpdateCoordinator(
+            preflight.Launch.IsDev,
+            updateStack,
+            updateStack,
+            updateStack,
+            updateStack,
+            () => supervisorCts.Token,
+            state => PagePump.PushUpdateState(accessorProvider(), state),
+            (version, token) => PagePump.ShowBannerWhenReadyAsync(
+                accessorProvider()!, UpdateBanner.ReadyScript(version, uiLocale), token),
+            closeGate.ApproveExit,
+            () => accessorProvider()?.Current?.Close(),
+            ct => exitProvider().ScheduleExitFallback(ct),
+            HostLog.Write);
+        updates.Load();
+
+        // 托盘控制器在此构造（早于 BuildApp/ShowTray），窗口与 Ryn 服务以惰性委托注入——
+        // 控制器持有 hide-to-tray 拦截、唤回采样、菜单重建与关窗闸门/偏好（供路由构造注入）。
+        var tray = new TrayController(
+            windowProvider,
+            accessorProvider,
+            closeGate,
+            closeBehavior,
+            uiLocale,
+            updates.Machine,
+            HostLog.Write);
+
+        return (new UpdateSetup(updates), tray);
+    }
+
+    /// <summary>运行时起步用例（原组合根 <c>RegisterServices</c> 内联构造）：spawn→铸币→收 URL 的依赖全在手
+    /// （引导服务来自启动头部，超时/铸币来自共享单例）。</summary>
+    /// <param name="preflight">启动头部产出（引导服务）。</param>
+    /// <param name="timeouts">运行时超时家（spawn 预算）。</param>
+    /// <param name="shellForward">壳转发器（铸币回调）。</param>
+    /// <returns>运行时起步用例。</returns>
+    public static IRuntimeStarter CreateRuntimeStarter(
+        Preflight preflight, RuntimeTimeouts timeouts, DshShellForward shellForward) =>
+        new RuntimeStarter(
+            preflight.Bootstrap,
+            TimeSpan.FromSeconds(timeouts.SpawnTimeoutSeconds),
+            shellForward.MintAsync,
+            HostLog.Write);
+}
