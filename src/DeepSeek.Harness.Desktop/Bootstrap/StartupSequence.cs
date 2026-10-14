@@ -9,7 +9,8 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 /// 机制，编排器由组合根在 Build 后解析并触发（结构必然，见 ADR Alternatives）。
 /// 形状＝排序器：<see cref="Run"/> 只按序触发用例/阶段（无分支、无域文本、不构造服务——机器闸见
 /// <c>verify-compose-root.py</c> C6），用例与依赖经容器解图供给（ADR 组合根机制收官终局的 B3）；
-/// 阶段产出为正式类型（<see cref="Preflight"/> 等），运行期单例在调用点解析。
+/// 阶段产出为正式类型（<see cref="Preflight"/> 等），宿主/托盘等运行期单例在调用点解析、取消令牌源经构造注入；
+/// 监督任务以局部 <see cref="Task"/> 流转，排序器不构造任何自有类型（C6 白名单空集，ADR sequencer-stage-value-retirement）。
 /// 本文件承载启动主链与产生段；监督/退出接线在 <c>StartupSequence.Supervision.cs</c>。
 /// 导航/监督/顶栏注入/启动期告知已随用例下沉（ADR 组合根机制收官 step-1 的 B1/B2 与终局的 B3：
 /// <c>Core.Ui.MainUiEntry</c> + <c>Core.Bootstrap.RuntimeSupervision</c> + <c>PageBridge.CaptionBarInstaller</c>
@@ -25,24 +26,28 @@ internal sealed partial class StartupSequence : IStartupSequence
     // 由容器解图注入（本类无缺省组装分支）。
     private readonly IRuntimeStarter _runtimeStarter;
     private readonly RuntimeTimeouts _timeouts;
+    // 监督器取消令牌源（装配期创建、容器单例；寿命 = 本次 Run）：退出路径取消 + 监督/健康/告知任务共用。
+    private readonly CancellationTokenSource _supervisorCts;
 
     /// <summary>创建编排服务（构造参数经容器解图，ADR 组合根机制收官终局的 B3）：共享态与用例依赖由
     /// 容器供给，接线层不再逐个手传；唯一例外是 <see cref="AppSetup"/>——Ryn 不把 <c>RynApplication</c>
     /// 登记进容器（<c>RynApplicationBuilder.Build()</c> 只返回实例），Build 后才存在的应用产出装不进解图，
-    /// 由接线层解析时显式供给。运行期单例（宿主/令牌源/托盘）在调用点经容器解析。</summary>
+    /// 由接线层解析时显式供给。运行期单例中宿主/托盘在调用点经容器解析，取消令牌源经构造注入。</summary>
     /// <param name="app">应用装配产出（Build 后唯一装不进容器的值，显式供给）。</param>
     /// <param name="preflight">容器之前的头部产出（引导服务与启动配置）。</param>
     /// <param name="updates">自更新栈装配产出（协调器已装载）。</param>
     /// <param name="instanceListener">单实例监听器持有（编排尾部释放锁地址）。</param>
     /// <param name="runtimeStarter">运行时起步用例（spawn→铸币→收 URL）。</param>
     /// <param name="timeouts">运行时超时家（配置模型单例；编排期留痕与 join 预算消费）。</param>
+    /// <param name="supervisorCts">监督器取消令牌源（容器单例；退出取消与监督/健康/告知任务共用）。</param>
     public StartupSequence(
         AppSetup app,
         Preflight preflight,
         UpdateSetup updates,
         InstanceListenerSetup instanceListener,
         IRuntimeStarter runtimeStarter,
-        RuntimeTimeouts timeouts)
+        RuntimeTimeouts timeouts,
+        CancellationTokenSource supervisorCts)
     {
         _app = app;
         _preflight = preflight;
@@ -50,6 +55,7 @@ internal sealed partial class StartupSequence : IStartupSequence
         _instanceListener = instanceListener.Listener;
         _runtimeStarter = runtimeStarter;
         _timeouts = timeouts;
+        _supervisorCts = supervisorCts;
     }
 
     /// <summary>启动编排入口（排序器主链）：按语句序触发全部用例并返回进程退出码。
@@ -66,12 +72,12 @@ internal sealed partial class StartupSequence : IStartupSequence
         StartRuntime(host);
         RunBootstrapIfNeeded();
         ShowTray();
-        SupervisorSetup supervisor = SetupSupervisor(host);
-        SetupHealthMonitor(supervisor);
+        Task supervisorTask = SetupSupervisorAsync(host);
+        SetupHealthMonitor();
         InstallCaptionBar();
         StartUpdateCheck();
-        StartupNoticeTask(supervisor);
-        return RunAppLoop(supervisor);
+        StartupNoticeTask();
+        return RunAppLoop(supervisorTask);
     }
 
     private void StartRuntime(HostSetup host)
@@ -111,7 +117,7 @@ internal sealed partial class StartupSequence : IStartupSequence
         _updates.Updates.Start();
     }
 
-    private int RunAppLoop(SupervisorSetup supervisor)
+    private int RunAppLoop(Task supervisorTask)
     {
         HostLog.Write("[host] Ryn Run 开始（阻塞直到窗口关闭）");
         try
@@ -124,11 +130,11 @@ internal sealed partial class StartupSequence : IStartupSequence
         }
 
         HostLog.Write("[host] Ryn Run 结束");
-        supervisor.Cts.Cancel();
+        _supervisorCts.Cancel();
         _preflight.Bootstrap.Cancel();
         try
         {
-            supervisor.Task.Wait(TimeSpan.FromSeconds(_timeouts.SupervisorJoinTimeoutSeconds));
+            supervisorTask.Wait(TimeSpan.FromSeconds(_timeouts.SupervisorJoinTimeoutSeconds));
         }
         catch (AggregateException)
         {

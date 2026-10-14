@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-09-28#7/R1=ok R2=ok R3=ok
 
+Erratum: 2026-10-15 — Decision 3 的阶段产物清单中 `SupervisorSetup` 已退役（监督任务改以局部 `Task` 流转、C6 白名单空集，见 [2026-10-15-sequencer-stage-value-retirement](2026-10-15-sequencer-stage-value-retirement.md)）；`Preflight/HostSetup/UpdateSetup/AppSetup` 四项与 `StartupStages.cs` 落点不变。
+
 各路 2 轮：R1/R2 首轮各报 1 Blocker（同一处——RuntimeTimeouts.Load 搬迁丢失，回填收口）；R3 首轮报 4 Blocker（supersession 义务：batch3 终态矛盾前向指针 + 三处落点换家 Erratum），验轮全闭。
 
 ## Problem

@@ -6,7 +6,7 @@ namespace DeepSeek.Harness.Desktop.Core.Bootstrap;
 /// <summary>
 /// 运行时监督用例（ADR 组合根机制收官 step-1 的 B2）：引导落定门控 → <see cref="RuntimeSupervisor"/>
 /// 监督循环 → 失败面承载（端口 <see cref="IRecoverySurface"/>）→ 恢复回调重验铸币态（端口
-/// <see cref="IMintEpoch"/>）并按承载面决定是否补收口导航。原 <c>StartupSequence.SetupSupervisor</c> 与
+/// <see cref="IMintEpoch"/>）并按承载面决定是否补收口导航。原 <c>StartupSequence.SetupSupervisorAsync</c> 与
 /// 失败面/恢复回调各段整体下沉（逐句等价：闩语义、模态不叠、回落面补导航），下沉后整条链可经 fake 端口单测。
 /// 页面健康观测/顶栏注入/启动期告知/自更新检查不是监督语义，留在排序器各自调用（不造第二个上帝对象，R1）。
 /// </summary>

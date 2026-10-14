@@ -4,7 +4,8 @@ namespace DeepSeek.Harness.Desktop.Tests;
 
 /// <summary>启动序安全网（ADR compose-root-form-separation 后的形态）：组合根只装配与触发
 /// （容器前头部 + BuildApp 装配 + 编排触发），阶段主链与阶段产出搬进 <c>Bootstrap.StartupSequence</c>。
-/// 阶段产出类型（Preflight/HostSetup/UpdateSetup/AppSetup/SupervisorSetup，正式类型见 Bootstrap/StartupStages.cs）
+/// 阶段产出类型（Preflight/HostSetup/UpdateSetup/AppSetup，正式类型见 Bootstrap/StartupStages.cs；
+/// 监督任务以局部 Task 流转、不设阶段产出，ADR sequencer-stage-value-retirement）
 /// 把产生序钉进编译器——消费段收参数、缺前置产出即缺值编译失败（编译期面无法在测试里断言，
 /// 由源序与产出形态两网兜底）。源序即契约：重排/改名须同步更新本测试。</summary>
 public class CompositionRootSequenceTests
@@ -47,12 +48,12 @@ public class CompositionRootSequenceTests
             "StartRuntime(host)",
             "RunBootstrapIfNeeded()",
             "ShowTray()",
-            "SetupSupervisor(host)",
-            "SetupHealthMonitor(supervisor)",
+            "SetupSupervisorAsync(host)",
+            "SetupHealthMonitor()",
             "InstallCaptionBar()",
             "StartUpdateCheck()",
-            "StartupNoticeTask(supervisor)",
-            "RunAppLoop(supervisor)",
+            "StartupNoticeTask()",
+            "RunAppLoop(supervisorTask)",
         ];
 
         AssertChainOrder(source, chain);
@@ -114,7 +115,7 @@ public class CompositionRootSequenceTests
 
         // 消费点可落在编排服务任一分部、组合根分部或注册装配处（ADR 组合根机制收官终局的 B3 把顶栏注入
         // 与启动期告知用例移进注册处），故按三侧文件集扫描；消费须锚定阶段产出变量/形参名（同名
-        // preflight/host/update/app/supervisor，编排服务内为 _ 前缀），否则无关同名成员会误判为已消费。
+        // preflight/host/update/app，编排服务内为 _ 前缀），否则无关同名成员会误判为已消费。
         string[] sources = Directory.GetFiles(dir, "DesktopAdapter*.cs")
             .Concat(Directory.GetFiles(Path.Combine(dir, "Bootstrap"), "StartupSequence*.cs"))
             .Concat(Directory.GetFiles(Path.Combine(dir, "Bootstrap"), "StartupUseCaseRegistration.cs"))
@@ -122,9 +123,9 @@ public class CompositionRootSequenceTests
             .Select(File.ReadAllText)
             .ToArray();
         string composed = string.Concat(sources);
-        const string stageVariables = "_?(?:preflight|host|updates?|app|supervisor)";
+        const string stageVariables = "_?(?:preflight|host|updates?|app)";
 
-        string[] outputs = ["Preflight", "HostSetup", "UpdateSetup", "AppSetup", "SupervisorSetup"];
+        string[] outputs = ["Preflight", "HostSetup", "UpdateSetup", "AppSetup"];
         foreach (string output in outputs)
         {
             // 声明以 ");" 收尾；载荷取到分号为止，容忍参数类型里的 ')'（如元组）。

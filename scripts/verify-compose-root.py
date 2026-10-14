@@ -33,8 +33,10 @@ project. Six checks:
       wiring layer triggers; ADR composition-mechanism-container-assembly) must
       stay a sequencer, not a second root — `Run()` holds no control flow and no
       quoted text (raw lines checked, comments included), the files construct no
-      services (same two channels; stage-VALUE records are listed in
-      SEQUENCER_VALUE_TYPES deliberately), and the sync bridge is capped at one.
+      owned type (both channels attributed by last segment; target-typed `new()`
+      attributed via the declared owner, unattributable ones reported;
+      SEQUENCER_VALUE_TYPES is empty — reopening it needs its own ADR), and the
+      sync bridge is capped at one.
 
 Default is report-only (exit 0). `--enforce` exits 1 on any violation.
 `--self-test` runs offline fixtures.
@@ -116,11 +118,10 @@ ROOT_CONSTRUCTIBLE = {
     "StartupSequence",
 }
 
-# Sequencer (C6) inventory: stage-VALUE records may be constructed by the sequencer
-# (value-flow pipeline); services come from the container or `*Registration.cs`.
-SEQUENCER_VALUE_TYPES = {
-    "SupervisorSetup",
-}
+# Sequencer (C6) inventory: empty — the sequencer constructs no owned type at all
+# (stage values ride locals/`Task`; ADR sequencer-stage-value-retirement). Reopening
+# this set re-opens a construction channel in the sequencer and needs its own ADR.
+SEQUENCER_VALUE_TYPES: set[str] = set()
 SEQUENCER_SYNC_BRIDGE_CAP = 1  # the runtime-starter step bridge; full async is separate
 SEQUENCER_GLOB = "StartupSequence*.cs"
 
@@ -212,13 +213,17 @@ def _sequencer_violations(src: Path, owned: set[str]) -> list[str]:
                 if constructed in owned and constructed not in SEQUENCER_VALUE_TYPES:
                     out.append(
                         f"  C6 {path.name}: sequencer constructs `{constructed}` (resolve via the"
-                        " container or *Registration.cs; stage values update SEQUENCER_VALUE_TYPES)")
+                        " container or *Registration.cs; reopening the stage-value whitelist needs its own ADR)")
             if _TARGET_NEW_RE.search(code):
                 owner = TARGET_OWNER_RE.search(code)
                 attributed = owner.group(1).split(".")[-1] if owner else None
                 if attributed in owned and attributed not in SEQUENCER_VALUE_TYPES:
                     out.append(
                         f"  C6 {path.name}: sequencer constructs `{attributed}` (target-typed `new()`)")
+                elif owner is None:
+                    out.append(
+                        f"  C6 {path.name}: unattributable target-typed `new()` "
+                        "(attribute the declared type or write it explicitly)")
         bridges = sum(len(_GETAWAITER_RE.findall(code)) for code in cleaned)
         if bridges > SEQUENCER_SYNC_BRIDGE_CAP:
             out.append(
@@ -497,16 +502,18 @@ public sealed partial class DesktopAdapter
             print(f"  ✗ C4 not flagged: {rows}")
             failed = 1
 
-        # C6: Run() control flow/quoted text, constructions (stage values whitelisted),
-        # the single sanctioned sync bridge, and the empty sequencer set.
-        (domain / "SupervisorSetup.cs").write_text(
-            "namespace Shell.Bootstrap;\ninternal readonly record struct SupervisorSetup(int A);\n",
+        # C6: Run() control flow/quoted text, constructions (the stage-value whitelist
+        # is empty, so ANY owned construction in the sequencer is a violation), the
+        # single sanctioned sync bridge, and the empty sequencer set.
+        (domain / "StageValue.cs").write_text(
+            "namespace Shell.Bootstrap;\ninternal readonly record struct StageValue(int A);\n",
             encoding="utf-8")
         c6_fixtures = [
             ("control flow", "int Run() { if (_ready) { return 1; } return 0; }", "control flow"),
             ("quoted text", 'int Run() { var s = "x"; return 0; }', "quoted text"),
             ("service construction", "int Run() { var e = new ShellEntry(); return 0; }", "`ShellEntry`"),
-            ("stage-value whitelist", "int Run() { var s = new SupervisorSetup(1); return s.A; }", None),
+            ("unattributable target-typed new", "int Run() { var x = F(new()); return 0; }",
+             "unattributable target-typed"),
             ("sync-bridge cap",
              "int Run() { _ = P().GetAwaiter().GetResult(); _ = P().GetAwaiter().GetResult(); return 0; }",
              "sync-over-async bridges"),
@@ -523,6 +530,15 @@ public sealed partial class DesktopAdapter
             else:
                 print(f"  ✗ C6 {label} not confirmed: {hits}")
                 failed = 1
+
+        # C6: the stage-value whitelist itself is empty (mandate of ADR
+        # sequencer-stage-value-retirement) — a non-empty set would license a
+        # construction channel inside the sequencer.
+        if SEQUENCER_VALUE_TYPES:
+            print(f"  ✗ C6 stage-value whitelist not empty: {sorted(SEQUENCER_VALUE_TYPES)}")
+            failed = 1
+        else:
+            print("  ok: C6 stage-value whitelist empty")
 
         # C6: a source root without the sequencer set is reported, not skipped.
         missing = _sequencer_violations(Path(td) / "Nope", set())

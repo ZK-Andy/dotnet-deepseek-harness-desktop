@@ -27,11 +27,6 @@ internal readonly record struct UpdateSetup(UpdateCoordinator Updates);
 /// <param name="WindowAccessor">当前窗口访问器（容器解析；原生建窗前 <c>Current</c> 即抛）。</param>
 internal readonly record struct AppSetup(RynApplication App, CurrentWindowAccessor WindowAccessor);
 
-/// <summary>监督器装配产出（Cts 为组合根拥有的取消令牌源，寿命 = 本次 Run；RunAppLoop join）。</summary>
-/// <param name="Cts">监督器取消令牌源（自更新后台任务与退出管道的取消令牌源）。</param>
-/// <param name="Task">监督任务（引导落定门控 + 监督循环；RunAppLoop join）。</param>
-internal readonly record struct SupervisorSetup(CancellationTokenSource Cts, Task Task);
-
 /// <summary>单实例监听器持有（ADR 组合根机制收官终局的 B3）：DI 表达不了可空实例，故以值记录过容器
 /// ——编排尾部释放锁地址（非 orderly 退出路径；有序路径由退出管道释放，幂等守卫保证重复安全）。</summary>
 /// <param name="Listener">单实例监听器；null = 未启用（已有主实例/平台不支持/降级）。</param>
