@@ -76,6 +76,7 @@ internal static class StartupUseCaseRegistration
                 ct => PagePump.ShowBannerWhenReadyAsync(
                     accessor, DesktopBanner.BuildUncleanExitBanner(uiLocale), ct));
         });
+        AddExitOrchestration(services, bootstrap);
         // 排序器运行期解析面（ADR sequencer-resolution-injection）：两个基础设施用例为实例单例
         // （原静态入口是 R1b 静态调用面），九项运行期单例以 Lazy 携带——Value 落在原解析点，
         // 保「宿主首解即建宿主、晚于 profile 前置」与「窗口就绪后才碰页面面」两处时点。
@@ -96,6 +97,16 @@ internal static class StartupUseCaseRegistration
             new Lazy<TrayService>(() => sp.GetRequiredService<TrayService>())));
         return services;
     }
+
+    /// <summary>退出编排用例登记（ADR app-exit-orchestration-core-usecase；join 预算按配置模型投影）。</summary>
+    /// <param name="services">服务集合。</param>
+    /// <param name="bootstrap">首启引导服务（退出时取消未落定的引导任务）。</param>
+    private static void AddExitOrchestration(IServiceCollection services, IFirstBootBootstrap bootstrap) =>
+        services.AddSingleton(sp => new Core.Bootstrap.AppExitOrchestration(
+            sp.GetRequiredService<CancellationTokenSource>(),
+            bootstrap,
+            TimeSpan.FromSeconds(sp.GetRequiredService<RuntimeTimeouts>().SupervisorJoinTimeoutSeconds),
+            HostLog.Write));
 
     /// <summary>进入主界面用例的时限快照（配置模型 → Core 侧记录）。</summary>
     /// <param name="timeouts">运行时超时家（容器单例）。</param>
