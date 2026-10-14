@@ -39,5 +39,5 @@ D003（空 `catch` 必须命名所吞异常）是最后一块无机器执行的�
 
 ## Related
 
-- 前序：[coupling-shift-left-gates](2026-10-01-coupling-shift-left-gates.md)（D003 另立项出处）与 [composition-mechanism-container-assembly](../../proposed/architecture/2026-10-08-composition-mechanism-container-assembly.md)（R1 闸同源）。
+- 前序：[coupling-shift-left-gates](2026-10-01-coupling-shift-left-gates.md)（D003 另立项出处）与 [composition-mechanism-container-assembly](../architecture/2026-10-08-composition-mechanism-container-assembly.md)（R1 闸同源）。
 - 规范：[architecture-standards.md](../../../../docs/architecture-standards.md) R2；[coding-standards.md](../../../../docs/coding-standards.md) 行为契约；方法论：[review-tier-escape-proofing](../process/2026-09-03-review-tier-escape-proofing.md)（FULL 证据行）。

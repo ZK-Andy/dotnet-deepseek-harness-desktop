@@ -152,6 +152,9 @@ public sealed partial class DesktopAdapter
         services.AddSingleton(tray);
         services.AddSingleton(supervisorCts);
         services.AddBootstrapSharedState(timeouts, captionBar, uiLocale, shellForward);
+        // 启动前置阶段值（ADR 组合根机制收官终局的 B3）：编排器构造参数改由容器解图，
+        // 接线层不再逐个手传。
+        services.AddStartupStageValues(preflight, update);
         // 启动用例与三个新端口的适配器（ADR 组合根机制收官 step-1）：导航/监督用例经容器供给，
         // 接线层只解析触发（R1）。
         services.AddStartupUseCases(preflight.Bootstrap, proxy);

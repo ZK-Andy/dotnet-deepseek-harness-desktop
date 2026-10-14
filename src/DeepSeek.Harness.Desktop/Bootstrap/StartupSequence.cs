@@ -6,50 +6,54 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 /// <summary>
 /// 启动编排服务（ADR compose-root-form-separation）：阶段主链与用例编排自组合根整体搬迁至此
 /// （语句序/分支/异常边界逐一对应，纯搬家零行为变更）；组合根只装配与触发（R1）。Ryn 无 hosted-service
-/// 机制，编排器由组合根在 Build 后显式组装并触发（结构必然，见 ADR Alternatives）。
-/// 跨阶段值经构造与运行期单例双通道供给（单例在调用点幂等解析，见 Run/ShowTray/SetupSupervisor）；阶段产出为正式类型（<see cref="Preflight"/> 等）。
+/// 机制，编排器由组合根在 Build 后解析并触发（结构必然，见 ADR Alternatives）。
+/// 形状＝排序器：<see cref="Run"/> 只按序触发用例/阶段（无分支、无域文本、不构造服务——机器闸见
+/// <c>verify-compose-root.py</c> C6），用例与依赖经容器解图供给（ADR 组合根机制收官终局的 B3）；
+/// 阶段产出为正式类型（<see cref="Preflight"/> 等），运行期单例在调用点解析。
 /// 本文件承载启动主链与产生段；监督/退出接线在 <c>StartupSequence.Supervision.cs</c>。
-/// 导航原语与网页会话自愈已随用例下沉 Core（ADR 组合根机制收官 step-1 的 B1：
-/// <c>Core.Ui.MainUiEntry</c> + <c>Core.Bootstrap.RuntimeSupervision</c>）。
+/// 导航/监督/顶栏注入/启动期告知已随用例下沉（ADR 组合根机制收官 step-1 的 B1/B2 与终局的 B3：
+/// <c>Core.Ui.MainUiEntry</c> + <c>Core.Bootstrap.RuntimeSupervision</c> + <c>PageBridge.CaptionBarInstaller</c>
+/// + <c>Infrastructure.Bootstrap.StartupNoticeService</c>）。
 /// </summary>
 internal sealed partial class StartupSequence : IStartupSequence
 {
-    private readonly Preflight _preflight;
     private readonly AppSetup _app;
+    private readonly Preflight _preflight;
     private readonly UpdateSetup _updates;
-    private readonly UiLocale _uiLocale;
-    private readonly RuntimeTimeouts _timeouts;
-    private readonly CaptionBarOptions _captionBar;
     private readonly PrimaryListener? _instanceListener;
     // 运行时起步用例（ADR 组合根机制收官先行批）：spawn→铸币→收 URL 下沉 Core 可单测；
-    // 由接线层经容器解析注入（本类无缺省组装分支）。
+    // 由容器解图注入（本类无缺省组装分支）。
     private readonly IRuntimeStarter _runtimeStarter;
-    // 「首次导航到达补注册顶栏脚本」的一次性闩（见 StartupSequence.Supervision 的 SetupCaptionBar）。
-    private int _captionBarReregistered;
+    private readonly RuntimeTimeouts _timeouts;
 
-    /// <summary>创建编排服务（构造数据注入；由接线层在 Build 后显式组装，容器组装对象图）。
-    /// 共享态（语言/超时/标题栏参数/转发器）经应用容器自解析——构造时点必晚于 Build，届时求值安全；
-    /// 解析的是接线层同一局部登记的单例（见 AddBootstrapSharedState），单实例唯一。
-    /// 运行期单例（宿主/令牌源/托盘）同样在调用点经应用容器解析。</summary>
+    /// <summary>创建编排服务（构造参数经容器解图，ADR 组合根机制收官终局的 B3）：共享态与用例依赖由
+    /// 容器供给，接线层不再逐个手传；唯一例外是 <see cref="AppSetup"/>——Ryn 不把 <c>RynApplication</c>
+    /// 登记进容器（<c>RynApplicationBuilder.Build()</c> 只返回实例），Build 后才存在的应用产出装不进解图，
+    /// 由接线层解析时显式供给。运行期单例（宿主/令牌源/托盘）在调用点经容器解析。</summary>
+    /// <param name="app">应用装配产出（Build 后唯一装不进容器的值，显式供给）。</param>
+    /// <param name="preflight">容器之前的头部产出（引导服务与启动配置）。</param>
+    /// <param name="updates">自更新栈装配产出（协调器已装载）。</param>
+    /// <param name="instanceListener">单实例监听器持有（编排尾部释放锁地址）。</param>
+    /// <param name="runtimeStarter">运行时起步用例（spawn→铸币→收 URL）。</param>
+    /// <param name="timeouts">运行时超时家（配置模型单例；编排期留痕与 join 预算消费）。</param>
     public StartupSequence(
-        Preflight preflight,
         AppSetup app,
+        Preflight preflight,
         UpdateSetup updates,
-        PrimaryListener? instanceListener,
-        IRuntimeStarter runtimeStarter)
+        InstanceListenerSetup instanceListener,
+        IRuntimeStarter runtimeStarter,
+        RuntimeTimeouts timeouts)
     {
-        _preflight = preflight;
         _app = app;
+        _preflight = preflight;
         _updates = updates;
-        _uiLocale = app.App.Services.GetRequiredService<UiLocale>();
-        _timeouts = app.App.Services.GetRequiredService<RuntimeTimeouts>();
-        _captionBar = app.App.Services.GetRequiredService<CaptionBarOptions>();
-        _instanceListener = instanceListener;
+        _instanceListener = instanceListener.Listener;
         _runtimeStarter = runtimeStarter;
+        _timeouts = timeouts;
     }
 
-    /// <summary>组合根入口：按原 <c>Program.Main</c> 语句序执行全部编排并返回进程退出码。
-    /// 宿主/令牌源寿命由组合根拥有（构造注入），此处不释放。</summary>
+    /// <summary>启动编排入口（排序器主链）：按语句序触发全部用例并返回进程退出码。
+    /// 宿主/令牌源寿命由接线层拥有（容器单例），此处不释放。</summary>
     public int Run()
     {
         // profile 前置（migrate→recover→ensure→reconcile 用例编排住 Infrastructure.ProfileLifecycle）
@@ -64,9 +68,9 @@ internal sealed partial class StartupSequence : IStartupSequence
         ShowTray();
         SupervisorSetup supervisor = SetupSupervisor(host);
         SetupHealthMonitor(supervisor);
-        SetupCaptionBar(supervisor);
+        InstallCaptionBar();
         StartUpdateCheck();
-        StartupNoticeTask(host, supervisor);
+        StartupNoticeTask(supervisor);
         return RunAppLoop(supervisor);
     }
 

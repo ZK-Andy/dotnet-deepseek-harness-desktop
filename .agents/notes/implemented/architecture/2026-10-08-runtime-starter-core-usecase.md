@@ -4,7 +4,7 @@ Status: implemented
 
 Review: FULL/2026-10-08/R1=ok R2=ok R3=ok
 
-方案篇见 [composition-mechanism-container-assembly](../../proposed/architecture/2026-10-08-composition-mechanism-container-assembly.md)（容器组装对象图四步，本篇只落第一步"先行 `IRuntimeStarter`"）。
+方案篇见 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)（容器组装对象图四步，本篇只落第一步"先行 `IRuntimeStarter`"）。
 
 ## Problem
 

@@ -2,7 +2,7 @@ namespace DeepSeek.Harness.Desktop.Core.WindowChrome;
 
 /// <summary>
 /// 窗口 chrome 几何端口（R3：接口在 Core；默认实现同为纯逻辑，随端口同住 Core——
-/// 纯策略不住适配器。组合根机制收官（ADR <c>proposed/architecture/2026-10-08-composition-mechanism-container-assembly</c>）
+/// 纯策略不住适配器。组合根机制收官（ADR <c>implemented/architecture/2026-10-08-composition-mechanism-container-assembly</c>）
 /// 后由容器注入，在此之前调用方经 <see cref="WindowChromePolicy.Default"/> 取用）。
 /// </summary>
 public interface IWindowChromePolicy

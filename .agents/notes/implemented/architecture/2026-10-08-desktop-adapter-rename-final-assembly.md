@@ -8,7 +8,7 @@ Erratum: 2026-10-15 — 上一行的失效判据已部分消解：母篇第 1 �
 
 Review: FULL/2026-10-08/R1=ok R2=ok R3=ok
 
-方案母篇见 [composition-mechanism-container-assembly](../../proposed/architecture/2026-10-08-composition-mechanism-container-assembly.md)（本篇落其 step-3"改名 + 闸改向"与递延的终态装配；step-1 见 [runtime-starter-core-usecase](2026-10-08-runtime-starter-core-usecase.md)，step-2a 见 [startupwiring-deletion-run-singletons](2026-10-08-startupwiring-deletion-run-singletons.md)，2b 见 [root-fields-zero-shared-state-singletons](2026-10-08-root-fields-zero-shared-state-singletons.md)）。
+方案母篇见 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)（本篇落其 step-3"改名 + 闸改向"与递延的终态装配；step-1 见 [runtime-starter-core-usecase](2026-10-08-runtime-starter-core-usecase.md)，step-2a 见 [startupwiring-deletion-run-singletons](2026-10-08-startupwiring-deletion-run-singletons.md)，2b 见 [root-fields-zero-shared-state-singletons](2026-10-08-root-fields-zero-shared-state-singletons.md)）。
 
 ## Problem
 

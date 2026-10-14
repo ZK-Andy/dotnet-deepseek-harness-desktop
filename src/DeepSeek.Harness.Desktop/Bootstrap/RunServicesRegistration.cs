@@ -30,6 +30,21 @@ internal static class RunServicesRegistration
         return services;
     }
 
+    /// <summary>启动前置阶段值（单例，实例登记；ADR 组合根机制收官终局的 B3）：容器之前的头部产出
+    /// （<see cref="Preflight"/>）、更新栈产出（<see cref="UpdateSetup"/>）与监听器持有（见
+    /// <see cref="AddExitPipeline"/> 的登记）——编排期由容器解图供给，接线层不再逐个手传
+    /// （record struct 无 class 约束的泛型单例重载，故走 Type + 工厂形态，同 <see cref="AddRunHost"/>）。</summary>
+    /// <param name="services">服务集合。</param>
+    /// <param name="preflight">容器之前的头部产出（引导服务与启动配置）。</param>
+    /// <param name="update">自更新栈装配产出（协调器已装载）。</param>
+    public static IServiceCollection AddStartupStageValues(
+        this IServiceCollection services, Preflight preflight, UpdateSetup update)
+    {
+        services.AddSingleton(typeof(Preflight), _ => preflight);
+        services.AddSingleton(typeof(UpdateSetup), _ => update);
+        return services;
+    }
+
     /// <summary>宿主装配产出（单例）：运行时宿主 + 崩溃取证 marker。原编排 <c>SetupHostAndMarker</c>
     /// 语义——遗留 marker 即判上轮非受控退出；正常退出路径在退出管道清除。释放由组合根拥有
     /// （单例寿命 = 本次 Run，见 <c>DesktopAdapter.Run</c> finally）。</summary>
@@ -53,13 +68,15 @@ internal static class RunServicesRegistration
 
     /// <summary>单实例退出管道（单例）：有序退出步骤即构造数据，托盘有序退出与 Run 尾部共用同一实例，
     /// 幂等由 once-guard 保证；运行时回收先于关窗。关窗动作延迟到调用期经容器解析
-    /// （注册期窗口不存在；调用点必在窗口就绪之后，与原接线注释同理）。</summary>
+    /// （注册期窗口不存在；调用点必在窗口就绪之后，与原接线注释同理）。
+    /// 同处登记 <see cref="InstanceListenerSetup"/>（编排尾部释放锁地址的持有；DI 表达不了可空实例）。</summary>
     /// <param name="services">服务集合。</param>
     /// <param name="supervisorCts">监督器取消令牌源（装配期创建，寿命 = 本次 Run）。</param>
     /// <param name="instanceListener">单实例监听器（仲裁成功时持有；退出时释放地址）。</param>
     public static IServiceCollection AddExitPipeline(
         this IServiceCollection services, CancellationTokenSource supervisorCts, PrimaryListener? instanceListener)
     {
+        services.AddSingleton(typeof(InstanceListenerSetup), _ => new InstanceListenerSetup(instanceListener));
         services.AddSingleton(sp =>
         {
             HostSetup host = sp.GetRequiredService<HostSetup>();

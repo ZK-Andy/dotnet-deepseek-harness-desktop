@@ -4,7 +4,7 @@ Status: implemented
 
 Review: FULL/2026-10-15#2/R1=ok R2=ok R3=ok
 
-方案母篇见 [composition-mechanism-container-assembly](../../proposed/architecture/2026-10-08-composition-mechanism-container-assembly.md)（本篇落其 step-1 的 B1/B2；四步更正见 [desktop-adapter-rename-final-assembly](2026-10-08-desktop-adapter-rename-final-assembly.md) Erratum）。
+方案母篇见 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)（本篇落其 step-1 的 B1/B2；四步更正见 [desktop-adapter-rename-final-assembly](2026-10-08-desktop-adapter-rename-final-assembly.md) Erratum）。
 
 ## Problem
 
@@ -33,7 +33,7 @@ Review: FULL/2026-10-15#2/R1=ok R2=ok R3=ok
 
 - 买到的：进入主界面链与恢复链可经 fake 端口单测（新增 11 例）；`StartupSequence` 少两个分部与四个字段、少一处 `new` 具体类型；导航/失败面/铸币态三处 Ryn/基础设施边界端口化（R3）；`MainUiEntry` 不再依赖 `RynNavigationCallbacks` 单槽的调用时序说明（订阅语义收进端口）。
 - 付出的：新增三端口 + 三适配器 + 两用例（`Core.Ui` 新目录）；时限参数经 `MainUiEntryOptions`/`RuntimeSupervisionOptions` 从 `RuntimeTimeouts` 快照（配置键仍是唯一家，记录不持默认值）；`DesktopAdapter.App.cs`/`DesktopAdapter.cs` 各一行接线变更（该构造函数不再收 proxy）。
-- 剩余：母篇 step-1 的 **B3**（`Run` 缩成排序器：`SetupCaptionBar` 脚本构建移 Presentation 用例、构造参数改 DI）与 **B4**（`verify-compose-root.py` 新增 C6「排序器形状」+ 母篇转 implemented）留后续批次；`Run()` 的唯一入口桥 `.GetAwaiter().GetResult()` 按母篇口径保留，全 async 另立条目。
+- 余项：母篇 step-1 的 **B3**（`Run` 缩成排序器）与 **B4**（`verify-compose-root.py` 新增 C6「排序器形状」+ 母篇转 implemented）见 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)；`Run()` 的唯一入口桥 `.GetAwaiter().GetResult()` 按母篇口径保留，全 async 另立条目。
 
 ## Testing
 

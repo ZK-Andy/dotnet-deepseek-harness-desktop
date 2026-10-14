@@ -24,8 +24,8 @@ public class CompositionRootSequenceTests
             "StartProxy(shellForward);",
             "InitCloseGateAndUpdateStack(",
             "BuildApp(preflight, proxy.Proxy, update, tray,",
-            "new Bootstrap.StartupSequence(",
-            "sequence.Run()",
+            "ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>(builtApp.Services, app)",
+            ".Run();",
         ];
 
         AssertChainOrder(source, chain);
@@ -49,8 +49,9 @@ public class CompositionRootSequenceTests
             "ShowTray()",
             "SetupSupervisor(host)",
             "SetupHealthMonitor(supervisor)",
+            "InstallCaptionBar()",
             "StartUpdateCheck()",
-            "StartupNoticeTask(host, supervisor)",
+            "StartupNoticeTask(supervisor)",
             "RunAppLoop(supervisor)",
         ];
 
@@ -111,12 +112,12 @@ public class CompositionRootSequenceTests
             Regex.IsMatch(stages, @"record struct \w+Token\s*[;({]"),
             "空载荷 token 形态应已退役（值流管线批次 2）");
 
-        // 消费点可落在编排服务任一分部或组合根分部，故按两侧文件集扫描；消费须锚定到
-        // 阶段产出变量/形参名（主链与各消费段共用同名 preflight/host/update/app/supervisor，
-        // 编排服务内为私有字段 _ 前缀形态），否则无关同名成员（wiring.App、文档注释里的文件名）
-        // 会误判为已消费——前视字符类拦截标识符中段假匹配。
+        // 消费点可落在编排服务任一分部、组合根分部或注册装配处（ADR 组合根机制收官终局的 B3 把顶栏注入
+        // 与启动期告知用例移进注册处），故按三侧文件集扫描；消费须锚定阶段产出变量/形参名（同名
+        // preflight/host/update/app/supervisor，编排服务内为 _ 前缀），否则无关同名成员会误判为已消费。
         string[] sources = Directory.GetFiles(dir, "DesktopAdapter*.cs")
             .Concat(Directory.GetFiles(Path.Combine(dir, "Bootstrap"), "StartupSequence*.cs"))
+            .Concat(Directory.GetFiles(Path.Combine(dir, "Bootstrap"), "StartupUseCaseRegistration.cs"))
             .OrderBy(p => p, StringComparer.Ordinal)
             .Select(File.ReadAllText)
             .ToArray();

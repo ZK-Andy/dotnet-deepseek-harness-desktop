@@ -8,7 +8,7 @@ methods and business predicates accrete on the composition root as new partial
 files, each dodging a per-file size budget.
 
 The root set is `Program.cs` + `DesktopAdapter*.cs` under the Presentation
-project. Five checks:
+project. Six checks:
 
   C1  dot partials ≤ `--max-dot-partials` (default 1): the root is pinned to
       Program.cs + DesktopAdapter.cs + at most one dot partial.
@@ -21,17 +21,20 @@ project. Five checks:
       Infrastructure/Presentation); Ryn/BCL types do not count. Target-typed
       `new()` is attributed via the assigned field/property type on the same
       line; an unattributable one is reported, not skipped.
-  C4  no sync-over-async in the root: `.GetAwaiter().GetResult()` lived on the
-      root's stage methods historically and must stay in the orchestration
-      service after the separation.
+  C4  no sync-over-async in the root: `.GetAwaiter().GetResult()` belongs to the
+      orchestration service, not the wiring layer (ADR compose-root-form-separation).
   C5  every self-owned type CONSTRUCTED in the root must be in the
-      ROOT_CONSTRUCTIBLE inventory (step-3 direction gate: the wiring layer
-      only references ports + Options + adapters + the frozen assembly
-      surface). A NEW constructed type name is a violation — resolve via DI
-      or register the construction in `*Registration.cs`; a genuinely
-      assembly-level construction updates the inventory deliberately (+ ADR).
-      C3 caps volume, C5 caps direction; the shipped baseline is
-      grandfathered while new coupling fails `--enforce`.
+      ROOT_CONSTRUCTIBLE inventory (direction gate; C3 caps volume, C5 caps
+      direction). A NEW name is a violation — resolve via DI or register the
+      construction in `*Registration.cs`; assembly-level additions update the
+      inventory deliberately (+ ADR). `new X(…)` and the DI factory channel
+      `…CreateInstance<X>(…)` both count as constructions.
+  C6  sequencer shape: `Bootstrap/StartupSequence*.cs` (the orchestrator the
+      wiring layer triggers; ADR composition-mechanism-container-assembly) must
+      stay a sequencer, not a second root — `Run()` holds no control flow and no
+      quoted text (raw lines checked, comments included), the files construct no
+      services (same two channels; stage-VALUE records are listed in
+      SEQUENCER_VALUE_TYPES deliberately), and the sync bridge is capped at one.
 
 Default is report-only (exit 0). `--enforce` exits 1 on any violation.
 `--self-test` runs offline fixtures.
@@ -107,16 +110,30 @@ ROOT_CONSTRUCTIBLE = {
     "UpdateCoordinator",
     "TrayController",
     "RuntimeStarter",
-    # The single trigger construction (wiring layer assembles the orchestrator
-    # once; dotted `new Bootstrap.StartupSequence(...)` attributes here).
+    # The single trigger construction, through the DI factory channel
+    # (`ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>`): the wiring
+    # layer assembles the orchestrator once. C3/C5 count that channel like `new`.
     "StartupSequence",
 }
 
-# `new X(` and dotted `new Ns.X(` both attribute to the last segment
-# (B1: `new Tray.CloseGate()` / `new Bootstrap.StartupSequence(...)` were
-# invisible before); one-level generics stay covered, deeper nesting is a
-# documented skip (same as verify-registration-discipline.py).
+# Sequencer (C6) inventory: stage-VALUE records may be constructed by the sequencer
+# (value-flow pipeline); services come from the container or `*Registration.cs`.
+SEQUENCER_VALUE_TYPES = {
+    "SupervisorSetup",
+}
+SEQUENCER_SYNC_BRIDGE_CAP = 1  # the runtime-starter step bridge; full async is separate
+SEQUENCER_GLOB = "StartupSequence*.cs"
+
+# `Run()` must read as a call list: no branches/loops/exception structure.
+_SEQUENCER_CONTROL_RE = re.compile(
+    r"\b(?:if|else|for|foreach|while|do|switch|case|try|catch|finally|throw|"
+    r"using|lock|goto|yield)\b")
+_RUN_SIGNATURE_RE = re.compile(r"^\s*public\s+int\s+Run\s*\(\s*\)")
+
+# Constructions: `new X(` / dotted `new Ns.X(` / factory `…CreateInstance<X>(…)`, all
+# attributed by last segment (deeper generic nesting is a documented skip).
 _NEW_RE = re.compile(r"\bnew\s+([\w.]+)(?:<[^()<>]*>)?\s*\(")
+_CREATE_INSTANCE_RE = re.compile(r"\b(?:ActivatorUtilities\s*\.\s*)?CreateInstance<([\w.]+)>")
 # `Type field = new();` — the assigned declared type gives target-typed new its owner.
 _TARGET_NEW_RE = re.compile(r"\bnew\s*\(\)")
 _GETAWAITER_RE = re.compile(r"\.GetAwaiter\(\)\.GetResult\(\)")
@@ -147,6 +164,85 @@ def _owned_types(owned_srcs: list[Path]) -> set[str]:
     return types
 
 
+def _constructed_names(code: str) -> list[str]:
+    """Owned-type construction candidates on one cleaned line: `new`/dotted
+    `new`/the DI factory channel, all attributed by the last segment."""
+    return [m.group(1).split(".")[-1]
+            for pattern in (_NEW_RE, _CREATE_INSTANCE_RE)
+            for m in pattern.finditer(code)]
+
+
+def _sequencer_files(src: Path) -> list[Path]:
+    bootstrap = src / "Bootstrap"
+    if not bootstrap.is_dir():
+        return []
+    return sorted(bootstrap.glob(SEQUENCER_GLOB))
+
+
+def _run_span(cleaned: list[str]) -> tuple[int, int] | None:
+    """Line span [start, end] of `Run()`'s body in cleaned lines (None if absent).
+
+    Braces are counted on cleaned lines. An expression body (`=> …`) opens none:
+    only the signature line is in scope, never the following methods."""
+    start = next((i for i, code in enumerate(cleaned) if _RUN_SIGNATURE_RE.match(code)), None)
+    if start is None:
+        return None
+    depth = 0
+    opened = False
+    for i in range(start, len(cleaned)):
+        code = cleaned[i]
+        if "{" in code:
+            opened = True
+        depth += code.count("{") - code.count("}")
+        if opened and depth <= 0:
+            return start, i
+    return start, start if not opened else len(cleaned) - 1
+
+
+def _sequencer_violations(src: Path, owned: set[str]) -> list[str]:
+    out: list[str] = []
+    files = _sequencer_files(src)
+    if not files:
+        return [f"  C6 no sequencer files found under {src / 'Bootstrap'} ({SEQUENCER_GLOB})"]
+    for path in files:
+        raws = path.read_text(encoding="utf-8").splitlines()
+        cleaned = list(CSharpLineScanner(raws).iter_cleaned())
+        for code in cleaned:
+            for constructed in _constructed_names(code):
+                if constructed in owned and constructed not in SEQUENCER_VALUE_TYPES:
+                    out.append(
+                        f"  C6 {path.name}: sequencer constructs `{constructed}` (resolve via the"
+                        " container or *Registration.cs; stage values update SEQUENCER_VALUE_TYPES)")
+            if _TARGET_NEW_RE.search(code):
+                owner = TARGET_OWNER_RE.search(code)
+                attributed = owner.group(1).split(".")[-1] if owner else None
+                if attributed in owned and attributed not in SEQUENCER_VALUE_TYPES:
+                    out.append(
+                        f"  C6 {path.name}: sequencer constructs `{attributed}` (target-typed `new()`)")
+        bridges = sum(len(_GETAWAITER_RE.findall(code)) for code in cleaned)
+        if bridges > SEQUENCER_SYNC_BRIDGE_CAP:
+            out.append(
+                f"  C6 {path.name}: {bridges} sync-over-async bridges > {SEQUENCER_SYNC_BRIDGE_CAP}"
+                " (only the runtime-starter step bridge may block; full async is separate)")
+
+        span = _run_span(cleaned)
+        if span is None:
+            continue
+        start, end = span
+        for code in cleaned[start:end + 1]:
+            m = _SEQUENCER_CONTROL_RE.search(code)
+            if m:
+                out.append(
+                    f"  C6 {path.name}: Run() holds control flow `{m.group(0)}`"
+                    " (a straight call list; branches belong in a use case)")
+        for line in raws[start:end + 1]:
+            if '"' in line:
+                out.append(
+                    f"  C6 {path.name}: Run() holds quoted text (domain text belongs in a use case)")
+                break
+    return out
+
+
 def _violations(src: Path, owned_srcs: list[Path],
                 max_new: int, max_dot_partials: int) -> tuple[list[str], int]:
     files = _root_files(src)
@@ -161,14 +257,12 @@ def _violations(src: Path, owned_srcs: list[Path],
             " (orchestration belongs in Bootstrap/StartupSequence or a domain service)")
 
     owned = _owned_types(owned_srcs)
+    out.extend(_sequencer_violations(src, owned))
     new_count = 0
     for path in files:
         raws = path.read_text(encoding="utf-8").splitlines()
         for code in CSharpLineScanner(raws).iter_cleaned():
-            for m in _NEW_RE.finditer(code):
-                # Dotted construction attributes to the last segment
-                # (`new Tray.CloseGate()` -> `CloseGate`).
-                constructed = m.group(1).split(".")[-1]
+            for constructed in _constructed_names(code):
                 if constructed in owned:
                     new_count += 1
                     if constructed not in ROOT_CONSTRUCTIBLE:
@@ -342,20 +436,23 @@ public sealed partial class DesktopAdapter
         else:
             print(f"  ✗ C5 not flagged: {rows}")
             failed = 1
-        # C5/B1: dotted construction attributes to the last segment —
-        # `new Whatever.ShellEntry()` counts C3 and trips C5 like the bare form.
+        # C5/B1: dotted `new Whatever.ShellEntry()` attributes by the last segment,
+        # and the DI factory channel (`CreateInstance<T>`) counts like `new` — both
+        # must trip C5, so rewriting a construction site cannot bypass the inventory.
+        # 上一夹具的同类文件先清，计数以增量锚定（跨夹具残留的 ShellEntry 构造在 before 里）。
+        (root / "DesktopAdapter.C3.cs").unlink()
+        _, before = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
         (root / "DesktopAdapter.C3.cs").write_text(
-            """namespace Shell;
-public sealed partial class DesktopAdapter
-{
-    public int Resolve() { var e = new Whatever.ShellEntry(); return 0; }
-}
-""", encoding="utf-8")
-        rows, count = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
-        if count >= 1 and any(r.startswith("  C5 ") and "`ShellEntry`" in r for r in rows):
-            print("  ok: C5 dotted construction attributed to last segment")
+            "namespace Shell;\npublic sealed partial class DesktopAdapter\n{\n"
+            "    public int Resolve() { var e = new Whatever.ShellEntry();"
+            " var f = ActivatorUtilities.CreateInstance<ShellEntry>(); return 0; }\n}\n",
+            encoding="utf-8")
+        rows, after = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        flagged = [r for r in rows if "DesktopAdapter.C3.cs" in r and "C5 " in r]
+        if after == before + 2 and len(flagged) == 2:
+            print("  ok: C5 dotted + DI-factory constructions both flagged")
         else:
-            print(f"  ✗ C5 dotted not attributed: {rows}")
+            print(f"  ✗ C5 channels not both flagged (Δ={after - before}, rows={rows})")
             failed = 1
         (root / "DesktopAdapter.C3.cs").unlink()
 
@@ -398,6 +495,41 @@ public sealed partial class DesktopAdapter
             print("  ok: C4 sync-over-async flagged")
         else:
             print(f"  ✗ C4 not flagged: {rows}")
+            failed = 1
+
+        # C6: Run() control flow/quoted text, constructions (stage values whitelisted),
+        # the single sanctioned sync bridge, and the empty sequencer set.
+        (domain / "SupervisorSetup.cs").write_text(
+            "namespace Shell.Bootstrap;\ninternal readonly record struct SupervisorSetup(int A);\n",
+            encoding="utf-8")
+        c6_fixtures = [
+            ("control flow", "int Run() { if (_ready) { return 1; } return 0; }", "control flow"),
+            ("quoted text", 'int Run() { var s = "x"; return 0; }', "quoted text"),
+            ("service construction", "int Run() { var e = new ShellEntry(); return 0; }", "`ShellEntry`"),
+            ("stage-value whitelist", "int Run() { var s = new SupervisorSetup(1); return s.A; }", None),
+            ("sync-bridge cap",
+             "int Run() { _ = P().GetAwaiter().GetResult(); _ = P().GetAwaiter().GetResult(); return 0; }",
+             "sync-over-async bridges"),
+        ]
+        for label, run, expected in c6_fixtures:
+            (domain / "StartupSequence.cs").write_text(
+                "namespace Shell.Bootstrap;\ninternal sealed class StartupSequence\n{\n"
+                f"    public {run}\n}}\n", encoding="utf-8")
+            rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+            hits = [r for r in rows if "C6 " in r]
+            confirmed = (not hits) if expected is None else any(expected in r for r in hits)
+            if confirmed:
+                print(f"  ok: C6 {label}")
+            else:
+                print(f"  ✗ C6 {label} not confirmed: {hits}")
+                failed = 1
+
+        # C6: a source root without the sequencer set is reported, not skipped.
+        missing = _sequencer_violations(Path(td) / "Nope", set())
+        if any("C6 no sequencer files" in r for r in missing):
+            print("  ok: C6 empty sequencer set flagged")
+        else:
+            print("  ✗ C6 empty sequencer set not flagged")
             failed = 1
 
     if failed == 0:

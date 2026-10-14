@@ -36,7 +36,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-skill-format.py` | 技能格式（frontmatter/目录束/内链/结构，`.agents/skills/*/SKILL.md`） | `python3 scripts/verify-skill-format.py` |
 | `verify-shell-standards.sh` | 脚本规范 S1-S6（errexit / 尺寸 ≤250 行 / 库不可执行且不自设选项 / 旋钮声明 / 共享库单源 / `shellcheck -S warning`），规范见 [script-standards](script-standards.md) | `bash scripts/verify-shell-standards.sh`（`--self-test` 夹具） |
 | `install-linters.sh` + `actionlint` | 脚本层静态检查工具（shellcheck + actionlint，版本与 sha256 双钉）与工作流静态检查（对 `run:` 块跑 `shellcheck -S warning`） | `bash scripts/install-linters.sh` → `actionlint -shellcheck="shellcheck -S warning"` |
-| `verify-compose-root.py` | 组合根语义闸（根只装配：方法清单封闭 / new 自有类型 ≤16 / 单 dot 分部 / 禁同步编排；`--enforce` 才 fail） | `python3 scripts/verify-compose-root.py` |
+| `verify-compose-root.py` | 组合根语义闸（根只装配：方法清单封闭 / new 自有类型 ≤16 / 单 dot 分部 / 禁同步编排）+ 排序器形状（C6；`--enforce` 才 fail） | `python3 scripts/verify-compose-root.py` |
 | `verify-upstream-anchors.py` | 注入面依赖的上游锚点（DOM 类名后缀 / `--dsw-*` 设计变量）在已装 dsh 的客户端资产里是否仍在；required 缺失 `--enforce` 才 fail，另两条恒红（显式 `--dsh-root` 非包根 / 包根下无客户端资产） | `python3 scripts/verify-upstream-anchors.py` |
 | `verify-review-brief.py` | 评审简报形状 + 评审对象冻结 + 轮次纪律（轮次上限、标题↔文件名互校、处置段与条目、验轮 `base` 须为上一轮冻结 tree 且增量非空）（`--enforce`；简报是 gitignore 本地文档） | `python3 scripts/verify-review-brief.py --enforce` |
 | `change-scope.sh` | `push` 前最小证据（`merge-base` diff） | `scripts/change-scope.sh` |

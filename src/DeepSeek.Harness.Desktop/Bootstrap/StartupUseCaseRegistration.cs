@@ -5,14 +5,16 @@ using Ryn.Core;
 namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
-/// 启动用例注册（ADR 组合根机制收官 step-1）：导航/监督用例与三个新端口的适配器在注册处组装，
-/// 接线层只解析触发（R1）；时限参数由配置模型 <c>RuntimeTimeouts</c> 单点快照到 Core 侧记录。
+/// 启动用例注册（ADR 组合根机制收官 step-1 + 终局的 B3）：导航/监督/顶栏注入/启动期告知用例与端口
+/// 适配器在注册处组装，接线层只解析触发（R1）；时限参数由配置模型 <c>RuntimeTimeouts</c> 单点快照到
+/// Core 侧记录，展示面闭包（横幅构建与推送）同处装配。
 /// </summary>
 internal static class StartupUseCaseRegistration
 {
-    /// <summary>登记启动用例与端口适配器（单例；惰性工厂首次解析即创建，与容器既有单例时序一致）。</summary>
+    /// <summary>登记启动用例与端口适配器（单例；惰性工厂首次解析即创建，与容器既有单例时序一致）。
+    /// 顶栏注入与启动期告知的用例本体自排序器下沉至此登记（B3），排序器只留按序触发。</summary>
     /// <param name="services">服务集合。</param>
-    /// <param name="bootstrap">首启引导服务（监督用例的落定握手句柄来源）。</param>
+    /// <param name="bootstrap">首启引导服务（监督用例的落定握手句柄来源；告知用例的落定门控）。</param>
     /// <param name="proxy">回环代理源；null = 绑定失败（导航用例降级不导航）。</param>
     /// <returns>服务集合（链式）。</returns>
     public static IServiceCollection AddStartupUseCases(
@@ -48,6 +50,31 @@ internal static class StartupUseCaseRegistration
             sp.GetRequiredService<UiLocale>(),
             SupervisionOptions(sp.GetRequiredService<RuntimeTimeouts>()),
             HostLog.Write));
+        // 无边框顶栏注入用例（ADR frameless-uniform-caption-bar + B3）：脚本构建与三路注入全在用例内。
+        services.AddSingleton(sp => new CaptionBarInstaller(
+            sp.GetRequiredService<CurrentWindowAccessor>(),
+            sp.GetRequiredService<IRynWebView>(),
+            sp.GetRequiredService<RynNavigationCallbacks>(),
+            sp.GetRequiredService<CaptionBarOptions>(),
+            sp.GetRequiredService<UiLocale>(),
+            sp.GetRequiredService<CancellationTokenSource>()));
+        // 启动期告知用例（ADR shared-home-desktop-profile + B3）：用例编排住 Infrastructure，展示面闭包与
+        // 脏退标志在注册处装配；宿主惰性解析，调用点晚于编排首个 HostSetup 解析，marker 语义不变。
+        services.AddSingleton(sp =>
+        {
+            HostSetup host = sp.GetRequiredService<HostSetup>();
+            CurrentWindowAccessor accessor = sp.GetRequiredService<CurrentWindowAccessor>();
+            UiLocale uiLocale = sp.GetRequiredService<UiLocale>();
+            return new StartupNoticeService(
+                bootstrap,
+                TimeSpan.FromSeconds(sp.GetRequiredService<RuntimeTimeouts>().BootstrapSettleTimeoutSeconds),
+                host.Marker.PreviousRunUnclean,
+                HostLog.Write,
+                (version, ct) => PagePump.ShowBannerWhenReadyAsync(
+                    accessor, DesktopBanner.BuildVersionFloorBanner(version, uiLocale), ct),
+                ct => PagePump.ShowBannerWhenReadyAsync(
+                    accessor, DesktopBanner.BuildUncleanExitBanner(uiLocale), ct));
+        });
         return services;
     }
 
