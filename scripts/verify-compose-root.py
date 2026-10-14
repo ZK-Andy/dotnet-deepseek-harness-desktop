@@ -21,8 +21,9 @@ project. Seven checks:
       Infrastructure/Presentation); Ryn/BCL types do not count. Target-typed
       `new()` is attributed via the assigned field/property type on the same
       line; an unattributable one is reported, not skipped.
-  C4  no sync-over-async in the root: `.GetAwaiter().GetResult()` belongs to the
-      orchestration service, not the wiring layer (ADR compose-root-form-separation).
+  C4  the entry bridge is exactly one sync-over-async call in the root: the
+      async startup phase is bridged once at the wiring layer, never inside the
+      orchestration (ADR entry-bridge-two-phase). Zero or several are violations.
   C5  every self-owned type CONSTRUCTED in the root must be in the
       ROOT_CONSTRUCTIBLE inventory (direction gate; C3 caps volume, C5 caps
       direction). A NEW name is a violation — resolve via DI or register the
@@ -31,12 +32,13 @@ project. Seven checks:
       `…CreateInstance<X>(…)` both count as constructions.
   C6  sequencer shape: `Bootstrap/StartupSequence*.cs` (the orchestrator the
       wiring layer triggers; ADR composition-mechanism-container-assembly) must
-      stay a sequencer, not a second root — `Run()` holds no control flow and no
-      quoted text (raw lines checked, comments included), the files construct no
-      owned type (both channels attributed by last segment; target-typed `new()`
-      attributed via the declared owner, unattributable ones reported;
-      SEQUENCER_VALUE_TYPES is empty — reopening it needs its own ADR), and the
-      sync bridge is capped at one.
+      stay a sequencer, not a second root — every public `Run*` entry phase
+      holds no control flow and no quoted text (raw lines checked, comments
+      included), the files construct no owned type (both channels attributed by
+      last segment; target-typed `new()` attributed via the declared owner,
+      unattributable ones reported; SEQUENCER_VALUE_TYPES is empty — reopening
+      it needs its own ADR), and no sync bridge may remain (it lives in the
+      wiring layer; ADR entry-bridge-two-phase).
   C7  pre-Build assembly inventory: `Bootstrap/PreBuildRegistration*.cs` (the
       registration-layer home that took over the root's pre-Build assembly,
       ADR sequencer-resolution-injection) may construct only types listed in
@@ -114,8 +116,17 @@ ROOT_CONSTRUCTIBLE = {
 # (stage values ride locals/`Task`; ADR sequencer-stage-value-retirement). Reopening
 # this set re-opens a construction channel in the sequencer and needs its own ADR.
 SEQUENCER_VALUE_TYPES: set[str] = set()
-SEQUENCER_SYNC_BRIDGE_CAP = 1  # the runtime-starter step bridge; full async is separate
+# Zero: the sole sync bridge sits in the wiring layer as the two-phase entry
+# (ADR entry-bridge-two-phase) — the sequencer's async phase is awaited by the
+# root, so nothing may block inside the orchestration.
+SEQUENCER_SYNC_BRIDGE_CAP = 0
 SEQUENCER_GLOB = "StartupSequence*.cs"
+
+# C4 expects exactly one entry bridge: `RunStartupAsync()` (I/O phase) is bridged
+# once in the wiring layer, then the thread-0 sync phase runs. Zero would mean the
+# phase split moved elsewhere, several would mean the bridge crept back inward
+# (ADR entry-bridge-two-phase) — either way the deliberate inventory is re-decided.
+ROOT_ENTRY_BRIDGES = 1
 
 # Pre-Build assembly inventory (C7): `PreBuildRegistration*.cs` is the home that
 # took over the root's pre-Build assembly (ADR sequencer-resolution-injection).
@@ -141,7 +152,13 @@ PREBUILD_CONSTRUCTIBLE = {
 _SEQUENCER_CONTROL_RE = re.compile(
     r"\b(?:if|else|for|foreach|while|do|switch|case|try|catch|finally|throw|"
     r"using|lock|goto|yield)\b")
-_RUN_SIGNATURE_RE = re.compile(r"^\s*public\s+int\s+Run\s*\(\s*\)")
+# Every public `Run*` method in the sequencer is an entry phase whose body must
+# read as a straight call list (ADR entry-bridge-two-phase splits `Run` into the
+# async I/O phase and the thread-0 sync phase). Modifier prefixes (`static`,
+# `async`, …) are matched so a rewritten signature cannot dodge the scan.
+_RUN_SIGNATURE_RE = re.compile(
+    r"^\s*public\s+(?:(?:static|async|sealed|override|virtual|partial|extern|unsafe|new)\s+)*"
+    r"[\w<>.,\[\]]+\s+(Run\w*)\s*\(")
 
 # Constructions: `new X(` / dotted `new Ns.X(` / factory `…CreateInstance<X>(…)`, all
 # attributed by last segment (deeper generic nesting is a documented skip).
@@ -192,24 +209,36 @@ def _sequencer_files(src: Path) -> list[Path]:
     return sorted(bootstrap.glob(SEQUENCER_GLOB))
 
 
-def _run_span(cleaned: list[str]) -> tuple[int, int] | None:
-    """Line span [start, end] of `Run()`'s body in cleaned lines (None if absent).
+def _run_spans(cleaned: list[str]) -> list[tuple[int, int]]:
+    """Line spans of every public `Run*` entry method body in cleaned lines.
 
-    Braces are counted on cleaned lines. An expression body (`=> …`) opens none:
-    only the signature line is in scope, never the following methods."""
-    start = next((i for i, code in enumerate(cleaned) if _RUN_SIGNATURE_RE.match(code)), None)
-    if start is None:
-        return None
-    depth = 0
-    opened = False
-    for i in range(start, len(cleaned)):
-        code = cleaned[i]
-        if "{" in code:
-            opened = True
-        depth += code.count("{") - code.count("}")
-        if opened and depth <= 0:
-            return start, i
-    return start, start if not opened else len(cleaned) - 1
+    The span ends at the body's closing brace, at the arrow of an expression body
+    (`=> …`), or at a bodiless declaration's `;` — never by running into the next
+    member (an expression-bodied entry must not inherit a following method's
+    control flow or quoted text).
+    """
+    spans: list[tuple[int, int]] = []
+    for start, code in enumerate(cleaned):
+        if not _RUN_SIGNATURE_RE.match(code):
+            continue
+        depth = 0
+        opened = False
+        end = start
+        for i in range(start, len(cleaned)):
+            line = cleaned[i]
+            end = i
+            if not opened:
+                if "{" not in line and "=>" in line:
+                    break  # expression body: the arrow line ends the scope
+                if "{" in line:
+                    opened = True
+            depth += line.count("{") - line.count("}")
+            if opened and depth <= 0:
+                break
+            if not opened and line.rstrip().endswith(";"):
+                break  # bodiless declaration
+        spans.append((start, end))
+    return spans
 
 
 def _sequencer_violations(src: Path, owned: set[str]) -> list[str]:
@@ -240,23 +269,22 @@ def _sequencer_violations(src: Path, owned: set[str]) -> list[str]:
         if bridges > SEQUENCER_SYNC_BRIDGE_CAP:
             out.append(
                 f"  C6 {path.name}: {bridges} sync-over-async bridges > {SEQUENCER_SYNC_BRIDGE_CAP}"
-                " (only the runtime-starter step bridge may block; full async is separate)")
+                " (the entry bridge lives in the wiring layer; ADR entry-bridge-two-phase)")
 
-        span = _run_span(cleaned)
-        if span is None:
-            continue
-        start, end = span
-        for code in cleaned[start:end + 1]:
-            m = _SEQUENCER_CONTROL_RE.search(code)
-            if m:
-                out.append(
-                    f"  C6 {path.name}: Run() holds control flow `{m.group(0)}`"
-                    " (a straight call list; branches belong in a use case)")
-        for line in raws[start:end + 1]:
-            if '"' in line:
-                out.append(
-                    f"  C6 {path.name}: Run() holds quoted text (domain text belongs in a use case)")
-                break
+        for start, end in _run_spans(cleaned):
+            entry = _RUN_SIGNATURE_RE.match(cleaned[start]).group(1)
+            for code in cleaned[start:end + 1]:
+                m = _SEQUENCER_CONTROL_RE.search(code)
+                if m:
+                    out.append(
+                        f"  C6 {path.name}: {entry}() holds control flow `{m.group(0)}`"
+                        " (a straight call list; branches belong in a use case)")
+            for line in raws[start:end + 1]:
+                if '"' in line:
+                    out.append(
+                        f"  C6 {path.name}: {entry}() holds quoted text"
+                        " (domain text belongs in a use case)")
+                    break
     return out
 
 
@@ -314,6 +342,7 @@ def _violations(src: Path, owned_srcs: list[Path],
     out.extend(_sequencer_violations(src, owned))
     out.extend(_prebuild_violations(src, owned))
     new_count = 0
+    bridges = 0
     for path in files:
         raws = path.read_text(encoding="utf-8").splitlines()
         for code in CSharpLineScanner(raws).iter_cleaned():
@@ -339,7 +368,7 @@ def _violations(src: Path, owned_srcs: list[Path],
                         f"  C3 {path.name}: unattributable target-typed `new()` "
                         "(attribute the declared type or write it explicitly)")
             if _GETAWAITER_RE.search(code):
-                out.append(f"  C4 {path.name}: sync-over-async `.GetAwaiter().GetResult()` in root")
+                bridges += len(_GETAWAITER_RE.findall(code))
             matched = None
             for pattern in (_COMPOSE_METHOD_RE, _COMPOSE_CTOR_RE, _COMPOSE_PROPERTY_RE):
                 m = pattern.match(code)
@@ -354,6 +383,11 @@ def _violations(src: Path, owned_srcs: list[Path],
 
     if new_count > max_new:
         out.append(f"  C3 root `new` of self-owned types {new_count} > {max_new}")
+    if bridges != ROOT_ENTRY_BRIDGES:
+        out.append(
+            f"  C4 root holds {bridges} sync-over-async bridges != {ROOT_ENTRY_BRIDGES}"
+            " (the two-phase entry bridges the async startup phase exactly once at the"
+            " wiring layer; ADR entry-bridge-two-phase)")
     return out, new_count
 
 
@@ -375,14 +409,15 @@ public static class Program
 }}
 """
 
-        # Passing fixture: inventory methods, few news, one dot partial, no GetAwaiter.
+        # Passing fixture: inventory methods, few news, one dot partial, and the
+        # single entry bridge the two-phase wiring layer is expected to hold.
         (root / "Program.cs").write_text(base_program(), encoding="utf-8")
         (root / "DesktopAdapter.cs").write_text(
             """namespace Shell;
 public sealed partial class DesktopAdapter
 {
     private ShellEntry _entry = new ShellEntry();
-    public int Run() { return _entry.Run(); }
+    public int Run() { _entry.Start().GetAwaiter().GetResult(); return _entry.Run(); }
     private void StartProxy() { }
 }
 """, encoding="utf-8")
@@ -536,25 +571,55 @@ public sealed partial class DesktopAdapter
             failed = 1
         (root / "DesktopAdapter.TN.cs").unlink()
 
-        # C4: sync-over-async in the root.
+        # C4: the entry bridge is exactly one (ADR entry-bridge-two-phase) — the
+        # base fixture already holds one and passes; a second copy and a missing
+        # bridge are both flagged.
         (root / "DesktopAdapter.C4.cs").write_text(
             """namespace Shell;
 public sealed partial class DesktopAdapter
 {
-    public int Run() { return 0; }
     private void Boot() { var x = Wait().GetAwaiter().GetResult(); }
 }
 """, encoding="utf-8")
         rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
         if any("C4 " in r for r in rows):
-            print("  ok: C4 sync-over-async flagged")
+            print("  ok: C4 second sync-over-async bridge flagged")
         else:
-            print(f"  ✗ C4 not flagged: {rows}")
+            print(f"  ✗ C4 second bridge not flagged: {rows}")
             failed = 1
+        (root / "DesktopAdapter.C4.cs").unlink()
 
-        # C6: Run() control flow/quoted text, constructions (the stage-value whitelist
-        # is empty, so ANY owned construction in the sequencer is a violation), the
-        # single sanctioned sync bridge, and the empty sequencer set.
+        # C4: zero bridges moves the phase split out of the deliberate inventory.
+        (root / "DesktopAdapter.cs").write_text(
+            """namespace Shell;
+public sealed partial class DesktopAdapter
+{
+    private ShellEntry _entry = new ShellEntry();
+    public int Run() { return _entry.Run(); }
+    private void StartProxy() { }
+}
+""", encoding="utf-8")
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        if any("C4 " in r for r in rows):
+            print("  ok: C4 missing entry bridge flagged")
+        else:
+            print(f"  ✗ C4 zero-bridge root not flagged: {rows}")
+            failed = 1
+        (root / "DesktopAdapter.cs").write_text(
+            """namespace Shell;
+public sealed partial class DesktopAdapter
+{
+    private ShellEntry _entry = new ShellEntry();
+    public int Run() { _entry.Start().GetAwaiter().GetResult(); return _entry.Run(); }
+    private void StartProxy() { }
+}
+""", encoding="utf-8")
+
+        # C6: entry control flow/quoted text (every public `Run*` phase), constructions
+        # (the stage-value whitelist is empty, so ANY owned construction in the
+        # sequencer is a violation), the empty sync-bridge allowance (the entry
+        # bridge lives in the wiring layer, ADR entry-bridge-two-phase), and the
+        # empty sequencer set.
         (domain / "StageValue.cs").write_text(
             "namespace Shell.Bootstrap;\ninternal readonly record struct StageValue(int A);\n",
             encoding="utf-8")
@@ -565,8 +630,17 @@ public sealed partial class DesktopAdapter
             ("unattributable target-typed new", "int Run() { var x = F(new()); return 0; }",
              "unattributable target-typed"),
             ("sync-bridge cap",
-             "int Run() { _ = P().GetAwaiter().GetResult(); _ = P().GetAwaiter().GetResult(); return 0; }",
+             "int Run() { _ = P().GetAwaiter().GetResult(); return 0; }",
              "sync-over-async bridges"),
+            # The entry is two phase methods now (ADR entry-bridge-two-phase):
+            # each public `Run*` body is scanned, not just `Run` — and a modifier
+            # prefix does not dodge the scan.
+            ("async phase control flow",
+             "async Task RunStartupAsync() { if (_ready) { await P(); } }", "control flow"),
+            ("sync phase quoted text",
+             'int RunMainLoop() { var s = "x"; return 0; }', "quoted text"),
+            ("static modifier control flow",
+             "static int Run() { if (_ready) { return 1; } return 0; }", "control flow"),
         ]
         for label, run, expected in c6_fixtures:
             (domain / "StartupSequence.cs").write_text(
@@ -580,6 +654,21 @@ public sealed partial class DesktopAdapter
             else:
                 print(f"  ✗ C6 {label} not confirmed: {hits}")
                 failed = 1
+
+        # C6: an expression-bodied entry ends at its arrow — it must not inherit
+        # the next member's body (the old brace walk did, mis-attributing that
+        # method's control flow to the entry).
+        (domain / "StartupSequence.cs").write_text(
+            "namespace Shell.Bootstrap;\ninternal sealed class StartupSequence\n{\n"
+            "    public int RunMainLoop() => Helper();\n"
+            "    private int Helper() { if (_ready) { return 1; } return 0; }\n}\n",
+            encoding="utf-8")
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        if not any("C6 " in r and "control flow" in r for r in rows):
+            print("  ok: C6 expression-bodied entry does not swallow the next member")
+        else:
+            print(f"  ✗ C6 expression-body scope wrong: {rows}")
+            failed = 1
 
         # C6: the stage-value whitelist itself is empty (mandate of ADR
         # sequencer-stage-value-retirement) — a non-empty set would license a

@@ -80,7 +80,7 @@ python3 scripts/verify-readme-badges.py  # README 双语 tests/coverage 徽章 =
 python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/待办文件与预算/冷归档卷；存在即校验）
 python3 scripts/verify-governance.py     # Issue/PR 模板治理字段 + 工作流/composite action 的 run: 禁插值事件载荷/env 回读
 python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（F3=组合根集合计 ≤500；report 默认；--enforce 才 fail）
-python3 scripts/verify-compose-root.py   # 组合根语义闸（根只装配 C1-C5：方法清单封闭/new 自有类型 ≤6/单 dot 分部/禁同步编排；C6 排序器形状：Run 无控制流与引号/零服务构造/同步桥 ≤1；C7 装配期构造清单：PreBuildRegistration*.cs 的构造须在册；--enforce 才 fail）
+python3 scripts/verify-compose-root.py   # 组合根语义闸（根只装配 C1-C5：方法清单封闭/new 自有类型 ≤6/单 dot 分部/入口桥恰一处；C6 排序器形状：public `Run*` 无控制流与引号/零服务构造/零同步桥；C7 装配期构造清单：PreBuildRegistration*.cs 的构造须在册；--enforce 才 fail）
 python3 scripts/verify-registration-discipline.py # 注册点纪律闸（R1：基础设施具体类型只许出现在注册处：Presentation 注册外直接 new ≤1/静态调用 ≤11；--enforce 才 fail）
 python3 scripts/verify-increment-discipline.py # 增量纪律闸（耦合左移②：gross/既有文件净增/跨层扇出/新包引用四帽 600/150/15/1；--enforce 已接 pre-commit/pre-push/CI）
 python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）

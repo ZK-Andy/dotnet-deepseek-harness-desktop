@@ -62,10 +62,11 @@ public sealed partial class DesktopAdapter
             {
                 HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
             }
-            // 编排触发（容器组装对象图：编排器构造参数经容器解图，ADR 组合根机制收官终局的 B3；
-            // 唯一显式供给项是 Build 后才存在的应用产出——Ryn 不把 RynApplication 登记进容器；
-            // hostSetup 必已赋值——解析失败即抛，抛后直接进 finally，走不到组装）。
-            return ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>(builtApp.Services, app).Run();
+            // 编排触发（容器组装对象图，ADR 组合根机制收官终局的 B3）：唯一显式供给项是 Build 后应用产出
+            //（Ryn 不登记 RynApplication，hostSetup 必已赋值）；两相入口的唯一桥在此（C4，ADR entry-bridge-two-phase）。
+            Bootstrap.StartupSequence sequence = ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>(builtApp.Services, app);
+            sequence.RunStartupAsync().GetAwaiter().GetResult();
+            return sequence.RunMainLoop();
         }
         finally
         {

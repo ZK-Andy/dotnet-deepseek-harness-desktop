@@ -4,7 +4,9 @@ Status: implemented
 
 Review: FULL/2026-10-15#3/R1=ok R2=ok R3=ok
 
-Erratum: 2026-10-15 — C6 的 `SEQUENCER_VALUE_TYPES` 已收紧为空集（阶段值 `SupervisorSetup` 退役，见 [sequencer-stage-value-retirement](2026-10-15-sequencer-stage-value-retirement.md)）；正文把它称作 deliberate inventory 的表述不再适用，判据与闸结构不动。Testing 节的「`--self-test` 16 条 ok……阶段值白名单」现为 19 条：原「阶段值白名单」夹具改为「unattributable target-typed `new()`」，另新增「白名单必须为空」、「装配期构造清单」（C7）与「C7 未归属 target-typed `new()`」三条夹具；该节的 run 记录本身不改。Testing 的 `C3 16/16` 读数已由 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md) 的 C3 压舱降为 **6/6**。
+Erratum: 2026-10-15 — C6 的 `SEQUENCER_VALUE_TYPES` 已收紧为空集（阶段值 `SupervisorSetup` 退役，见 [sequencer-stage-value-retirement](2026-10-15-sequencer-stage-value-retirement.md)）；正文把它称作 deliberate inventory 的表述不再适用，判据与闸结构不动。Testing 节的「`--self-test` 16 条 ok……阶段值白名单」现为 **24** 条：原「阶段值白名单」夹具改为「unattributable target-typed `new()`」，新增「白名单必须为空」、「装配期构造清单」（C7，两条）、C4 恰一处两路（第二桥/缺桥）、两个入口名（`RunStartupAsync`/`RunMainLoop`）、静态修饰符入口、以及「表达式体入口不吞下一成员」；该节的 run 记录本身不改。Testing 的 `C3 16/16` 读数已由 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md) 的 C3 压舱降为 **6/6**。
+
+Erratum: 2026-10-15 — C6 的同步桥帽由「≤1（唯一合法点＝起步桥）」收紧为 **0**，扫描面由 `Run()` 扩到全部 public `Run*` 入口方法（含修饰符前缀；表达式体与无体声明不再吞相邻成员）；入口桥移接线层恰好一处（C4 由「禁」改「恰一处」，零/多皆 violation），见 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md)。正文 Decision 与 Testing 里「同步桥 ≤1／唯一合法点＝起步桥」的读数按此不再适用，闸结构不动。
 
 方案母篇见 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)——本篇落其 step-1 余项 B3/B4 并把母篇转 implemented（step-1 的 B1/B2 见 [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md)）。
 

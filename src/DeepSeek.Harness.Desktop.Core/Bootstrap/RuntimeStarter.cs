@@ -2,11 +2,10 @@ namespace DeepSeek.Harness.Desktop.Core.Bootstrap;
 
 /// <summary>
 /// 运行时起步用例（ADR 组合根机制收官先行批）：首启 shim 注册 → 宿主 spawn 等 URL → 壳铸币。
-/// 原 <c>StartupSequence.StartRuntime</c> 的逐句下沉（零行为变更）；下沉后该链可经 fake 宿主/铸币单测，
-/// 不再依赖真实 dsh 进程。对标 <see cref="Update.UpdateCoordinator"/>：用例住 Core，
+/// 该链可经 fake 宿主/铸币单测，不依赖真实 dsh 进程。对标 <see cref="Update.UpdateCoordinator"/>：用例住 Core，
 /// 纯端口（<see cref="IFirstBootBootstrap"/>/<see cref="IRuntimeHost"/>）+ BCL 委托注入，
 /// 程序集零外层引用由 <c>ArchitectureTests</c> 互证；Infrastructure 适配（真实铸币）由组合点以方法组接入。
-/// 同步阻塞（<c>GetAwaiter</c>）留调用链顶端，待 Ryn 线程模型审查后随 Run 链 async 化消除。
+/// 本用例自身不含同步桥：编排侧在异步相 <c>await</c> 它（ADR entry-bridge-two-phase）。
 /// </summary>
 public sealed class RuntimeStarter : IRuntimeStarter
 {

@@ -35,7 +35,7 @@ Erratum: 2026-10-15 — Testing 的两个门禁读数已变：C3 16/16 → **6/6
 
 - 买到的：进入主界面链与恢复链可经 fake 端口单测（新增 11 例）；`StartupSequence` 少两个分部与四个字段、少一处 `new` 具体类型；导航/失败面/铸币态三处 Ryn/基础设施边界端口化（R3）；`MainUiEntry` 不再依赖 `RynNavigationCallbacks` 单槽的调用时序说明（订阅语义收进端口）。
 - 付出的：新增三端口 + 三适配器 + 两用例（`Core.Ui` 新目录）；时限参数经 `MainUiEntryOptions`/`RuntimeSupervisionOptions` 从 `RuntimeTimeouts` 快照（配置键仍是唯一家，记录不持默认值）；`DesktopAdapter.App.cs`/`DesktopAdapter.cs` 各一行接线变更（该构造函数不再收 proxy）。
-- 余项：母篇 step-1 的 **B3**（`Run` 缩成排序器）与 **B4**（`verify-compose-root.py` 新增 C6「排序器形状」+ 母篇转 implemented）见 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)；`Run()` 的唯一入口桥 `.GetAwaiter().GetResult()` 按母篇口径保留，全 async 另立条目。
+- 余项：母篇 step-1 的 **B3**（`Run` 缩成排序器）与 **B4**（`verify-compose-root.py` 新增 C6「排序器形状」+ 母篇转 implemented）见 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)；`Run()` 的唯一入口桥 `.GetAwaiter().GetResult()` 已随两相入口移出排序器（异步 I/O 相 + thread 0 同步相），见 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md)。
 
 ## Testing
 

@@ -10,7 +10,8 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// 由源序与产出形态两网兜底）。源序即契约：重排/改名须同步更新本测试。</summary>
 public class CompositionRootSequenceTests
 {
-    /// <summary>组合根容器前头部调用序按语句序全序断言（单实例早退、代理启动留根，编排触发收尾）。</summary>
+    /// <summary>组合根容器前头部调用序按语句序全序断言（单实例早退、代理启动留根，编排两相触发收尾：
+    /// 唯一入口桥 + 同步相）。</summary>
     [Fact]
     public void ComposeRoot_PreContainerChain_IsInContractOrder()
     {
@@ -26,14 +27,16 @@ public class CompositionRootSequenceTests
             "PreBuildRegistration.CreateUpdateAndTrayAssembly(",
             "BuildApp(preflight, proxy.Proxy, update, tray,",
             "ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>(builtApp.Services, app)",
-            ".Run();",
+            "sequence.RunStartupAsync().GetAwaiter().GetResult();",
+            "return sequence.RunMainLoop();",
         ];
 
         AssertChainOrder(source, chain);
     }
 
-    /// <summary>编排服务主链调用序按语句序全序断言（搬迁后阶段链的唯一家；无参调用以分号锚定
-    /// Run() 内语句而非定义头）。</summary>
+    /// <summary>编排服务两相主链调用序按语句序全序断言（搬迁后阶段链的唯一家；ADR entry-bridge-two-phase
+    /// 把 <c>Run</c> 切成异步相 <c>RunStartupAsync</c>（I/O 起步链）与同步相 <c>RunMainLoop</c>（Ryn 面尾段
+    /// + 主循环），本测试按相位锚定顺序）。</summary>
     [Fact]
     public void StartupSequence_RunChain_StageCalls_AreInContractOrder()
     {
@@ -42,18 +45,20 @@ public class CompositionRootSequenceTests
 
         string[] chain =
         [
+            "public async Task RunStartupAsync()",
             "_resolutions.Profile.EnsureReady();",
-            "_resolutions.Host.Value;",
+            "HostSetup host = _resolutions.Host.Value;",
             "_resolutions.Companion.EnsureInstalled(",
-            "StartRuntime(host)",
-            "RunBootstrapIfNeeded()",
-            "ShowTray()",
+            "_runtimeStarter.StartAsync(host.Host, CancellationToken.None).ConfigureAwait(false)",
+            "public int RunMainLoop()",
+            "RunBootstrapIfNeeded();",
+            "ShowTray();",
             "SetupSupervisorAsync(host)",
-            "SetupHealthMonitor()",
-            "InstallCaptionBar()",
-            "StartUpdateCheck()",
-            "StartupNoticeTask()",
-            "RunAppLoop(supervisorTask)",
+            "SetupHealthMonitor();",
+            "InstallCaptionBar();",
+            "StartUpdateCheck();",
+            "StartupNoticeTask();",
+            "return _exit.Run(",
         ];
 
         AssertChainOrder(source, chain);

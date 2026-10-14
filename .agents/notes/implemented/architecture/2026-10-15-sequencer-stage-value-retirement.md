@@ -6,6 +6,8 @@ Review: FULL/2026-10-15#4/R1=ok R2=ok R3=ok
 
 Erratum: 2026-10-15 — Testing 的「C3 16/16」读数已由 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md) 的 C3 压舱降为 **6/6**（帽 16→6），同批 `--self-test` 夹具由 **17 增至 19**（C7「装配期构造清单」两条）；本篇记的是当时读数，判据面结论不变。
 
+Erratum: 2026-10-15 — 正文点名的 `Run()`/`RunAppLoop(Task)` 已随两相入口退役：入口收成 `RunStartupAsync`/`RunMainLoop`，主循环承载与收口顺序搬 `Core.Bootstrap.AppExitOrchestration`（见 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md) 与 [app-exit-orchestration-core-usecase](2026-10-15-app-exit-orchestration-core-usecase.md)）；「监督任务以局部 `Task` 流转、不设阶段产出」的结论不变。
+
 组合根残留批的波 A。母篇见 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)，前序两篇见 [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md) 与 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)。
 
 ## Problem

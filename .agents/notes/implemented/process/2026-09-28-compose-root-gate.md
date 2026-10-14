@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-09-28#8/R1=ok R2=ok R3=ok
 
+Erratum: 2026-10-15 — C4 语义已反转：由「根内禁 `.GetAwaiter().GetResult()`」改为「根上**恰一处**」（异步相在接线层桥一次；零处与多处皆 violation），C6 的同步桥帽归零且扫描面扩到全部 public `Run*`（含修饰符前缀；表达式体/无体声明不吞相邻成员）——闸结构与清单未变，见 [entry-bridge-two-phase](../architecture/2026-10-15-entry-bridge-two-phase.md)。本篇正文的「C4 同步编排」与 Testing 的「C4 零命中」「六夹具」为当时读数。
+
 各路：R1 首轮 0 Blocker（4 Suggestion 全采纳：死常量删除/夹具自足化/共享挂账/微折叠）；R2 首轮 2 Blocker（C3 自有类型扫描面、目标类型 new() 漏计——计数跟值 9→15）+ 3 Suggestion，2 轮验轮闭合（含 1 处修复引入的 ADR 夹具数残留）；R3 首轮 0 Blocker（1 Suggestion 采纳：三处门禁描述补 C4）。
 
 ## Problem

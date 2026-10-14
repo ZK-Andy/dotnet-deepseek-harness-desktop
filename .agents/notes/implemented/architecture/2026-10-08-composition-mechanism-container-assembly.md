@@ -6,7 +6,7 @@ Erratum: 2026-10-15 — Problem 段落点换家：`DesktopBootstrap.App.cs`/`Des
 
 Review: FULL/2026-10-15#3/R1=ok R2=ok R3=ok
 
-四步落地篇（按序）：[runtime-starter-core-usecase](2026-10-08-runtime-starter-core-usecase.md)、[startupwiring-deletion-run-singletons](2026-10-08-startupwiring-deletion-run-singletons.md)、[root-fields-zero-shared-state-singletons](2026-10-08-root-fields-zero-shared-state-singletons.md)、[desktop-adapter-rename-final-assembly](2026-10-08-desktop-adapter-rename-final-assembly.md)、step-1 的 [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md) 与 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)；残留批 [sequencer-stage-value-retirement](2026-10-15-sequencer-stage-value-retirement.md)（波 A）与 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md)（波 B）。
+四步落地篇（按序）：[runtime-starter-core-usecase](2026-10-08-runtime-starter-core-usecase.md)、[startupwiring-deletion-run-singletons](2026-10-08-startupwiring-deletion-run-singletons.md)、[root-fields-zero-shared-state-singletons](2026-10-08-root-fields-zero-shared-state-singletons.md)、[desktop-adapter-rename-final-assembly](2026-10-08-desktop-adapter-rename-final-assembly.md)、step-1 的 [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md) 与 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)；残留批 [sequencer-stage-value-retirement](2026-10-15-sequencer-stage-value-retirement.md)（波 A）与 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md)（波 B）；收口篇 [app-exit-orchestration-core-usecase](2026-10-15-app-exit-orchestration-core-usecase.md) 与 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md)。
 
 ## Problem
 
@@ -21,7 +21,7 @@ Review: FULL/2026-10-15#3/R1=ok R2=ok R3=ok
 
 不做第三轮"再搬一次家"，换机制；四步均已落地：
 
-1. **用例下沉 Core**：`IWindowChromePolicy`、`IRuntimeStarter`、导航（`Core.Ui.MainUiEntry`）、监督（`Core.Bootstrap.RuntimeSupervision`）、顶栏注入（`PageBridge.CaptionBarInstaller`）与启动期告知（`Infrastructure.Bootstrap.StartupNoticeService`）各成用例，全部构造注入、可单测。`StartupSequence` 是**排序器**：`Run()` 按序触发用例/阶段，不 `new` 具体类、不拼字符串、构造参数经容器解图，接线层只显式供给容器装不下的 Build 后应用产出（Ryn 不登记 `RynApplication`）；同步桥只余起步一处，`await` 贯通另立条目。
+1. **用例下沉 Core**：`IWindowChromePolicy`、`IRuntimeStarter`、导航（`Core.Ui.MainUiEntry`）、监督（`Core.Bootstrap.RuntimeSupervision`）、顶栏注入（`PageBridge.CaptionBarInstaller`）与启动期告知（`Infrastructure.Bootstrap.StartupNoticeService`）各成用例，全部构造注入、可单测。`StartupSequence` 是**排序器**：两相入口 `RunStartupAsync`/`RunMainLoop` 按序触发用例/阶段，不 `new` 具体类、不拼字符串、构造参数经容器解图，接线层只显式供给容器装不下的 Build 后应用产出（Ryn 不登记 `RynApplication`）；同步桥只余接线层入口一处，两相切分与闸改向见 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md)。
 2. **根字段归零**：`CaptionBarOptions/RuntimeTimeouts` 与共享单例经容器消费（`LaunchOptions` 是样板）；`StartupWiring` locator 已删，生命周期还给容器；`DesktopAdapter` 只剩容器之前的启动头部 + 唯一 dot 分部的按域 `AddXxx()` 注册。
 3. **命名诚实化**：`DesktopBootstrap` 已改名 `DesktopAdapter`（Ryn 适配接线层；真正的组合在 Core）。`verify-compose-root.py` 断言接线层只引用端口 + Options + 适配器 + 冻结装配面（C5 方向），并断言编排器保持排序器形状（C6）；构造计数同时覆盖 `new` 与 DI 工厂（`CreateInstance<T>`）两条通道。
 4. **顺序**：用例先行 → 删 locator → 根字段归零 → 改名与闸改向 → 排序器收尾与 C6；每步 FULL 评审只审 R1/R3。
@@ -35,4 +35,4 @@ Review: FULL/2026-10-15#3/R1=ok R2=ok R3=ok
 ## Consequences
 
 - 买到的：新功能不再加根字段；导航/监督/起步/顶栏/告知各有用例家（`MainUiEntryTests`/`RuntimeSupervisionTests`/`RuntimeStarterTests` 覆盖）；门禁从"尺寸闸"变"方向闸 + 形状闸"（C5/C6），接线层与编排器都不再随功能顶格。
-- 付出的：`IRuntimeStarter` 抽取触碰启动最敏感链（spawn→铸币→导航），需一次全链实机——不在本机可执行范围，与波 2 同例挂待办；`Run` 入口桥的 `GetAwaiter().GetResult()` 保留，全 async 化另立条目；容器装不下的 Build 后应用产出（`AppSetup`）仍由接线层显式供给。本机制的第一批住户见 [window-chrome-depatch-core-ports](../simplification/2026-10-08-window-chrome-depatch-core-ports.md)。
+- 付出的：`IRuntimeStarter` 抽取触碰启动最敏感链（spawn→铸币→导航），需一次全链实机——不在本机可执行范围，与波 2 同例挂待办；入口桥的两相化（异步 I/O 相 + thread 0 同步相）见 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md)，其线程面同属该次实机取证（本地无 Ryn 运行时，未验）；容器装不下的 Build 后应用产出（`AppSetup`）仍由接线层显式供给。本机制的第一批住户见 [window-chrome-depatch-core-ports](../simplification/2026-10-08-window-chrome-depatch-core-ports.md)。

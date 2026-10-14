@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-10-08/R1=ok R2=ok R3=ok
 
+Erratum: 2026-10-15 — Alternatives 第 3 条（「Run 链整体 async 化（递延）」）已落地为两相入口：`Run()` 换成 `RunStartupAsync`（I/O 起步相，`await` 本用例）/`RunMainLoop`（thread 0 同步相），桥移接线层恰好一处，见 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md)。
+
 方案篇见 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)（容器组装对象图四步，本篇只落第一步"先行 `IRuntimeStarter`"）。
 
 ## Problem
