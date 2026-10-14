@@ -58,18 +58,19 @@ public class CompositionRootSequenceTests
     }
 
     /// <summary>铸币态失效接线钉（ADR mint-epoch-mux-gate）：失败面承载即恢复周期起点（子进程退出后、
-    /// 重启等待前），监督面必须在此失效铸币态——删除该调用则重启窗口的页面自刷绕过 holder 门控，
-    /// 落进指向已死进程的 502/半成品页。mutation 反证：删掉 InvalidateRoute() 调用本测即红。</summary>
+    /// 重启等待前），监督用例必须在此失效铸币态——删除该调用则重启窗口的页面自刷绕过 holder 门控，
+    /// 落进指向已死进程的 502/半成品页。mutation 反证：删掉 Invalidate() 调用本测即红。
+    /// （ADR 组合根机制收官 step-1 后失败面与恢复回调住 Core.Bootstrap.RuntimeSupervision。）</summary>
     [Fact]
-    public void StartupSequence_RecoveryStart_InvalidatesMintRoute()
+    public void RuntimeSupervision_RecoveryStart_InvalidatesMintRoute()
     {
         string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
-            "src/DeepSeek.Harness.Desktop/Bootstrap/StartupSequence.Supervision.cs"));
+            "src/DeepSeek.Harness.Desktop.Core/Bootstrap/RuntimeSupervision.cs"));
 
         int anchor = source.IndexOf("private ValueTask ShowFailureSurfaceAsync(", StringComparison.Ordinal);
         Assert.True(anchor >= 0, "失败面入口未找到（ShowFailureSurfaceAsync 被重排？）");
         Assert.True(
-            source.IndexOf("_shellForward.InvalidateRoute()", anchor, StringComparison.Ordinal) > anchor,
+            source.IndexOf("_mintEpoch.Invalidate()", anchor, StringComparison.Ordinal) > anchor,
             "恢复周期起点必须失效铸币态（dsh 死即 holder 门控重武装）");
     }
 
