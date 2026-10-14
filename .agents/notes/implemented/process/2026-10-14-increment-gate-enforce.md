@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-14 — 第 2 条「扇出/新包两帽口径不变」已被 [increment-gate-metric-corrections](2026-10-14-increment-gate-metric-corrections.md) 更正：扇出清单只纳 Infrastructure 声明（不再纳本 diff 内 Core/Presentation/测试的类型声明），新包帽按 package id 计（不再按 CPM 的两行计）；帽值仍不动。正文与决定不动。
+
 Review: FULL/2026-10-14/R1=ok R2=ok R3=ok
 
 Related: 闸本体与前身 [`coupling-increment-baseline`](2026-10-12-coupling-increment-baseline.md)（n=100 分布、四帽值、三接线位）；三闸之母 [`coupling-shift-left-gates`](2026-10-01-coupling-shift-left-gates.md)。

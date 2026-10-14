@@ -25,12 +25,19 @@ Metrics over one diff moment (`--staged` = index vs HEAD for pre-commit,
              at BASE (ADR coupling-increment-enforce); gross already
              bounds what a new file can contribute.
   fanout     added code references to Infrastructure-declared types
-             (short names via the live type inventory, comments/strings/
-             usings stripped by `gate_common.CSharpLineScanner`; one line
-             can yield several refs).
-  packages   added `PackageReference`/`PackageVersion` lines (.csproj/props,
-             XML comments not stripped — a commented-out reference still
-             counts).
+             (short names via the live type inventory plus declarations the
+             diff itself adds under Infrastructure/, comments/strings/usings
+             stripped by `gate_common.CSharpLineScanner`; one line can yield
+             several refs). Types the diff declares elsewhere (Core/
+             Presentation/tests) are not cross-layer targets and stay out of
+             the inventory (ADR increment-gate-metric-corrections).
+  packages   distinct package ids added (`PackageReference`/`PackageVersion`
+             opening tags in .csproj/props; XML comments not stripped — a
+             commented-out reference still counts). Distinct ids, not lines:
+             central package management makes one dependency cost two lines.
+             A matched line without `Include=`/`Update=` (a closing tag is not
+             matched) counts as one id-less entry (ADR
+             increment-gate-metric-corrections).
 
 `--enforce` (what the hook/CI wiring passes) exits 1 on any OVER; without
 it a run is report-only. `--self-test` runs offline fixtures (one of them
@@ -70,7 +77,7 @@ DEFAULT_INFRA_SRC = "src/DeepSeek.Harness.Desktop.Infrastructure"
 _EXISTING_DIFF_FILTER = "--diff-filter=CDMRTUXB"
 
 _USING_RE = re.compile(r"^\s*(?:global\s+)?using\s+")
-_PKG_RE = re.compile(r"PackageReference|PackageVersion")
+_PKG_RE = re.compile(r"<(?:PackageReference|PackageVersion)\b")
 
 
 def _git(args: list[str]) -> str:
@@ -127,8 +134,15 @@ def _sizes(numstat_all: str, numstat_existing: str) -> tuple[int, str, int]:
     return gross, top_path, file_max
 
 
-def _infra_inventory(infra_src: Path, extra_lines: list[str]) -> set[str]:
-    """Live type inventory plus declarations added inside the diff itself."""
+def _infra_inventory(infra_src: Path,
+                     sections: list[tuple[str, list[str]]]) -> set[str]:
+    """Live Infrastructure type inventory plus Infrastructure declarations added in-diff.
+
+    Only declarations from Infrastructure files join the inventory: a type the
+    diff declares in Core/Presentation/tests is not a cross-layer reference
+    target, and counting its own call sites reported every new type plus its
+    tests as fan-out (ADR increment-gate-metric-corrections).
+    """
     names: set[str] = set()
     if infra_src.is_dir():
         for path in infra_src.rglob("*.cs"):
@@ -142,6 +156,9 @@ def _infra_inventory(infra_src: Path, extra_lines: list[str]) -> set[str]:
                 m = TYPE_DECL_RE.match(code)
                 if m:
                     names.add(m.group(1))
+    prefix = str(infra_src) + "/"
+    extra_lines = [line for path, lines in sections
+                   if path.startswith(prefix) for line in lines]
     for code in CSharpLineScanner(extra_lines).iter_cleaned():
         m = TYPE_DECL_RE.match(code)
         if m:
@@ -198,8 +215,28 @@ def _fanout(sections: list[tuple[str, list[str]]], inventory: set[str]) -> tuple
     return len(hits), hits[:5]
 
 
+_PKG_NAME_RE = re.compile(r'(?:Include|Update)\s*=\s*"([^"]+)"')
+
+
 def _packages(plus_lines: list[str]) -> int:
-    return sum(1 for line in plus_lines if _PKG_RE.search(line))
+    """Distinct package ids the diff touches (lines without an id count each).
+
+    Central package management (Directory.Packages.props) makes one new
+    dependency cost two lines — `PackageVersion` + `PackageReference` — so a
+    line count made the cap of one unreachable for every new dependency
+    (ADR increment-gate-metric-corrections).
+    """
+    names: set[str] = set()
+    unnamed = 0
+    for line in plus_lines:
+        if not _PKG_RE.search(line):
+            continue
+        m = _PKG_NAME_RE.search(line)
+        if m:
+            names.add(m.group(1))
+        else:
+            unnamed += 1
+    return len(names) + unnamed
 
 
 def _plus_lines(diff_text: str) -> list[str]:
@@ -214,10 +251,9 @@ def _measure(mode: str, since: str) -> dict:
     gross, top_path, file_max = _sizes(numstat, numstat_existing)
     cs_diff = _git([*args, "-U0", "--", "*.cs"])
     cs_sections = _plus_sections(cs_diff)
-    cs_plus = [line for _, lines in cs_sections for line in lines]
     proj_diff = _git([*args, "-U0", "--", "*.csproj", "*.props"])
     proj_plus = _plus_lines(proj_diff)
-    inventory = _infra_inventory(Path(DEFAULT_INFRA_SRC), cs_plus)
+    inventory = _infra_inventory(Path(DEFAULT_INFRA_SRC), cs_sections)
     fanout, examples = _fanout(cs_sections, inventory)
     packages = _packages(proj_plus)
     return {"gross": gross, "top_path": top_path,
@@ -235,7 +271,7 @@ def _check(m: dict, caps: dict) -> list[str]:
         rows.append(f"  new infra refs {m['fanout']} > {caps['fanout']}")
         rows.extend(f"    e.g. {e}" for e in m["fanout_examples"])
     if m["packages"] > caps["packages"]:
-        rows.append(f"  new package refs {m['packages']} > {caps['packages']} (new dependency needs review)")
+        rows.append(f"  new package ids {m['packages']} > {caps['packages']} (new dependency needs review)")
     return rows
 
 
@@ -330,11 +366,36 @@ def _self_test() -> int:
         print(f"  ✗ dense/header edge: n={n} sections={sections}")
         failed = 1
 
-    inv2 = _infra_inventory(Path("nonexistent"), ["public sealed class Fresh { }"])
-    if "Fresh" in inv2:
-        print("  ok: inventory picks up declarations added in-diff")
+    inv2 = _infra_inventory(Path("src/App.Infrastructure"), [
+        ("src/App.Infrastructure/Platform/Fresh.cs", ["public sealed class Fresh { }"]),
+        ("src/App.Core/Thing.cs", ["public sealed class Thing { }"]),
+    ])
+    if "Fresh" in inv2 and "Thing" not in inv2:
+        print("  ok: in-diff declarations join the inventory from Infrastructure only")
     else:
-        print("  ✗ in-diff declarations missed")
+        print(f"  ✗ inventory scope wrong: {sorted(inv2)}")
+        failed = 1
+
+    # CPM costs two lines per dependency; the cap counts ids, not lines.
+    if _packages(['    <PackageVersion Include="Ryn.Plugins.Dialog" Version="0.38.0" />',
+                  '    <PackageReference Include="Ryn.Plugins.Dialog" />']) == 1:
+        print("  ok: one dependency counted once across CPM's two lines")
+    else:
+        print("  ✗ CPM dependency double-counted")
+        failed = 1
+    if (_packages(['<PackageReference Include="A" />',
+                   '<PackageReference Include="B" />']) == 2
+            and _packages(['<PackageReference />']) == 1):
+        print("  ok: distinct ids counted separately; id-less lines still count")
+    else:
+        print("  ✗ package id counting wrong")
+        failed = 1
+    if _packages(['    <PackageReference Include="coverlet.collector">',
+                  '      <IncludeAssets>all</IncludeAssets>',
+                  '    </PackageReference>']) == 1:
+        print("  ok: multi-line element with children counts once (closing tag not matched)")
+    else:
+        print("  ✗ closing tag double-counted")
         failed = 1
 
     m = {"gross": 700, "top_path": "a.cs",
