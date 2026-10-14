@@ -17,13 +17,19 @@ gain. So `--enforce` is live (hooks + CI) and file-max reads growth of
 files that already existed at BASE only (ADR coupling-increment-enforce).
 
 Metrics over one diff moment (`--staged` = index vs HEAD for pre-commit,
-`--since BASE` = BASE..HEAD for pre-push/CI, default = worktree vs HEAD):
+`--since BASE` = BASE..HEAD for pre-push/CI, default = worktree vs HEAD plus
+untracked files):
 
   gross      added + deleted lines over the diff (numstat), new files
-             included.
+             included. The default moment adds every untracked file's line
+             count: `git diff` cannot see them, so a fully unstaged batch read
+             far below its real size — 438 vs 1831 on the batch that found it
+             (ADR increment-gate-default-untracked). The other two moments need
+             no such term (the index and the commits already carry the files).
   file-max   largest net gain (added - deleted) among files that existed
              at BASE (ADR coupling-increment-enforce); gross already
-             bounds what a new file can contribute.
+             bounds what a new file can contribute. Untracked files are
+             additions too, so the default moment keeps them out of it.
   fanout     added code references to Infrastructure-declared types
              (short names via the live type inventory plus declarations the
              diff itself adds under Infrastructure/, comments/strings/usings
@@ -75,6 +81,10 @@ DEFAULT_INFRA_SRC = "src/DeepSeek.Harness.Desktop.Infrastructure"
 # file-max is measured over pre-existing files only: `--diff-filter` takes an
 # include-list, so leaving `A` out drops exactly the files this diff adds.
 _EXISTING_DIFF_FILTER = "--diff-filter=CDMRTUXB"
+# git's `buffer_is_binary` sniffs only the first 8000 bytes; the untracked-file
+# line count follows the same window so the two readings agree (ADR
+# increment-gate-default-untracked).
+_GIT_BINARY_SNIFF_BYTES = 8000
 
 _USING_RE = re.compile(r"^\s*(?:global\s+)?using\s+")
 _PKG_RE = re.compile(r"<(?:PackageReference|PackageVersion)\b")
@@ -244,6 +254,70 @@ def _plus_lines(diff_text: str) -> list[str]:
             if line.startswith("+") and not _is_new_file_header(line)]
 
 
+def _untracked_paths() -> list[tuple[Path, str]]:
+    """(path to read, repo-relative key) for files git neither tracks nor ignores.
+
+    `--full-name` yields repo-root-relative paths; the section keys keep that
+    form because the fan-out / inventory checks match prefixes on it. The read
+    path is joined with the toplevel, so the gate works from any working
+    directory.
+    """
+    root = Path(_git(["rev-parse", "--show-toplevel"]).strip())
+    out = _git(["ls-files", "--others", "--exclude-standard", "--full-name"])
+    return [(root / line, line) for line in out.splitlines() if line]
+
+
+def _line_count(data: bytes) -> int | None:
+    """Lines a whole-file addition contributes; None when git calls it binary.
+
+    Mirrors `git diff --numstat` on a new file: a trailing partial line still
+    counts, and a NUL inside git's sniff window (`_GIT_BINARY_SNIFF_BYTES`,
+    `buffer_is_binary`) makes git report `- -` and count nothing — a NUL past
+    that window still counts as text.
+    """
+    if b"\0" in data[:_GIT_BINARY_SNIFF_BYTES]:
+        return None
+    if not data:
+        return 0
+    count = data.count(b"\n")
+    return count if data.endswith(b"\n") else count + 1
+
+
+def _untracked_additions() -> tuple[int, list[tuple[str, list[str]]], list[str]]:
+    """(gross lines, .cs sections, .csproj/.props lines) for untracked files.
+
+    Only the default moment needs this: `--staged` sees added files through the
+    index and `--since BASE` through the commits. Without the term a fully
+    unstaged batch reads far below its real size (ADR
+    increment-gate-default-untracked). One bytes read per file feeds both the
+    line count and (for source/project suffixes) the UTF-8 decode.
+    """
+    gross = 0
+    cs_sections: list[tuple[str, list[str]]] = []
+    proj_lines: list[str] = []
+    for path, key in _untracked_paths():
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        count = _line_count(data)
+        if count is None:
+            continue
+        gross += count
+        suffix = Path(key).suffix
+        if suffix not in (".cs", ".csproj", ".props"):
+            continue
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if suffix == ".cs":
+            cs_sections.append((key, text.splitlines()))
+        else:
+            proj_lines.extend(text.splitlines())
+    return gross, cs_sections, proj_lines
+
+
 def _measure(mode: str, since: str) -> dict:
     args = _diff_args(mode, since)
     numstat = _git(_numstat_args(args, existing_only=False))
@@ -253,7 +327,13 @@ def _measure(mode: str, since: str) -> dict:
     cs_sections = _plus_sections(cs_diff)
     proj_diff = _git([*args, "-U0", "--", "*.csproj", "*.props"])
     proj_plus = _plus_lines(proj_diff)
+    if mode == "worktree":
+        untracked_gross, untracked_cs, untracked_proj = _untracked_additions()
+        gross += untracked_gross
+        cs_sections = [*cs_sections, *untracked_cs]
+        proj_plus = [*proj_plus, *untracked_proj]
     inventory = _infra_inventory(Path(DEFAULT_INFRA_SRC), cs_sections)
+
     fanout, examples = _fanout(cs_sections, inventory)
     packages = _packages(proj_plus)
     return {"gross": gross, "top_path": top_path,
@@ -303,6 +383,24 @@ def _self_test() -> int:
         print(f"  ✗ sizes: {sizes}")
         failed = 1
 
+    # An untracked file is a whole-file addition: a trailing partial line still
+    # counts, and binary follows git's sniff window (a NUL past the first 8000
+    # bytes still counts as text).
+    with tempfile.TemporaryDirectory() as td:
+        partial = Path(td) / "partial.txt"
+        partial.write_text("a\nb", encoding="utf-8")
+        binary = Path(td) / "bin.dat"
+        binary.write_bytes(b"a\0b\n")
+        late_nul = Path(td) / "late.dat"
+        late_nul.write_bytes(b"x\n" * 4000 + b"\0" + b"y\n" * 10)
+        got = (_line_count(partial.read_bytes()), _line_count(binary.read_bytes()),
+               _line_count(late_nul.read_bytes()))
+        if got == (2, None, 4010):
+            print("  ok: untracked line count (missing trailing newline / binary sniff window)")
+        else:
+            print(f"  ✗ untracked line count: {got} (want (2, None, 4010))")
+            failed = 1
+
     # End-to-end on a throwaway repo: the real git path decides which files the
     # filter drops, so a dropped or inverted `--diff-filter` (lowercase letters
     # are an EXCLUDE list) cannot pass unnoticed — the argv fixture above only
@@ -339,6 +437,45 @@ def _self_test() -> int:
             print("  ok: e2e — added files and rename add-side stay out of file-max")
         else:
             print(f"  ✗ e2e: gross={m['gross']} file_max={m['file_max']} top={m['top_path']}")
+            failed = 1
+
+        # `git diff` cannot see untracked files: the default (worktree) moment
+        # must add them or a fully unstaged batch reads low (ADR
+        # increment-gate-default-untracked). Staged/since moments already carry
+        # them, so the same tree read as `staged` stays at 880.
+        (repo / "untracked_extra.txt").write_text("u\n" * 30, encoding="utf-8")
+        os.chdir(repo)
+        try:
+            worktree = _measure("worktree", "")
+            staged = _measure("staged", "")
+        finally:
+            os.chdir(cwd)
+        if (worktree["gross"], worktree["file_max"]) == (910, 80) and staged["gross"] == 880:
+            print("  ok: e2e — worktree moment adds untracked files; staged moment does not")
+        else:
+            print(f"  ✗ e2e untracked: worktree={worktree['gross']}/+{worktree['file_max']}"
+                  f" staged={staged['gross']}")
+            failed = 1
+
+        # An untracked section keeps its repo-relative key: an untracked
+        # Infrastructure file is same-layer growth, not cross-layer fan-out
+        # (an absolute key would slip past the same-layer prefix check).
+        infra = repo / "src" / "DeepSeek.Harness.Desktop.Infrastructure"
+        infra.mkdir(parents=True)
+        (infra / "Engine.cs").write_text("public sealed class Engine { }\n", encoding="utf-8")
+        _e2e_git("add", "-A")
+        _e2e_git("commit", "-qm", "infra base")
+        (infra / "Inside.cs").write_text("Engine.Shared();\n", encoding="utf-8")
+        os.chdir(repo)
+        try:
+            same_layer = _measure("worktree", "")
+        finally:
+            os.chdir(cwd)
+        if same_layer["fanout"] == 0:
+            print("  ok: e2e — untracked same-layer Infrastructure file is not fan-out")
+        else:
+            print(f"  ✗ e2e untracked same-layer fanout: {same_layer['fanout']}"
+                  f" {same_layer['fanout_examples']}")
             failed = 1
 
     inv = {"Engine"}
