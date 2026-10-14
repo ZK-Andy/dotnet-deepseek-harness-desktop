@@ -8,7 +8,7 @@ namespace DeepSeek.Harness.Desktop;
 /// 本类只是它的适配器；命名依据与沿革见 ADR split-program-main-god-function、compose-root-form-separation、
 /// composition-mechanism-container-assembly）：容器之前的启动头部（沙箱降级 / 运行时与 dev 解析 / 单实例仲裁 / 回环代理）+ 应用装配触发
 /// + 启动编排触发（R1 只做装配、启动、接线与兜底）。注册下沉为按域 <c>AddXxx()</c> 扩展，启动编排由容器组装对象图
-/// （<see cref="Bootstrap.StartupSequence"/> 自解析共享态、起步用例经容器供给）；应用装配与命令路由注册在唯一的
+/// （<see cref="Bootstrap.StartupSequence"/> 自解析共享态、起步/导航/监督用例经容器供给）；应用装配与命令路由注册在唯一的
 /// dot 分部 <c>DesktopAdapter.App.cs</c>。
 /// </summary>
 public sealed partial class DesktopAdapter
@@ -62,9 +62,9 @@ public sealed partial class DesktopAdapter
             {
                 HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
             }
-            // 编排触发（容器组装对象图：共享态由序列自解析，起步用例经容器供给；
+            // 编排触发（容器组装对象图：共享态由序列自解析，起步/导航/监督用例经容器供给；
             // hostSetup 必已赋值——解析失败即抛，抛后直接进 finally，走不到组装）。
-            var sequence = new Bootstrap.StartupSequence(preflight, app, update, proxy.Proxy, instanceListener, builtApp.Services.GetRequiredService<IRuntimeStarter>());
+            var sequence = new Bootstrap.StartupSequence(preflight, app, update, instanceListener, builtApp.Services.GetRequiredService<IRuntimeStarter>());
             return sequence.Run();
         }
         finally

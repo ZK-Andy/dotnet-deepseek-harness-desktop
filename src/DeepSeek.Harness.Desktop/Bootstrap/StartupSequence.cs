@@ -8,8 +8,9 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 /// （语句序/分支/异常边界逐一对应，纯搬家零行为变更）；组合根只装配与触发（R1）。Ryn 无 hosted-service
 /// 机制，编排器由组合根在 Build 后显式组装并触发（结构必然，见 ADR Alternatives）。
 /// 跨阶段值经构造与运行期单例双通道供给（单例在调用点幂等解析，见 Run/ShowTray/SetupSupervisor）；阶段产出为正式类型（<see cref="Preflight"/> 等）。
-/// 本文件承载启动主链与产生段；监督/退出接线在 <c>StartupSequence.Supervision.cs</c>，
-/// 导航原语与窗口就绪等待在 <c>StartupSequence.Navigation.cs</c>，网页会话自愈在 <c>StartupSequence.WebSession.cs</c>。
+/// 本文件承载启动主链与产生段；监督/退出接线在 <c>StartupSequence.Supervision.cs</c>。
+/// 导航原语与网页会话自愈已随用例下沉 Core（ADR 组合根机制收官 step-1 的 B1：
+/// <c>Core.Ui.MainUiEntry</c> + <c>Core.Bootstrap.RuntimeSupervision</c>）。
 /// </summary>
 internal sealed partial class StartupSequence : IStartupSequence
 {
@@ -19,19 +20,10 @@ internal sealed partial class StartupSequence : IStartupSequence
     private readonly UiLocale _uiLocale;
     private readonly RuntimeTimeouts _timeouts;
     private readonly CaptionBarOptions _captionBar;
-    private readonly DshShellForward _shellForward;
-    private readonly DshLoopbackProxy? _proxy;
     private readonly PrimaryListener? _instanceListener;
     // 运行时起步用例（ADR 组合根机制收官先行批）：spawn→铸币→收 URL 下沉 Core 可单测；
-    // 缺省实现以本编排器既有字段组装（测试经构造注入 fake）。
+    // 由接线层经容器解析注入（本类无缺省组装分支）。
     private readonly IRuntimeStarter _runtimeStarter;
-    // 失败面（ADR native-failure-surface）：原生对话框端口（原生通道不可用即回落页内恢复面）与诊断包
-    // 导出端口（静态基础设施调用不留编排面，R1b）。
-    private readonly IFailureDialog _failureDialog;
-    private readonly IDiagnosticsExport _diagnosticsExport;
-    private int _failureSurfaceShown; // 本恢复周期已弹过原生失败面（onRecovered 解锁）：连败不得按重试节拍刷模态
-    private int _pageSurfaceFallbackShown; // 回落承载面（页内恢复面）覆写过活动页 DOM → 恢复回调须补收口导航
-    private int _failureModalInFlight; // 已有未处置的原生模态在飞 → 不再叠新的（模态是阻塞原语，占池线程）
     // 「首次导航到达补注册顶栏脚本」的一次性闩（见 StartupSequence.Supervision 的 SetupCaptionBar）。
     private int _captionBarReregistered;
 
@@ -43,9 +35,8 @@ internal sealed partial class StartupSequence : IStartupSequence
         Preflight preflight,
         AppSetup app,
         UpdateSetup updates,
-        DshLoopbackProxy? proxy,
         PrimaryListener? instanceListener,
-        IRuntimeStarter? runtimeStarter = null)
+        IRuntimeStarter runtimeStarter)
     {
         _preflight = preflight;
         _app = app;
@@ -53,16 +44,8 @@ internal sealed partial class StartupSequence : IStartupSequence
         _uiLocale = app.App.Services.GetRequiredService<UiLocale>();
         _timeouts = app.App.Services.GetRequiredService<RuntimeTimeouts>();
         _captionBar = app.App.Services.GetRequiredService<CaptionBarOptions>();
-        _shellForward = app.App.Services.GetRequiredService<DshShellForward>();
-        _failureDialog = app.App.Services.GetRequiredService<IFailureDialog>();
-        _diagnosticsExport = app.App.Services.GetRequiredService<IDiagnosticsExport>();
-        _proxy = proxy;
         _instanceListener = instanceListener;
-        _runtimeStarter = runtimeStarter ?? new RuntimeStarter(
-            _preflight.Bootstrap,
-            TimeSpan.FromSeconds(_timeouts.SpawnTimeoutSeconds),
-            _shellForward.MintAsync,
-            HostLog.Write);
+        _runtimeStarter = runtimeStarter;
     }
 
     /// <summary>组合根入口：按原 <c>Program.Main</c> 语句序执行全部编排并返回进程退出码。
@@ -103,7 +86,9 @@ internal sealed partial class StartupSequence : IStartupSequence
         // 首启引导（ADR online-first-unbundled-runtime）：窗口先亮（wwwroot 引导页），引导服务后台完成
         // 检测/下载/安装/验证后起 dsh，并把就位 URL 交回调接回壳侧导航；失败推错误态等待用户重试
         // （desktop.bootstrap.retry 经闸门放行）。引导未落定前监督器/插件安装均被门控——依赖序即插入位。
-        _preflight.Bootstrap.Start((url, ct) => EnterMainUiAsync(url, ct));
+        // 就位后的铸币/等窗/终页裁决是 Core 用例（ADR 组合根机制收官 step-1 的 B1）。
+        Core.Ui.MainUiEntry entry = _app.App.Services.GetRequiredService<Core.Ui.MainUiEntry>();
+        _preflight.Bootstrap.Start((url, ct) => entry.RunAsync(url, ct));
     }
 
     /// <summary>托盘就绪化（装配壳）：解析 Ryn 托盘服务并交给控制器（无托盘环境传 null）。</summary>

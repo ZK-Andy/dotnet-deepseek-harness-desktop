@@ -4,6 +4,8 @@ Status: proposed
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
+> 进度（2026-10-15）：第 1 条的导航/监督用例已落 B1/B2，见 [startup-usecases-sink-to-core](../../implemented/architecture/2026-10-15-startup-usecases-sink-to-core.md)；B3（排序器）/B4（C6 闸）待落。
+
 ## Problem
 
 两轮重构（值流批次 0–3：字段 32→18→10、产出类型化、`LaunchOptions` 的 `IOptions` 化；`df797cc` 形态分离：注册下沉 `AddXxx`、编排搬出根成 `IStartupSequence`；`0497284` 换闸）治的是**形态**（文件位置、字段个数），没治**机制**（谁 `new` 谁）。证据：

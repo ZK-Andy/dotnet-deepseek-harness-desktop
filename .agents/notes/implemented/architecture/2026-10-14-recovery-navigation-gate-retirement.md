@@ -2,6 +2,7 @@
 
 Status: implemented
 
+Erratum: 2026-10-15 — Testing 段引用的测试锚改名：`CompositionRootSequenceTests.StartupSequence_RecoveryStart_InvalidatesMintRoute` → `RuntimeSupervision_RecoveryStart_InvalidatesMintRoute`（锚移 `Core/Bootstrap/RuntimeSupervision.cs`；ADR [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md)）。正文与决定不动。
 Review: FULL/2026-10-14/R1=ok R2=ok R3=ok
 
 ## Problem

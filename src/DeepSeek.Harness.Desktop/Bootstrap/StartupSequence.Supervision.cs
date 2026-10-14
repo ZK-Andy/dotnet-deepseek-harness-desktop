@@ -4,8 +4,10 @@ using Ryn.Core;
 namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
-/// <see cref="StartupSequence"/> 的监督与退出接线面：监督器装配（引导落定门控）、退出管道、
-/// 失败面承载、恢复后铸币重验、页面健康观测与启动期告知接线。启动主链在 <c>StartupSequence.cs</c>。
+/// <see cref="StartupSequence"/> 的监督与退出接线面：监督用例装配（引导落定门控 + 监督循环下沉 Core，
+/// ADR 组合根机制收官 step-1 的 B2）、页面健康观测、无边框顶栏注入与启动期告知接线。
+/// 失败面承载与恢复回调随监督用例住 Core（<c>Core.Bootstrap.RuntimeSupervision</c>）；
+/// 启动主链在 <c>StartupSequence.cs</c>。
 /// </summary>
 internal sealed partial class StartupSequence
 {
@@ -13,134 +15,11 @@ internal sealed partial class StartupSequence
     {
         // 监督器取消令牌源由组合根拥有（容器单例，寿命 = 本次 Run；释放随组合根作用域）。
         CancellationTokenSource cts = _app.App.Services.GetRequiredService<CancellationTokenSource>();
-        var supervisor = new RuntimeSupervisor(
-            host.Host,
-            restartTimeout: TimeSpan.FromSeconds(_timeouts.SupervisorRestartTimeoutSeconds),
-            recoveredRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorRecoveredRetryDelaySeconds),
-            failedRetryDelay: TimeSpan.FromSeconds(_timeouts.SupervisorFailedRetryDelaySeconds),
-            showRecovery: isLockBlocked => ShowFailureSurfaceAsync(host, isLockBlocked),
-            onRecovered: RevalidateAfterRecoveryAsync,
-            log: HostLog.Write,
-            blockedLogEveryRounds: _timeouts.SupervisorBlockedLogEveryRounds);
-        // 引导期门控：宿主尚无 dsh 进程时 WaitForExitAsync 立即完成，监督器会空转进恢复循环
-        // 并覆写引导页——必须等引导落定（成功 spawn 或确认放弃）才进入监视。
-        var supervisorTask = Task.Run(async () =>
-        {
-            // 引导落定握手（理由见上方「引导期门控」注释；网 = BootstrapSettleGateTests）。
-            if (!await _preflight.Bootstrap.WaitSettledAsync(timeout: null, cts.Token))
-            {
-                return;
-            }
-
-            await supervisor.RunAsync(cts.Token);
-        });
-
-        return new SupervisorSetup(cts, supervisorTask);
-    }
-
-    /// <summary>失败面承载（ADR native-failure-surface）：原生对话框优先（不碰 DOM），无工具环境回落页内恢复面；起手失效铸币态。</summary>
-    /// <param name="host">宿主（stderr 尾部与诊断包来源）。</param>
-    /// <param name="isLockBlocked">残留锁死跳过重启（ADR residue-lock-fail-loud）：原因取锁文案，否则普通崩溃原因。</param>
-    private ValueTask ShowFailureSurfaceAsync(HostSetup host, bool isLockBlocked = false)
-    {
-        if (_shellForward.InvalidateRoute())
-        {
-            HostLog.Write("[shell] dsh 进程退出：铸币态失效，holder 门控重新武装（cookie 保留待收养重验）");
-        }
-
-        // 原因选择是域决策（UiCopy.RecoveryReason）；尾部截断数是展示面（本地常量，不入配置）。
-        string reason = UiCopy.RecoveryReason(isLockBlocked, _uiLocale.IsEnglish);
-        if (_failureDialog.IsAvailable)
-        {
-            // 一周期一次（闩在 onRecovered 解锁）；上一个模态未处置完则不再叠新的（模态是阻塞原语，会占池线程）。
-            if (Interlocked.Exchange(ref _failureSurfaceShown, 1) == 0
-                && Interlocked.CompareExchange(ref _failureModalInFlight, 1, 0) == 0)
-            {
-                _ = ShowNativeFailureAsync(host, reason);
-            }
-
-            return ValueTask.CompletedTask;
-        }
-
-        return ShowPageFailureSurfaceAsync(host, reason);
-    }
-
-    /// <summary>页内恢复面（回落承载面）：覆写活动页 DOM，故恢复后必须补一次收口导航（ADR recovery-navigation-gate-retirement Decision 3）。</summary>
-    /// <param name="host">宿主（stderr 尾部来源）。</param>
-    /// <param name="reason">人读失败原因。</param>
-    private ValueTask ShowPageFailureSurfaceAsync(HostSetup host, string reason)
-    {
-        const int RecoveryTailLines = 12;
-        Volatile.Write(ref _pageSurfaceFallbackShown, 1);
-        _ = _app.WindowAccessor.Current.EvaluateJavaScriptAsync(
-            RecoveryPageBuilder.BuildScript(reason, host.Host.StderrTail.TakeLast(RecoveryTailLines).ToList(), _uiLocale.IsEnglish));
-        return ValueTask.CompletedTask;
-    }
-
-    /// <summary>原生失败面（池线程，不阻塞监督循环）：失败原因 + stderr 尾部 + 诊断包路径（正文自裁上限）。
-    /// 退出意向单问、极性倒置（ADR native-failure-surface）：问「要退出应用吗？」，<b>破坏性动作只挂显式 true</b>
-    /// ——插件在通道故障（探不到工具 / 进程起不来 / 非三平台 / osascript 出错）时恒回 false，故障都落回继续恢复。</summary>
-    /// <param name="host">宿主（stderr 尾部来源）。</param>
-    /// <param name="reason">人读失败原因。</param>
-    private async Task ShowNativeFailureAsync(HostSetup host, string reason)
-    {
-        try
-        {
-            string message = RecoveryDialogText.Build(
-                reason, host.Host.StderrTail, _diagnosticsExport.Export(), _uiLocale.IsEnglish);
-            bool quit = await _failureDialog
-                .ConfirmAsync(UiCopy.RecoveryDialogTitle(_uiLocale.IsEnglish), message, CancellationToken.None)
-                .ConfigureAwait(false);
-            if (quit)
-            {
-                ExitFromFailureSurface();
-            }
-        }
-        catch (Exception ex)
-        {
-            // 原生通道故障 → 回落页内恢复面：失败面绝不静默消失（ADR native-failure-surface Decision 2）
-            HostLog.Write($"[host] 原生失败面承载失败，回落页内恢复面：{ex.Message}");
-            await ShowPageFailureSurfaceAsync(host, reason).ConfigureAwait(false);
-        }
-        finally
-        {
-            Volatile.Write(ref _failureModalInFlight, 0);
-        }
-    }
-
-    /// <summary>失败面「退出应用」动作：与托盘/恢复页退出同一条顺序契约——先批准关窗闸门再 Close（hide-to-tray 拦截下未批准的 Close 会吞成隐藏）。</summary>
-    private void ExitFromFailureSurface()
-    {
-        HostLog.Write("[host] 用户在失败面选择退出应用");
-        try
-        {
-            _app.App.Services.GetRequiredService<Tray.TrayController>().CloseGate.ApproveExit();
-            _app.App.Services.GetRequiredService<IRynWindow>().Close();
-        }
-        catch (Exception ex)
-        {
-            HostLog.Write($"[host] 失败面退出动作失败：{ex.Message}");
-        }
-    }
-
-    /// <summary>恢复回调（监督器重启给出新 URL）：重验铸币态（epoch 可能已换，token-free 路径；ADR
-    /// mint-epoch-mux-gate）并解锁失败面闩。<b>零壳导航的前提是承载面不碰活动页 DOM</b>——原生框不碰即不导航
-    /// （窗口恒驻代理根，回来交页内自刷与客户端原地重连）；回落页内恢复面覆写过 DOM，只有该分支补收口导航。
-    /// </summary>
-    /// <param name="url">重启后的 dsh 端点（仅供重验与日志；导航靶点恒为代理根）。</param>
-    private ValueTask RevalidateAfterRecoveryAsync(Uri url)
-    {
-        _ = _shellForward.RevalidateAsync(DshWebUrl.From(url), HostLog.Write, CancellationToken.None).GetAwaiter().GetResult();
-        Volatile.Write(ref _failureSurfaceShown, 0);
-        Uri? target = _proxy?.Url;
-        if (Interlocked.Exchange(ref _pageSurfaceFallbackShown, 0) == 0 || target is null)
-        {
-            HostLog.Write($"[nav] 恢复后重验铸币态（{url.GetLeftPart(UriPartial.Authority)}），不代发窗口导航");
-            return ValueTask.CompletedTask;
-        }
-
-        HostLog.Write($"[nav] 回落承载面覆写过活动页，收口回代理根（{url.GetLeftPart(UriPartial.Authority)}）");
-        return _app.WindowAccessor.Current.NavigateAsync(target);
+        // 引导落定门控、监督循环、失败面承载与恢复回调全在 Core 用例（ADR 组合根机制收官 step-1 的 B2）；
+        // 宿主经阶段产出收参，其余依赖容器供给。返回的任务供退出路径 join。
+        Core.Bootstrap.RuntimeSupervision supervision =
+            _app.App.Services.GetRequiredService<Core.Bootstrap.RuntimeSupervision>();
+        return new SupervisorSetup(cts, supervision.RunAsync(host.Host, cts.Token));
     }
 
     private void SetupHealthMonitor(SupervisorSetup supervisor)
@@ -202,32 +81,5 @@ internal sealed partial class StartupSequence
             ct => PagePump.ShowBannerWhenReadyAsync(
                 _app.WindowAccessor, DesktopBanner.BuildUncleanExitBanner(_uiLocale), ct));
         _ = Task.Run(() => notices.RunAsync(supervisor.Cts.Token));
-    }
-
-    /// <summary>引导完成后的铸币收尾：覆盖式重铸（本方法是 bootstrap 路径的 epoch 起点）。
-    /// 不导航（鉴权自愈的同源重载除外）——窗口恒在代理源上，未铸币时 holder 自轮询就绪后自 reload
-    /// （renderer 发起，绕开 saucer set_url 原生挂家族；见 ADR loopback-forward-proxy）。
-    /// 由引导服务在 dsh 就位时回调。</summary>
-    /// <param name="url">dsh 就位端点（仅供落定重铸与日志；无需导航，恒驻代理源）。</param>
-    /// <param name="ct">引导任务取消令牌。</param>
-    private async Task EnterMainUiAsync(DshWebUrl url, CancellationToken ct)
-    {
-        if (_proxy is null)
-        {
-            HostLog.Write("[nav] 进入主界面无代理源（回环绑定失败），本次不导航（dsh 已就绪，重启即进）");
-            return;
-        }
-
-        // 壳铸币先行（不依赖窗口：纯 HTTP；holder 的就绪轮询以此次铸币为门——先铸才放行）。
-        _ = await _shellForward.MintAsync(url, HostLog.Write, ct).ConfigureAwait(false);
-        // 窗口可能尚未建好（原生建窗慢于 dsh 就位时，首个 Current 即抛，ADR bootstrap-window-ready-wait）：
-        // 有界等可用，超时 loud 跳过本次（dsh 已就绪，holder 自 reload 即进）。
-        if (!await WaitForWindowAsync(ct).ConfigureAwait(false))
-        {
-            HostLog.Write($"[nav] 等窗口可用超时（{_timeouts.WindowReadyTimeoutSeconds}s），跳过本次（holder 自 reload 即进）");
-            return;
-        }
-
-        await SettleWebSessionAsync(url, ct);
     }
 }

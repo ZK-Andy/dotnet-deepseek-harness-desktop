@@ -2,6 +2,7 @@
 
 Status: implemented
 
+Erratum: 2026-10-15 — Decision 3 的落点换家：`RevalidateAfterRecoveryAsync` 随组合根机制收官 step-1 的 B2 迁入 `Core.Bootstrap.RuntimeSupervision`（`OnRecoveredAsync`；ADR [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md)），失败面承载实现迁入 `Recovery.RecoverySurface`。正文与决定不动。
 Review: FULL/2026-10-15/R1=ok R2=ok R3=ok
 
 ## Problem

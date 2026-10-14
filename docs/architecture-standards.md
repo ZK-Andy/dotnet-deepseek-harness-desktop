@@ -35,6 +35,7 @@
 
 ### R3 · 端口/适配器（Ports/Adapters）
 - 与外部世界交互（Ryn/native、dsh 进程、companion IPC、文件/网络、更新 feed、注册表/rc）一律：**接口定义在 Core，实现进 Infrastructure，组合根注入**；测试经 fake/mock（与既有 mock 策略一致）；纯逻辑保持可单测。
+- **例外（触 Ryn/UI 适配器落 Presentation）**：实现需要 Ryn 类型时只能住主工程——Infrastructure 引 Ryn 违 R2（`ArchitectureTests` 断言）；判例 ADR [value-flow-batch1](../.agents/notes/implemented/architecture/2026-09-15-value-flow-batch1-state-sinking.md)、[startup-usecases-sink-to-core](../.agents/notes/implemented/architecture/2026-10-15-startup-usecases-sink-to-core.md)。
 - **IPC/帧契约**：跨界 ID 用强类型/Branded（禁裸 `string` 跨包）；帧形状经源生成上下文（主工程 `AppJsonContext` / Core `UpdateJsonContext`，AOT 安全）；帧契约演进须留痕。
 
 ### R4 · 反上帝对象 / 尺寸健康闸（健康提示，非编码规范）

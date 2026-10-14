@@ -152,6 +152,9 @@ public sealed partial class DesktopAdapter
         services.AddSingleton(tray);
         services.AddSingleton(supervisorCts);
         services.AddBootstrapSharedState(timeouts, captionBar, uiLocale, shellForward);
+        // 启动用例与三个新端口的适配器（ADR 组合根机制收官 step-1）：导航/监督用例经容器供给，
+        // 接线层只解析触发（R1）。
+        services.AddStartupUseCases(preflight.Bootstrap, proxy);
         // 运行时起步用例（ADR 组合根机制收官终态装配）：spawn→铸币→收 URL 的依赖全在手
         // （引导服务来自 Preflight，超时/铸币来自共享单例），此处登记实例，编排组装经容器供给。
         services.AddSingleton<IRuntimeStarter>(new RuntimeStarter(
