@@ -144,6 +144,7 @@ public sealed partial class DesktopAdapter
         services.AddLocaleCommands(uiLocale);
         services.AddCompanionReportCommand();
         services.AddDiagnosticsCommands();
+        services.AddFailureSurface();
         services.AddRecoveryCommands();
         services.AddBootstrapCommands(preflight.Bootstrap);
         services.AddAutostartCommands();

@@ -34,7 +34,7 @@ Review: FULL/2026-10-14/R1=ok R2=ok R3=ok
 - 买到的：判据、观测信号与其锁一并退场（净减代码）；恢复回调的语义不再谎称「导航」（改名 `onRecovered`）；收口导航的必要性在代码里写明（承载面覆写 DOM）。
 - 付出的：承载面切换前恢复路径仍有一次导航，原路由仍会丢——这是承载面问题的表症，本决定不解决。
 - 取代关系：[adopt-skip-navigate-on-self-reload](../bug-fix/2026-09-25-adopt-skip-navigate-on-self-reload.md) 的免导航机制整体删除（该篇已记 Erratum）。
-- 与下一篇的关系：承载面切到不碰 DOM 的原生框后，第 2 条的收口导航据第 3 条退场（Agent Note `2026-10-14-native-failure-surface`，随承载面切换落档）。
+- 与下一篇的关系：承载面切到不碰 DOM 的原生框后，第 2 条的收口导航据第 3 条退场（Agent Note `2026-10-14-native-failure-surface`，随承载面切换落档）；回落页内承载面覆写过 DOM 时仍补一次收口导航。
 
 ## Testing
 

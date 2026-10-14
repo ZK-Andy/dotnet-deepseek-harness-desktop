@@ -20,6 +20,7 @@
   <ItemGroup>
     <PackageReference Include="Ryn" />
     <PackageReference Include="Ryn.Plugins.Tray" />
+    <PackageReference Include="Ryn.Plugins.Dialog" />
     <PackageReference Include="Ryn.Callbacks" />
     <PackageReference Include="StyleCop.Analyzers" PrivateAssets="all" />
     <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
@@ -49,6 +50,7 @@
     <Using Include="DeepSeek.Harness.Desktop.Core.Update" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Plugins" />
     <Using Include="DeepSeek.Harness.Desktop.Core.PageHealth" />
+    <Using Include="DeepSeek.Harness.Desktop.Core.Recovery" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Localization" />
     <Using Include="DeepSeek.Harness.Desktop.Core.Bootstrap" />
     <Using Include="DeepSeek.Harness.Desktop.Core.WindowChrome" />

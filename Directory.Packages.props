@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageVersion Include="Ryn" Version="0.38.0" />
     <PackageVersion Include="Ryn.Plugins.Tray" Version="0.38.0" />
+    <PackageVersion Include="Ryn.Plugins.Dialog" Version="0.38.0" />
     <PackageVersion Include="Ryn.Callbacks" Version="0.38.0" />
     <PackageVersion Include="Ryn.Ipc.Generator" Version="0.38.0" />
     <PackageVersion Include="StyleCop.Analyzers" Version="1.1.118" />

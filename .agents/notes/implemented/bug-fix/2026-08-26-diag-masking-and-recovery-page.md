@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-14 — 恢复页形态改原生承载：恢复页退为原生对话框不可用（Linux 无 zenity/kdialog 等）时的回落承载面；脱敏与诊断导出入口语义保留，承载面更换。见 [native-failure-surface](../architecture/2026-10-14-native-failure-surface.md)。
+
 ## Problem
 
 对照 anywhere-labs/dsh-desktop（2026-08-26）暴露两项差距，且我方历史事故链坐实了价值：

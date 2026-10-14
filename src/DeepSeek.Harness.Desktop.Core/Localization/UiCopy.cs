@@ -16,7 +16,7 @@ namespace DeepSeek.Harness.Desktop.Core.Localization;
 /// 由 <see cref="UiLocale.IsEnglish"/> 判定，resx 的卫星装配与 ResourceManager 文化链
 /// 对两分支场景是纯开销；强类型入口让编译器（而非字符串键）保证引用完整性。
 /// </remarks>
-public static class UiCopy
+public static partial class UiCopy
 {
     // ======== 托盘菜单（TrayMenuActions） ========
 
@@ -180,7 +180,7 @@ public static class UiCopy
         ? "The app did not exit cleanly last time (e.g. the process was killed). If it behaves oddly, export diagnostics in Settings."
         : "上次运行未正常退出（如手动结束进程）。若应用行为异常，请在设置页导出诊断信息。";
 
-    // ======== 恢复页（RecoveryPageBuilder） ========
+    // ======== 恢复页（RecoveryPageBuilder；原生对话框不可用时的回落承载面） ========
 
     /// <summary>恢复页：导出诊断包按钮。</summary>
     public static string RecoveryExportButton(bool english) => english ? "Export Diagnostics" : "导出诊断包";
@@ -217,7 +217,7 @@ public static class UiCopy
         : "检测到无法安全回收的残留运行时进程（占住文件/端口），已暂停自动重启以防冲突；手动结束残留进程后将自动恢复";
 
     /// <summary>恢复页失败原因选择（域决策，ADR diag-masking-and-recovery-page）：残留锁死取锁文案，
-    /// 否则普通崩溃原因——选择口径单点，展示面（恢复页脚本）只消费。</summary>
+    /// 否则普通崩溃原因——选择口径单点，承载面只消费。</summary>
     /// <param name="isLockBlocked">是否因残留锁死而跳过重启。</param>
     /// <param name="english">是否取英文分支。</param>
     /// <returns>与原因分支对应的文案。</returns>

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """verify-ui-copy — UI 文案单一词典门禁（批次 A，ADR review-to-machine-gates）。
 
-词典 = src/DeepSeek.Harness.Desktop.Core/Localization/UiCopy.cs（唯一事实源）。校验四条不变量：
+词典 = src/DeepSeek.Harness.Desktop.Core/Localization/UiCopy*.cs（唯一事实源；按域拆 partial 组）。
+校验四条不变量：
 1. UI 消费文件（C#）不得再出现 CJK 字符串字面量——全部文案必须经 UiCopy；
    两处结构豁免：诊断调用行（`_log.Invoke`/`HostLog.Write` 等，`[tag]` 前缀按行判）；
    `new BootstrapProgress(step, "…")` 的进度行
@@ -37,7 +38,7 @@ CORE = REPO / "src" / "DeepSeek.Harness.Desktop.Core"
 INFRA = REPO / "src" / "DeepSeek.Harness.Desktop.Infrastructure"
 
 # B1 起词典随 UiLocale 迁 Core（eShopOnWeb Core 亦有 Resources 先例）；UiCopy 是唯一事实源不变。
-UI_COPY = CORE / "Localization" / "UiCopy.cs"
+UI_COPY = "\n".join(p.read_text(encoding="utf-8") for p in sorted((CORE / "Localization").glob("UiCopy*.cs")))
 
 # UI 消费文件（相对各自工程根）：这些文件里禁止出现 CJK 字符串字面量（文案一律走 UiCopy）。
 # 新增 UI 消费文件时把文件加进此表并把文案迁入 UiCopy。
@@ -47,6 +48,7 @@ CS_CONSUMERS = [
     (SRC, "Update/UpdateBanner.cs"),
     (CORE, "Localization/UiLocale.cs"),
     (SRC, "Recovery/RecoveryPageBuilder.cs"),
+    (SRC, "Recovery/RecoveryDialogText.cs"),
     (SRC, "PageBridge/DesktopBanner.cs"),
     (SRC, "PageBridge/CaptionBar.cs"),
     (SRC, "PageBridge/PagePump.cs"),
@@ -239,7 +241,7 @@ def _check(
     """
     failures: list[str] = []
     index_label = "wwwroot/index.html"
-    copy_label = "UiCopy.cs"
+    copy_label = "UiCopy*.cs"
     client_label = CLIENT_JS_LABEL
     vocab_literals = extract_cs_literals_scoped(copy_text)
 
@@ -285,7 +287,7 @@ def _check(
 def verify() -> list[str]:
     cs_files = [((base.name + "/" + rel), (base / rel).read_text(encoding="utf-8")) for base, rel in CS_CONSUMERS]
     return _check(
-        UI_COPY.read_text(encoding="utf-8"),
+        UI_COPY,
         cs_files,
         INDEX_HTML.read_text(encoding="utf-8"),
         CLIENT_JS.read_text(encoding="utf-8"),

@@ -25,6 +25,13 @@ internal sealed partial class StartupSequence : IStartupSequence
     // 运行时起步用例（ADR 组合根机制收官先行批）：spawn→铸币→收 URL 下沉 Core 可单测；
     // 缺省实现以本编排器既有字段组装（测试经构造注入 fake）。
     private readonly IRuntimeStarter _runtimeStarter;
+    // 失败面（ADR native-failure-surface）：原生对话框端口（原生通道不可用即回落页内恢复面）与诊断包
+    // 导出端口（静态基础设施调用不留编排面，R1b）。
+    private readonly IFailureDialog _failureDialog;
+    private readonly IDiagnosticsExport _diagnosticsExport;
+    private int _failureSurfaceShown; // 本恢复周期已弹过原生失败面（onRecovered 解锁）：连败不得按重试节拍刷模态
+    private int _pageSurfaceFallbackShown; // 回落承载面（页内恢复面）覆写过活动页 DOM → 恢复回调须补收口导航
+    private int _failureModalInFlight; // 已有未处置的原生模态在飞 → 不再叠新的（模态是阻塞原语，占池线程）
     // 「首次导航到达补注册顶栏脚本」的一次性闩（见 StartupSequence.Supervision 的 SetupCaptionBar）。
     private int _captionBarReregistered;
 
@@ -47,6 +54,8 @@ internal sealed partial class StartupSequence : IStartupSequence
         _timeouts = app.App.Services.GetRequiredService<RuntimeTimeouts>();
         _captionBar = app.App.Services.GetRequiredService<CaptionBarOptions>();
         _shellForward = app.App.Services.GetRequiredService<DshShellForward>();
+        _failureDialog = app.App.Services.GetRequiredService<IFailureDialog>();
+        _diagnosticsExport = app.App.Services.GetRequiredService<IDiagnosticsExport>();
         _proxy = proxy;
         _instanceListener = instanceListener;
         _runtimeStarter = runtimeStarter ?? new RuntimeStarter(

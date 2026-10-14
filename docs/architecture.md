@@ -25,7 +25,7 @@
 
 * **窗口 URL 恒为回环代理源**（ADR `loopback-forward-proxy`）：`DshLoopbackProxy`（`TcpListener` 纯 loopback）在 `BuildApp` 前启动，逐请求向 dsh authority 转发；绑定失败 loud 后降级 wwwroot。**代理端口跨冷启动记忆**（`.dsh-shell-port`，ADR `2026-09-30-shell-proxy-port-persistence`）：有记忆试绑、被占 loud 降级 OS 分配并重记——页面 origin（= 代理 origin）稳定，dsh Web 端「当前会话」localStorage 才能跨重启命中恢复。**启动链零 host 导航**——dsh 未就绪时代理本地端点出 holder 页（自 `fetch` 就绪后自 `reload`），绕开 saucer `set_url` 同步原生挂家族；`/__shell_ready` 长轮询铸币门、`/__shell_guide/*` 磁盘指南页。
 * **铸币与转发**：`DshShellForward.MintAsync` 用 token 铸 cookie（`redirect: manual`）；代理贴壳 cookie 转发、`Set-Cookie` 永不回页面、SSE 流式直通、POST content 头保真；WS 升级走裸 TCP 隧道 + 头手术（`Host`/`Origin`/`Referer` 同源 dsh authority，页源三值零透传，ADR `2026-09-27-upgrade-tunnel-host-authority`）。日志只记状态码/头名/字节数，token/cookie 值不落盘。
-* **落定与裁决**：`SettleWebSessionAsync` 探针采 `location.origin` + 可见文本，`Core.WebAuthRecovery.ClassifyDetail` 三态裁决（`PageVerdict`：healthy/auth/unknown）；holder 标记排除、探针有限重试（`RuntimeTimeouts.AuthProbeAttempts`）。窗口导航面四项：首载与 origin 变化由 Ryn 页面生命周期承担（无宿主调用）；宿主主动导航两处——引导期鉴权重载（`Task.Run` 隔离同步原生 `set_url`）与页面健康 reload（走 Ryn 异步 `NavigateAsync`）；另有恢复收口：失败面覆写活动页 DOM 后，恢复成功须补一次回代理根的导航（页面已毁，导航是唯一回程；ADR `2026-10-14-recovery-navigation-gate-retirement`）。
+* **落定与裁决**：`SettleWebSessionAsync` 探针采 `location.origin` + 可见文本，`Core.WebAuthRecovery.ClassifyDetail` 三态裁决（`PageVerdict`：healthy/auth/unknown）；holder 标记排除、探针有限重试（`RuntimeTimeouts.AuthProbeAttempts`）。窗口导航面三项：首载与 origin 变化由 Ryn 页面生命周期承担（无宿主调用）；宿主主动导航两处——引导期鉴权重载（`Task.Run` 隔离同步原生 `set_url`）与页面健康 reload（走 Ryn 异步 `NavigateAsync`）；恢复路径**按承载面**决定——原生失败面不碰活动页 DOM 故不导航，回落页内恢复面覆写过 DOM，恢复成功后仍补一次回代理根的收口导航（ADR `2026-10-14-native-failure-surface`）。
 
 ## 运行时来源（系统全局 node + 全局 dsh）
 
@@ -34,7 +34,7 @@
 
 ## 监督、单实例与退出
 
-* `Core.RuntimeSupervisor` 经 `IRuntimeHost` 端口监督子进程：退出 → 失败面 → `RestartAsync` → 恢复回调 `onRecovered` 重验铸币态并收口回代理根（重启复用记忆端口保 `origin`）；收口导航在失败面覆写活动页 DOM 时必需（ADR `2026-10-14-recovery-navigation-gate-retirement`）。
+* `Core.RuntimeSupervisor` 经 `IRuntimeHost` 端口监督子进程：退出 → 失败面 → `RestartAsync` → 恢复回调 `onRecovered` 只重验铸币态（重启复用记忆端口保 `origin`），**原生承载下不代发窗口导航**（回落页内恢复面覆写过 DOM 时仍补一次收口导航）——窗口恒驻代理根，回来这一步交页内自刷与客户端原地重连（ADR `2026-10-14-native-failure-surface`）。**失败面承载**：原生对话框优先（`Ryn.Plugins.Dialog`：Windows `MessageBoxW` / macOS `osascript` / Linux `zenity`|`kdialog`；动作面＝继续自动恢复；退出只挂显式「是」（插件通道故障恒回否 ⇒ 落回继续恢复）），无对话框工具或原生通道故障时回落页内恢复面（`RecoveryPageBuilder`，覆写 DOM ⇒ 恢复后补收口导航）；原生承载下诊断包自动导出并把路径写进对话框（求助路径）。可用性判定是纯函数（`Core.Recovery.DialogToolAvailability`；Linux 按插件探针口径查 PATH 与执行位）。
 * 端口漂移判据（`Core.RuntimeLineage`，ADR `2026-09-12-runtime-handoff-adoption`）：新生续任者收养、更早血统残留收割重试、非我方血统回退 OS 分配并告警（建窗后换端口会使「页面→壳」命令通道失效，见 ADR `2026-09-12-port-drift-ipc-origin-mismatch`）。
 * `LauncherActivation` UDS 单实例仲裁（Windows 不启用）；托盘「退出」走有序编排：取消监督 → 整树回收 → marker Release → 关窗 → 8s 看门狗。
 

@@ -38,12 +38,8 @@ internal sealed partial class StartupSequence
         return new SupervisorSetup(cts, supervisorTask);
     }
 
-    /// <summary>失败面承载（ADR 2026-10-14-recovery-navigation-gate-retirement）：dsh 退出/重启等待期展示失败原因与
-    /// stderr 尾部。<b>以脚本覆写活动页 DOM</b>——页面与其 SPA 状态就此被毁，故恢复成功后的收口导航必需
-    /// （承载面切到不碰 DOM 的原生框后这次导航才可省，见该篇 Decision 3）。起手失效铸币态（ADR mint-epoch-mux-gate）：
-    /// dsh 死即 route 失效——代理 <c>/</c> 回落 holder，页面自刷落进门控（旧 route 指向已死进程时自刷只会落进 502 错误页）；
-    /// 失效幂等，cookie 保留待收养重验。</summary>
-    /// <param name="host">宿主（stderr 尾部来源）。</param>
+    /// <summary>失败面承载（ADR native-failure-surface）：原生对话框优先（不碰 DOM），无工具环境回落页内恢复面；起手失效铸币态。</summary>
+    /// <param name="host">宿主（stderr 尾部与诊断包来源）。</param>
     /// <param name="isLockBlocked">残留锁死跳过重启（ADR residue-lock-fail-loud）：原因取锁文案，否则普通崩溃原因。</param>
     private ValueTask ShowFailureSurfaceAsync(HostSetup host, bool isLockBlocked = false)
     {
@@ -52,35 +48,99 @@ internal sealed partial class StartupSequence
             HostLog.Write("[shell] dsh 进程退出：铸币态失效，holder 门控重新武装（cookie 保留待收养重验）");
         }
 
-        // 恢复页三件套（ADR diag-masking-and-recovery-page）：失败原因 + stderr 尾部展示 +
-        // 导出诊断/退出动作。desktop.* 走 Ryn 层 IPC 不依赖 dsh 存活；数据经 textContent
-        // 回填（stderr 是上游不可控输出，绝不 innerHTML 拼接）。原因选择是域决策（UiCopy.RecoveryReason）；
-        // 尾部截断数是展示面（本地常量，不入配置）。
-        const int RecoveryTailLines = 12;
-        var tail = host.Host.StderrTail.TakeLast(RecoveryTailLines).ToList();
+        // 原因选择是域决策（UiCopy.RecoveryReason）；尾部截断数是展示面（本地常量，不入配置）。
         string reason = UiCopy.RecoveryReason(isLockBlocked, _uiLocale.IsEnglish);
+        if (_failureDialog.IsAvailable)
+        {
+            // 一周期一次（闩在 onRecovered 解锁）；上一个模态未处置完则不再叠新的（模态是阻塞原语，会占池线程）。
+            if (Interlocked.Exchange(ref _failureSurfaceShown, 1) == 0
+                && Interlocked.CompareExchange(ref _failureModalInFlight, 1, 0) == 0)
+            {
+                _ = ShowNativeFailureAsync(host, reason);
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
+        return ShowPageFailureSurfaceAsync(host, reason);
+    }
+
+    /// <summary>页内恢复面（回落承载面）：覆写活动页 DOM，故恢复后必须补一次收口导航（ADR recovery-navigation-gate-retirement Decision 3）。</summary>
+    /// <param name="host">宿主（stderr 尾部来源）。</param>
+    /// <param name="reason">人读失败原因。</param>
+    private ValueTask ShowPageFailureSurfaceAsync(HostSetup host, string reason)
+    {
+        const int RecoveryTailLines = 12;
+        Volatile.Write(ref _pageSurfaceFallbackShown, 1);
         _ = _app.WindowAccessor.Current.EvaluateJavaScriptAsync(
-            RecoveryPageBuilder.BuildScript(reason, tail, _uiLocale.IsEnglish));
+            RecoveryPageBuilder.BuildScript(reason, host.Host.StderrTail.TakeLast(RecoveryTailLines).ToList(), _uiLocale.IsEnglish));
         return ValueTask.CompletedTask;
     }
 
-    /// <summary>恢复回调（监督器重启给出新 URL）：重验铸币态——epoch 可能已换（新 secret/端口），
-    /// 收养重验走 token-free 路径（ADR mint-epoch-mux-gate）；随后补一次回代理根的收口导航。
-    /// 本次导航在此<b>必需</b>：失败面以脚本覆写活动页 DOM（页面与其 SPA 状态已毁），导航是唯一回程；
-    /// 待失败面改由不碰 DOM 的原生承载，这次导航随之退场（ADR 2026-10-14-recovery-navigation-gate-retirement
-    /// 的 Alternatives 与承载面对照篇）。重验内部有超时兜底、失败 loud（转发 401/502 → 探针/失败面按错误页处理）。</summary>
+    /// <summary>原生失败面（池线程，不阻塞监督循环）：失败原因 + stderr 尾部 + 诊断包路径（正文自裁上限）。
+    /// 退出意向单问、极性倒置（ADR native-failure-surface）：问「要退出应用吗？」，<b>破坏性动作只挂显式 true</b>
+    /// ——插件在通道故障（探不到工具 / 进程起不来 / 非三平台 / osascript 出错）时恒回 false，故障都落回继续恢复。</summary>
+    /// <param name="host">宿主（stderr 尾部来源）。</param>
+    /// <param name="reason">人读失败原因。</param>
+    private async Task ShowNativeFailureAsync(HostSetup host, string reason)
+    {
+        try
+        {
+            string message = RecoveryDialogText.Build(
+                reason, host.Host.StderrTail, _diagnosticsExport.Export(), _uiLocale.IsEnglish);
+            bool quit = await _failureDialog
+                .ConfirmAsync(UiCopy.RecoveryDialogTitle(_uiLocale.IsEnglish), message, CancellationToken.None)
+                .ConfigureAwait(false);
+            if (quit)
+            {
+                ExitFromFailureSurface();
+            }
+        }
+        catch (Exception ex)
+        {
+            // 原生通道故障 → 回落页内恢复面：失败面绝不静默消失（ADR native-failure-surface Decision 2）
+            HostLog.Write($"[host] 原生失败面承载失败，回落页内恢复面：{ex.Message}");
+            await ShowPageFailureSurfaceAsync(host, reason).ConfigureAwait(false);
+        }
+        finally
+        {
+            Volatile.Write(ref _failureModalInFlight, 0);
+        }
+    }
+
+    /// <summary>失败面「退出应用」动作：与托盘/恢复页退出同一条顺序契约——先批准关窗闸门再 Close（hide-to-tray 拦截下未批准的 Close 会吞成隐藏）。</summary>
+    private void ExitFromFailureSurface()
+    {
+        HostLog.Write("[host] 用户在失败面选择退出应用");
+        try
+        {
+            _app.App.Services.GetRequiredService<Tray.TrayController>().CloseGate.ApproveExit();
+            _app.App.Services.GetRequiredService<IRynWindow>().Close();
+        }
+        catch (Exception ex)
+        {
+            HostLog.Write($"[host] 失败面退出动作失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>恢复回调（监督器重启给出新 URL）：重验铸币态（epoch 可能已换，token-free 路径；ADR
+    /// mint-epoch-mux-gate）并解锁失败面闩。<b>零壳导航的前提是承载面不碰活动页 DOM</b>——原生框不碰即不导航
+    /// （窗口恒驻代理根，回来交页内自刷与客户端原地重连）；回落页内恢复面覆写过 DOM，只有该分支补收口导航。
+    /// </summary>
     /// <param name="url">重启后的 dsh 端点（仅供重验与日志；导航靶点恒为代理根）。</param>
     private ValueTask RevalidateAfterRecoveryAsync(Uri url)
     {
         _ = _shellForward.RevalidateAsync(DshWebUrl.From(url), HostLog.Write, CancellationToken.None).GetAwaiter().GetResult();
-        if (_proxy is null)
+        Volatile.Write(ref _failureSurfaceShown, 0);
+        Uri? target = _proxy?.Url;
+        if (Interlocked.Exchange(ref _pageSurfaceFallbackShown, 0) == 0 || target is null)
         {
-            HostLog.Write("[nav] 恢复收口无代理源（回环绑定失败），跳过本次导航");
+            HostLog.Write($"[nav] 恢复后重验铸币态（{url.GetLeftPart(UriPartial.Authority)}），不代发窗口导航");
             return ValueTask.CompletedTask;
         }
 
-        HostLog.Write($"[nav] 恢复后重验铸币态并收口回代理根（{url.GetLeftPart(UriPartial.Authority)}）");
-        return _app.WindowAccessor.Current.NavigateAsync(_proxy.Url);
+        HostLog.Write($"[nav] 回落承载面覆写过活动页，收口回代理根（{url.GetLeftPart(UriPartial.Authority)}）");
+        return _app.WindowAccessor.Current.NavigateAsync(target);
     }
 
     private void SetupHealthMonitor(SupervisorSetup supervisor)
