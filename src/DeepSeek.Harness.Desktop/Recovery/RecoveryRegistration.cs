@@ -27,6 +27,7 @@ internal static class RecoveryRegistration
     public static IServiceCollection AddFailureSurface(this IServiceCollection services)
     {
         services.AddSingleton<IFailureDialog>(new RynFailureDialog(HostLog.Write));
+        services.AddSingleton<IDialogOrphanReaper>(new DialogOrphanReaper(HostLog.Write));
         return services;
     }
 

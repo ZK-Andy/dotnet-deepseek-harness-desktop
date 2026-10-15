@@ -39,7 +39,7 @@ public class AppExitOrchestrationTests
             cts,
             bootstrap,
             joinBudget ?? TimeSpan.FromSeconds(5),
-            logs.Add);
+            log: logs.Add);
         return (orchestration, bootstrap, events, logs,
                 () => events.Add("reap"),
                 () => events.Add("dispose-listener"));

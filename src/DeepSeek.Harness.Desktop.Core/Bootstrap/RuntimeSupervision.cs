@@ -23,6 +23,7 @@ public sealed class RuntimeSupervision
     private int _failureSurfaceShown; // 本恢复周期已弹过失败面（onRecovered 解锁）：连败不得按重试节拍刷模态
     private int _pageSurfaceFallbackShown; // 回落承载面覆写过活动页 DOM → 恢复回调须补收口导航
     private int _failureModalInFlight; // 已有未处置的原生模态在飞 → 不再叠新的（模态是阻塞原语，占池线程）
+    private int _consecutiveFailures; // 未恢复的连续崩溃计数（恢复成功复位；未达卡住阈值只留痕不弹面）
 
     /// <summary>创建监督用例（构造数据注入；宿主经 <see cref="RunAsync"/> 逐次收参——阶段产出仍在编排侧流动）。</summary>
     /// <param name="bootstrap">首启引导服务（落定握手句柄来源）。</param>
@@ -79,8 +80,9 @@ public sealed class RuntimeSupervision
             await supervisor.RunAsync(ct).ConfigureAwait(false);
         });
 
-    /// <summary>失败面承载（ADR native-failure-surface）：原生优先（不碰 DOM），无工具环境回落页内恢复面；
-    /// 起手失效铸币态（恢复周期起点）。</summary>
+    /// <summary>失败面承载（ADR native-failure-surface + failure-surface-dialog-defects）：原生优先（不碰 DOM），
+    /// 无工具环境回落页内恢复面；起手失效铸币态（恢复周期起点）。偶发崩溃只留痕——连续未恢复崩溃达到卡住阈值
+    /// 才弹面（恢复成功复位计数；成功自愈的瞬态不打扰用户，模态只保留给真卡住时的退出逃生口）。</summary>
     /// <param name="isLockBlocked">残留锁死跳过重启（ADR residue-lock-fail-loud）：原因取锁文案，否则普通崩溃原因。</param>
     /// <returns>展示接线完成即完成的任务。</returns>
     private ValueTask ShowFailureSurfaceAsync(bool isLockBlocked)
@@ -88,6 +90,13 @@ public sealed class RuntimeSupervision
         if (_mintEpoch.Invalidate())
         {
             Log("[shell] dsh 进程退出：铸币态失效，holder 门控重新武装（cookie 保留待收养重验）");
+        }
+
+        int streak = Interlocked.Increment(ref _consecutiveFailures);
+        if (streak < _options.FailureSurfaceStuckThreshold)
+        {
+            Log($"[host] 第 {streak} 次连续崩溃（未达卡住阈值 {_options.FailureSurfaceStuckThreshold}，失败面不弹）");
+            return ValueTask.CompletedTask;
         }
 
         // 原因选择是域决策（UiCopy.RecoveryReason）；尾部截断数是展示面（在承载实现侧）。
@@ -148,6 +157,7 @@ public sealed class RuntimeSupervision
     {
         await _mintEpoch.RevalidateAsync(DshWebUrl.From(url), CancellationToken.None).ConfigureAwait(false);
         Volatile.Write(ref _failureSurfaceShown, 0);
+        Volatile.Write(ref _consecutiveFailures, 0); // 恢复成功：连败清零，偶发崩溃永不攒到卡住阈值
         Uri? target = _proxyUrl;
         if (Interlocked.Exchange(ref _pageSurfaceFallbackShown, 0) == 0 || target is null)
         {

@@ -193,7 +193,7 @@ public class RuntimeSupervisionTests
         var navigator = new FakeNavigator();
         using var cts = new CancellationTokenSource();
 
-        Task task = Create(new FakeBootstrap(), surface, mint, navigator).RunAsync(host, cts.Token);
+        Task task = Create(new FakeBootstrap(), surface, mint, navigator, stuckThreshold: 1).RunAsync(host, cts.Token);
         DshWebUrl revalidated = await mint.Revalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal("http://127.0.0.1:6666", revalidated.Authority);
@@ -215,7 +215,7 @@ public class RuntimeSupervisionTests
         var mint = new FakeMintEpoch();
         using var cts = new CancellationTokenSource();
 
-        Task task = Create(new FakeBootstrap(), surface, mint, new FakeNavigator()).RunAsync(host, cts.Token);
+        Task task = Create(new FakeBootstrap(), surface, mint, new FakeNavigator(), stuckThreshold: 1).RunAsync(host, cts.Token);
         await surface.Shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal([UiCopy.ReasonDshResidueLocked(false)], surface.NativeReasons);
@@ -236,7 +236,7 @@ public class RuntimeSupervisionTests
         var navigator = new FakeNavigator();
         using var cts = new CancellationTokenSource();
 
-        Task task = Create(new FakeBootstrap(), surface, mint, navigator).RunAsync(host, cts.Token);
+        Task task = Create(new FakeBootstrap(), surface, mint, navigator, stuckThreshold: 1).RunAsync(host, cts.Token);
         Uri target = await navigator.Navigated.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(s_proxyUrl, target);
@@ -258,7 +258,7 @@ public class RuntimeSupervisionTests
         var navigator = new FakeNavigator();
         using var cts = new CancellationTokenSource();
 
-        Task task = Create(new FakeBootstrap(), surface, mint, navigator).RunAsync(host, cts.Token);
+        Task task = Create(new FakeBootstrap(), surface, mint, navigator, stuckThreshold: 1).RunAsync(host, cts.Token);
         Uri target = await navigator.Navigated.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(s_proxyUrl, target);
@@ -268,23 +268,83 @@ public class RuntimeSupervisionTests
         await task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
-    /// <summary>「模态在飞」守卫：首个原生模态未处置时不叠第二个——两轮退出 + 恢复只弹一次模态（删守卫即红）。</summary>
+    /// <summary>「模态在飞」守卫：首个原生模态未处置时不叠第二个——无恢复的连败下第 3 轮弹一次在飞模态，
+    /// 第 4 轮被守卫挡住（删守卫即红）。</summary>
     [Fact]
     public async Task NativeModalInFlight_BlocksSecondModalAcrossRecoveryCycles()
     {
-        var host = new FakeSupervisionHost { ExitSignals = 2, NextUrl = new Uri("http://127.0.0.1:6666/?token=t") };
+        var host = new FakeSupervisionHost { ExitSignals = 4 };
         var surface = new FakeSurface { NativeHangs = true };
+        var mint = new FakeMintEpoch();
+        using var cts = new CancellationTokenSource();
+
+        Task task = Create(new FakeBootstrap(), surface, mint, new FakeNavigator()).RunAsync(host, cts.Token);
+        await surface.Shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForRestartsAsync(host, 4);
+
+        Assert.Single(surface.NativeReasons);
+        Assert.Equal(4, host.RestartCalls);
+
+        cts.Cancel();
+        await task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    /// <summary>卡住阈值：前两次连续崩溃只留痕不弹面，第 3 次才弹一次（偶发崩溃零打扰，退出逃生口只留给真卡住；
+    /// 被门住的前两轮重启照跑，门只管面不管恢复）。</summary>
+    [Fact]
+    public async Task StuckThreshold_SurfacesOnlyOnThirdConsecutiveCrash()
+    {
+        var host = new FakeSupervisionHost { ExitSignals = 3 };
+        var surface = new FakeSurface();
+        var mint = new FakeMintEpoch();
+        using var cts = new CancellationTokenSource();
+
+        Task task = Create(new FakeBootstrap(), surface, mint, new FakeNavigator()).RunAsync(host, cts.Token);
+        await surface.Shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForRestartsAsync(host, 3);
+
+        Assert.Single(surface.NativeReasons);
+        Assert.Equal(3, host.RestartCalls);
+
+        cts.Cancel();
+        await task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    /// <summary>恢复成功复位计数：崩溃→恢复→崩溃→恢复永不攒到阈值（2026-10-15 实机形态：14 秒自愈，不该弹面）。</summary>
+    [Fact]
+    public async Task RecoveryResetsStreak_NeverSurfacesWhenEachCrashRecovers()
+    {
+        var host = new FakeSupervisionHost { ExitSignals = 2, NextUrl = new Uri("http://127.0.0.1:6666/?token=t") };
+        var surface = new FakeSurface();
         var mint = new FakeMintEpoch();
         using var cts = new CancellationTokenSource();
 
         Task task = Create(new FakeBootstrap(), surface, mint, new FakeNavigator()).RunAsync(host, cts.Token);
         await mint.Second.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Single(surface.NativeReasons);
+        Assert.Empty(surface.NativeReasons);
+        Assert.Empty(surface.PageReasons);
         Assert.Equal(2, host.RestartCalls);
 
         cts.Cancel();
         await task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    /// <summary>等监督循环完成指定次数重启（门住周期重启照跑不断言竞态：5 秒 cap 内未达即测试失败）。</summary>
+    /// <param name="host">fake 宿主（重启计数）。</param>
+    /// <param name="restarts">期望重启次数。</param>
+    private static async Task WaitForRestartsAsync(FakeSupervisionHost host, int restarts)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+        while (host.RestartCalls < restarts)
+        {
+            if (DateTime.UtcNow >= deadline)
+            {
+                Assert.Fail($"监督循环未在 5 秒内完成 {restarts} 次重启（实际 {host.RestartCalls} 次）");
+            }
+
+            await Task.Delay(50);
+        }
     }
 
     /// <summary>构造监督用例（时限取最小可测值；语言固定中文分支，断言文案可确定）。</summary>
@@ -292,13 +352,15 @@ public class RuntimeSupervisionTests
     /// <param name="surface">fake 失败面。</param>
     /// <param name="mint">fake 铸币态。</param>
     /// <param name="navigator">fake 导航端口。</param>
+    /// <param name="stuckThreshold">卡住阈值（缺省 3 与生产默认对齐；传 1 即每次崩溃都弹面，保旧语义用例）。</param>
     /// <returns>用例实例。</returns>
     private static RuntimeSupervision Create(
-        IFirstBootBootstrap bootstrap, IRecoverySurface surface, IMintEpoch mint, IWebViewNavigator navigator)
+        IFirstBootBootstrap bootstrap, IRecoverySurface surface, IMintEpoch mint, IWebViewNavigator navigator,
+        int stuckThreshold = 3)
     {
         var locale = new UiLocale();
         locale.Set("zh-CN");
         return new RuntimeSupervision(
-            bootstrap, surface, mint, navigator, s_proxyUrl, locale, new RuntimeSupervisionOptions(1, 1, 1, 60));
+            bootstrap, surface, mint, navigator, s_proxyUrl, locale, new RuntimeSupervisionOptions(1, 1, 1, 60, stuckThreshold));
     }
 }

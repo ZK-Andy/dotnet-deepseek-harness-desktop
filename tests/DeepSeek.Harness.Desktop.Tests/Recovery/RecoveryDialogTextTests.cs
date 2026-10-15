@@ -26,7 +26,8 @@ public class RecoveryDialogTextTests
         }
     }
 
-    /// <summary>空尾部不出现尾部小节头、导出失败取失败文案；展示上限＝末 8 行 + 单行 160 字符裁剪（原生模态不适合长文本）。</summary>
+    /// <summary>空尾部不出现尾部小节头、导出失败取失败文案；展示上限＝末 8 行 + 单行 160 字符裁剪
+    /// + 重复行折叠 + 尾部节 600 字符预算装箱（原生模态无滚动，超长会把按钮顶出屏幕）。</summary>
     [Fact]
     public void Build_DegradesAndClips()
     {
@@ -45,5 +46,31 @@ public class RecoveryDialogTextTests
         string clippedLine = RecoveryDialogText.Build("原因", new[] { longLine }, string.Empty, english: false);
         Assert.DoesNotContain(longLine, clippedLine);
         Assert.Contains(new string('x', 160), clippedLine);
+    }
+
+    /// <summary>重复尾部行折叠（保首次出现序，记语言中立的 (×N) 后缀；单次行保持原样）。</summary>
+    [Fact]
+    public void Build_CollapsesRepeatedTailLines()
+    {
+        string text = RecoveryDialogText.Build(
+            "原因", new[] { "a", "b", "a", "a", "c", "b" }, "/tmp/diag.zip", english: false);
+
+        Assert.Contains("a (×3)", text);
+        Assert.Contains("b (×2)", text);
+        Assert.Contains("\nc\n", text);
+        Assert.DoesNotContain("(×1)", text);
+    }
+
+    /// <summary>尾部节预算装箱：8 行满幅长行只装下最新若干行（旧行先退场；原因/导出/动作恒在，故本用例总额仍 ≤ 600）。</summary>
+    [Fact]
+    public void Build_FitsTailWithinBudgetNewestFirst()
+    {
+        string[] tail = Enumerable.Range(1, 8).Select(i => $"tail-{i}-" + new string('z', 150)).ToArray();
+        string text = RecoveryDialogText.Build("原因", tail, "/tmp/diag.zip", english: false);
+
+        Assert.True(text.Length <= 600);
+        Assert.Contains("tail-8-", text);
+        Assert.DoesNotContain("tail-1-", text);
+        Assert.Contains(UiCopy.RecoveryDialogTailHeading(english: false), text);
     }
 }

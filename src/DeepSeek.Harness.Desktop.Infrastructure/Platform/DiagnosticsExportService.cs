@@ -1,5 +1,3 @@
-using DeepSeek.Harness.Desktop.Core.Recovery;
-
 namespace DeepSeek.Harness.Desktop.Infrastructure.Platform;
 
 /// <summary>

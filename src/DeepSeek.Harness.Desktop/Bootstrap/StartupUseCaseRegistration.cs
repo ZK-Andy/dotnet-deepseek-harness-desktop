@@ -106,6 +106,7 @@ internal static class StartupUseCaseRegistration
             sp.GetRequiredService<CancellationTokenSource>(),
             bootstrap,
             TimeSpan.FromSeconds(sp.GetRequiredService<RuntimeTimeouts>().SupervisorJoinTimeoutSeconds),
+            sp.GetRequiredService<Core.Recovery.IDialogOrphanReaper>().Reap,
             HostLog.Write));
 
     /// <summary>进入主界面用例的时限快照（配置模型 → Core 侧记录）。</summary>
@@ -126,5 +127,6 @@ internal static class StartupUseCaseRegistration
         timeouts.SupervisorRestartTimeoutSeconds,
         timeouts.SupervisorRecoveredRetryDelaySeconds,
         timeouts.SupervisorFailedRetryDelaySeconds,
-        timeouts.SupervisorBlockedLogEveryRounds);
+        timeouts.SupervisorBlockedLogEveryRounds,
+        timeouts.SupervisorFailureSurfaceStuckThreshold);
 }

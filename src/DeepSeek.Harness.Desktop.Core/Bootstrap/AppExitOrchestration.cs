@@ -15,22 +15,26 @@ public sealed class AppExitOrchestration
     private readonly CancellationTokenSource _supervisorCts;
     private readonly IFirstBootBootstrap _bootstrap;
     private readonly TimeSpan _supervisorJoinBudget;
+    private readonly Action? _reapOrphanedDialogs;
     private readonly Action<string>? _log;
 
     /// <summary>创建退出编排用例（依赖经容器解图；join 预算按配置模型投影传入——Core 不引 Infrastructure 的配置模型）。</summary>
     /// <param name="supervisorCts">监督器取消令牌源（容器单例，寿命 = 本次 Run）。</param>
     /// <param name="bootstrap">首启引导端口（取消尚未落定的引导任务）。</param>
     /// <param name="supervisorJoinBudget">监督任务 join 预算（超时即放弃等待，不挡退出）。</param>
+    /// <param name="reapOrphanedDialogs">遗留原生对话框收割（可空；失败面模态是插件子进程，不收即成孤儿）。</param>
     /// <param name="log">日志回调（可选）。</param>
     public AppExitOrchestration(
         CancellationTokenSource supervisorCts,
         IFirstBootBootstrap bootstrap,
         TimeSpan supervisorJoinBudget,
+        Action? reapOrphanedDialogs = null,
         Action<string>? log = null)
     {
         _supervisorCts = supervisorCts;
         _bootstrap = bootstrap;
         _supervisorJoinBudget = supervisorJoinBudget;
+        _reapOrphanedDialogs = reapOrphanedDialogs;
         _log = log;
     }
 
@@ -70,6 +74,9 @@ public sealed class AppExitOrchestration
         reapRuntime();
         // 非 orderly 退出路径也要释放单实例锁地址：orderly 路径已 Dispose 过，幂等守卫保证此处安全
         disposeListener?.Invoke();
+        // 失败面原生模态是插件子进程（Linux zenity/kdialog）：展示等待不跟退出令牌，不收即成孤儿留在屏幕上
+        // （2026-10-15 实机：重启应用后旧框仍在）。Windows 面是进程内模态、macOS 记缺口——收割器内部按平台退化。
+        _reapOrphanedDialogs?.Invoke();
         return 0;
     }
 

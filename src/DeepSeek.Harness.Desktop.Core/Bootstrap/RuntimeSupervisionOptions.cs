@@ -8,8 +8,10 @@ namespace DeepSeek.Harness.Desktop.Core.Bootstrap;
 /// <param name="RecoveredRetryDelaySeconds">重启未给出 URL 后的重试延迟。</param>
 /// <param name="FailedRetryDelaySeconds">恢复失败后的重试延迟。</param>
 /// <param name="BlockedLogEveryRounds">残留锁死同因重试的留痕步长（首轮必留痕）。</param>
+/// <param name="FailureSurfaceStuckThreshold">失败面卡住阈值（连续未恢复崩溃数；达到才弹面，恢复成功复位；≤1 回到每次都弹）。</param>
 public sealed record RuntimeSupervisionOptions(
     int RestartTimeoutSeconds,
     int RecoveredRetryDelaySeconds,
     int FailedRetryDelaySeconds,
-    int BlockedLogEveryRounds);
+    int BlockedLogEveryRounds,
+    int FailureSurfaceStuckThreshold);

@@ -76,7 +76,7 @@ public sealed class RuntimeSupervisor
                     {
                         _log?.Invoke("[supervisor] dsh 子进程退出，执行恢复…");
                         LogStderrTail();
-                        _log?.Invoke("[supervisor] 残留无法安全回收，跳过本轮重启（fail loud，失败面已带锁原因）");
+                        _log?.Invoke("[supervisor] 残留无法安全回收，跳过本轮重启（fail loud，锁原因已交失败面按卡住阈值门控）");
                     }
 
                     await _showRecovery(true);
