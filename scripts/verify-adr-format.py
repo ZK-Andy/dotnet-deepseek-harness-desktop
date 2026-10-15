@@ -109,6 +109,8 @@ def _scan(root: Path) -> tuple[int, list[str]]:
             continue
         lifecycle = parts[0] if parts else ""
         if lifecycle not in STATUS_BY_DIR:
+            errors.append(f"{rel}: path must be exactly <lifecycle>/<class>/<name>.md "
+                          f"(lifecycle '{lifecycle}' not in {list(LIFECYCLE_SET)})")
             continue
         checked += 1
 
@@ -206,6 +208,18 @@ def _self_test(root: Path) -> int:
         (badcount / "implemented").mkdir(parents=True)
         write_status(badcount / "implemented", "2026-08-27-naming-ok.md", "implemented")
         cases.append((badcount, 1, "path not 3 segments -> fail"))
+
+        # case G: misplaced file at notes root → exit 1 (no longer silently skipped)
+        misplaced = t / "misplaced"
+        misplaced.mkdir(parents=True)
+        write_status(misplaced, "2026-08-27-naming-ok.md", "implemented")
+        cases.append((misplaced, 1, "misplaced file at notes root -> fail"))
+
+        # case H: unknown lifecycle dir → exit 1 (no longer silently skipped)
+        badlife = t / "badlife"
+        (badlife / "draft" / "feature").mkdir(parents=True)
+        write_status(badlife / "draft" / "feature", "2026-08-27-naming-ok.md", "implemented")
+        cases.append((badlife, 1, "unknown lifecycle 'draft' -> fail"))
 
         failed = 0
         for notes_root, expected, desc in cases:
