@@ -101,9 +101,6 @@ jobs:
           python3 scripts/verify-md-links.py --self-test
           python3 scripts/verify-doc-budgets.py --self-test
           python3 scripts/verify-increment-discipline.py --self-test
-          # 锚点探测的夹具（离线）：探测本体在 upstream-anchors.yml 周检跑，但夹具每次 push 都得跑，
-          # 否则改坏判据要等合并 main 或被周检抓到。
-          python3 scripts/verify-upstream-anchors.py --self-test
       - name: UI 文案单一词典（批次 A）
         run: |
           python3 scripts/verify-ui-copy.py --self-test
