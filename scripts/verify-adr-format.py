@@ -63,7 +63,7 @@ def _validate_name(rel: Path) -> list[str]:
     parts = rel.parts
     if len(parts) != 3:
         errors.append(f"{rel}: path must be exactly <lifecycle>/<class>/<name>.md "
-                      "(3 segments; got {len(parts)})")
+                      f"(3 segments; got {len(parts)})")
         return errors
 
     lifecycle, cls, name = parts
@@ -230,6 +230,13 @@ def _self_test(root: Path) -> int:
             else:
                 print(f"  ✗ {desc}: expected exit {expected}, got {actual} ({'; '.join(errors)})")
                 failed = 1
+        # 插值回归：段数报错须渲染真实数字（曾缺 f 前缀，原样打出 "{len(parts)}"）
+        _, errors_badcount = _scan(badcount)
+        if not any("got 2" in e for e in errors_badcount):
+            print("  ✗ wrong segment count error does not interpolate the count", file=sys.stderr)
+            failed = 1
+        else:
+            print("  ok: segment count error interpolates the count")
         if failed == 0:
             print("== verify-adr-format self-test passed ==")
         else:
