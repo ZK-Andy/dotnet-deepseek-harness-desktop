@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-10-17/R1=ok R2=ok R3=ok
 
+Erratum: 2026-10-17 — 交付形态更正：五片（gross 548/323/296/348/101）按提交语义切分，**仅 `7cb5a32`/`c62f725` 两片的树可编译**——前三片引用了本批已删的类型（`PreinstallChoiceGate`/`PreinstallCommandRouter`/`MarketInstallHelper.IsBundleInstalled`），故「逐片推送则单片 ≤600」不可行。交付改为单次快进推送（`5a4b29e..8940650`），pre-push 增量纪律闸按 [increment-gate-enforce](../process/2026-10-14-increment-gate-enforce.md) Decision 4 的「在 ADR 记理由」通道豁免（体积由删除已退役接线构成，无可拆的质量面）；CI run `38951121337` 的增量闸步（base = `github.event.before`，整段 gross 1647）红、其余作业全绿，且该步不可重跑转绿（base 由事件载荷固定）。随后 bump `9ff22ba` + tag `v0.6.11` 交付。
+
 ## Problem
 
 桌面壳在首启引导页呈现「插件准备」步：把第三方插件市场 `dshmarket` 作为推荐 chip 交给用户确认/跳过，确认后经 registry 装进桌面专属 profile（走事务管线换入）；无人值守场景以 `DSH_DESKTOP_PREINSTALL_AUTO=skip` 跳过（ADR [preinstall-unattended-skip](../../archived/feature/2026-09-26-preinstall-unattended-skip.md)）。这一步把「壳代装第三方插件」写进产品面，并牵连整套接线：引导页第 4 步与 chip/日志区、IPC 路由 `desktop.preinstall.choose`、`dsh-desktop-preinstall` 事件帧、专用决策闸门、preset 清单、市场 registry 安装驱动与两个专用配置键。
