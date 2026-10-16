@@ -36,8 +36,3 @@ Review: FULL/2026-10-15/R1=ok R2=ok R3=ok
 - 覆盖率口径：本地干净并集复算（4 个新鲜 cobertura，不含根 `TestResults/` 陈旧卷——混入会把分母抬高，复算时已剔除；CI 在干净检出上同口径，容差 0.5pp 兜底 4 行本地偏高）。
 - 门禁：code-health、compose-root（C3 6/6，未新增根构造）、registration-discipline（R1b 9/11）、code-conventions、ui-copy（`×` 非 CJK，`…`先例）、increment-discipline（508/62/9/0，全帽内）、review-tier（LIGHT）全绿；其余（adr-format/md-links/cookbook/doc-budgets/readme-badges）同批全绿，见评审简报门禁自证；`dotnet format --verify-no-changes --severity warn` 干净。
 - 实机未验：P1–P3 复验转用户下次插件更新重启（待办指针）。
-
-## Deferred
-
-- macOS 孤儿框收敛（无 `/proc` 判亲缘）。
-- `Ryn.Plugins.Dialog` 透传图标/宽度（Linux `--window-icon`/`--width`、macOS `with icon`）：上游需求。
