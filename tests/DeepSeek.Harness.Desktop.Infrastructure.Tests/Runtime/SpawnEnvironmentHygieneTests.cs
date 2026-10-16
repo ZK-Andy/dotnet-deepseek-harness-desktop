@@ -105,7 +105,7 @@ public class SpawnEnvironmentHygieneTests
         return Task.CompletedTask;
     });
 
-    /// <summary>验证 dsh plugin add 的 spawn 也走同一净化（安装链路的 registry 改写同样被挡）。</summary>
+    /// <summary>验证 dsh plugin add 的 spawn 也走同一净化（随包 <c>file:</c> spec 路径同样被挡）。</summary>
     [Fact]
     public async Task RunPluginAddAsync_StripsNoise() => await WithNoiseAsync(async () =>
     {
@@ -120,8 +120,7 @@ public class SpawnEnvironmentHygieneTests
             "node",
             "/dsh/bin.js",
             "/home/u/.dsh",
-            "dshmarket@latest",
-            MarketInstallHelper.PluginSpecOrigin.Registry,
+            "file:/opt/My Apps/dsh-desktop-companion.tgz",
             _ => { },
             FakeAsync,
             CancellationToken.None);

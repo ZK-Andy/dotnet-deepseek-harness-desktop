@@ -249,7 +249,7 @@ public class BundledPluginCatalogTests
                 BundledPluginSupply.All, profile, pluginsDir: pluginsDir);
 
             // 运行时目录 tgz/目录分支退役：companion 只能来自安装器资源；dshmarket 不再随包
-            // （catalog 仅 companion），故 pending 仅 companion 一条。（不装 dshmarket，市场由引导经 registry 安装。）
+            // （catalog 仅 companion），故 pending 仅 companion 一条。（不装 dshmarket：市场不由壳代装。）
             (string Package, string Spec) entry = Assert.Single(pending);
             Assert.Equal(("dsh-desktop-companion", Path.Combine(pluginsDir, "dsh-desktop-companion.tgz")), (entry.Package, entry.Spec));
             Assert.DoesNotContain(pending, p => p.Package == "dshmarket");

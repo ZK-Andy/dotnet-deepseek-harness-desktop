@@ -52,34 +52,7 @@ public class MarketInstallHelperSpecTests
         Assert.Contains("ERR_PNPM_SPEC_NOT_SUPPORTED", reason);
     }
 
-    /// <summary>验证 registry 来源的非法 spec 在拼参数前被拒：执行器一次都不跑，且日志留原因。</summary>
-    [Fact]
-    public async Task RunPluginAddAsync_RegistryMalformed_RejectsWithoutSpawning()
-    {
-        bool ran = false;
-        var logs = new List<string>();
-
-        (int exit, _, string err) = await MarketInstallHelper.RunPluginAddAsync(
-            "node",
-            "/dsh/bin.js",
-            "/home/u/.dsh",
-            "--malicious",
-            MarketInstallHelper.PluginSpecOrigin.Registry,
-            logs.Add,
-            (psi, ct) =>
-            {
-                ran = true;
-                return Task.FromResult((0, string.Empty, string.Empty));
-            },
-            CancellationToken.None);
-
-        Assert.False(ran, "非法 registry spec 不得触达子进程");
-        Assert.NotEqual(0, exit);
-        Assert.NotEmpty(err);
-        Assert.Contains(logs, l => l.Contains("拒绝不合法的市场插件 spec"));
-    }
-
-    /// <summary>验证随包来源的 <c>file:</c> spec 不受 registry allowlist 约束——安装目录可含空格（Windows）。</summary>
+    /// <summary>验证随包 <c>file:</c> spec 原样进参数表——安装目录可含空格（Windows）不被改写。</summary>
     [Fact]
     public async Task RunPluginAddAsync_BundledFileSpecWithSpaces_Allowed()
     {
@@ -92,7 +65,6 @@ public class MarketInstallHelperSpecTests
             "/dsh/bin.js",
             "/home/u/.dsh",
             spec,
-            MarketInstallHelper.PluginSpecOrigin.Bundled,
             _ => { },
             (psi, ct) =>
             {

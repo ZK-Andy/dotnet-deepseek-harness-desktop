@@ -609,8 +609,7 @@ public class RuntimeBootstrapOptionsTests
             Assert.Equal(10, options.StepTimeoutMinutes);
             Assert.Equal("https://nodejs.org/dist", options.NodeDistBaseUrl);
             Assert.Equal(30, options.FetchTextTimeoutSeconds);
-            Assert.Equal(200, options.PreinstallPollIntervalMilliseconds);
-            Assert.Equal(5, options.PreinstallChoiceTimeoutMinutes);
+            Assert.Equal(200, options.RetryPollIntervalMilliseconds);
         }
         finally
         {
@@ -627,7 +626,7 @@ public class RuntimeBootstrapOptionsTests
         try
         {
             File.WriteAllText(Path.Combine(dir, "appsettings.json"), """
-                {"RuntimeBootstrap":{"DshSpec":"@deepseek-ai/dsh@0.1.1-rc.2","StepTimeoutMinutes":5,"NodeDistBaseUrl":"https://mirror.example/dist","NodeMirrorBaseUrl":"https://cdn.example.com/node","NodeGlobalPrefix":"/usr/local","FetchTextTimeoutSeconds":45,"PreinstallPollIntervalMilliseconds":500,"PreinstallChoiceTimeoutMinutes":10}}
+                {"RuntimeBootstrap":{"DshSpec":"@deepseek-ai/dsh@0.1.1-rc.2","StepTimeoutMinutes":5,"NodeDistBaseUrl":"https://mirror.example/dist","NodeMirrorBaseUrl":"https://cdn.example.com/node","NodeGlobalPrefix":"/usr/local","FetchTextTimeoutSeconds":45,"RetryPollIntervalMilliseconds":500}}
                 """);
             var options = RuntimeBootstrapOptions.Load(dir);
             Assert.Equal("@deepseek-ai/dsh@0.1.1-rc.2", options.DshSpec);
@@ -636,8 +635,7 @@ public class RuntimeBootstrapOptionsTests
             Assert.Equal("https://cdn.example.com/node", options.NodeMirrorBaseUrl);
             Assert.Equal("/usr/local", options.NodeGlobalPrefix);
             Assert.Equal(45, options.FetchTextTimeoutSeconds);
-            Assert.Equal(500, options.PreinstallPollIntervalMilliseconds);
-            Assert.Equal(10, options.PreinstallChoiceTimeoutMinutes);
+            Assert.Equal(500, options.RetryPollIntervalMilliseconds);
         }
         finally
         {
