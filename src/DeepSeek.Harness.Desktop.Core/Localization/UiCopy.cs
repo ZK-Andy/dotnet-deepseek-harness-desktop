@@ -135,29 +135,6 @@ public static partial class UiCopy
         ? $"{url}: {detail}"
         : $"{url}：{detail}";
 
-    // ======== 插件引导结果（FirstBootBootstrapService → 引导页日志区/进度行） ========
-
-    /// <summary>插件引导：用户跳过（与引导页兜底文案同句，单一事实源在 <see cref="IndexPreinstallSkipped"/>）。</summary>
-    public static string PreinstallSkippedMessage(bool english) => english ? IndexPreinstallSkippedEn : IndexPreinstallSkipped;
-
-    /// <summary>插件引导：安装完成（与引导页兜底文案同句，单一事实源在 <see cref="IndexPreinstallDone"/>）。</summary>
-    public static string PreinstallDoneMessage(bool english) => english ? IndexPreinstallDoneEn : IndexPreinstallDone;
-
-    /// <summary>插件引导：安装未成功（详见日志）。</summary>
-    public static string PreinstallFailedMessage(bool english) => english
-        ? "Install did not succeed (see log)"
-        : "安装未成功（见日志）";
-
-    /// <summary>插件引导：进度行「可选插件准备」。</summary>
-    public static string PreinstallStepPreparing(bool english) => english
-        ? "Preparing optional plugins"
-        : "可选插件准备";
-
-    /// <summary>插件引导：进度行「插件准备完成」。</summary>
-    public static string PreinstallStepReady(bool english) => english
-        ? "Plugin setup complete"
-        : "插件准备完成";
-
     // ======== 横幅（DesktopBanner / UpdateBanner / UiLocale） ========
 
     /// <summary>横幅确认按钮（横幅共用，随当前 locale）。</summary>
@@ -272,22 +249,6 @@ public static partial class UiCopy
     /// <summary>引导页：验证 dsh 版本步骤。</summary>
     public const string IndexStepVerifyDsh = "验证 dsh 版本";
 
-    /// <summary>引导页：插件准备步骤。</summary>
-    public const string IndexStepPreinstallPlugins = "插件准备";
-
-    /// <summary>引导页：可选插件小节标题。</summary>
-    public const string IndexOptionalPluginsTitle = "可选插件";
-
-    /// <summary>引导页：可选插件说明。</summary>
-    public const string IndexOptionalPluginsNote =
-        "以下插件为 DeepSeek Harness 桌面体验提供增强，可自由选择安装（跳过仍可稍后在应用内补装）：";
-
-    /// <summary>引导页：确认安装按钮。</summary>
-    public const string IndexPreinstallConfirm = "确认安装";
-
-    /// <summary>引导页：跳过按钮。</summary>
-    public const string IndexPreinstallSkip = "跳过";
-
     /// <summary>引导页：重试按钮。</summary>
     public const string IndexBootRetry = "重试";
 
@@ -303,30 +264,6 @@ public static partial class UiCopy
     /// <summary>引导页：回退提示行尾。</summary>
     public const string IndexFallbackHintTail = "与日志，或重启应用。";
 
-    /// <summary>引导页脚本：dshmarket 插件显示名（PLUGIN_NAMES）。</summary>
-    public const string IndexPluginNameDshmarket = "插件市场（dshmarket）";
-
-    /// <summary>引导页脚本：安装中状态。</summary>
-    public const string IndexInstalling = "正在安装…";
-
-    /// <summary>引导页脚本：全部可选项已跳过状态。</summary>
-    public const string IndexPreinstallSkippedAll = "已跳过可选插件";
-
-    /// <summary>引导页脚本：未知插件名兜底。</summary>
-    public const string IndexPluginFallback = "插件";
-
-    /// <summary>引导页脚本：安装中前缀（后接插件名）。</summary>
-    public const string IndexInstallingPrefix = "正在安装 ";
-
-    /// <summary>引导页脚本：单项已跳过状态。</summary>
-    public const string IndexPreinstallSkipped = "已跳过插件安装";
-
-    /// <summary>引导页脚本：安装完成状态。</summary>
-    public const string IndexPreinstallDone = "安装完成";
-
-    /// <summary>引导页脚本：推荐徽标前缀（后接插件名）。</summary>
-    public const string IndexRecommendedPrefix = "推荐 · ";
-
     // ---- 引导页英文侧（index.html 的 EN 字典；与上方 zh 常量一一对应） ----
 
     /// <summary>引导页 EN：确保系统全局 Node 步骤。</summary>
@@ -337,22 +274,6 @@ public static partial class UiCopy
 
     /// <summary>引导页 EN：验证 dsh 版本步骤。</summary>
     public const string IndexStepVerifyDshEn = "Verify dsh version";
-
-    /// <summary>引导页 EN：插件准备步骤。</summary>
-    public const string IndexStepPreinstallPluginsEn = "Plugin setup";
-
-    /// <summary>引导页 EN：可选插件小节标题。</summary>
-    public const string IndexOptionalPluginsTitleEn = "Optional plugins";
-
-    /// <summary>引导页 EN：可选插件说明。</summary>
-    public const string IndexOptionalPluginsNoteEn =
-        "These plugins enhance the DeepSeek Harness desktop experience — install any you want (skipping still lets you add them later from the in-app market):";
-
-    /// <summary>引导页 EN：确认安装按钮。</summary>
-    public const string IndexPreinstallConfirmEn = "Install";
-
-    /// <summary>引导页 EN：跳过按钮。</summary>
-    public const string IndexPreinstallSkipEn = "Skip";
 
     /// <summary>引导页 EN：重试按钮。</summary>
     public const string IndexBootRetryEn = "Retry";
@@ -368,28 +289,4 @@ public static partial class UiCopy
 
     /// <summary>引导页 EN：回退提示行尾。</summary>
     public const string IndexFallbackHintTailEn = "and the logs, or restart the app.";
-
-    /// <summary>引导页 EN：dshmarket 插件显示名。</summary>
-    public const string IndexPluginNameDshmarketEn = "Plugin market (dshmarket)";
-
-    /// <summary>引导页 EN：安装中状态。</summary>
-    public const string IndexInstallingEn = "Installing…";
-
-    /// <summary>引导页 EN：全部可选项已跳过状态。</summary>
-    public const string IndexPreinstallSkippedAllEn = "Optional plugins skipped";
-
-    /// <summary>引导页 EN：未知插件名兜底。</summary>
-    public const string IndexPluginFallbackEn = "plugin";
-
-    /// <summary>引导页 EN：安装中前缀（后接插件名）。</summary>
-    public const string IndexInstallingPrefixEn = "Installing ";
-
-    /// <summary>引导页 EN：单项已跳过状态。</summary>
-    public const string IndexPreinstallSkippedEn = "Plugin install skipped";
-
-    /// <summary>引导页 EN：安装完成状态。</summary>
-    public const string IndexPreinstallDoneEn = "Install complete";
-
-    /// <summary>引导页 EN：推荐徽标前缀（后接插件名）。</summary>
-    public const string IndexRecommendedPrefixEn = "Recommended · ";
 }

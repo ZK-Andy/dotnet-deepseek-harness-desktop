@@ -110,39 +110,6 @@
             mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        /* —— 插件引导（ADR reference-alignment 批次二）—— */
-        #preinstall { display: none; flex-direction: column; align-items: center; gap: 14px; max-width: 560px; }
-        #preinstall.visible { display: flex; }
-        #preinstall h2 { font-size: 14px; line-height: 1.5; font-weight: 600; color: var(--dshdt-label-primary); }
-        #preinstall p { color: var(--dshdt-label-tertiary); max-width: 480px; font-size: 12px; }
-        #preinstallChips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-        .chip {
-            display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px;
-            background: var(--dshdt-surface); border: 1px solid var(--dshdt-border);
-            border-radius: 9999px; color: var(--dshdt-label-primary);
-            font-size: 12px; cursor: pointer;
-        }
-        .chip input { accent-color: var(--dshdt-brand); }
-        #preinstallActions { display: flex; gap: 12px; }
-        #preinstallActions button {
-            background: var(--dshdt-label-primary); color: Canvas;
-            border: 1px solid transparent; border-radius: 8px;
-            padding: 8px 24px; font-size: 13px; line-height: 1.5; cursor: pointer;
-        }
-        #preinstallActions button:hover:not(:disabled) { opacity: 0.92; }
-        #preinstallActions button:disabled { opacity: 0.4; cursor: default; }
-        #preinstallActions .ghost {
-            background: transparent; border-color: var(--dshdt-border); color: var(--dshdt-label-secondary);
-        }
-        #preinstallActions .ghost:hover:not(:disabled) { color: var(--dshdt-label-primary); filter: none; }
-        #preinstallLog {
-            display: none; width: 100%; max-height: 180px; overflow-y: auto; text-align: left;
-            background: var(--dshdt-surface); border: 1px solid var(--dshdt-border); border-radius: 8px; padding: 10px 12px;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
-            color: var(--dshdt-label-secondary); line-height: 1.5; white-space: pre-wrap; word-break: break-all;
-        }
-        #preinstallLog.visible { display: block; }
-        #preinstallLog pre { margin: 0; }
     </style>
 </head>
 <body>
@@ -158,17 +125,6 @@
             <div class="step" data-step="EnsureNode"><span class="dot"></span><span data-i18n="stepEnsureNode">确保系统全局 Node</span></div>
             <div class="step" data-step="InstallDsh"><span class="dot"></span><span data-i18n="stepInstallDsh">npm 安装全局 dsh（需联网）</span></div>
             <div class="step" data-step="VerifyDsh"><span class="dot"></span><span data-i18n="stepVerifyDsh">验证 dsh 版本</span></div>
-            <div class="step" data-step="PreinstallPlugins"><span class="dot"></span><span data-i18n="stepPreinstallPlugins">插件准备</span></div>
-        </div>
-        <div id="preinstall">
-            <h2 data-i18n="optionalPluginsTitle">可选插件</h2>
-            <p data-i18n="optionalPluginsNote">以下插件为 DeepSeek Harness 桌面体验提供增强，可自由选择安装（跳过仍可稍后在应用内补装）：</p>
-            <div id="preinstallChips"></div>
-            <div id="preinstallActions">
-                <button id="preinstallConfirm" onclick="preinstallChoose('install')" data-i18n="confirmInstall">确认安装</button>
-                <button id="preinstallSkip" class="ghost" onclick="preinstallChoose('skip')" data-i18n="skip">跳过</button>
-            </div>
-            <div id="preinstallLog"></div>
         </div>
         <div id="bootError"></div>
         <button id="bootRetry" onclick="retryBootstrap()" data-i18n="retry">重试</button>
@@ -181,37 +137,19 @@
             stepEnsureNode: 'Ensure system-global Node',
             stepInstallDsh: 'Install global dsh via npm (network required)',
             stepVerifyDsh: 'Verify dsh version',
-            stepPreinstallPlugins: 'Plugin setup',
-            optionalPluginsTitle: 'Optional plugins',
-            optionalPluginsNote: 'These plugins enhance the DeepSeek Harness desktop experience — install any you want (skipping still lets you add them later from the in-app market):',
-            confirmInstall: 'Install',
-            skip: 'Skip',
             retry: 'Retry',
             fallbackText: 'Runtime not ready (',
             fallbackTextTail: 'did not yield a URL in time).',
             fallbackHint: 'Check',
             fallbackHintTail: 'and the logs, or restart the app.',
-            pluginNameDshmarket: 'Plugin market (dshmarket)',
-            installing: 'Installing…',
-            preinstallSkippedAll: 'Optional plugins skipped',
-            pluginFallback: 'plugin',
-            installingPrefix: 'Installing ',
-            preinstallSkipped: 'Plugin install skipped',
-            preinstallDone: 'Install complete',
-            recommendedPrefix: 'Recommended · ',
             capMinimize: 'Minimize',
             capMaximize: 'Maximize',
             capClose: 'Close'
         };
-        // 动态文案的模块级词典：英文时指向 EN；中文默认留在各调用点的字面量（T 第二参）
-        var UI = null;
-        function T(key, zh) { return UI && UI[key] ? UI[key] : zh; }
-
         function applyLocale(locale) {
             var english = /^en/i.test(locale || '');
             document.documentElement.lang = english ? 'en' : 'zh-CN';
             if (!english) { return; }
-            UI = EN;
             var nodes = document.querySelectorAll('[data-i18n]');
             for (var i = 0; i < nodes.length; i++) {
                 var key = nodes[i].getAttribute('data-i18n');
@@ -223,8 +161,8 @@
                 if (EN[ariaKey]) { ariaNodes[j].setAttribute('aria-label', EN[ariaKey]); }
             }
         }
-        // 语言未定前的宿主帧先入队：applyLocale 只改静态节点，若进度/插件帧先到（chips、日志行由
-        // 帧数据生成）会停在中文而与静态文案混排；语言落定后按到达序回放。1s 兜底防宿主不回包时卡帧。
+        // 语言未定前的宿主帧先入队：applyLocale 只改静态节点，若进度帧先到会停在中文而与静态文案混排；
+        // 语言落定后按到达序回放。1s 兜底防宿主不回包时卡帧。
         var localeReady = false;
         var pendingFrames = [];
         function releaseFrames() {
@@ -232,17 +170,13 @@
             localeReady = true;
             var queued = pendingFrames;
             pendingFrames = [];
-            for (var i = 0; i < queued.length; i++) { dispatchFrame(queued[i][0], queued[i][1]); }
+            for (var i = 0; i < queued.length; i++) { handleFrame(queued[i]); }
         }
-        function dispatchFrame(type, detail) {
+        function handleFrame(detail) {
+            if (!localeReady) { pendingFrames.push(detail); return; }
             try {
-                if (type === 'dsh-desktop-bootstrap') { renderBootstrap(detail || {}); }
-                else { renderPreinstall(detail || {}); }
+                renderBootstrap(detail || {});
             } catch (e) { /* 渲染失败不影响宿主引导链路 */ }
-        }
-        function handleFrame(type, detail) {
-            if (localeReady) { dispatchFrame(type, detail); return; }
-            pendingFrames.push([type, detail]);
         }
         setTimeout(releaseFrames, 1000);
         try {
@@ -253,7 +187,7 @@
 
         // 首启引导状态机渲染（ADR simple-shell-single-global-dsh）：宿主经 CustomEvent 推进度，
         // 数据一律 textContent 回填（stderr/错误信息是上游不可控输出，绝不 innerHTML 拼接）。
-        var STEP_ORDER = ['EnsureNode', 'InstallDsh', 'VerifyDsh', 'PreinstallPlugins'];
+        var STEP_ORDER = ['EnsureNode', 'InstallDsh', 'VerifyDsh'];
 
         function renderBootstrap(detail) {
             document.getElementById('bootstrap').classList.add('visible');
@@ -284,75 +218,8 @@
             try { window.__ryn.invoke('desktop.bootstrap.retry', {}); } catch (e) { /* IPC 未就绪时静默 */ }
         }
 
-        // —— 插件引导（ADR reference-alignment 批次二）——
-        // 宿主经 dsh-desktop-preinstall CustomEvent 推 decision/installing/log/done；
-        // 日志一律 textContent 回填（plugin add 输出是上游不可控文本，绝不 innerHTML 拼接）。
-        var PLUGIN_NAMES = { dshmarket: '插件市场（dshmarket）' };
-
-        // 插件显示名：中文默认取 PLUGIN_NAMES，英文按 pluginName<Id> 键取 EN 词典；未知插件回退 id
-        function pluginLabel(id) {
-            var zh = PLUGIN_NAMES[id];
-            return zh ? T('pluginName' + id.charAt(0).toUpperCase() + id.slice(1), zh) : id;
-        }
-
-        function preinstallChoose(action) {
-            try { window.__ryn.invoke('desktop.preinstall.choose', { action: action }); } catch (e) { /* IPC 未就绪时静默 */ }
-            setPreinstallActions(false);
-            appendPreinstallLog(action === 'install' ? T('installing', '正在安装…') : T('preinstallSkippedAll', '已跳过可选插件'));
-        }
-
-        function renderPreinstall(detail) {
-            var kind = detail.kind;
-            if (kind === 'decision') {
-                var box = document.getElementById('preinstall');
-                box.classList.add('visible');
-                document.getElementById('bootSpinner').classList.remove('visible');
-                renderPreinstallChips(detail.plugins || []);
-                setPreinstallActions(true);
-            } else if (kind === 'installing') {
-                setPreinstallActions(false);
-                var pn = pluginLabel(detail.plugin) || T('pluginFallback', '插件');
-                appendPreinstallLog(T('installingPrefix', '正在安装 ') + pn + ' …');
-            } else if (kind === 'log') {
-                appendPreinstallLog(detail.line);
-            } else if (kind === 'done') {
-                setPreinstallActions(false);
-                appendPreinstallLog(detail.message || (detail.action === 'skip' ? T('preinstallSkipped', '已跳过插件安装') : T('preinstallDone', '安装完成')));
-            }
-        }
-
-        function renderPreinstallChips(plugins) {
-            var chips = document.getElementById('preinstallChips');
-            chips.innerHTML = '';
-            plugins.forEach(function (p) {
-                var label = pluginLabel(p) || p;
-                var chip = document.createElement('span');
-                chip.className = 'chip';
-                chip.textContent = T('recommendedPrefix', '推荐 · ') + label;
-                chips.appendChild(chip);
-            });
-        }
-
-        function setPreinstallActions(enabled) {
-            document.getElementById('preinstallConfirm').disabled = !enabled;
-            document.getElementById('preinstallSkip').disabled = !enabled;
-        }
-
-        function appendPreinstallLog(line) {
-            var log = document.getElementById('preinstallLog');
-            log.classList.add('visible');
-            var pre = document.createElement('pre');
-            pre.textContent = line;
-            log.appendChild(pre);
-            log.scrollTop = log.scrollHeight;
-        }
-
         document.addEventListener('dsh-desktop-bootstrap', function (ev) {
-            handleFrame('dsh-desktop-bootstrap', ev.detail || {});
-        });
-
-        document.addEventListener('dsh-desktop-preinstall', function (ev) {
-            handleFrame('dsh-desktop-preinstall', ev.detail || {});
+            handleFrame(ev.detail || {});
         });
     </script>
 </body>

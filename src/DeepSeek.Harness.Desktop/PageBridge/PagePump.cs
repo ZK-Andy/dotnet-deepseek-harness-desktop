@@ -4,7 +4,7 @@ using Ryn.Core;
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
-/// 页面注入辅助（ADR 组合根只装配）：把 JS 注入类操作（横幅/引导进度/插件引导状态/日志回流/自更新状态）
+/// 页面注入辅助（ADR 组合根只装配）：把 JS 注入类操作（横幅/引导进度/自更新状态）
 /// 从组合根抽出为静态单点。均以 <see cref="CurrentWindowAccessor"/>（或就绪前会抛的
 /// <see cref="IRynWebView"/> 惰性解析）为参数（未就绪的重试/丢弃语义在方法内），不依赖组合根实例状态。
 /// </summary>
@@ -133,31 +133,6 @@ internal static class PagePump
         }
     }
 
-    /// <summary>构建 <c>dsh-desktop-preinstall</c> CustomEvent 注入脚本（detail 为帧对象 JSON）。</summary>
-    internal static string PreinstallEventScript(PreinstallFrame frame)
-    {
-        string frameJson = JsonSerializer.Serialize(frame, AppJsonContext.Default.PreinstallFrame);
-        return "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-preinstall',{detail:"
-            + frameJson
-            + "}));}catch(e){}})();";
-    }
-
-    /// <summary>推送一条插件引导状态（decision/installing/done）到引导页，重试语义同 <see cref="PushBootstrapStateAsync"/>。</summary>
-    internal static async Task RetryPushPreinstallAsync(CurrentWindowAccessor accessor, PreinstallFrame frame)
-    {
-        string script = PreinstallEventScript(frame);
-        RetryOutcome outcome = await RetryWhenReadyAsync(
-            _ => EvaluateAsync(accessor, script),
-            ex => HostLog.Write($"[preinstall] 状态推送失败（放弃）：{ex.Message}"),
-            s_timeouts.PushMaxAttempts,
-            s_pushRetryDelay,
-            CancellationToken.None).ConfigureAwait(false);
-        if (outcome == RetryOutcome.Exhausted)
-        {
-            HostLog.Write("[preinstall] 状态推送重试耗尽（页面始终未就绪）");
-        }
-    }
-
     /// <summary>就绪前重试的单一循环骨架（ADR pagepump-retry-helper-unification）：注入/注册/推送四路共用。
     /// 次数上限与节拍由调用点给（次数口径是这三类配置键的既有语义）；到点预算只在注册路出现，由
     /// <see cref="AttemptsForBudget"/> 单点折算成次数后同样以次数入参——绕开「次数 × 节拍 → TimeSpan」往返
@@ -235,25 +210,6 @@ internal static class PagePump
         /// <summary>终止且不尝试补：退出期已销毁、其余异常（已由 <c>onGiveUp</c> 留痕）或取消——三者对调用点
         /// 不可区分，均不再记行（退出期常规路径，逐次留痕是噪音）。</summary>
         Stopped,
-    }
-
-    /// <summary>推送一行安装日志到引导页日志区（fire-and-forget，失败仅丢一行、不阻断主链路）。</summary>
-    internal static void PushPreinstallLog(CurrentWindowAccessor accessor, string line)
-    {
-        if (string.IsNullOrWhiteSpace(line))
-        {
-            return;
-        }
-
-        try
-        {
-            _ = accessor.Current.EvaluateJavaScriptAsync(
-                PreinstallEventScript(new PreinstallFrame("log", Line: line)));
-        }
-        catch (Exception)
-        {
-            // 页面未就绪/已导航：日志丢失可容忍（吞掉页面上游任何异常，仅丢一行日志）
-        }
     }
 
     /// <summary>把自更新状态变化推给页面：插件监听 <c>dsh-desktop-update</c> CustomEvent 渲染更新按钮。

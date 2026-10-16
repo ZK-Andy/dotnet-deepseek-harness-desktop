@@ -15,23 +15,4 @@ internal sealed class FirstBootUi : IFirstBootUi
     /// <inheritdoc />
     public Task BootstrapStepAsync(BootstrapStep step, string message, bool failed) =>
         PagePump.PushBootstrapStateAsync(_accessor(), step.ToString(), message, failed);
-
-    /// <inheritdoc />
-    public Task PreinstallDecisionAsync(IReadOnlyList<string> plugins) =>
-        PagePump.RetryPushPreinstallAsync(_accessor(), new PreinstallFrame("decision", Plugins: [.. plugins]));
-
-    /// <inheritdoc />
-    public Task PreinstallInstallingAsync(string plugin) =>
-        PagePump.RetryPushPreinstallAsync(_accessor(), new PreinstallFrame("installing", Plugin: plugin));
-
-    /// <inheritdoc />
-    public Task PreinstallDoneAsync(PreinstallChoice choice, bool? ok, string? message) =>
-        PagePump.RetryPushPreinstallAsync(_accessor(), new PreinstallFrame(
-            "done",
-            Action: choice == PreinstallChoice.Skip ? "skip" : "install",
-            Ok: ok,
-            Message: message));
-
-    /// <inheritdoc />
-    public void PreinstallLog(string line) => PagePump.PushPreinstallLog(_accessor(), line);
 }

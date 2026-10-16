@@ -13,9 +13,6 @@ public interface IFirstBootBootstrap
     /// <summary>引导重试闸门（引导页 desktop.bootstrap.retry 消费）。</summary>
     RuntimeBootstrapGate Gate { get; }
 
-    /// <summary>插件引导决策闸门（引导页 desktop.preinstall.choose 消费）。</summary>
-    PreinstallChoiceGate PreinstallGate { get; }
-
     /// <summary>解析运行时前提：把系统全局 node bin 暴露到进程 PATH 并探测全局 dsh；
     /// 必须在 spawn 与随包插件装配前调用。</summary>
     void Resolve();
@@ -39,8 +36,8 @@ public interface IFirstBootBootstrap
 }
 
 /// <summary>
-/// 首启引导页反馈端口（R3：接口在 Core、实现进 Presentation 页面注入）：引导进度、插件引导帧与
-/// 安装日志的页面送达单点；帧形状与重试语义留实现侧。
+/// 首启引导页反馈端口（R3：接口在 Core、实现进 Presentation 页面注入）：引导进度的页面送达单点；
+/// 帧形状与重试语义留实现侧。
 /// </summary>
 public interface IFirstBootUi
 {
@@ -49,22 +46,4 @@ public interface IFirstBootUi
     /// <param name="message">人读步骤消息。</param>
     /// <param name="failed">失败步骤标记。</param>
     Task BootstrapStepAsync(BootstrapStep step, string message, bool failed);
-
-    /// <summary>插件引导：呈现待装可选插件列表等待用户决策。</summary>
-    /// <param name="plugins">待装可选插件名列表。</param>
-    Task PreinstallDecisionAsync(IReadOnlyList<string> plugins);
-
-    /// <summary>插件引导：当前正在安装的插件名。</summary>
-    /// <param name="plugin">插件名。</param>
-    Task PreinstallInstallingAsync(string plugin);
-
-    /// <summary>插件引导：安装/跳过结论。</summary>
-    /// <param name="choice">用户动作（安装/跳过）。</param>
-    /// <param name="ok">安装成功与否；null = 跳过无成功概念。</param>
-    /// <param name="message">人读结论消息。</param>
-    Task PreinstallDoneAsync(PreinstallChoice choice, bool? ok, string? message);
-
-    /// <summary>推一行安装日志（fire-and-forget，失败仅丢一行）。</summary>
-    /// <param name="line">一行安装输出。</param>
-    void PreinstallLog(string line);
 }
