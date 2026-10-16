@@ -29,7 +29,7 @@ Related: 排序器形状 [startup-sequencer-shape](2026-10-15-startup-sequencer-
 - 买到的：收口顺序（取消 → join → 回收 → 释放监听器）与异常吞并边界有了单测家（主循环正常/抛异常/监督任务故障/join 预算用尽四路）；排序器的「只触发」形状从语句面延伸到一行调用。
 - 付出的：排序器构造表多一项（`AppExitOrchestration`），收口动作以两个委托跨层传递（回收惰性、监听器释放直接取方法组）；端口 `IStartupSequence` 同批两相化为 `RunStartupAsync`/`RunMainLoop`（见 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md)）。
 - 边界：join 预算的**数值**仍由配置模型持有（`SupervisorJoinTimeoutSeconds`），用例只消费投影值；退出码语义不变（恒 0）。
-- **未验面（实机）**：收口/回收链与两相切换的线程行为本地无 Ryn 运行时不可验——判据沿用待办「启动全链实机取证」（host.log 有页面裁决行、无连续导航/提交超时降级、恢复后窗口回代理根）。
+- **实机验收 ✅（2026-10-15，随 v0.6.9 装机）**：收口/回收链与两相切换的线程行为在真实桌面走通——`~/.dsh/logs/host.log` 有页面健康行、无连续导航/提交超时降级、恢复后窗口回代理根；收养路径逐 pid 收割（「收割桌面运行时残留」）即收口序的实机证据。
 
 ## Testing
 

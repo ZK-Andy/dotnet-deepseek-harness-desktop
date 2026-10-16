@@ -41,4 +41,4 @@ step-1 之后排序器仍有三笔账：
 - `dotnet test` 全绿 0 警告：**1063**（+0；纯结构搬迁）。
 - 机械门禁 `--enforce` 全绿：`verify-compose-root`（C3 **6/6**、C6 零违例、白名单空集、**C7 零违例**；`--self-test` 夹具全绿）、`verify-registration-discipline`（静态调用 **9/11**，原 11/11）、`verify-code-conventions`、`verify-code-health`；增量闸 gross **405/600**、fanout **12/15**、file-max +19/150。
 - 读数口径：受影响篇目同批补 Erratum——[sequencer-stage-value-retirement](2026-10-15-sequencer-stage-value-retirement.md)、[startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)、[startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md)、[recovery-navigation-gate-retirement](2026-10-14-recovery-navigation-gate-retirement.md)、[desktop-adapter-rename-final-assembly](2026-10-08-desktop-adapter-rename-final-assembly.md)、[coupling-increment-baseline](../process/2026-10-12-coupling-increment-baseline.md)；最新读数以本篇为准，母篇 Problem 的 16/16 是机制病象描述、不改。
-- **实机未验**：沿用母篇的全链实机挂账（零行为变更，由实机批次销账）。
+- **实机验收 ✅（2026-10-15，随 v0.6.9 装机）**：零行为变更面随母篇同批取证（`~/.dsh/logs/host.log` 07:25 起全链健康）。

@@ -35,4 +35,4 @@ Review: FULL/2026-10-15#3/R1=ok R2=ok R3=ok
 ## Consequences
 
 - 买到的：新功能不再加根字段；导航/监督/起步/顶栏/告知各有用例家（`MainUiEntryTests`/`RuntimeSupervisionTests`/`RuntimeStarterTests` 覆盖）；门禁从"尺寸闸"变"方向闸 + 形状闸"（C5/C6），接线层与编排器都不再随功能顶格。
-- 付出的：`IRuntimeStarter` 抽取触碰启动最敏感链（spawn→铸币→导航），需一次全链实机——不在本机可执行范围，与波 2 同例挂待办；入口桥的两相化（异步 I/O 相 + thread 0 同步相）见 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md)，其线程面同属该次实机取证（本地无 Ryn 运行时，未验）；容器装不下的 Build 后应用产出（`AppSetup`）仍由接线层显式供给。本机制的第一批住户见 [window-chrome-depatch-core-ports](../simplification/2026-10-08-window-chrome-depatch-core-ports.md)。
+- 付出的：`IRuntimeStarter` 抽取触碰启动最敏感链（spawn→铸币→导航），全链实机取证已随 v0.6.9/v0.6.10 装机闭环（2026-10-15）；入口桥的两相化（异步 I/O 相 + thread 0 同步相）见 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md)，其线程面同属该次实机取证（2026-10-15 随装机走通）；容器装不下的 Build 后应用产出（`AppSetup`）仍由接线层显式供给。本机制的第一批住户见 [window-chrome-depatch-core-ports](../simplification/2026-10-08-window-chrome-depatch-core-ports.md)。

@@ -40,4 +40,4 @@ step-1 收官后排序器只剩一处自有类型构造：`SetupSupervisor` 把�
 
 - `dotnet test` 全绿 0 警告：**1063**（+0；纯结构变更，无新增单测）。
 - 机械门禁 `--enforce` 全绿：`verify-compose-root`（C3 16/16、C6 零违例、白名单空集；`--self-test` 17 夹具）、`verify-registration-discipline`、`verify-code-conventions`。
-- 源序契约同步：`CompositionRootSequenceTests` 两条（编排链名、产出消费扫描面收窄到四个阶段产出）。**实机未验**：沿用母篇的全链实机挂账（零行为变更，由实机批次销账）。
+- 源序契约同步：`CompositionRootSequenceTests` 两条（编排链名、产出消费扫描面收窄到四个阶段产出）。**实机验收 ✅（2026-10-15，随 v0.6.9 装机）**：零行为变更面随母篇同批取证（`~/.dsh/logs/host.log` 07:25 起全链健康）。

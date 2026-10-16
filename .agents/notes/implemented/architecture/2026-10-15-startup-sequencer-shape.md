@@ -37,4 +37,4 @@ B1/B2 之后编排器仍不是排序器：构造器收 5 个手传具体值、�
 
 - `dotnet test` 全绿 0 警告：229 + 225 + 6 + 603 = **1063**（+0；纯结构变更）。
 - 机械门禁 `--enforce` 全绿：`verify-compose-root`（C3 16/16、C6 零违例；`--self-test` 16 条 ok——C6 六条：Run 控制流/引号、零服务构造、阶段值白名单、同步桥、空集，另含 C5 双构造通道一条）、`verify-code-health`、`verify-registration-discipline`、`verify-code-conventions`。
-- 源序契约同步：`CompositionRootSequenceTests` 两条链（根触发改 `ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>`；编排链加 `InstallCaptionBar()`、`StartupNoticeTask(supervisor)`）与阶段产出消费扫描面（+`StartupUseCaseRegistration.cs`）；零行为变更（纯搬家 + 接线形态），故无新增单测。**实机未验**：沿用母篇的全链实机挂账（与波 2 同例，由实机批次销账）。
+- 源序契约同步：`CompositionRootSequenceTests` 两条链（根触发改 `ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>`；编排链加 `InstallCaptionBar()`、`StartupNoticeTask(supervisor)`）与阶段产出消费扫描面（+`StartupUseCaseRegistration.cs`）；零行为变更（纯搬家 + 接线形态），故无新增单测。**实机验收 ✅（2026-10-15，随 v0.6.9/v0.6.10 装机）**：母篇的全链面同批取证（`~/.dsh/logs/host.log` 07:25 起版本 0.6.9、页面健康 alive、收养恢复单次导航）。

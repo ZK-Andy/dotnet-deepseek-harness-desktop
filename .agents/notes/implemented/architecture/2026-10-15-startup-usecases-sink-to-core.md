@@ -44,4 +44,4 @@ Erratum: 2026-10-15 — Testing 的两个门禁读数已变：C3 16/16 → **6/6
 - 增量纪律闸：整批 gross 1831（`git diff <base> --cached --numstat` 合计）超 600 帽——按帽拆成四个提交（Core 用例 537 / 适配器与注册 248 / 测试与徽章同步 547 / 排序器切换 + 删两分部 + 文档与 ADR 499），每个提交的 `--staged` 读数都在帽内；既有文件净增 +3（`DesktopAdapter.App.cs`）、跨层扇出 0、新包引用 0。
 - 源锚回归随新家同步：`CompositionRootSequenceTests.RuntimeSupervision_RecoveryStart_InvalidatesMintRoute` 改锚 `Core/Bootstrap/RuntimeSupervision.cs` 的 `_mintEpoch.Invalidate()`。
 - 覆盖率徽章维持（`scripts/test-baseline.json` 只同步测试数 1063/1063）。
-- **实机未验**：本批搬动的是最深敏感链（spawn→铸币→导航）与恢复链，按母篇要求须一次全链实机（冷启动 + 引导 + 收养恢复）；该面不在本机可执行范围，与波 2 同例挂待办，由实机批次销账。
+- **实机验收 ✅（2026-10-15，随 v0.6.9/v0.6.10 装机）**：spawn→铸币→导航链与恢复链在真实桌面走通——`~/.dsh/logs/host.log` 记 07:25 自更新 0.6.8→0.6.9 冷启动、页面健康 alive、市场重启走收养恢复（「收养市场接力的续任者」+ 整树收割），无连续导航/提交超时降级。

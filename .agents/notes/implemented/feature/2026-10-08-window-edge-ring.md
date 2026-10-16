@@ -33,7 +33,7 @@ Status: implemented
 
 - `CaptionBarTests.Build_DrawsWindowEdgeRing`：规则几何 + token 前缀 + z-index + 独立守卫 + occurrence==1 + 闸内分支带环。
 - `Build_DrawsMacTrafficLights` / `Build_MacChrome_GreenButtonEntersNativeFullscreen`：`DoesNotContain("pointer-events:none")` 改为 `CountOccurrences(...) == 1`——注入条可命中不变量不变，唯一合法出处钉为描边环。
-- 实机验收：Linux 浅色白 on 白边界可见、深色无变化、三键/拖拽/边缘 resize 不受影响（合成器抓取只能手验）。
+- 实机验收 ✅（v0.6.8 装机后用户实测）：Linux 浅色白 on 白边界可见、深色无变化、三键/拖拽/边缘 resize 不受影响（合成器抓取只能手验）。
 
 ## Related
 

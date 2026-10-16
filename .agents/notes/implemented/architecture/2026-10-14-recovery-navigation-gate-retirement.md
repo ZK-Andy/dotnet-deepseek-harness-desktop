@@ -46,7 +46,7 @@ Erratum: 2026-10-15 — Testing 的门禁读数已变：compose-root 16/16 → *
 - 更新：`RuntimeSupervisorTests` 记序改钉「失败面先于恢复回调」与「重启给出 URL 才回调」；`CompositionRootSequenceTests.StartupSequence_RecoveryStart_InvalidatesMintRoute` 锚改为方法声明行 `private ValueTask ShowFailureSurfaceAsync(`（签名形参变化不假红；mutation：删 `InvalidateRoute()` 调用即红）。
 - 覆盖率：本地按 CI 口径复算（`dotnet test -c Debug --collect:"XPlat Code Coverage"` + `scripts/coverage-summary.py` 并集）63.88%（基线 63.59 → 63.88）。
 - 门禁：compose-root 16/16、registration 11/11、code-conventions OK、code-health OK、ui-copy OK、increment-discipline 见提交面。
-- 实机未验：恢复窗口内「覆写失败面 → 重启 → 收口导航」这一链需真实桌面；沙箱只验证启动。
+- 实机验收 ✅（2026-10-15/16/17，v0.6.10 装机后）：恢复窗口内「失败面 → 重启 → 收口导航」链在真实桌面走通——原生承载面不导航、收养续任者后单次到达、页面健康 alive（`~/.dsh/logs/host.log`）。
 
 ## Related
 
