@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-17 — 首启 registry 装市场的落点换家：`EnsureMarketFromRegistryAsync`/`MarketSpec` 与 `EnsureMarketFromRegistry_*` 回归随第三方市场首启引导安装整体退役（见 [2026-10-17-cancel-firstboot-market-preinstall](2026-10-17-cancel-firstboot-market-preinstall.md)）；Decision 首启形态第 2 步的「→ registry 安装 dshmarket」、Consequences 的测试行与「实机验收转交」第 1/5、6 项按此不再适用（市场改由用户自行安装）。Node/dsh 引导链与「无闭包」决定现行。正文与决定不动。
+
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
 ## Problem

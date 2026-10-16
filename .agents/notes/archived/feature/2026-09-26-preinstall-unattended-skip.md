@@ -1,6 +1,8 @@
 # Agent Note: preinstall-unattended-skip（无人值守跳过）
 
 Status: implemented
+Erratum: 2026-10-17 — 本篇决定整体退役：第三方市场首启引导相已删，`DSH_DESKTOP_PREINSTALL_AUTO` 与 `PreinstallChoiceTimeoutMinutes` 一并删除（见 [../../implemented/architecture/2026-10-17-cancel-firstboot-market-preinstall.md](../../implemented/architecture/2026-10-17-cancel-firstboot-market-preinstall.md)）；保留作为「CI 曾为 5 分钟决策等待固定烧时」的历史取证。正文不动。
+Archived: 2026-10-17
 
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 

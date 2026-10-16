@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-17 — 驱动数口径换家：`EnsureMarketFromRegistryAsync` 随市场首启引导安装退役（见 [2026-10-17-cancel-firstboot-market-preinstall](2026-10-17-cancel-firstboot-market-preinstall.md)），事务管线现只由随包驱动 `EnsureBundledPluginsBeforeSpawnAsync` 使用；staging → 体检 → journal 换入的决定不变。正文不动。
+
 Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）

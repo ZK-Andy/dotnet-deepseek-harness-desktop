@@ -40,7 +40,7 @@
 
 ## 插件装配（spawn dsh 前就位）
 
-* 随包 `dsh-desktop-companion`（internal）spawn 前静默自愈：`EnsureBundledPluginsBeforeSpawnAsync` 按 `Core/Plugins/BundledPluginCatalog` 清单未装即装（安装器资源 tgz）、已装则版本感知升级；dshmarket（preset）经引导页「插件准备」步确认/跳过（`desktop.preinstall.choose`，5 分钟无决策默认跳过）。
+* 随包 `dsh-desktop-companion`（internal）spawn 前静默自愈：`EnsureBundledPluginsBeforeSpawnAsync` 按 `Core/Plugins/BundledPluginCatalog` 清单未装即装（安装器资源 tgz）、已装则版本感知升级。
 * 启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用；`EnsureWorkspaceAllowBuilds` 放行 `allowBuilds` 6 项。
 * **CLI shim**：`CliShimRegistrar.TryRegister` 只注册内容恒定的 `pnpm` shim（Windows `%LOCALAPPDATA%\deepseek-harness\bin` + HKCU Path；Unix `~/.local/bin` + rc 幂等块），优先转发用户自装 pnpm，best-effort 不阻启动。
 

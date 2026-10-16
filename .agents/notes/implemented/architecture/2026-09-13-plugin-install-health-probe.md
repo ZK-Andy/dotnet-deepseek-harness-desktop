@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-17 — 触发面缩为随包驱动：「本轮确有插件装成功」只剩 `EnsureBundledPluginsBeforeSpawnAsync` 一个来源（见 [2026-10-17-cancel-firstboot-market-preinstall](2026-10-17-cancel-firstboot-market-preinstall.md)）；探针本体与触发判据不变。正文不动。
+
 Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）

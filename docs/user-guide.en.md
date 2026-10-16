@@ -27,8 +27,8 @@ Unsigned builds: this project is open source and ships without paid code signing
 
 1. The shell auto-prepares and starts the DeepSeek Harness runtime, then loads the UI. On the first launch (no bundled runtime and no PATH dsh) it bootstraps: detects/reuses a local Node, otherwise downloads the pinned Node and installs dsh — progress visible throughout; **retry the progress page on offline/failure** (per-step timeout).
 2. Configure your own model API credentials in the in-app model settings.
-3. Once the runtime is ready and before entering the UI, the progress page shows a "Plugin setup" step: the plugin market (dshmarket) is presented as a recommended chip, and you choose **Install** or **Skip** (skipping still allows installing later from the in-app market); install logs stream back to the page. The bundled desktop companion plugin is required by the shell and self-heals silently (not shown as a choice). Choose Install to continue into the UI.
-4. Once ready, browse the plugin market and install community plugins.
+3. The bundled desktop companion plugin is required by the shell: it self-heals silently before dsh starts, then the UI opens.
+4. The plugin market (`dshmarket`) is not installed by the shell; add it to the desktop profile with dsh's plugin command (`dsh plugin --profile dotnet-desktop add dshmarket@latest`), then browse and install community plugins.
 
 ## Daily Use
 
@@ -68,6 +68,6 @@ Runtime logs are written to `logs/host.log` inside that directory.
 1. **First launch stuck on download/install** (offline or slow mirror): the progress page shows the failing step and is retryable — confirm network and retry (per-step timeout). **Blank window or endless "reconnecting"**: check the tail of `logs/host.log`.
 2. **Window "disappeared" after closing**: the close button hides the app to the system tray (it keeps running); pick "Show window" from the tray menu to bring it back, or quit fully via the tray menu. On desktops without a tray, the app logs a fallback and closing exits for real.
 3. **Update fails**: signature verification failures refuse to install (by design); re-download the latest installer and install over the old one.
-4. **Plugin market missing**: a slow network can stall the first-run install; restarting the app usually self-heals.
+4. **Plugin market missing**: the shell does not install the market for you — add it to the desktop profile with dsh's plugin command (`dsh plugin --profile dotnet-desktop add dshmarket@latest`).
 5. **Collect diagnostics**: Settings → "Desktop Settings" → "Export diagnostics" creates a zip (logs and runtime state only; no sessions or credentials). If the window never opens, run the installed executable with `--export-diagnostics`.
 6. Still stuck? Open an [issue](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues) with your platform and the relevant part of `host.log`.

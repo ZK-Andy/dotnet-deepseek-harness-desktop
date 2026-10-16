@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-17 — 批次二（首启插件引导页）整体退役：preinstall 引导相与 `PreinstallChoiceGate`/`PreinstallCommandRouter`/`PresetPluginCatalog`/`EnsureMarketFromRegistryAsync` 已删，市场改由用户自行安装（见 [2026-10-17-cancel-firstboot-market-preinstall](2026-10-17-cancel-firstboot-market-preinstall.md)）；批次二首条与两条 Alternatives 落败理由里的「从市场/设置自愈补装」入口同此失效（该入口属退役的引导相）。批次一（随包 companion spawn 前静默自愈）不受影响。正文不动。
+
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
 ## Problem

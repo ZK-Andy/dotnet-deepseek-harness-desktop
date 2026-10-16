@@ -25,8 +25,8 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-1083%2F1083-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-64.79%25-yellowgreen" alt="coverage"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-1048%2F1048-brightgreen" alt="tests"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-64.77%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
@@ -42,7 +42,7 @@
 - 🔄 **崩溃自愈与会话回归** — 壳监督运行时子进程：崩溃 → 失败面（原生对话框优先：原因/stderr 尾部 + 诊断自动导出 + 继续／退出确认（只有显式「是」才退出）；无对话框工具或原生通道故障时回落恢复页）→ 自动重启 → 同一窗口回到新 URL；**端口保持稳定**，Web UI origin（及页面级会话记忆）存活——**崩溃或重启后回到之前的对话**。插件市场更新插件后的重启走**接力收养优先**：市场自重启拉起的续任者被壳直接收养，单进程、单导航，不再有注定失败的竞争启动与数十秒恢复屏。**例外**：首选端口被本应用认不出归属的程序占用时（其他程序、其他 profile 的 dsh，或归属判不出的残留 dsh），本次启动漂移到新端口——origin 随之改变，页面级会话记忆不再保留；若这次漂移发生在页面已加载之后（崩溃恢复、市场接力的重启），该会话内设置页的更新、开机自启、关闭时最小化到托盘、导出诊断信息还会失效——重启应用恢复。
 - 💓 **页面健康监护（假活看门狗）** — 壳侧只读探针轮询「dsh 进程在跑但页面空白」的假活形态（不注入脚本、不依赖桌面伴生插件存活）；连续空白达阈值即在预算内触发一次有界 reload 自愈，耗尽转观测、成功恢复复位预算——防误报引发无限重载循环。
 - ⬆️ **自更新** — 启动后台检查一次 + 设置页手动检查；发现新版本一键安装并自动重启（安装包 `SHA256` 强校验；`macOS` 引导手动更新），详见下方[「自动更新」](#自动更新)。
-- 🧩 **插件市场 + 版本感知升级 + registry 自管** — `dsh-market` 经首启引导页「插件准备」步（推荐 chip + 确认/跳过 + 日志回流）以 registry 安装到桌面专属 profile（`~/.dsh/profiles/dotnet-desktop`），确认后与 dsh 内核一次就位（联网；跳过可稍后在应用内市场补装）；随包桌面伴生插件按版本感知升级——内置版本更新即自动升级、绝不降级；市场为 registry 形态（与用户自装完全等价：上游发新版市场内即提示，无需等桌面发版）；`1200+` 插件可搜一键装。
+- 🧩 **插件市场（自行安装）+ 版本感知升级** — 桌面壳不代装市场：`dshmarket` 由你在 dsh 内自行安装，registry 形态（与用户自装完全等价：上游发新版市场内即提示，无需等桌面发版）；随包桌面伴生插件（companion）按版本感知升级——内置版本更新即自动升级、绝不降级；`1200+` 插件可搜一键装。
 - 🖥️ **系统托盘** — 关闭窗口默认最小化到托盘（可在设置改为直接退出），托盘菜单提供显示主窗 / 检查更新 / 重启 / 退出（随 dsh 语言中英切换）；退出经有序编排，运行时子进程干净回收，重启走同一编排——在回收运行时并释放单实例仲裁位之后才拉起新实例。
 - 🪟 **无边框窗口（官方 macOS 观感）** — 三端统一去掉原生标题栏，由壳自绘：红绿灯三点在左上（与官方同位）、侧栏顶部让位带由侧栏自身填充覆盖（无缝无色差）、折叠按钮与红绿灯同行、顶区空域可拖拽、双击缩放；不冒充任何宿主身份，dsh 插件行为不受影响。
 - 🪟 **窗口状态记忆** — 重启后恢复上次的窗口尺寸与最大化状态（托盘隐藏/唤回期间本就保留）；全程由壳内建持久化承担，无感知。
@@ -66,7 +66,7 @@
 >
 > **未签名说明**：本项目**开源、不做付费签名**，发布包**未签名**。macOS 首次打开若见 Gatekeeper「来自身份不明的开发者」→ 右键「打开」或 系统设置 → 隐私与安全性 →「仍要打开」；Windows 若见 SmartScreen「未知发布者」→「更多信息」→「仍要运行」。开发/内部可用 `SELF_SIGN=1` 自签消除本机告警，用法见 [docs/development.md](docs/development.md)。
 >
-> **测试状态**：单元测试由 `CI` 自动跑（`dotnet test` 全绿，见上方徽章）；**真机验收至今只在 `Linux` `x64` `rpm` 包上做过**——`deb`、`Linux arm64`、`macOS`（`dmg`）、`Windows`（`setup.exe`）**均无真机验证**，仅经 CI 编译/打包/冒烟。`macOS x64` / `Windows` 真机针对性测试**等待社区支持**（本地无 mac Intel x64 / Windows 真机）。安装器、自更新、首启补装等依赖真机的链路请按 [docs/testing.md](docs/testing.md) 列出的边界对待，尝鲜前做好备份。
+> **测试状态**：单元测试由 `CI` 自动跑（`dotnet test` 全绿，见上方徽章）；**真机验收至今只在 `Linux` `x64` `rpm` 包上做过**——`deb`、`Linux arm64`、`macOS`（`dmg`）、`Windows`（`setup.exe`）**均无真机验证**，仅经 CI 编译/打包/冒烟。`macOS x64` / `Windows` 真机针对性测试**等待社区支持**（本地无 mac Intel x64 / Windows 真机）。安装器、自更新、首启引导等依赖真机的链路请按 [docs/testing.md](docs/testing.md) 列出的边界对待，尝鲜前做好备份。
 
 ## 自动更新
 

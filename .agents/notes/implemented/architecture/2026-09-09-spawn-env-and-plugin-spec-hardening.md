@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-17 — registry 收口落点换家：`RunPluginAddAsync` 的 origin 参数与 registry 分支随市场安装驱动退役（`MarketSpec` 已删，见 [2026-10-17-cancel-firstboot-market-preinstall](2026-10-17-cancel-firstboot-market-preinstall.md)）；allowlist 本体保留，现由 `RuntimeBootstrap` 校验 dsh 安装 spec（`IsValidRegistrySpec` 未改）。正文不动。
+
 Review: LIGHT/2026-09-09/R2=ok（0 Blocker、2 Suggestion 均为文档口径，已收口）
 
 ## Problem

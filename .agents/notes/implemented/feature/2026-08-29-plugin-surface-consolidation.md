@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-17 — 引导装机位落点换家：dshmarket 经 `MarketInstallHelper.EnsureMarketFromRegistryAsync` 在引导任务内安装这一现役形态随市场首启引导安装整体退役（见 [../../implemented/architecture/2026-10-17-cancel-firstboot-market-preinstall.md](../../implemented/architecture/2026-10-17-cancel-firstboot-market-preinstall.md)）；Alternatives 里记为「落败」的「dshmarket 完全消失（交给用户手动装）」即本批采纳的决定，该条落败理由不再成立。正文与决定不动。
+
 ## Problem
 
 online-first 去捆绑转向（`online-first-unbundled-runtime`）批次二已把安装器瘦身、闭包退役、dshmarket 无本地来源回退 registry 落地。但插件面仍残留半捆绑时代的机器：`BundledPluginCatalog` 仍是「dshmarket + companion」两条目，market 解析器与 companion 解析器各带运行时目录 tgz/目录近死分支（其唯一生成器 `bundle-runtime-ci.sh` 已删），`AssemblePending` 的 registry 归化/分组机只为随包 dshmarket 一个消费者存在；且退役 dshmarket 种子时，若存量 profile 残留指向已消失 tgz 的 `file:` 引用，会构成不可解析 bundle 引用（对照 dsh-tauri-desk #177 事故），必须在启动前 reconcile。

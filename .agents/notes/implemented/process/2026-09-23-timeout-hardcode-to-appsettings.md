@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-17 — 键清单落点换家：`PreinstallChoiceTimeoutMinutes` 退役、`PreinstallPollIntervalMilliseconds` 改名 `RetryPollIntervalMilliseconds`（见 [2026-10-17-cancel-firstboot-market-preinstall](../architecture/2026-10-17-cancel-firstboot-market-preinstall.md)）。正文不动。
+
 Review: FULL/2026-09-23/R1=ok R2=ok R3=ok
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）

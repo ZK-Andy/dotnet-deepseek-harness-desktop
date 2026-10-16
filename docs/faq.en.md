@@ -6,10 +6,10 @@ Quick answers for download and daily-use questions. See [user-guide.en.md](user-
 Expected — the project ships without paid code signing. Choose "More info" → "Run anyway"; macOS Gatekeeper works the same way (right-click → Open, or allow in System Settings).
 
 **Q: Why is the installer so large?**
-It bundles the complete DeepSeek Harness runtime (Node + dependency closure) for a zero-environment, works-offline experience. No Node.js needed and your system PATH stays untouched.
+It ships only the shell (~30MB); first launch bootstraps Node (download or reuse) and installs dsh over the network. No Node.js installation needed, and your system PATH stays untouched.
 
 **Q: A dark "reconnecting" screen on first launch — is that normal?**
-Yes. First launch prepares the runtime, then the "Plugin setup" step lets you install/skip the plugin market and installs the companion plugin; choosing Install continues into the UI. All plugins settle before dsh starts — no "install then restart runtime".
+Yes. First launch prepares the runtime and installs the bundled companion plugin before dsh starts. All plugins settle before dsh starts — no "install then restart runtime".
 
 **Q: Are my sessions preserved after an upgrade?**
 Yes within the same data directory (v0.3+ upgrades). Sessions persist locally, so it returns to your last session automatically (if the preferred port is taken and it drifts, the origin changes: the page's selection has to be picked again, and the Update, Launch at sign-in, Minimize to tray on close and Export diagnostics controls in Settings may stop working until you restart the app).
