@@ -4,15 +4,10 @@ using System.Text.Json.Nodes;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Plugins;
 
-/// <summary>随包插件后台安装的纯逻辑（可单测）：检测、workspace 修正、spec 解析、bundles 补写。
+/// <summary>随包插件后台安装的纯逻辑（可单测）：workspace 修正、spec 解析、bundles 补写。
 /// 本 partial 承载 JSON/profile 文件维护辅助；安装驱动见 <c>MarketInstallHelper.cs</c>。</summary>
 public static partial class MarketInstallHelper
 {
-    /// <summary>精确检测插件是否已就位：<c>dependencies.&lt;pkg&gt;</c> 存在且 <c>dsh.profile.bundles</c> 含 <c>&lt;pkg&gt;</c>。
-    /// 实现随 B1 迁 Core（<see cref="ProfilePackageCheck"/>）；此委托壳保留公共 API，既有调用方零改动。</summary>
-    public static bool IsBundleInstalled(string profilePkg, string packageName) =>
-        ProfilePackageCheck.IsBundleInstalled(profilePkg, packageName);
-
     /// <summary>清理 <c>0.1.10</c> 误写入的 <c>dependencies.app=file:...dshmarket.tgz</c>。</summary>
     public static async Task CleanupBogusAppDependencyAsync(string profilePkg)
     {

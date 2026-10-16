@@ -2,8 +2,8 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Plugins;
 
 /// <summary>
 /// 随包插件供给清单（组合侧登记）：online-first 后随包仅桌面伴生插件（companion），
-/// 安装器资源是唯一供给源；dshmarket 改由首启引导经 registry 安装（见 RuntimeBootstrap），
-/// 不再作为随包/种子条目。清单顺序即单条 <c>plugin add</c> 的 spec 顺序；
+/// 安装器资源是唯一供给源；dshmarket 不由壳安装（需要时由用户在 dsh 侧自装），
+/// 不作为随包/种子条目。清单顺序即单条 <c>plugin add</c> 的 spec 顺序；
 /// 新增随包插件只在此登记，Core 侧装配判定（<see cref="BundledPluginCatalog.AssemblePending"/>）零改动；
 /// 「是否随包」逐案拍板决定成员。
 /// </summary>

@@ -2,24 +2,13 @@ using System.Text.RegularExpressions;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Plugins;
 
-/// <summary>市场 registry 插件 spec 的形状 allowlist（ADR spawn-env-and-plugin-spec-hardening）：
+/// <summary>registry 安装 spec 的形状 allowlist（ADR spawn-env-and-plugin-spec-hardening；调用方 = <c>RuntimeBootstrap</c> 校验 dsh 安装 spec）：
 /// 以上游 Electron 桌面 <c>packageNameFromSpec</c>（<c>apps/desktop/src/project-manager.ts:162</c>）
 /// 判据为基，另拒 <c>link:</c>、<c>file:</c>/<c>link:</c> 前缀按大小写不敏感匹配。
 /// <see cref="System.Diagnostics.ProcessStartInfo.ArgumentList"/> 只免 shell 注入，前导 <c>-</c>
 /// 仍会被下游当 flag，故在拼参数前收口。</summary>
 public static partial class MarketInstallHelper
 {
-    /// <summary>插件 spec 来源：registry（市场/预设）套 allowlist；随包 <c>file:</c> 是内部可信路径
-    /// （Windows 安装目录可含空格），只做调用方自持的形状。</summary>
-    internal enum PluginSpecOrigin
-    {
-        /// <summary>registry 安装面：套 <see cref="IsValidRegistrySpec"/>。</summary>
-        Registry,
-
-        /// <summary>随包本地 tgz 路径：不套 registry allowlist。</summary>
-        Bundled,
-    }
-
     /// <summary>npm 包名形状（对齐上游 <c>PACKAGE_NAME_PATTERN</c>：小写字母数字开头，scoped 需 <c>/</c>）。</summary>
     [GeneratedRegex("^(?:@[a-z0-9][a-z0-9._~-]*/[a-z0-9][a-z0-9._~-]*|[a-z0-9][a-z0-9._~-]*)$")]
     private static partial Regex PackageNamePattern();

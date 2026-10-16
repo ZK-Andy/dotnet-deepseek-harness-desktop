@@ -20,10 +20,7 @@ public sealed record RuntimeBootstrapOptions
     public int FetchTextTimeoutSeconds { get; init; } = 30;
 
     /// <summary>引导失败后等用户重试信号的轮询节拍（毫秒）。</summary>
-    public int PreinstallPollIntervalMilliseconds { get; init; } = 200;
-
-    /// <summary>插件引导等用户决策的超时（分钟）：超时默认跳过，可从应用内市场补装。</summary>
-    public int PreinstallChoiceTimeoutMinutes { get; init; } = 5;
+    public int RetryPollIntervalMilliseconds { get; init; } = 200;
 
     /// <summary>node 官方发行目录基址（含尾随 dist 段）。</summary>
     public string NodeDistBaseUrl { get; init; } = "https://nodejs.org/dist";
@@ -62,8 +59,7 @@ public sealed record RuntimeBootstrapOptions
 
             options = options with { StepTimeoutMinutes = GetInt(section, nameof(StepTimeoutMinutes), options.StepTimeoutMinutes) };
             options = options with { FetchTextTimeoutSeconds = GetInt(section, nameof(FetchTextTimeoutSeconds), options.FetchTextTimeoutSeconds) };
-            options = options with { PreinstallPollIntervalMilliseconds = GetInt(section, nameof(PreinstallPollIntervalMilliseconds), options.PreinstallPollIntervalMilliseconds) };
-            options = options with { PreinstallChoiceTimeoutMinutes = GetInt(section, nameof(PreinstallChoiceTimeoutMinutes), options.PreinstallChoiceTimeoutMinutes) };
+            options = options with { RetryPollIntervalMilliseconds = GetInt(section, nameof(RetryPollIntervalMilliseconds), options.RetryPollIntervalMilliseconds) };
 
             if (section.TryGetProperty(nameof(NodeDistBaseUrl), out JsonElement b) && b.ValueKind == JsonValueKind.String)
             {

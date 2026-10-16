@@ -9,7 +9,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// </summary>
 public sealed record ProxyLogging
 {
-    /// <summary>无人值守/冒烟腿显式打开逐请求 trace 的环境变量（先例 <c>DSH_DESKTOP_PREINSTALL_AUTO</c>）：
+    /// <summary>无人值守/冒烟腿显式打开逐请求 trace 的环境变量：
     /// 冒烟腿的存活门以逐请求行为判据，产品默认静默后由该面显式打开（ADR proxy-log-noise-reduction）。</summary>
     internal const string TraceEnv = "DSH_DESKTOP_PROXY_TRACE";
 

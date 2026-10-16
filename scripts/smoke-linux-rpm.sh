@@ -31,7 +31,7 @@ fi
 mkdir -p "$rpm_log_host" 2>/dev/null || true
 
 # 无人值守环境里的常量项从宿主环境透传给容器（`-e VAR` 不带 =value = 取本进程同名变量），
-# 值只在 smoke-verdict-lib.sh 写一处（ADR preinstall-unattended-skip 与 proxy-log-noise-reduction）；
+# 值只在 smoke-verdict-lib.sh 写一处（ADR proxy-log-noise-reduction）；
 # 容器自建 home，故不透传 home。
 smoke_unattended_env
 
@@ -50,7 +50,6 @@ docker run --rm \
   -e SMOKE_WAIT_SECONDS="${SMOKE_WAIT_SECONDS:-}" \
   -e APP_TIMEOUT="$APP_TIMEOUT" \
   -e DEEPSEEK_API_KEY \
-  -e DSH_DESKTOP_PREINSTALL_AUTO \
   -e DSH_DESKTOP_PROXY_TRACE \
   fedora:44 bash /smoke-inner.sh || docker_rc=$?
 # rc 传给调用方（调用方记数判红）；一次性 tmp 在两条路径上都回收。

@@ -1,10 +1,8 @@
-using System.Diagnostics;
-
 namespace DeepSeek.Harness.Desktop.Infrastructure.Bootstrap;
 
 /// <summary>
 /// 首启引导服务（R3 端口实现，ADR composition-root-value-flow-pipeline 批次 1）：全局 node/dsh 引导、
-/// 随包与可选插件装配、CLI shim、宿主启动的 dsh 进程交互面从组合根下沉为真类型服务；引导落定
+/// 随包插件装配、CLI shim、宿主启动的 dsh 进程交互面从组合根下沉为真类型服务；引导落定
 /// TCS 私有化，对外只暴露类型化等待句柄；壳侧导航收尾经 <see cref="Start"/> 回调接回。
 /// </summary>
 public sealed class FirstBootBootstrapService : IFirstBootBootstrap
@@ -38,9 +36,6 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
 
     /// <inheritdoc />
     public RuntimeBootstrapGate Gate { get; } = new();
-
-    /// <inheritdoc />
-    public PreinstallChoiceGate PreinstallGate { get; } = new();
 
     /// <inheritdoc />
     public void Resolve()
@@ -225,7 +220,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
             // 取消在此抛出 OCE（不吞）——由 RunAsync 的取消分支收口同一日志语义。
             while (!Gate.IsSignaled && !ct.IsCancellationRequested)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(_options.PreinstallPollIntervalMilliseconds), ct);
+                await Task.Delay(TimeSpan.FromMilliseconds(_options.RetryPollIntervalMilliseconds), ct);
             }
 
             if (ct.IsCancellationRequested)
@@ -235,19 +230,16 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
         }
     }
 
-    /// <summary>引导刚落定后的插件装配（ADR reference-alignment 批次一/二）：companion（internal）spawn 前
-    /// 静默自愈，dshmarket（preset）经引导页确认装/跳过。dsh 已在全局 PATH，nodeExe/dshEntry 双 null →
-    /// 走 PATH dsh 命令。best-effort：失败只告警不阻断启动。返回本次是否确有插件装成功
-    /// （体检探针的触发条件，ADR plugin-install-health-probe）。</summary>
+    /// <summary>引导刚落定后的随包插件装配（ADR reference-alignment 批次一）：companion（internal）spawn 前
+    /// 静默自愈。dsh 已在全局 PATH，nodeExe/dshEntry 双 null → 走 PATH dsh 命令。best-effort：失败只告警
+    /// 不阻断启动。返回本次是否确有插件装成功（引导日志据此留痕）。</summary>
     private async Task<bool> InstallBootstrapPluginsAsync(CancellationToken bootCt)
     {
-        // 对齐参照：companion（internal）在 spawn dsh 前静默自愈（batch-1），不出现在
-        // 引导勾选清单（对齐 ensure_internal_plugins）；best-effort：失败只告警不阻断
-        // （缺 companion 不阻塞 dsh 起动，下次启动自愈）。
-        bool bundledInstalled = false;
+        // 对齐参照：companion（internal）在 spawn dsh 前静默自愈（batch-1）；best-effort：失败只告警
+        // 不阻断（缺 companion 不阻塞 dsh 起动，下次启动自愈）。
         try
         {
-            bundledInstalled = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
                 nodeExe: null,
                 dshEntry: null,
                 HarnessRuntimeHost.ResolveDshHome(),
@@ -256,130 +248,14 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
                 PluginProcessRunner.RunAsync,
                 PluginProcessRunner.RunProbeAsync,
                 bootCt);
+            // 随包驱动自带 staged 探针 + journal 换入（ADR transactional-plugin-pipeline）：换入前已证明
+            // 能活，启动前的 active 事后探针随其 reconcile 分支退役。
+            return installed;
         }
         catch (Exception ex)
         {
             _log.Invoke($"[host] 引导：随包插件安装失败（跳过）：{ex.Message}");
+            return false;
         }
-
-        // 首启插件引导（ADR reference-alignment 批次二）：dshmarket（preset）经引导页
-        // chip 确认/跳过 + 日志回流；用户确认后才装（StartAsync 前，与 batch-1 合流）。
-        // 跳过则该次不装（less-bootstrapped，dsh 起动后可从应用内市场/设置自愈补装）。
-        try
-        {
-            await RunPreinstallPhaseAsync(bootCt);
-        }
-        catch (Exception ex)
-        {
-            _log.Invoke($"[host] 插件引导异常跳过：{ex.Message}");
-        }
-
-        // 事务管线（ADR transactional-plugin-pipeline）：市场驱动自带 staged 探针 + journal 换入，
-        // 换入前已证明能活——两个安装驱动均已事务化，启动前的 active 事后探针随其 reconcile 分支一并退役。
-        return bundledInstalled;
-    }
-
-    /// <summary>
-    /// 首启插件引导相（ADR reference-alignment 批次二）：全局 dsh 就位后（StartAsync 前），
-    /// 若存在待装可选插件（preset），引导页呈现 chip + 确认/跳过 + 日志回流；用户确认才安装，跳过则不装。
-    /// 5 分钟无决策默认跳过（避免壳永久挂在安装前、dsh 永不启动；跳过可经应用内市场补装）。
-    /// 安装走事务管线（ADR transactional-plugin-pipeline）：staged 探针 + journal 换入，自带体检。
-    /// </summary>
-    private async Task RunPreinstallPhaseAsync(CancellationToken ct)
-    {
-        // 无人值守跳过（P2）：CI/自动化首启无用户点选，5 分钟决策等待纯烧时间。
-        // opt-in 环境变量，默认关闭，真人首启行为零变化（可从应用内市场补装）。
-        if (ShouldAutoSkipPreinstall(Environment.GetEnvironmentVariable(PreinstallAutoSkipEnv)))
-        {
-            _log.Invoke("[host] 插件引导：DSH_DESKTOP_PREINSTALL_AUTO=skip，无人值守跳过可选插件（可从应用内市场补装）");
-            return;
-        }
-
-        string home = HarnessRuntimeHost.ResolveDshHome();
-        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
-        string profilePkg = Path.Combine(profileDir, "package.json");
-        List<string> pending = PresetPluginCatalog.PendingForFirstBoot(profilePkg, _log);
-        if (pending.Count == 0)
-        {
-            _log.Invoke("[host] 插件引导：无可选插件待装，跳过");
-            return;
-        }
-
-        PreinstallGate.Reset();
-        // 步骤高亮：引导页把「插件准备」步点亮（renderBootstrap 按 step 序置 active）。
-        // 步骤名经枚举派生（单一事实源），避免与 JS STEP_ORDER 漂移。
-        await _ui.BootstrapStepAsync(BootstrapStep.PreinstallPlugins, UiCopy.PreinstallStepPreparing(_isEnglish()), failed: false);
-        await _ui.PreinstallDecisionAsync(pending);
-        _log.Invoke($"[host] 插件引导：呈现可选插件 {string.Join(", ", pending)}，等待用户决策（{_options.PreinstallChoiceTimeoutMinutes} 分钟超时默认跳过）");
-
-        PreinstallChoice choice;
-        try
-        {
-            choice = await PreinstallGate.Choice.WaitAsync(TimeSpan.FromMinutes(_options.PreinstallChoiceTimeoutMinutes), ct);
-        }
-        catch (TimeoutException)
-        {
-            _log.Invoke($"[host] 插件引导等待用户决策超时（{_options.PreinstallChoiceTimeoutMinutes} 分钟），默认跳过（可从应用内市场补装）");
-            choice = PreinstallChoice.Skip;
-        }
-
-        if (choice == PreinstallChoice.Skip)
-        {
-            _log.Invoke("[host] 插件引导：用户跳过，本次不安装可选插件");
-            await _ui.PreinstallDoneAsync(PreinstallChoice.Skip, null, UiCopy.PreinstallSkippedMessage(_isEnglish()));
-            await _ui.BootstrapStepAsync(BootstrapStep.Ready, UiCopy.PreinstallStepReady(_isEnglish()), failed: false);
-            return;
-        }
-
-        _log.Invoke("[host] 插件引导：用户确认，开始安装可选插件");
-        try
-        {
-            await _ui.PreinstallInstallingAsync(PresetPluginCatalog.Market);
-            await MarketInstallHelper.EnsureMarketFromRegistryAsync(
-                nodeExe: null,
-                dshEntry: null,
-                home,
-                _log,
-                RunDshPluginAddStreamingAsync,
-                PluginProcessRunner.RunProbeAsync,
-                ct);
-            bool installed = MarketInstallHelper.IsBundleInstalled(profilePkg, PresetPluginCatalog.Market);
-            await _ui.PreinstallDoneAsync(PreinstallChoice.Install, installed, installed ? UiCopy.PreinstallDoneMessage(_isEnglish()) : UiCopy.PreinstallFailedMessage(_isEnglish()));
-            _log.Invoke($"[host] 插件引导：可选插件安装{(installed ? "成功" : "未成功")}（{PresetPluginCatalog.Market}）");
-        }
-        catch (Exception ex)
-        {
-            _log.Invoke($"[host] 插件安装异常：{ex.Message}");
-            await _ui.PreinstallDoneAsync(PreinstallChoice.Install, false, ex.Message);
-        }
-        finally
-        {
-            // 步骤收尾：无论装/跳/失败，引导页把「插件准备」置 done 后再导航进主界面
-            await _ui.BootstrapStepAsync(BootstrapStep.Ready, UiCopy.PreinstallStepReady(_isEnglish()), failed: false);
-        }
-    }
-
-    /// <summary>无人值守跳过的 opt-in 环境变量名（<c>DSH_DESKTOP_*</c> 惯例，R1 S3 单源）。</summary>
-    internal const string PreinstallAutoSkipEnv = "DSH_DESKTOP_PREINSTALL_AUTO";
-
-    /// <summary>无人值守跳过的 opt-in 取值（贴合 <c>PreinstallChoice.Skip</c> 域）。</summary>
-    internal const string PreinstallAutoSkipValue = "skip";
-
-    /// <summary>
-    /// 无人值守跳过判定（真纯函数可单测，对齐 <c>DevEnvironment.IsDevRuntime</c> 先例，R1 S2）：
-    /// 仅 opt-in 取值（大小写不敏感）跳过，未设/其他值一律走用户决策；fail-closed。
-    /// </summary>
-    /// <param name="raw">环境变量原值（调用方传入）。</param>
-    internal static bool ShouldAutoSkipPreinstall(string? raw) =>
-        string.Equals(raw, PreinstallAutoSkipValue, StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>流式执行器：把 <c>dsh plugin add</c> 的每行输出推给插件引导页日志区。
-    /// 统一走 <see cref="PluginProcessRunner.RunStreamingAsync"/>——单一实现、含取消/异常整树击杀
-    /// （对齐 <c>RuntimeBootstrap.RunCaptureAsync</c> 防御不变量），引导路径传 bootCt 取消时
-    /// 不再让 dsh plugin add 带 profile 写权成孤儿。</summary>
-    private async Task<(int Exit, string Out, string Err)> RunDshPluginAddStreamingAsync(
-        ProcessStartInfo psi, CancellationToken ct)
-    {
-        return await PluginProcessRunner.RunStreamingAsync(psi, ct, _ui.PreinstallLog);
     }
 }

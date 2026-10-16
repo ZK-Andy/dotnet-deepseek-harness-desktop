@@ -30,33 +30,8 @@ internal static class PluginProcessRunner
         }
     }
 
-    /// <summary>流式执行器：逐行读 stdout/stderr，每行经 <paramref name="onLine"/> 转发（页面日志回流），
-    /// 同时累积完整输出供调用方判定。fire-and-forget 的页面推送故障由调用方吞，绝不抛入执行器。</summary>
-    internal static async Task<(int Exit, string Out, string Err)> RunStreamingAsync(
-        System.Diagnostics.ProcessStartInfo psi, CancellationToken ct, Action<string>? onLine)
-    {
-        using System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi)
-            ?? throw new InvalidOperationException("无法启动 dsh plugin 进程");
-        var outSb = new StringBuilder();
-        var errSb = new StringBuilder();
-
-        try
-        {
-            Task[] tasks = new[] { PumpAsync(p.StandardOutput, outSb, onLine, ct), PumpAsync(p.StandardError, errSb, onLine, ct) };
-            await p.WaitForExitAsync(ct).ConfigureAwait(false);
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-            return (p.ExitCode, outSb.ToString(), errSb.ToString());
-        }
-        catch (Exception)
-        {
-            KillTree(p);
-            throw;
-        }
-    }
-
     /// <summary>取消/异常路径整树击杀进程树：ReadToEndAsync/WaitForExit 的 OCE 会跳过等待，
-    /// using dispose 只关句柄不杀进程——不杀则进程带写权成孤儿（RunAsync/RunStreamingAsync 共用；
-    /// 引导流式捕获复用同一语义，R1 简化统一）。已自行退出的进程不重复击杀。调用方在 catch 内负责重抛。</summary>
+    /// using dispose 只关句柄不杀进程——不杀则进程带写权成孤儿（RunAsync 与探针共用）。已自行退出的进程不重复击杀。调用方在 catch 内负责重抛。</summary>
     internal static void KillTree(System.Diagnostics.Process p)
     {
         try
@@ -90,7 +65,7 @@ internal static class PluginProcessRunner
     }
 
     /// <summary>探针执行器（ADR plugin-install-health-probe）：spawn 后不等服务完成，只等 <c>dsh web:</c>
-    /// URL（超时/早退即败），finally 整树击杀。防御不变量对齐 RunAsync/RunStreamingAsync——OCE 会跳过
+    /// URL（超时/早退即败），finally 整树击杀。防御不变量对齐 RunAsync——OCE 会跳过
     /// 等待、using dispose 只关句柄不杀进程，取消/异常路径必须击杀，否则探针 dsh 成带血统 token 的孤儿
     /// （残留虽可被下次启动收割，但当次会占端口）。</summary>
     /// <param name="psi">探针启动信息（<see cref="PluginInstallProbe.BuildProbePsi"/> 产物）。</param>
