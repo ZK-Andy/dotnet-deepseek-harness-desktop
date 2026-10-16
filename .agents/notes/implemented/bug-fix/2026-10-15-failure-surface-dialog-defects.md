@@ -13,7 +13,7 @@ Review: FULL/2026-10-15/R1=ok R2=ok R3=ok
 1. **正文总上限 + 去重**（`Recovery.RecoveryDialogText` 纯函数）：裁剪后全局去重（保首次出现序，重复记语言中立 ` (×N)` 后缀，不进 `UiCopy` 词典——与既有 `…` 同理）；从最新往最旧装到总 600 字符封顶，一行装不下则尾部节整体退场。原因/导出/动作说明恒在。
 2. **只在卡住时弹**（`Core.Bootstrap.RuntimeSupervision`）：未恢复连续崩溃计数（`_consecutiveFailures`），恢复成功在 `OnRecoveredAsync` 复位（偶发崩溃永不攒到阈值，成功自愈的瞬态只记 host.log）；阈值 `FailureSurfaceStuckThreshold`（`RuntimeTimeouts` 配置家默认 3，options 记录不持默认值、组合点快照构造——沿 `BlockedLogEveryRounds` 同款）；≤1 回到每次都弹。
 3. **孤儿框收敛**（`Core.Recovery.IDialogOrphanReaper` 端口 + `Infrastructure.Runtime.DialogOrphanReaper`）：插件无取消面（反射实证 0.38.0 `Confirm(title,message)→bool` 同步、无 Cancel/Close）→ 退出编排收口末尾 best-effort 收自己名下 zenity/kdialog 直接子进程（Linux `/proc` 亲缘 + 进程名双条件，零误杀方向）。注册在 `RecoveryRegistration`（R1b 注册处）；退出经 `AppExitOrchestration` 可选委托（既有单测兼容）。Windows 面是进程内 `MessageBoxW`（随进程走）、macOS 无 `/proc`（记已知缺口）——两处 no-op。
-4. **图标走上游**：参数在插件手里；需求记 HANDOFF 阻塞点。
+4. **图标走上游**：参数在插件手里（本仓无参数面）。
 
 ## Alternatives considered
 
@@ -40,4 +40,4 @@ Review: FULL/2026-10-15/R1=ok R2=ok R3=ok
 ## Deferred
 
 - macOS 孤儿框收敛（无 `/proc` 判亲缘）。
-- `Ryn.Plugins.Dialog` 透传图标/宽度（Linux `--window-icon`/`--width`、macOS `with icon`）：上游需求，记 HANDOFF 阻塞点。
+- `Ryn.Plugins.Dialog` 透传图标/宽度（Linux `--window-icon`/`--width`、macOS `with icon`）：上游需求。
