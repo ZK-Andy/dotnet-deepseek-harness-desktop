@@ -9,7 +9,6 @@ public class RuntimeStarterTests
         public bool IsNeeded { get; init; }
         public int ShimCalls { get; private set; }
         public RuntimeBootstrapGate Gate => new();
-        public PreinstallChoiceGate PreinstallGate => new();
         public void Resolve() { }
         public void RegisterCliShim() => ShimCalls++;
         public void Start(Func<DshWebUrl, CancellationToken, Task> onRuntimeReady) { }

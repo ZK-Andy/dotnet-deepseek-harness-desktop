@@ -58,8 +58,6 @@ public class RuntimeSupervisionTests
 
         public RuntimeBootstrapGate Gate => new();
 
-        public PreinstallChoiceGate PreinstallGate => new();
-
         public void Resolve()
         {
         }

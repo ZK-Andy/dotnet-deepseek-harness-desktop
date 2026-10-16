@@ -14,7 +14,6 @@ public class AppExitOrchestrationTests
         public int CancelCalls { get; private set; }
         public bool IsNeeded => false;
         public RuntimeBootstrapGate Gate => new();
-        public PreinstallChoiceGate PreinstallGate => new();
         public void Resolve() { }
         public void RegisterCliShim() { }
         public void Start(Func<DshWebUrl, CancellationToken, Task> onRuntimeReady) { }
