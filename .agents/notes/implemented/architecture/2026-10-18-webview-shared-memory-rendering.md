@@ -33,6 +33,8 @@ Ryn 在 `Build()` 中段的 `ApplyProcessWideOptions` 一步把该选项转写�
 ## Consequences
 
 - 全体 Linux 用户的帧传递路径改变：共享内存呈现多一次拷贝、多一份带宽，DMA-BUF 快路径的收益让位给可预测的内存占用。Windows/macOS 不受影响（Ryn 的 Linux 分支早退）。
-- **效果未证，本决定不承诺水位下降**。判断标准是使用体验而非采样：2026-10-18 拍板不做 A/B 观察（不跑两档长会话对比、不加采样负载），界面流畅度、画面拖影、输入延迟即验收面；体感变差就把 `Ryn:LinuxRenderingMode` 改回 `"Auto"` 并冷启动。
+- **效果未证，本决定不承诺水位下降**。判断依据是使用体验而非采样：2026-10-18 拍板不做 A/B 观察（不跑两档长会话对比、不加采样负载），界面流畅度、画面拖影、输入延迟即判断依据；体感变差就把 `Ryn:LinuxRenderingMode` 改回 `"Auto"` 并冷启动。
 - **回退必须冷启动**：Ryn 把 `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1` 写进本进程 env 且从不 unset，而应用内重启（`AppRelaunch.SpawnSelf`，`UseShellExecute=false`，不裁 env）会让新宿主继承上一轮的值；此时 `Auto` 分支只跳过写入、不清除，实际仍走共享内存。`Ryn env` 行的 `ForceShmEnv=` 就是为这一情形设的——它回显 Build 后的生效值，避免只看 `LinuxRendering=`（绑定值）得到假绿。彻底消除该继承（清变量或重启时裁 env）属另立项，不在本批。
 - 默认值只有一个家：`appsettings.json` 的 `Ryn` 节。删掉该键即回到 Ryn 的默认 `Auto`，不再有第二处需要同步。
+
+- **2026-10-18 实机观察**（用户主观反馈 + 一次读数，n=1【探索性】）：三重审核并发期间界面不再卡顿、帧率代价不可感知——这是本决定目前唯一的正向证据；同一时刻整树 `memory.current` 1692 MB（anon 1126 / shmem 282 / file 523 / swap 289，龄 20 分钟），对照切换前同机 70 分钟龄的 2070 MB（anon 1562 / shmem 109 / swap 0）。龄不同，两行**不可作 A/B** 读；可注意的变化是 shmem 上升（画面进共享内存）与 swap 从 0 变为非零（shmem 页可换出）。
