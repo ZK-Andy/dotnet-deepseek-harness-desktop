@@ -55,8 +55,6 @@ public sealed partial class DesktopAdapter
             AppSetup app = BuildApp(preflight, proxy.Proxy, update, tray, supervisorCts, instanceListener, uiLocale, captionBar, timeouts, shellForward);
             builtApp = app.App;
             builtAccessor = app.WindowAccessor;
-            // 生效面回读（ADR webview-shared-memory-rendering）：Ryn 在 Build 中段 ApplyProcessWideOptions 写该 env，回调期看不到本次写入（至多继承值）。
-            HostLog.Write($"[host] Ryn env: ForceShmEnv={Environment.GetEnvironmentVariable(WebkitRenderingEnv.ForceSharedMemory) ?? "-"}");
             // 宿主 + 崩溃标记（容器惰性单例，见 RunServicesRegistration.AddRunHost）：首次解析即创建；
             // 脏退播报在此（首次解析点之后；工厂只做构造，见 R2S3）。
             hostSetup = builtApp.Services.GetRequiredService<HostSetup>();

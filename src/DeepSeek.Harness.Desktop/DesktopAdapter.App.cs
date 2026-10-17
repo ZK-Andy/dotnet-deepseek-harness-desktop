@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Callbacks;
 using Ryn.Core;
@@ -59,7 +58,7 @@ public sealed partial class DesktopAdapter
                 }
                 // 缺失不告警分支：icon 缺失由下方 Ryn opts 摘要行的 Icon=missing 留痕（托盘侧 IsReady 同样降级）
 
-                HostLog.Write($"[host] Ryn opts: Url={(proxy?.Url?.ToString() ?? "null")} ApplicationId={opts.ApplicationId} Rid={RuntimeInformation.RuntimeIdentifier} LinuxRendering={opts.LinuxRenderingMode} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
+                HostLog.Write($"[host] Ryn opts: Url={(proxy?.Url?.ToString() ?? "null")} ApplicationId={opts.ApplicationId} LinuxRendering={opts.LinuxRenderingMode} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 // WebView 调试器默认关闭；开发期设 DSH_DEVTOOLS=1 开启（与 dev 判定无关，
                 // 打包产品形态下同样生效）——判定随 A 类启动配置在 LaunchOptions.Resolve 单点解析
                 // （ADR post-restructure-ledger-batch）。

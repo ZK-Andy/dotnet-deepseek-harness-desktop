@@ -4,6 +4,7 @@ Status: implemented
 
 Review: FULL/2026-10-18/R1=ok R2=ok R3=ok
 Review: FULL/2026-10-18#2/R1=ok R2=ok R3=ok
+Review: FULL/2026-10-18#3/R1=ok R2=ok R3=ok
 
 Related: 上游 `Yupmoh/Ryn v0.38.0`（`RynApplicationBuilder.BindOptionsFromConfiguration` 绑定 `Ryn:LinuxRenderingMode`、`ApplyProcessWideOptions` 落 `WEBKIT_DMABUF_RENDERER_FORCE_SHM`，均按 `v0.38.0` 标签源码核对）+ 上游 `docs/gpu-rendering.md` + 本仓库 [cookbook](../../../../docs/cookbook.md)「高强度负载下 GUI 冻结的判别」（同族渲染开关 `HardwareAcceleration`）。
 
@@ -15,11 +16,9 @@ Linux 桌面上整棵宿主进程树在空载一百分钟后仍持有 2.07 GB �
 
 ## Decision
 
-`LinuxRenderingMode` 由**上游框架键** `appsettings.json` 的 `Ryn:LinuxRenderingMode` 承担，安装包发 `"SharedMemory"`；宿主代码不再对该属性赋值——`ConfigureOptions` 回调恒最后执行并覆盖配置绑定，赋值会让框架键静默失效。写 `"Auto"` 即回退。
+`LinuxRenderingMode` 由**上游框架键** `appsettings.json` 的 `Ryn:LinuxRenderingMode` 承担，安装包发 `"SharedMemory"`；宿主代码不再对该属性赋值——`ConfigureOptions` 回调恒最后执行并覆盖配置绑定，赋值会让框架键静默失效。写 `"Auto"` 即回退——改的是安装包默认值、随发版交付，宿主不提供运行时开关。
 
-Ryn 在 `Build()` 中段的 `ApplyProcessWideOptions` 一步把该选项转写成进程环境变量 `WEBKIT_DMABUF_RENDERER_FORCE_SHM`（`RynApplicationBuilder.cs:133`，早于服务与插件装配；WebKitGTK 只认初始化期的环境变量），宿主自己没有新增任何 env 写入。观测分两处：`Ryn opts` 行回显**绑定值**（`ConfigureOptions` 回调期，同行的 `Rid=` 标明平台），`Ryn env` 行在 `Build()` 返回后回显**生效环境变量**——回调早于该写入，因此回调期看不到本次写入，两者不可混用。
-
-`ForceShmEnv` 的读法：`-` = 读不到该变量（Ryn 未写入；非 Linux 亦恒为此形态，结合同批 `Ryn opts` 的 `Rid=` 判读）；`1` = 生效；其它值原样打印不做归一。
+Ryn 在 `Build()` 中段的 `ApplyProcessWideOptions` 一步把该选项转写成进程环境变量 `WEBKIT_DMABUF_RENDERER_FORCE_SHM`（`RynApplicationBuilder.cs:133`；WebKitGTK 只认初始化期的环境变量），宿主自己没有新增任何 env 写入。`Ryn opts` 行回显绑定值（`LinuxRendering=` 字段）；宿主不写该 env。
 
 ## Alternatives considered
 
@@ -33,7 +32,7 @@ Ryn 在 `Build()` 中段的 `ApplyProcessWideOptions` 一步把该选项转写�
 ## Consequences
 
 - 全体 Linux 用户的帧传递路径改变：共享内存呈现多一次拷贝、多一份带宽，DMA-BUF 快路径的收益让位给可预测的内存占用。Windows/macOS 不受影响（Ryn 的 Linux 分支早退）。
-- **效果未证，本决定不承诺水位下降**。判断依据是使用体验而非采样：2026-10-18 拍板不做 A/B 观察（不跑两档长会话对比、不加采样负载），界面流畅度、画面拖影、输入延迟即判断依据；体感变差就把 `Ryn:LinuxRenderingMode` 改回 `"Auto"` 并冷启动。
-- 默认值只有一个家：`appsettings.json` 的 `Ryn` 节。删掉该键即回到 Ryn 的默认 `Auto`，不再有第二处需要同步。
+- **效果未证，本决定不承诺水位下降**。判断依据是使用体验而非采样：2026-10-18 拍板不做 A/B 观察（不跑两档长会话对比、不加采样负载），界面流畅度、画面拖影、输入延迟即判断依据；体感变差就在下一版把该键的默认值改回 `"Auto"`。
+- 默认值只有一个家：`appsettings.json` 的 `Ryn` 节；回退即改这一处并随发版交付，没有第二处需要同步。
 
 - **2026-10-18 实机观察**（用户主观反馈 + 一次读数，n=1【探索性】）：三重审核并发期间界面不再卡顿、帧率代价不可感知——这是本决定目前唯一的正向证据；同一时刻整树 `memory.current` 1692 MB（anon 1126 / shmem 282 / file 523 / swap 289，龄 20 分钟），对照切换前同机 70 分钟龄的 2070 MB（anon 1562 / shmem 109 / swap 0）。龄不同，两行**不可作 A/B** 读；可注意的变化是 shmem 上升（画面进共享内存）与 swap 从 0 变为非零（shmem 页可换出）。
