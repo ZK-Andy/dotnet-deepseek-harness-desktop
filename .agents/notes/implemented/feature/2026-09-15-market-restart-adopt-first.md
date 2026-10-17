@@ -27,6 +27,6 @@ Review: FULL/2026-09-15/R1=ok R2=ok R3=ok
 
 ## Related
 
-- [收养市场接力的 dsh 续任者（运行时交接）](../bug-fix/2026-09-12-runtime-handoff-adoption.md)：本决策落地其 Deferred「以 helper 出现作为接力意图信号」，复用其收养判据与收割面保护（helper 是续任者的祖先，不动）；血统判据、端口签名词法、判活 token 复验均以彼为准。
+- [收养市场接力的 dsh 续任者（运行时交接）](../bug-fix/2026-09-12-runtime-handoff-adoption.md)：本决策落地其推迟项「以 helper 出现作为接力意图信号」，复用其收养判据与收割面保护（helper 是续任者的祖先，不动）；血统判据、端口签名词法、判活 token 复验均以彼为准。
 - [接力就绪判据升级为 web 面可服务](../bug-fix/2026-09-16-relay-web-readiness.md)：本决策的就绪判据由「端口可连」收紧为「web 面已应答」，补救本决策按端口接管即导航造成的空白页窗口。
 - [bind 预探测压缩端口等待](../architecture/2026-09-13-port-wait-compression.md)：其 bind 预探测在本决策后只在接力回落路径生效——relay 命中的启动尝试整段跳过，bind 探测的「dsh 加载整树才 bind」事实正是本决策共生窗口成立的前提（续任者也需同样时长 bind，窗口才有等待价值）。

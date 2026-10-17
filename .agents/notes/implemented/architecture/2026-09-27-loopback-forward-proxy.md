@@ -38,6 +38,7 @@ Related: 前序 `bug-fix/2026-09-27-shell-mint-and-forward`（传输面被本篇
 
 - 代价：自研最小 HTTP/1.1 解析转发（成帧/本地/隧道三类拆分，各 ≤400 行；请求体只认 `Content-Length`，chunked 请求 loud 502）；loopback 信任面（token/cookie 不出本机，与既有模型一致）；SSE 空闲不断（页断联即 cancel，`EventSource` 自重连）。
 - 收益：流/RPC/WS/eval/invoke 全活（WS 为裸 TCP 隧道 + 头手术）；mint/303/脱敏纪律沿用；三平台同构；诊断 loud 行保留（入口/终态/升级面三步）；响应头最小集仍按需（沿用前序 TODO）。
+- 已知边界：`_ipcBase` 绝对化只覆盖冷/热启动——收养/恢复等运行期导航仍落在相对源页面（上游 `Yupmoh/Ryn#102` 无时间表），影响面限于运行期重导航后的探针，由见证门承担。
 
 ## Testing
 
@@ -46,7 +47,3 @@ Related: 前序 `bug-fix/2026-09-27-shell-mint-and-forward`（传输面被本篇
 - `dotnet build` 0 警告；`dotnet test` 全绿；FULL 三审收口（R2 五条全收口 + LIGHT 跟进 + 本轮 FULL 终案）；mac 双腿 dispatch 再验证。
 
 - 历程 dispatch 痕迹：run `36275191770`（SSE 激活失败）/`36274189037`（空心绿）/`36294149610`（页源 403 + 占位落定）/`36295632426`（见证像素不可分）为 Problem/Decision 各机制的实证 run，可查不占正文。
-
-## Deferred
-
-- Ryn 原生 IPC 的运行期导航场景：窗口初始 URL 恒代理源后 dev-server 分支覆盖冷/热全部启动（`_ipcBase` 绝对化自出生）；收养/恢复等运行期导航仍是相对源页面（公开面无补救），上游 `Yupmoh/Ryn#102` 跟踪中——影响面仅运行期重导航后的探针，见证门承担。

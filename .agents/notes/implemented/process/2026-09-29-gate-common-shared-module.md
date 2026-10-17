@@ -53,11 +53,6 @@ F 批第三项「覆盖率比对数」已由 B-1（`process/2026-09-28-ci-gate-h
 - `dotnet test` 867/867 绿、build 0 警告（含 DesktopTrayCommandRouter 拆分后的路由契约测试：记序/帧/日志痕）。
 - ci.yml 变更以 push 实跑验证（ci.yml 无 `workflow_dispatch` 触发器，push@main 即其执行路径；表达式错误只有真 runner 能暴露）：push run `36457713574` 五作业全绿，新步「Python 门禁自测」三条命令在真 runner 实跑通过。
 
-## Deferred
-
-- `review_gate_common.py`（review-tier/review-brief 共享面）拆分；其余 Python 门自测接线（现仅 ui-copy + 本批三处）。
-- 路由后台腿的行为钉：`DesktopTrayCommandRouterTests` 现不传 `updateMachine`，`CheckUpdateInBackgroundAsync` 的通知路径无测试夹具（R2 挂账；测试面非本批 diff）。
-
 ## Related
 
 - 总纲：`implemented/process/2026-09-27-post-packaging-churn-restructure`（F 批落地记录；总纲随 G 批完成后迁 implemented）

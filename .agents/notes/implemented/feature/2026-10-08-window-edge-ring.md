@@ -14,7 +14,7 @@ Status: implemented
 - 颜色：`box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l3,rgba(127,127,127,.4))`——借 dsh 自有分割线 token（侧栏 `border-left` 同源），明暗主题自动跟；token 缺失回退中灰，双主题都可见。
 - 事件：`pointer-events:none`，且是全注入脚本**唯一**允许该声明的规则——环贴在视口四边，可命中即吞掉无边框窗口的边缘 resize 与边缘点击。
 - 层叠：`z-index:2147483646`，紧贴顶栏（2147483647）之下、浮于模态遮罩之上——窗口边缘任何时候可见。
-- 范围：与平台无关，三端同款（macChrome 闸内外都带环）；展开/折叠/全屏不区分——全屏隐环与全屏隐灯同一批 gate（见 Deferred）。
+- 范围：与平台无关，三端同款（macChrome 闸内外都带环）；展开/折叠/全屏不区分——环随注入条一并显示。
 
 ## Alternatives considered
 
@@ -27,7 +27,7 @@ Status: implemented
 
 - 买到的：浅色白 on 白时 1px 边界；深色零变化（token 自适应）；无窗口级改动，无透明窗材质风险。
 - 付出的：借用 dsh 私有 token `--dsw-alias-border-l3`——上游改名时环静默消失（失效形态是"没圈"，不崩）；`pointer-events:none` 零容忍测试收窄为"全脚本唯一一处"（注入条可命中不变量改由 occurrence 计数守卫）。
-- 全屏态下环仍显示（与自绘灯同状），待全屏隐灯一批 gate（ADR frameless-uniform-caption-bar 的 `html[data-fullscreen]` Deferred）。
+- 全屏态下环仍显示（与自绘灯同状）：本壳无全屏状态源、`html[data-fullscreen]` 静态不发，环与顶栏按非全屏几何渲染。
 
 ## Testing
 
@@ -37,4 +37,4 @@ Status: implemented
 
 ## Related
 
-- [frameless-uniform-caption-bar](2026-10-07-frameless-uniform-caption-bar.md)——无边框自绘顶栏总纲；全屏隐灯 Deferred 与本环的全屏 gate 同批。
+- [frameless-uniform-caption-bar](2026-10-07-frameless-uniform-caption-bar.md)——无边框自绘顶栏总纲；环与顶栏同源注入、同批几何。

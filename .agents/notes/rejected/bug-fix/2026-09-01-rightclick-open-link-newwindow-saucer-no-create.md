@@ -1,6 +1,9 @@
 # Agent Note: rightclick-open-link-newwindow-saucer-no-create（右键"打开链接"无反应——saucer WebKitGTK 缺 create 信号承接）
 
-Status: proposed
+Status: rejected
+
+拒绝理由（2026-10-18）：本仓库侧无可做变更（右键根本不触发宿主回调），治本依赖上游 saucer#90，而 #90 挂在 #53 上、无时间表（复核仍 OPEN）；判定不追——右键「打开链接」接受现状（左键外链链路完好），不为一个死入口禁用整张右键菜单或注入 JS。
+
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
@@ -65,7 +68,7 @@ saucer 维护者 Curve 已回复 issue #90（2026-09-02，issue 标题随之改�
 - 上游 saucer 修复节奏不可控（Curve 明示须先解 #53，无时间表）；若久拖，用户在 Linux 上持续遇到右键无反应（左键可用）。
 - 若后续上游把事件拆成"导航 vs 新窗口"两事件，本仓库导航回调消费面需随之适配（届时评估）。
 - 本 ADR 中「根因 = 缺 create 信号」为【推断 · 已由源码 + WebKit 行为佐证】，非 saucer 官方确认；Curve 回复已把机制归为「Open Link 绕过 policy 直入创建窗口」——与 create 信号缺口一致，若官方后续给出不同机制，以官方为准。
-- 若未来 Ryn 透出 saucer context-menu 开关/new-window 事件，本记录中的"不可达"前提失效——届时需重新评估（这正是本 ADR 保留在 proposed 而非 rejected/archived 的原因）。
+- 若未来 Ryn 透出 saucer context-menu 开关/new-window 事件，本记录中的"不可达"前提失效——届时需重新评估（本篇留在 rejected 而非删除，正是为守住「不可达、不改」这两条前提）。
 
 ## Related
 

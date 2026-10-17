@@ -38,7 +38,7 @@ Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
 - **端口占用者裸杀**：落败：端口不携带身份，误杀不可逆（ADR [child-process-reaping-port-drift](2026-08-26-child-process-reaping-port-drift.md) 已否）。本决策保留「按端口占用者识别」，但把身份换成可证血统，端口只作事实探针。
 - **只给旧子进程加强制 SIGKILL**：落败：.NET `Process.Kill()` 在 Unix 即 SIGKILL，`entireProcessTree` 已覆盖树杀，缺的是「杀谁」不是「杀多重」。
 - **进程组/session 收割（`kill -- -PGID`）**：落败：实测 dsh 与本机 gnome-shell 同 pgrp/sid（2645，【探索性，n=1】），按组杀会打死整个桌面会话；dsh 沙箱子进程另有独立 sid，本就不在组内。
-- **固定等待窗让位（先等续任者起来再决定）**：落败：给真崩溃恢复叠加固定延迟，且实测 `EADDRINUSE` 直到 ≈48s 才出现（签名做不了提前决策）。真正有信息量的是「市场 helper 已出现」这一正向信号——记入 Deferred，本次不做。
+- **固定等待窗让位（先等续任者起来再决定）**：落败：给真崩溃恢复叠加固定延迟，且实测 `EADDRINUSE` 直到 ≈48s 才出现（签名做不了提前决策）。真正有信息量的是「市场 helper 已出现」这一正向信号——本次不做，后由 [市场接力收养优先](../feature/2026-09-15-market-restart-adopt-first.md) 落地。
 - **收养前再等续任者 bind**：落败：端口冲突本身就是「已有人 bind」的证据（`IsLoopbackServingAsync` 复核即可），无需再等。
 - **血统排除集用「本次 run 的 token 集合」**：落败：同一次 run 的失败 attempt 与在管 attempt 持两个不同 token，按集合排除会把该收的悬挂尝试当自家人；改按「在管运行时＋其父链后代」排除。
 - **收养时读/猜续任者的 launch token**：落败：per-process token 本就不该被壳猜；持久 cookie＋authority 绑定已让裸 origin 可用。
@@ -51,16 +51,11 @@ Review: FULL/2026-09-12/R1=ok R2=ok R3=ok
 
 - 市场一键重启继续可用且与壳不再互抢：端口冲突的三种结局（收养 / 收割后重试 / 漂移）都收敛到「有人服务且 origin 尽量不变」；抢端口输给壳时，市场 helper 与续任者被「启动成功后收敛」就地收割，不再留下悬挂进程。
 - 失败尝试不再悬挂：此前每次失败留下一个存活到 ≈48s 的无人认领 dsh 进程，现在判定即整树回收。
-- 端口冲突的等待代价仍在：抢输的尝试要走完对方的 bind 失败路径（实测 ≈48s），恢复屏覆盖这段时间。本决策买到的是「这段时间之后收敛到同一 origin 且不留残留」，不是「更快发现失败」；压缩该等待的正向信号（市场 helper 已出现）记入 Deferred。**市场接力路径已不受此限**——[市场接力收养优先](../feature/2026-09-15-market-restart-adopt-first.md)（落地本篇 Deferred 条目）在 spawn 前以接力共存窗口等续任者接管端口后直接收养，本段代价只剩进程内崩溃恢复与冷启动残留两条路径承担。
+- 端口冲突的等待代价仍在：抢输的尝试要走完对方的 bind 失败路径（实测 ≈48s），恢复屏覆盖这段时间。本决策买到的是「这段时间之后收敛到同一 origin 且不留残留」，不是「更快发现失败」；压缩该等待的正向信号（市场 helper 已出现）已由 [市场接力收养优先](../feature/2026-09-15-market-restart-adopt-first.md) 落地。**市场接力路径已不受此限**——该篇在 spawn 前以接力共存窗口等续任者接管端口后直接收养，本段代价只剩进程内崩溃恢复与冷启动残留两条路径承担。
 - 代价：①冷启动与「非冷启动的启动成功」各一次、端口冲突处置一次 `/proc` 全量扫描（逐 pid 读 environ＋cmdline，毫秒量级）；②收养引入「在管但非子进程」的 pid——判活靠 1s 轮询＋token 复验、退出靠整树击杀（Linux 精确；其他平台不做收养）；③血统判据覆盖不到 dsh 沙箱内的后代（dsh 的 `scrubbedParentEnv` 剥掉全部 `DSH_*`）。
 - 观测：新增日志行（失败原因＋处置动作＋残留条数 / 收养 pid / 收割 pid＋kind）；漂移告警文本与原语义保持一致。
 - 非 Linux 残差：无血统判据 → 不收养、不扫描，仅 `.dsh-pid` 记录复验；首选端口被续任者占时仍按漂移处理。
-
-## Deferred
-
-- **残留/收养状态未进诊断包**：`DiagnosticsExporter.IncludedFiles` 白名单仍只收 host.log、端口状态文件与 run-marker，未新增 `.dsh-pid`（本次语义扩为「在管运行时，可能是收养的非子进程」，属 pid 面数据）。刻意不扩：本次未新增 home 内路径，诊断包不应在无决策的情况下扩收进程数据。**复访触发 = 出现首个「靠诊断包才定位得到」的残留案例**。
-- ~~**以 helper 出现作为接力意图信号**~~：已由 [市场接力收养优先](../feature/2026-09-15-market-restart-adopt-first.md)实现——进程内重启入口以接力证据 + 有界共存窗口等续任者 bind 后收养，不再抢端口。
-- **dsh 沙箱内后代不可见**：`scrubbedParentEnv` 剥掉全部 `DSH_*`，本判据收不到这类孤儿。**跟进方 = [dsh 沙箱子进程孤儿泄漏](2026-09-12-dsh-sandbox-child-orphan-leak.md)**（已 implemented，本篇为判据盲区的补集收割）。
+- 诊断包边界：`DiagnosticsExporter.IncludedFiles` 只收 host.log ×2、端口状态文件与 run-marker，不含 `.dsh-pid`（pid 面数据不扩）。
 
 ## Testing
 
