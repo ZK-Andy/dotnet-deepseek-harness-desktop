@@ -49,7 +49,7 @@ Review: FULL/2026-10-18/R1=ok R2=ok R3=ok
 
 ## Testing
 
-- `dotnet test` 1048/1048（217 Presentation / 228 Core / 597 Infrastructure / 6 Analyzers）；`dotnet format --verify-no-changes` 0 差异；build 0 错误。
+- 当批 `dotnet test` 1048/1048（217 Presentation / 228 Core / 597 Infrastructure / 6 Analyzers）；`dotnet format --verify-no-changes` 0 差异；build 0 错误。计数随批次变化，现行值以 `scripts/test-baseline.json` 为准。
 - 四闸 `--enforce` 全绿：`verify-code-health`、`verify-compose-root`（含 `--self-test`）、`verify-registration-discipline`、`verify-increment-discipline`；`verify-code-conventions` 与 `verify-shell-standards` 绿。
 - 时序安全网更新：`CompositionRootSequenceTests.ComposeRoot_PreContainerChain_IsInContractOrder` 改为新主链（含 `CreateSharedState`/`CreateShellResources`/`Attach`/`Dispose` 锚），`BuildApp_EnablesRynWindowStatePersistence` 改读 `RynOptionsProfile.cs`。
 - 评审：FULL 三路（R1 架构 / R2 行为等价 / R3 边界契约）。R2 首轮报 1 blocker（`AddRunHost` 未注入装配期 `RuntimeTimeouts`，宿主回落默认值），已修并复验 ok；R3 首轮报 4 blocker（docstring 与实现落差、两篇 ADR 缺 Erratum、docs 口径错、变更史措辞），逐条修复后复验 ok。

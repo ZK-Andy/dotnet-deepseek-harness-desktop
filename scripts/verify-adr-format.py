@@ -42,7 +42,7 @@ import sys
 from pathlib import Path
 
 HEADER_RE = re.compile(r"^# Agent Note: .+$")
-STATUS_RE = re.compile(r"^Status: (proposed|implemented|rejected(?: — .+)?)$")
+STATUS_RE = re.compile(r"^Status: (proposed|implemented|rejected)(?: — .+)?$")
 STATUS_BY_DIR = {"proposed": "proposed", "implemented": "implemented", "rejected": "rejected"}
 BANNED_IN_IMPLEMENTED = ("## Proposal", "## Plan", "## Migration plan", "## Acceptance criteria")
 REQUIRED_ALL = ("## Problem", "## Alternatives considered")
@@ -164,8 +164,8 @@ def _self_test(root: Path) -> int:
         "## Consequences\n\nconsequences\n"
     )
 
-    def write_status(dirpath: Path, name: str, status: str):
-        body = OK_BODY.format(status=status, decision_sec="Decision")
+    def write_status(dirpath: Path, name: str, status: str, decision_sec: str = "Decision"):
+        body = OK_BODY.format(status=status, decision_sec=decision_sec)
         (dirpath / name).write_text(body, encoding="utf-8")
 
     cases = []  # (tmp_root, notes_root, expected_exit, description)
@@ -177,6 +177,34 @@ def _self_test(root: Path) -> int:
         (conform / "implemented" / "feature").mkdir(parents=True)
         write_status(conform / "implemented" / "feature", "2026-08-27-naming-ok.md", "implemented")
         cases.append((conform, 0, "conforming tree -> pass"))
+
+        # case A2: 状态行带行内理由 → exit 0（README 允许 `Status: <state> — 理由`；
+        # 理由不得并入状态词捕获组，否则恒判「状态与目录不一致」）
+        rejreason = t / "rejreason"
+        (rejreason / "rejected" / "bug-fix").mkdir(parents=True)
+        write_status(rejreason / "rejected" / "bug-fix", "2026-08-27-naming-ok.md",
+                     "rejected — 依赖上游无时间表，判定不追")
+        cases.append((rejreason, 0, "status line with inline reason -> pass"))
+
+        # case A3/A4: 另两种生命周期同样允许行内理由（README 契约：理由与状态词解耦）
+        implreason = t / "implreason"
+        (implreason / "implemented" / "feature").mkdir(parents=True)
+        write_status(implreason / "implemented" / "feature", "2026-08-27-naming-ok.md",
+                     "implemented — 已由 2026-09-01 新篇取代")
+        cases.append((implreason, 0, "implemented status with inline reason -> pass"))
+
+        proprereason = t / "proprereason"
+        (proprereason / "proposed" / "feature").mkdir(parents=True)
+        write_status(proprereason / "proposed" / "feature", "2026-08-27-naming-ok.md",
+                     "proposed — 等上游修复后再评", decision_sec="Proposal")
+        cases.append((proprereason, 0, "proposed status with inline reason -> pass"))
+
+        # case A5: 理由不得掩盖状态词与目录不一致
+        misreason = t / "misreason"
+        (misreason / "implemented" / "feature").mkdir(parents=True)
+        write_status(misreason / "implemented" / "feature", "2026-08-27-naming-ok.md",
+                     "rejected — 依赖上游无时间表")
+        cases.append((misreason, 1, "inline reason does not mask status/dir mismatch -> fail"))
 
         # case B: bad class segment → exit 1
         badclass = t / "badclass"

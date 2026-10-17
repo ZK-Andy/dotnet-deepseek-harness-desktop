@@ -262,6 +262,116 @@ public class LauncherActivationTests
         }
     }
 
+    /// <summary>0 字节读（连上即断）= 单实例探活：不是请求，日志里连一行都不该有；
+    /// 且不断链——探活后紧跟的合法命令仍能到达并触发回调。</summary>
+    [Fact]
+    public async Task Serve_ProbeConnection_LeavesNoRequestTrace()
+    {
+        string path = NewSocketPath();
+        List<string> lines = [];
+        var fired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        BindWithLog(path, () => fired.TrySetResult(), lines, out PrimaryListener? listener);
+        using (listener)
+        {
+            await ProbeUntilClosedAsync(path);
+
+            lock (lines)
+            {
+                // 封闭集：绑定那行之后，探活处理完（EOF 已证）仍应一行不多——旧实现会留下两条空载荷行
+                Assert.Equal(["[host] 单实例锁已持有"], lines);
+            }
+
+            Assert.True(LauncherActivation.NotifyPrimary(path, TimeSpan.FromSeconds(2)));
+            await fired.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await WaitForLineAsync(lines, line => line.Contains("单实例请求处理完成", StringComparison.Ordinal));
+        }
+
+        lock (lines)
+        {
+            // 封闭集：整条用例只该有绑定行 + show 路径两行（异常分支「处理失败：」同样会被这条钉住）
+            Assert.Equal(["[host] 单实例锁已持有", "[host] 单实例请求：show", "[host] 单实例请求处理完成"], lines);
+        }
+    }
+
+    /// <summary>空白载荷（连上只发换行）= 畸形输入：仍留到达痕，两行都在冒号后用 &lt;空&gt; 占位，
+    /// 日志读得懂，也仍能区分「到了被忽略」与「没到」。</summary>
+    [Fact]
+    public async Task Serve_WhitespacePayload_IsLoggedWithEmptyPlaceholder()
+    {
+        string path = NewSocketPath();
+        List<string> lines = [];
+        BindWithLog(path, () => { }, lines, out PrimaryListener? listener);
+        using (listener)
+        {
+            SendRaw(path, string.Empty); // 只发换行：read > 0 但 trim 后为空
+
+            await WaitForLineAsync(lines, line => line.Contains("单实例请求忽略", StringComparison.Ordinal));
+            lock (lines)
+            {
+                Assert.Equal(
+                    ["[host] 单实例锁已持有", "[host] 单实例请求：<空>", "[host] 单实例请求忽略：<空>"],
+                    lines);
+            }
+        }
+    }
+
+    private static void BindWithLog(string path, Action onShow, List<string> lines, out PrimaryListener? listener)
+    {
+        Assert.True(LauncherActivation.TryBindPrimary(
+            path,
+            () =>
+            {
+                onShow();
+                return Task.CompletedTask;
+            },
+            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromSeconds(2),
+            line =>
+            {
+                lock (lines)
+                {
+                    lines.Add(line);
+                }
+            },
+            out listener));
+    }
+
+    private static async Task<string> WaitForLineAsync(List<string> lines, Func<string, bool> predicate)
+    {
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            lock (lines)
+            {
+                string? hit = lines.FirstOrDefault(predicate);
+                if (hit is not null)
+                {
+                    return hit;
+                }
+            }
+
+            await Task.Delay(20);
+        }
+
+        throw new TimeoutException("等待期望的日志行超时");
+    }
+
+    /// <summary>探活客户端：连上不发一字节，只关发送方向（半关）——服务端读到 0 字节后返回并关闭连接，
+    /// 客户端据此读到 EOF，等于等到「服务端处理完」的确定性信号（其日志必在 dispose 前写完），不靠时间窗判负。</summary>
+    private static async Task ProbeUntilClosedAsync(string path)
+    {
+        using var socket = new System.Net.Sockets.Socket(
+            System.Net.Sockets.AddressFamily.Unix,
+            System.Net.Sockets.SocketType.Stream,
+            System.Net.Sockets.ProtocolType.Unspecified);
+        socket.Connect(new System.Net.Sockets.UnixDomainSocketEndPoint(path));
+        socket.Shutdown(System.Net.Sockets.SocketShutdown.Send);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        byte[] buffer = new byte[16];
+        int read = await socket.ReceiveAsync(buffer, cts.Token);
+        Assert.Equal(0, read); // 服务端不发一字节即关：读到的是 EOF
+    }
+
     private static bool TryDelete(string path)
     {
         try

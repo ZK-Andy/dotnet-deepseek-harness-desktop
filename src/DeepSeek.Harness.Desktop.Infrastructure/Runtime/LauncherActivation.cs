@@ -315,13 +315,23 @@ internal sealed class PrimaryListener : IDisposable
                 using var cts = new CancellationTokenSource(_serveTimeout);
                 byte[] buffer = new byte[256];
                 int read = await client.ReceiveAsync(buffer, cts.Token).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    // 0 字节 = 连上即断：单实例探活（BindWithStaleRecovery 的 ProbeAlive）走的就是这条，
+                    // 它不是请求、没有可做的事——不记「请求/忽略」行，否则每次残留自愈都往 host.log
+                    // 刷两条空载荷日志，措辞还像在丢弃什么东西
+                    return;
+                }
+
                 string command = System.Text.Encoding.UTF8.GetString(buffer, 0, read).Trim();
+                // 空白载荷（连上只发换行）属畸形输入：冒号后给 <空> 占位，避免出现「请求忽略：」这种读不懂的半句
+                string shown = command.Length == 0 ? "<空>" : command;
                 // 到达性留痕：昨晚实机「launcher 唤起无响应但无任何日志」——连接到达与否
                 // 必须可判（区别于「到达但处理卡死」）
-                _log?.Invoke($"[host] 单实例请求：{command}");
+                _log?.Invoke($"[host] 单实例请求：{shown}");
                 if (command != LauncherActivation.ShowCommand)
                 {
-                    _log?.Invoke($"[host] 单实例请求忽略：{command}");
+                    _log?.Invoke($"[host] 单实例请求忽略：{shown}");
                     return;
                 }
 
