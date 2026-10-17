@@ -1,5 +1,3 @@
-using ProxySetup = DeepSeek.Harness.Desktop.Infrastructure.Runtime.DshLoopbackProxy.ProxySetup;
-
 namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
@@ -14,7 +12,7 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 internal sealed class ShellResources : IDisposable
 {
     private HarnessRuntimeHost? _host;
-    private ProxySetup? _proxy;
+    private DshLoopbackProxy.ProxySetup? _proxy;
     private CancellationTokenSource? _cts;
     private PrimaryListener? _listener;
     private bool _disposed;
@@ -25,7 +23,7 @@ internal sealed class ShellResources : IDisposable
 
     /// <summary>登记回环代理源（Build 前启动的结果对象）。</summary>
     /// <param name="proxy">代理源结果对象。</param>
-    public void Attach(ProxySetup proxy) => _proxy = proxy;
+    public void Attach(DshLoopbackProxy.ProxySetup proxy) => _proxy = proxy;
 
     /// <summary>登记监督器取消令牌源（寿命 = 本次 Run）。</summary>
     /// <param name="cts">取消令牌源。</param>
