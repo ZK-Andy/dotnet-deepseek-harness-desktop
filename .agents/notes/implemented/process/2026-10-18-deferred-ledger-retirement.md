@@ -12,7 +12,7 @@ ADR 的 `## Deferred` 小节长期被当成第二本待办账：八篇 implement
 - 被上游阻塞的事项只记**事实与依赖**（如 `Yupmoh/Ryn#102` 仍 OPEN、运行期导航仍走相对源页面），不记触发条件；上游落地后按新事实改写该行。
 - 行动区唯一家仍是 [`HANDOFF-todos.md`](../../../../HANDOFF-todos.md)；笔记不承载待办。
 - 本批落地：删除六篇笔记的 `## Deferred`（payload-smoke-probe、loopback-forward-proxy、runtime-handoff-adoption、relay-restart-client-module-collapse、gate-common-shared-module、frameless-uniform-caption-bar），两条仍成立的事实改写进各自 Consequences；右键「打开链接」篇由 `proposed/` 转 `rejected/`（理由：本仓库侧无可做变更，治本依赖 saucer#90，而 #90 挂在 #53 上无时间表）。
-- 门禁缺陷同批修复：[adr-status-inline-reason](2026-10-18-adr-status-inline-reason.md)——`STATUS_RE` 曾把 `— 理由` 并进状态词捕获组，使 README 允许的行内理由恒判目录不一致；本次 rejected 篇在修复前以「状态词 + 正文一行理由」落地，修复后两种写法都合法。
+- 门禁缺陷的修复见 [adr-status-inline-reason](2026-10-18-adr-status-inline-reason.md)：`Status:` 行内理由现已对三种状态合法；本次 rejected 篇的 Status 行仍只写状态词、理由在正文，两种写法都通过门禁。
 
 ## Alternatives considered
 
