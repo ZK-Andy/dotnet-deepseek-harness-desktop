@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-18 — 正文「端口收成两方法」的表述失效：`IStartupSequence` 已删除（零消费者，ADR compose-root-lifetime-and-config-single-source 的 D5），编排触发改用具体类型；其余判断与决定不动。
+
 Review: FULL/2026-10-15#6/R1=ok R2=ok R3=ok
 
 Related: 母篇 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)（其「同步桥只余起步一处，`await` 贯通另立条目」由本篇承接）；排序器形状 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)；退出编排前置 [app-exit-orchestration-core-usecase](2026-10-15-app-exit-orchestration-core-usecase.md)；解析面 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md)。

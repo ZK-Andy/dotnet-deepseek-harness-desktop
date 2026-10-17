@@ -7,13 +7,25 @@ guards against (ADR compose-root-form-separation, replaying 1434271): stage
 methods and business predicates accrete on the composition root as new partial
 files, each dodging a per-file size budget.
 
-The root set is `Program.cs` + `DesktopAdapter*.cs` under the Presentation
-project. Seven checks:
+Two scopes, declared in this file (the single home for these judgements):
 
-  C1  dot partials ≤ `--max-dot-partials` (default 1): the root is pinned to
-      Program.cs + DesktopAdapter.cs + at most one dot partial.
-  C2  every method declared in the root set must be in the ALLOWED_METHODS
-      inventory. A NEW method name in the root is a violation — orchestration
+  ROOT_SET       = `Program.cs` + `DesktopAdapter*.cs`. Weight and self-造假
+                   metrics: F3 budget (verify-code-health), F4, C3, C4, C5.
+  ASSEMBLY_SURFACE = ROOT_SET + ASSEMBLY_SURFACE_EXTRA (`Bootstrap/PreBuildRegistration.cs`,
+                   `Bootstrap/ShellResources.cs`, `RynOptionsProfile.cs`). Direction
+                   gates: C1 + C2 over the whole surface, C7 over
+                   `PreBuildRegistration*.cs`, C8 over new `Bootstrap/` files (a file
+                   that is neither domain nor declared surface fails). Assembly code
+                   must not escape the gates by moving out of the root files; adding a
+                   file to either list is a gate change (FULL review).
+
+Seven checks:
+
+  C1  dot partials ≤ `--max-dot-partials` (default 1) across the assembly surface:
+      each surface file is a single file, no dot-partial siblings.
+  C2  every member declared in an assembly-surface file must be in that file's
+      ALLOWED_METHODS entry (per-file binding: a name licensed in one file does not
+      license it elsewhere). A NEW member is a violation — orchestration
       belongs in `Bootstrap/StartupSequence` or a domain service; a genuinely
       assembly-level method is added here deliberately (update inventory + ADR).
   C3  `new` of self-owned concrete types in the root ≤ `--max-new` (default 6).
@@ -70,20 +82,49 @@ DEFAULT_OWNED_SRC = (
 DEFAULT_MAX_NEW = 6
 DEFAULT_MAX_DOT_PARTIALS = 1
 
-# Assembly-level surface of the root, frozen at the form separation
-# (ADR compose-root-form-separation). Entries are bare method names; a name
-# here asserts "this method is assembly/startup-head, not orchestration".
+# Assembly surface (C1/C2): every file that carries assembly code, wherever it
+# lives. ROOT_SET alone is the weight gate (F3/F4) — moving assembly into
+# Bootstrap/ must not put it outside the direction gates (ADR
+# compose-root-lifetime-and-config-single-source D6). Adding an entry here is a
+# deliberate act: new file = gate change = FULL review.
+ASSEMBLY_SURFACE_EXTRA = (
+    "Bootstrap/PreBuildRegistration.cs",
+    "Bootstrap/ShellResources.cs",
+    "RynOptionsProfile.cs",
+)
+
+# C2 inventory, bound per file (path relative to --src). A name here asserts
+# "this member is assembly/startup-head, not orchestration" — for THAT file only.
 ALLOWED_METHODS = {
-    # Program.cs — CLI branch only.
-    "Main",
-    # DesktopAdapter.cs — container-before startup head.
-    "Run",
-    "ResolveSharedState",
-    "AcquireSingleInstance",
-    "StartProxy",
-    # DesktopAdapter.App.cs — app assembly + registration call site.
-    "BuildApp",
-    "RegisterServices",
+    "Program.cs": {"Main"},
+    "DesktopAdapter.cs": {"Run", "AcquireSingleInstance", "StartProxy"},
+    "DesktopAdapter.App.cs": {"BuildApp", "RegisterServices"},
+    "Bootstrap/PreBuildRegistration.cs": {
+        "CreatePreflight",
+        "CreateUpdateAndTrayAssembly",
+        "CreateRuntimeStarter",
+        "CreateShellResources",
+        "CreateSharedState",
+    },
+    "Bootstrap/ShellResources.cs": {"ShellResources", "Attach", "Track", "Dispose"},
+    "RynOptionsProfile.cs": {"Apply"},
+}
+
+# Files directly under Bootstrap/ that are NOT assembly: sequencer, registration
+# extensions, stage values and routers. A new file here must be declared (as
+# domain code or as assembly surface) — otherwise the gate fails.
+BOOTSTRAP_DOMAIN_FILES = {
+    "BootstrapCommandRouter.cs",
+    "BootstrapRegistration.cs",
+    "BootstrapStateFrame.cs",
+    "FirstBootUi.cs",
+    "RunServicesRegistration.cs",
+    "RuntimeResolutions.cs",
+    "ShellMintEpochAdapter.cs",
+    "StartupSequence.cs",
+    "StartupSequence.Supervision.cs",
+    "StartupStages.cs",
+    "StartupUseCaseRegistration.cs",
 }
 
 # Self-owned types the wiring layer may construct. Frozen at step-3 of
@@ -136,13 +177,20 @@ ROOT_ENTRY_BRIDGES = 1
 # factory channel) are listed.
 PREBUILD_GLOB = "PreBuildRegistration*.cs"
 PREBUILD_CONSTRUCTIBLE = {
+    "CaptionBarOptions",
     "CloseBehaviorPreference",
     "CloseGate",
+    "DesktopUiLocaleStore",
+    "DshShellForward",
     "FirstBootBootstrapService",
     "FirstBootUi",
+    "PagePump",
     "Preflight",
     "RuntimeStarter",
+    "SharedState",
+    "ShellResources",
     "TrayController",
+    "UiLocale",
     "UpdateCoordinator",
     "UpdateSetup",
     "UpdateStackAdapter",
@@ -178,6 +226,16 @@ def _root_files(src: Path) -> list[Path]:
     return sorted(p for p in src.rglob("*.cs")
                   if "obj" not in p.parts and "bin" not in p.parts
                   and (p.name == "Program.cs" or p.name.startswith("DesktopAdapter")))
+
+
+def _assembly_files(src: Path) -> list[Path]:
+    """C1/C2 scope: the root set plus the declared assembly-surface files."""
+    files = list(_root_files(src))
+    for rel in ASSEMBLY_SURFACE_EXTRA:
+        path = src / rel
+        if path.is_file():
+            files.append(path)
+    return sorted(files)
 
 
 def _owned_types(owned_srcs: list[Path]) -> set[str]:
@@ -332,22 +390,35 @@ def _violations(src: Path, owned_srcs: list[Path],
         return ([f"  compose-root set is empty under {src} (Program.cs / DesktopAdapter*.cs)"], 0)
 
     out: list[str] = []
-    dot_partials = [p.name for p in files if p.name != "Program.cs" and "." in p.stem]
+    assembly = _assembly_files(src)
+    dot_partials = [p.name for p in assembly if p.name != "Program.cs" and "." in p.stem]
     if len(dot_partials) > max_dot_partials:
         out.append(
             f"  C1 {len(dot_partials)} dot partials > {max_dot_partials}: {', '.join(dot_partials)}"
             " (orchestration belongs in Bootstrap/StartupSequence or a domain service)")
+
+    bootstrap = src / "Bootstrap"
+    if bootstrap.is_dir():
+        declared = set(BOOTSTRAP_DOMAIN_FILES) | {Path(rel).name for rel in ASSEMBLY_SURFACE_EXTRA}
+        for path in sorted(bootstrap.glob("*.cs")):
+            if path.name not in declared:
+                out.append(
+                    f"  C8 Bootstrap/{path.name}: new file is neither domain nor assembly surface"
+                    " (declare it in BOOTSTRAP_DOMAIN_FILES or ASSEMBLY_SURFACE_EXTRA —"
+                    " moving assembly here must not escape the gates)")
 
     owned = _owned_types(owned_srcs)
     out.extend(_sequencer_violations(src, owned))
     out.extend(_prebuild_violations(src, owned))
     new_count = 0
     bridges = 0
-    for path in files:
+    # C1/C2 覆盖装配面（根集 + 声明的装配文件）；C3/C4/C5 只覆盖根集（重量与自造面）。
+    for path in assembly:
+        is_root = path in files
         raws = path.read_text(encoding="utf-8").splitlines()
         for code in CSharpLineScanner(raws).iter_cleaned():
             for constructed in _constructed_names(code):
-                if constructed in owned:
+                if is_root and constructed in owned:
                     new_count += 1
                     if constructed not in ROOT_CONSTRUCTIBLE:
                         out.append(
@@ -357,17 +428,17 @@ def _violations(src: Path, owned_srcs: list[Path],
             if _TARGET_NEW_RE.search(code):
                 owner = TARGET_OWNER_RE.search(code)
                 attributed = owner.group(1).split(".")[-1] if owner else None
-                if attributed and attributed in owned:
+                if is_root and attributed and attributed in owned:
                     new_count += 1
                     if attributed not in ROOT_CONSTRUCTIBLE:
                         out.append(
                             f"  C5 {path.name}: root constructs unlisted type `{attributed}`"
                             " (target-typed `new()`; resolve via DI or update ROOT_CONSTRUCTIBLE deliberately)")
-                elif owner is None:
+                elif is_root and owner is None:
                     out.append(
                         f"  C3 {path.name}: unattributable target-typed `new()` "
                         "(attribute the declared type or write it explicitly)")
-            if _GETAWAITER_RE.search(code):
+            if is_root and _GETAWAITER_RE.search(code):
                 bridges += len(_GETAWAITER_RE.findall(code))
             matched = None
             for pattern in (_COMPOSE_METHOD_RE, _COMPOSE_CTOR_RE, _COMPOSE_PROPERTY_RE):
@@ -375,11 +446,12 @@ def _violations(src: Path, owned_srcs: list[Path],
                 if m:
                     matched = m.group(1)
                     break
-            if matched and matched not in ALLOWED_METHODS:
+            allowed = ALLOWED_METHODS.get(path.relative_to(src).as_posix(), set())
+            if matched and matched not in allowed:
                 out.append(
-                    f"  C2 {path.name}: root member `{matched}` is not in the assembly inventory"
-                    " (move to Bootstrap/StartupSequence or a domain service; "
-                    "assembly-level additions update ALLOWED_METHODS deliberately)")
+                    f"  C2 {path.name}: assembly member `{matched}` is not in this file's inventory"
+                    " (move it to a domain service; assembly additions update ALLOWED_METHODS"
+                    " for that file deliberately)")
 
     if new_count > max_new:
         out.append(f"  C3 root `new` of self-owned types {new_count} > {max_new}")

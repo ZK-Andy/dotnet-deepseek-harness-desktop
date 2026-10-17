@@ -5,51 +5,59 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
 /// 页面注入辅助（ADR 组合根只装配）：把 JS 注入类操作（横幅/引导进度/自更新状态）
-/// 从组合根抽出为静态单点。均以 <see cref="CurrentWindowAccessor"/>（或就绪前会抛的
-/// <see cref="IRynWebView"/> 惰性解析）为参数（未就绪的重试/丢弃语义在方法内），不依赖组合根实例状态。
+/// 从组合根抽出为单点。均以 <see cref="CurrentWindowAccessor"/>（或就绪前会抛的
+/// <see cref="IRynWebView"/> 惰性解析）为参数（未就绪的重试/丢弃语义在方法内）。
+/// 重试预算来自构造注入的配置（ADR 组合根寿命与配置单一来源 D4：预算由构造注入，不自行解析 appsettings）。
 /// </summary>
-internal static class PagePump
+internal sealed class PagePump
 {
-    /// <summary>页面注入超时家（单例装载，见 <c>RuntimeTimeouts</c>）。</summary>
-    private static readonly RuntimeTimeouts s_timeouts =
-        RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
+    private readonly RuntimeTimeouts _timeouts;
 
     /// <summary>横幅重试节拍（秒键的 TimeSpan 形态单点，免各调用点各转一次）。</summary>
-    private static readonly TimeSpan s_bannerRetryDelay = TimeSpan.FromSeconds(s_timeouts.BannerRetryDelaySeconds);
+    private readonly TimeSpan _bannerRetryDelay;
 
     /// <summary>注入/注册/推送的重试节拍（毫秒键的 TimeSpan 形态单点）。</summary>
-    private static readonly TimeSpan s_pushRetryDelay = TimeSpan.FromMilliseconds(s_timeouts.PushRetryDelayMilliseconds);
+    private readonly TimeSpan _pushRetryDelay;
+
+    /// <summary>创建页面注入单点。</summary>
+    /// <param name="timeouts">运行时超时/重试配置（容器之前创建的唯一实例）。</param>
+    public PagePump(RuntimeTimeouts timeouts)
+    {
+        _timeouts = timeouts;
+        _bannerRetryDelay = TimeSpan.FromSeconds(timeouts.BannerRetryDelaySeconds);
+        _pushRetryDelay = TimeSpan.FromMilliseconds(timeouts.PushRetryDelayMilliseconds);
+    }
 
     /// <summary>窗口就绪后注入横幅：Current 未就绪按节拍重试至次数用尽；其余异常记日志放弃——
     /// 横幅是增强告知，绝不拖垮启动链路。</summary>
-    internal static async Task ShowBannerWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
+    internal async Task ShowBannerWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
     {
         RetryOutcome outcome = await RetryWhenReadyAsync(
             _ => EvaluateAsync(accessor, script),
             ex => HostLog.Write($"[host] banner 注入失败：{ex.Message}"),
-            s_timeouts.BannerMaxAttempts,
-            s_bannerRetryDelay,
+            _timeouts.BannerMaxAttempts,
+            _bannerRetryDelay,
             ct).ConfigureAwait(false);
         if (outcome == RetryOutcome.Exhausted)
         {
-            HostLog.Write($"[host] banner 注入重试耗尽（{s_timeouts.BannerMaxAttempts} 次后窗口仍未就绪）");
+            HostLog.Write($"[host] banner 注入重试耗尽（{_timeouts.BannerMaxAttempts} 次后窗口仍未就绪）");
         }
     }
 
     /// <summary>窗口就绪后注入自绘顶栏（ADR frameless-uniform-caption-bar）：重试语义与横幅同源
     /// （未就绪按节拍重试至次数用尽，其余异常记日志放弃——顶栏属增强面，绝不拖垮启动/导航链路；
     /// 失败退路是托盘菜单的唤回/最大化/退出命令）。脚本幂等，导航后重注入无副作用。</summary>
-    internal static async Task InjectCaptionBarWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
+    internal async Task InjectCaptionBarWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
     {
         RetryOutcome outcome = await RetryWhenReadyAsync(
             _ => EvaluateAsync(accessor, script),
             ex => HostLog.Write($"[host] caption-bar 注入失败：{ex.Message}"),
-            s_timeouts.PushMaxAttempts,
-            s_pushRetryDelay,
+            _timeouts.PushMaxAttempts,
+            _pushRetryDelay,
             ct).ConfigureAwait(false);
         if (outcome == RetryOutcome.Exhausted)
         {
-            HostLog.Write($"[host] caption-bar 注入重试耗尽（{s_timeouts.PushMaxAttempts} 次后窗口仍未就绪）");
+            HostLog.Write($"[host] caption-bar 注入重试耗尽（{_timeouts.PushMaxAttempts} 次后窗口仍未就绪）");
         }
     }
 
@@ -61,11 +69,11 @@ internal static class PagePump
     /// （<see cref="RuntimeTimeouts.CaptionBarRegisterSeconds"/> 经 <see cref="AttemptsForBudget"/> 折算；
     /// mac x64/Rosetta 的 webview 创建晚于按次数计的 6s 预算，发版腿实证），其余异常留痕放弃——
     /// 顶栏属增强面，绝不拖垮启动链路。</summary>
-    internal static Task RegisterCaptionBarScriptWhenReadyAsync(Func<IRynWebView> webView, string script, CancellationToken ct) =>
+    internal Task RegisterCaptionBarScriptWhenReadyAsync(Func<IRynWebView> webView, string script, CancellationToken ct) =>
         RegisterCaptionBarScriptWhenReadyAsync(
             webView, script,
-            AttemptsForBudget(TimeSpan.FromSeconds(s_timeouts.CaptionBarRegisterSeconds), s_pushRetryDelay),
-            s_pushRetryDelay,
+            AttemptsForBudget(TimeSpan.FromSeconds(_timeouts.CaptionBarRegisterSeconds), _pushRetryDelay),
+            _pushRetryDelay,
             ct);
 
     /// <summary>同上，次数预算可注入（单测覆盖「次数用尽」出口；生产走 <see cref="AttemptsForBudget"/> 折算）。</summary>
@@ -111,7 +119,7 @@ internal static class PagePump
     }
 
     /// <summary>推一条引导进度到 wwwroot 引导页；未就绪按节拍重试至次数用尽，耗尽记日志放弃。</summary>
-    internal static async Task PushBootstrapStateAsync(CurrentWindowAccessor accessor, string step, string message, bool failed)
+    internal async Task PushBootstrapStateAsync(CurrentWindowAccessor accessor, string step, string message, bool failed)
     {
         // detail 必须是帧对象本身的 JSON（页面直接读 detail.step 等，无 JSON.parse）——
         // 与 PushUpdateState 的 state.ToJson() 同款形态，禁止二次包字符串
@@ -124,8 +132,8 @@ internal static class PagePump
         RetryOutcome outcome = await RetryWhenReadyAsync(
             _ => EvaluateAsync(accessor, script),
             ex => HostLog.Write($"[bootstrap] 进度推送失败（放弃）：{ex.Message}"),
-            s_timeouts.PushMaxAttempts,
-            s_pushRetryDelay,
+            _timeouts.PushMaxAttempts,
+            _pushRetryDelay,
             CancellationToken.None).ConfigureAwait(false);
         if (outcome == RetryOutcome.Exhausted)
         {

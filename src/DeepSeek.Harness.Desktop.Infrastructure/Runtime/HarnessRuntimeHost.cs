@@ -14,6 +14,7 @@ public sealed partial class HarnessRuntimeHost : IDisposable, IRuntimeHost
     private const int StderrTailCapacity = 40;
 
     private readonly Action<string>? _log;
+    private readonly RuntimeTimeouts _timeouts;
     private int? _port;
     private Process? _process;
 
@@ -25,9 +26,11 @@ public sealed partial class HarnessRuntimeHost : IDisposable, IRuntimeHost
 
     /// <summary>创建运行时宿主（恒以 PATH 上的全局 dsh 形态运行）。</summary>
     /// <param name="log">日志回调（可选）：端口漂移等运行时决策留痕 host.log（缺省 null 安全）。</param>
-    public HarnessRuntimeHost(Action<string>? log = null)
+    /// <param name="timeouts">运行时超时/重试配置（装配期唯一创建点注入；测试可省略走配置默认值）。</param>
+    public HarnessRuntimeHost(Action<string>? log = null, RuntimeTimeouts? timeouts = null)
     {
         _log = log;
+        _timeouts = timeouts ?? new RuntimeTimeouts();
     }
 
     /// <summary>本次采用的运行时描述（日志/恢复屏用）。</summary>
@@ -241,7 +244,7 @@ public sealed partial class HarnessRuntimeHost : IDisposable, IRuntimeHost
     /// （监督器已被 cancel，不会再有新的 spawn 与它竞争）。</summary>
     public void Stop()
     {
-        if (!_lifecycleGate.Wait(TimeSpan.FromSeconds(s_timeouts.LifecycleGateWaitSeconds)))
+        if (!_lifecycleGate.Wait(TimeSpan.FromSeconds(_timeouts.LifecycleGateWaitSeconds)))
         {
             _log?.Invoke("[host] Stop：生命周期门被占用（spawn 进行中？）跳过本次回收，残留交冷启动孤儿清扫兜底");
             return;

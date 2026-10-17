@@ -13,13 +13,16 @@ namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 /// </summary>
 public class PagePumpTests
 {
+    /// <summary>被测单点（默认超时配置；实例形态由 ADR 组合根寿命与配置单一来源 D4 引入）。</summary>
+    private static readonly PagePump s_pump = new(new RuntimeTimeouts());
+
     /// <summary>webview 就绪后一次注册成功：不重试、送进去的就是给的脚本。</summary>
     [Fact]
     public async Task RegisterCaptionBarScriptWhenReadyAsync_RegistersOnceWhenReady()
     {
         var view = new FakeWebView();
 
-        await PagePump.RegisterCaptionBarScriptWhenReadyAsync(() => view, "SCRIPT", CancellationToken.None);
+        await s_pump.RegisterCaptionBarScriptWhenReadyAsync(() => view, "SCRIPT", CancellationToken.None);
 
         Assert.Equal(1, view.InjectCalls);
         Assert.Equal("SCRIPT", view.LastScript);
@@ -33,7 +36,7 @@ public class PagePumpTests
         var view = new FakeWebView();
         view.Enqueue(new InvalidOperationException("webview not ready"));
 
-        await PagePump.RegisterCaptionBarScriptWhenReadyAsync(() => view, "SCRIPT", CancellationToken.None);
+        await s_pump.RegisterCaptionBarScriptWhenReadyAsync(() => view, "SCRIPT", CancellationToken.None);
 
         Assert.Equal(2, view.InjectCalls);
     }
@@ -47,7 +50,7 @@ public class PagePumpTests
         var view = new FakeWebView();
         view.Enqueue(new ObjectDisposedException("webview"));
 
-        await PagePump.RegisterCaptionBarScriptWhenReadyAsync(() => view, "SCRIPT", CancellationToken.None);
+        await s_pump.RegisterCaptionBarScriptWhenReadyAsync(() => view, "SCRIPT", CancellationToken.None);
 
         Assert.Equal(1, view.InjectCalls);
     }
@@ -60,7 +63,7 @@ public class PagePumpTests
         view.Enqueue(new InvalidOperationException("not ready"));
         view.Enqueue(new HttpRequestException("boom"));
 
-        await PagePump.RegisterCaptionBarScriptWhenReadyAsync(() => view, "SCRIPT", CancellationToken.None);
+        await s_pump.RegisterCaptionBarScriptWhenReadyAsync(() => view, "SCRIPT", CancellationToken.None);
 
         Assert.Equal(2, view.InjectCalls);
     }
@@ -73,7 +76,7 @@ public class PagePumpTests
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
-        await PagePump.RegisterCaptionBarScriptWhenReadyAsync(() => view, "SCRIPT", cts.Token);
+        await s_pump.RegisterCaptionBarScriptWhenReadyAsync(() => view, "SCRIPT", cts.Token);
 
         Assert.Equal(0, view.InjectCalls);
     }

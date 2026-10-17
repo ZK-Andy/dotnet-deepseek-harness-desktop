@@ -9,24 +9,19 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 internal static class RunServicesRegistration
 {
     /// <summary>装配期共享态（单例，2b 根字段归零）：一次性配置（超时/标题栏参数）与跨阶段共享单例
-    /// （语言单点/壳转发器）。实例由组合根 <c>Run</c> 方法局部创建（前 Build 消费同一实例），此处只登记
-    /// 实例供编排期经容器解析——单实例唯一，每加一个功能不再加一个根字段。</summary>
+    /// （语言单点/壳转发器）。实例由 <c>PreBuildRegistration.CreateSharedState</c> 在容器之前一次造好
+    /// （前 Build 消费同一实例，ADR 组合根寿命与配置单一来源 D1），此处只登记实例供编排期经容器解析
+    /// ——单实例唯一，每加一个功能不再加一个根字段。</summary>
     /// <param name="services">服务集合。</param>
-    /// <param name="timeouts">运行时超时家（与 A 类启动配置同点解析一次）。</param>
-    /// <param name="captionBar">自绘标题栏参数家（ADR frameless-uniform-caption-bar）。</param>
-    /// <param name="uiLocale">宿主 UI 语言单点（ADR host-ui-locale）。</param>
-    /// <param name="shellForward">壳转发器（铸币态唯一家）。</param>
+    /// <param name="shared">装配期共享态（容器之前创建的唯一实例）。</param>
     public static IServiceCollection AddBootstrapSharedState(
-        this IServiceCollection services,
-        RuntimeTimeouts timeouts,
-        CaptionBarOptions captionBar,
-        UiLocale uiLocale,
-        DshShellForward shellForward)
+        this IServiceCollection services, SharedState shared)
     {
-        services.AddSingleton(timeouts);
-        services.AddSingleton(captionBar);
-        services.AddSingleton(uiLocale);
-        services.AddSingleton(shellForward);
+        services.AddSingleton(shared.Timeouts);
+        services.AddSingleton(shared.CaptionBar);
+        services.AddSingleton(shared.UiLocale);
+        services.AddSingleton(shared.ShellForward);
+        services.AddSingleton(shared.Pump);
         return services;
     }
 
@@ -48,14 +43,17 @@ internal static class RunServicesRegistration
     /// <summary>宿主装配产出（单例）：运行时宿主 + 崩溃取证 marker。原编排 <c>SetupHostAndMarker</c>
     /// 语义——遗留 marker 即判上轮非受控退出；正常退出路径在退出管道清除。释放由组合根拥有
     /// （单例寿命 = 本次 Run，见 <c>DesktopAdapter.Run</c> finally）。</summary>
-    public static IServiceCollection AddRunHost(this IServiceCollection services)
+    /// <param name="resources">进程级资源唯一释放者（ADR 组合根寿命与配置单一来源 D2）：宿主创建时登记，
+    /// 寿命归它，根的 finally 只释放一次。</param>
+    public static IServiceCollection AddRunHost(this IServiceCollection services, ShellResources resources)
     {
         // HostSetup 是 readonly record struct（值流阶段产出，见 StartupStages.cs），无 class 约束的
         // 泛型单例重载收不了——用 Type 重载注册，解析面同样经 GetRequiredService<HostSetup>。
-        services.AddSingleton(typeof(HostSetup), _ =>
+        services.AddSingleton(typeof(HostSetup), sp =>
         {
             // 全局 dsh 模型：宿主恒以 PATH dsh（bundled=null）形态运行（ADR simple-shell-single-global-dsh）。
-            var host = new HarnessRuntimeHost(HostLog.Write);
+            var host = new HarnessRuntimeHost(HostLog.Write, sp.GetRequiredService<RuntimeTimeouts>());
+            resources.Track(host);
 
             // 崩溃取证 marker（ADR shell-observability-diagnostics）：遗留即判定上轮非受控退出，
             // 正常退出路径在退出管道清除；脏退播报由首次解析点负责（工厂只做构造，见调用方）。

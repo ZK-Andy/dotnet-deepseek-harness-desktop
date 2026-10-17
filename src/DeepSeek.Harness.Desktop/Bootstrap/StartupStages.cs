@@ -31,3 +31,17 @@ internal readonly record struct AppSetup(RynApplication App, CurrentWindowAccess
 /// ——编排尾部释放锁地址（非 orderly 退出路径；有序路径由退出管道释放，幂等守卫保证重复安全）。</summary>
 /// <param name="Listener">单实例监听器；null = 未启用（已有主实例/平台不支持/降级）。</param>
 internal readonly record struct InstanceListenerSetup(PrimaryListener? Listener);
+
+/// <summary>装配期共享态（ADR 组合根寿命与配置单一来源 D1）：容器之前一次造好的配置与注入单点，前 Build
+/// 消费与编排期容器解析拿到同一实例；<see cref="Timeouts"/> 同时是配置模型的唯一创建点（D4）。</summary>
+/// <param name="Timeouts">运行时超时/重试配置（唯一 <c>Load</c> 点）。</param>
+/// <param name="CaptionBar">自绘标题栏参数家。</param>
+/// <param name="UiLocale">宿主 UI 语言单点。</param>
+/// <param name="ShellForward">壳转发器（铸币态唯一家）。</param>
+/// <param name="Pump">页面注入单点（重试预算取自 <paramref name="Timeouts"/>；装配期与编排期共用同一实例）。</param>
+internal sealed record SharedState(
+    RuntimeTimeouts Timeouts,
+    CaptionBarOptions CaptionBar,
+    UiLocale UiLocale,
+    DshShellForward ShellForward,
+    PagePump Pump);

@@ -20,12 +20,6 @@ public static class RuntimeVersionGate
     /// </summary>
     public const string MinimumVersion = "0.1.2-alpha.2";
 
-    /// <summary>版本探测时限：<c>dsh --version</c> 是毫秒级调用，超时按未知处理而非阻塞启动
-    /// （可调参数，见 <see cref="RuntimeTimeouts"/>；<see cref="MinimumVersion"/> 才是协议底线，保持固定）。</summary>
-    public static TimeSpan ProbeTimeout => TimeSpan.FromSeconds(s_timeouts.VersionProbeTimeoutSeconds);
-
-    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
-
     private static readonly Regex s_versionToken = new(
         @"v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -80,13 +74,17 @@ public static class RuntimeVersionGate
     /// <summary>
     /// 只读探测 PATH 上全局 dsh 的版本（<c>dsh --version</c>；全局 dsh 模型下无捆绑形态）。
     /// </summary>
+    /// <param name="probeTimeout">探测时限：<c>dsh --version</c> 是毫秒级调用，超时按未知处理而非阻塞启动
+    /// （可调参数由调用方按 <see cref="RuntimeTimeouts.VersionProbeTimeoutSeconds"/> 传入；
+    /// <see cref="MinimumVersion"/> 才是协议底线，保持固定）。</param>
+    /// <param name="ct">取消令牌。</param>
     /// <returns>探测到的版本串；超时、进程失败或输出不可解析返回 null（未知 ≠ 不合格，不提示横幅）。</returns>
-    public static async Task<string?> ProbeAsync(CancellationToken ct)
+    public static async Task<string?> ProbeAsync(TimeSpan probeTimeout, CancellationToken ct)
     {
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(ProbeTimeout);
+            cts.CancelAfter(probeTimeout);
             ProcessStartInfo psi = BuildProbePsi();
 
             using Process p = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 dsh --version 进程");

@@ -69,9 +69,11 @@ internal static class PluginProcessRunner
     /// 等待、using dispose 只关句柄不杀进程，取消/异常路径必须击杀，否则探针 dsh 成带血统 token 的孤儿
     /// （残留虽可被下次启动收割，但当次会占端口）。</summary>
     /// <param name="psi">探针启动信息（<see cref="PluginInstallProbe.BuildProbePsi"/> 产物）。</param>
+    /// <param name="probeTimeout">等待 <c>dsh web:</c> URL 的时限（与主 spawn 同宽，由调用方从配置模型投影传入）。</param>
     /// <param name="ct">取消令牌；取消以 OCE 上抛（探针随调用链路收口），仅超时按失败返回 null。</param>
     /// <returns>探针给出的 <c>dsh web:</c> URL；超时或早退返回 null。</returns>
-    internal static async Task<Uri?> RunProbeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+    internal static async Task<Uri?> RunProbeAsync(
+        System.Diagnostics.ProcessStartInfo psi, TimeSpan probeTimeout, CancellationToken ct)
     {
         using System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException("无法启动探针 dsh 进程");
@@ -92,11 +94,11 @@ internal static class PluginProcessRunner
         p.BeginErrorReadLine();
         try
         {
-            return await urlSignal.Task.WaitAsync(PluginInstallProbe.ProbeTimeout, ct).ConfigureAwait(false);
+            return await urlSignal.Task.WaitAsync(probeTimeout, ct).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
-            HostLog.Write($"[host] 插件体检探针超时（{PluginInstallProbe.ProbeTimeout.TotalSeconds:s}s 未出 URL），回收探针进程");
+            HostLog.Write($"[host] 插件体检探针超时（{probeTimeout.TotalSeconds:s}s 未出 URL），回收探针进程");
             return null;
         }
         finally

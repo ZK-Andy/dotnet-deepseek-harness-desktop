@@ -25,71 +25,53 @@ public sealed partial class DesktopAdapter
         // renderer 进程继承本进程 env；判定在 Core 纯策略，此处仅触发。
         WebkitSandboxFallback.Apply();
 
-        // 装配期共享态一次创建（见 ResolveSharedState）：前 Build 消费走局部，编排期经容器单例（同一实例）。
-        (RuntimeTimeouts timeouts, CaptionBarOptions captionBar, UiLocale uiLocale, DshShellForward shellForward) = ResolveSharedState();
+        // 装配期共享态与进程级资源各一次创建：前者是值（容器登记同一实例），后者是唯一释放者。
+        SharedState shared = PreBuildRegistration.CreateSharedState();
+        ShellResources resources = PreBuildRegistration.CreateShellResources();
 
-        // 监督器取消令牌源（寿命 = 本次 Run；释放随本方法作用域，见末尾 using 语义）。
-        using var supervisorCts = new CancellationTokenSource();
-        // Build 后才就绪的值（窗口/Ryn 应用）：注册闭包只捕获提供者，调用点均晚于赋值。
-        RynApplication? builtApp = null;
-        CurrentWindowAccessor? builtAccessor = null;
-
-        Preflight preflight = PreBuildRegistration.CreatePreflight(() => builtApp!.Services.GetRequiredService<HostSetup>().Host, () => builtAccessor!, () => uiLocale.IsEnglish);
-        if (!AcquireSingleInstance(preflight, () => builtApp, timeouts, out PrimaryListener? instanceListener))
-        {
-            return 0;
-        }
-
-        // 回环代理源（ADR loopback-forward-proxy）：单实例仲裁后、Build 前启动；绑定失败 loud 后降级 wwwroot，不挡启动。
-        DshLoopbackProxy.ProxySetup proxy = StartProxy(shellForward);
-        HostSetup? hostSetup = null;
         try
         {
+            // 监督器取消令牌源（寿命 = 本次 Run；释放归 ShellResources，不另起 using 作用域）。
+            var supervisorCts = new CancellationTokenSource();
+            resources.Attach(supervisorCts);
+            // Build 后才就绪的值（窗口/Ryn 应用）：注册闭包只捕获提供者，调用点均晚于赋值。
+            RynApplication? builtApp = null;
+            CurrentWindowAccessor? builtAccessor = null;
+
+            Preflight preflight = PreBuildRegistration.CreatePreflight(() => builtApp!.Services.GetRequiredService<HostSetup>().Host, () => builtAccessor!, () => shared.UiLocale.IsEnglish, shared);
+            if (!AcquireSingleInstance(preflight, () => builtApp, shared.Timeouts, out PrimaryListener? instanceListener))
+            {
+                return 0;
+            }
+
+            resources.Attach(instanceListener);
+
+            // 回环代理源（ADR loopback-forward-proxy）：单实例仲裁后、Build 前启动；绑定失败 loud 后降级 wwwroot，不挡启动。
+            DshLoopbackProxy.ProxySetup proxy = StartProxy(shared.ShellForward);
+            resources.Attach(proxy);
+
             (UpdateSetup update, TrayController tray) = PreBuildRegistration.CreateUpdateAndTrayAssembly(
                 preflight,
                 supervisorCts,
                 () => builtApp!.Services.GetRequiredService<IRynWindow>(),
                 () => builtAccessor,
                 () => builtApp!.Services.GetRequiredService<ExitPipeline>(),
-                uiLocale);
-            AppSetup app = BuildApp(preflight, proxy.Proxy, update, tray, supervisorCts, instanceListener, uiLocale, captionBar, timeouts, shellForward);
+                shared);
+            AppSetup app = BuildApp(preflight, proxy.Proxy, update, tray, supervisorCts, instanceListener, shared, resources);
             builtApp = app.App;
             builtAccessor = app.WindowAccessor;
-            // 宿主 + 崩溃标记（容器惰性单例，见 RunServicesRegistration.AddRunHost）：首次解析即创建；
-            // 脏退播报在此（首次解析点之后；工厂只做构造，见 R2S3）。
-            hostSetup = builtApp.Services.GetRequiredService<HostSetup>();
-            if (hostSetup.Value.Marker.PreviousRunUnclean)
-            {
-                HostLog.Write("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
-            }
             // 编排触发（容器组装对象图，ADR 组合根机制收官终局的 B3）：唯一显式供给项是 Build 后应用产出
-            //（Ryn 不登记 RynApplication，hostSetup 必已赋值）；两相入口的唯一桥在此（C4，ADR entry-bridge-two-phase）。
+            //（Ryn 不登记 RynApplication）；两相入口的唯一桥在此（C4，ADR entry-bridge-two-phase）。
             Bootstrap.StartupSequence sequence = ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>(builtApp.Services, app);
             sequence.RunStartupAsync().GetAwaiter().GetResult();
             return sequence.RunMainLoop();
         }
         finally
         {
-            // 代理资源的释放（cancel → dispose cts → dispose proxy）随结果对象收口；
-            // 宿主释放随编排产出收口（原编排 Run finally 语义上移至此）。
-            hostSetup?.Host.Dispose();
-            proxy.Dispose();
+            // 进程级资源按序释放（host → proxy → cts → listener）；有序退出已由退出管道释放的部分幂等兜底。
+            resources.Dispose();
         }
     }
-
-    /// <summary>装配期共享态一次创建（2b 根字段归零：替代四个根字段）：运行时超时家（与 A 类启动配置同点解析
-    /// 一次，见 <c>RuntimeTimeouts</c>）+ 自绘标题栏参数家（ADR frameless-uniform-caption-bar）+ 宿主 UI 语言
-    /// 单点（ADR host-ui-locale：上次上报值经 profile 目录持久化，dsh 起来前也能取到）+ 壳转发器（构造即备好
-    /// HttpClient，无 I/O）。纯创建无时序依赖；长命共享态同时进容器单例（见 AddBootstrapSharedState）。
-    /// 留在组合根是刻意的（ADR sequencer-resolution-injection）：这三笔构造属「容器之前头部」的一步，且壳转发器
-    /// 在 Build 前即被代理启动消费；其余装配期构造（引导装配、更新/托盘装配、运行时起步用例）归注册层。</summary>
-    private static (RuntimeTimeouts Timeouts, CaptionBarOptions CaptionBar, UiLocale UiLocale, DshShellForward ShellForward) ResolveSharedState() =>
-    (
-        RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write),
-        CaptionBarOptions.Load(AppContext.BaseDirectory, HostLog.Write),
-        new UiLocale(new DesktopUiLocaleStore(HostLog.Write)),
-        new DshShellForward()
-    );
 
     /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：false = 已有主实例，调用方直接返回 0。
     /// 锁地址解析（XDG 回退/uid 隔离/dev 分域等平台策略）住 Infrastructure
@@ -117,6 +99,8 @@ public sealed partial class DesktopAdapter
 
                         await app.Services.GetRequiredService<TrayController>().ActivateFromLauncherAsync();
                     },
+                    TimeSpan.FromSeconds(timeouts.IpcAcceptRetryDelaySeconds),
+                    TimeSpan.FromSeconds(timeouts.IpcServeTimeoutSeconds),
                     HostLog.Write,
                     out instanceListener))
             {

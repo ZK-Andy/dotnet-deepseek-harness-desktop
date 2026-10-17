@@ -7,29 +7,57 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 /// 关窗闸门/自更新栈/托盘控制器、运行时起步用例都是「容器之前的运行期产物」——它们必须在 Build 前就位
 /// （引导服务要宿主/窗口提供者），装不进解图；但把构造写在组合根里会让 C3 的「根 new 自有类型」读数长期顶格。
 /// 此处按注册层的构造纪律收拢（<c>verify-compose-root</c> 的 C5 文案即「resolve via DI or register the
-/// construction in *Registration.cs」），组合根只调用并登记实例。装配期共享态是例外，它留在组合根
-/// （容器之前头部的一步、壳转发器在 Build 前即被消费，见 <c>DesktopAdapter.ResolveSharedState</c>）。
+/// construction in *Registration.cs」），组合根只调用并登记实例。装配期共享态同样在此一次造好
+/// （见 <see cref="CreateSharedState"/>：壳转发器在 Build 前即被消费，故必须早于容器存在，
+/// ADR 组合根寿命与配置单一来源 D1）。
 /// 语句与搬迁前逐句等价：调用位、次序与既有 I/O 语义都不变（`bootstrap.Resolve()` 读配置/PATH 并同步跑
 /// dsh 版本探测、`CloseBehaviorPreference` 读偏好文件、`updates.Load()` 装载状态），搬的只是文件归属。
 /// </summary>
 internal static class PreBuildRegistration
 {
+    /// <summary>进程级资源的唯一释放者（ADR 组合根寿命与配置单一来源 D2）：只造壳，资源由头部逐项登记，
+    /// 根在 finally 释放一次。</summary>
+    /// <returns>资源拥有者。</returns>
+    public static ShellResources CreateShellResources()
+    {
+        ShellResources resources = new();
+        return resources;
+    }
+
+    /// <summary>装配期共享态一次创建（ADR 组合根寿命与配置单一来源 D1）：超时家/标题栏参数两个配置模型与
+    /// 语言单点、壳转发器在这里造好，前 Build 消费与编排期容器解析拿到同一实例。超时家是配置的唯一
+    /// <c>Load</c> 点（D4）：其余消费方按值接收，不各自解析。</summary>
+    /// <returns>共享态（值）；容器登记由 <c>AddBootstrapSharedState</c> 承担。</returns>
+    public static SharedState CreateSharedState()
+    {
+        var timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
+        return new SharedState(
+            timeouts,
+            CaptionBarOptions.Load(AppContext.BaseDirectory, HostLog.Write),
+            new UiLocale(new DesktopUiLocaleStore(HostLog.Write)),
+            new DshShellForward(),
+            new PagePump(timeouts));
+    }
+
     /// <summary>首启引导服务与启动期 A 类配置（原组合根 <c>ResolveRuntimeAndDev</c>）：全局 node/dsh 引导、
     /// 插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主/窗口以提供者延迟供给
     /// （调用点均晚于 Build 赋值），UI 语言同样惰性（引导任务实际启动时求值）。</summary>
     /// <param name="hostProvider">宿主提供者（Build 后可用）。</param>
     /// <param name="accessorProvider">窗口访问器提供者（Build 后可用）。</param>
     /// <param name="isEnglishProvider">UI 语言提供者（惰性求值）。</param>
+    /// <param name="shared">装配期共享态（页面注入单点与超时家）。</param>
     /// <returns>启动头部产出（引导服务 + 启动配置）。</returns>
     public static Preflight CreatePreflight(
         Func<HarnessRuntimeHost> hostProvider,
         Func<CurrentWindowAccessor> accessorProvider,
-        Func<bool> isEnglishProvider)
+        Func<bool> isEnglishProvider,
+        SharedState shared)
     {
         IFirstBootBootstrap bootstrap = new FirstBootBootstrapService(
             hostProvider,
-            new FirstBootUi(accessorProvider),
+            new FirstBootUi(accessorProvider, shared.Pump),
             isEnglishProvider,
+            shared.Timeouts,
             HostLog.Write);
         bootstrap.Resolve();
         return new Preflight(bootstrap, LaunchOptions.Resolve(HostLog.Write));
@@ -43,7 +71,7 @@ internal static class PreBuildRegistration
     /// <param name="windowProvider">原生窗口提供者（惰性）。</param>
     /// <param name="accessorProvider">窗口访问器提供者（惰性；未就绪时为 null）。</param>
     /// <param name="exitProvider">退出管道提供者（惰性）。</param>
-    /// <param name="uiLocale">宿主 UI 语言单点。</param>
+    /// <param name="shared">装配期共享态（页面注入单点、语言单点与超时家）。</param>
     /// <returns>自更新栈装配产出与托盘控制器。</returns>
     public static (UpdateSetup Updates, TrayController Tray) CreateUpdateAndTrayAssembly(
         Preflight preflight,
@@ -51,7 +79,7 @@ internal static class PreBuildRegistration
         Func<IRynWindow> windowProvider,
         Func<CurrentWindowAccessor?> accessorProvider,
         Func<ExitPipeline> exitProvider,
-        UiLocale uiLocale)
+        SharedState shared)
     {
         // hide-to-tray 关窗闸门（ADR shell-tray-hide-to-tray）：托盘「退出」与自更新安装路径
         // 先批准再 Close。用户普通关窗是否转隐藏由 closeBehavior 偏好裁决（默认 true 保持
@@ -72,8 +100,8 @@ internal static class PreBuildRegistration
             updateStack,
             () => supervisorCts.Token,
             state => PagePump.PushUpdateState(accessorProvider(), state),
-            (version, token) => PagePump.ShowBannerWhenReadyAsync(
-                accessorProvider()!, UpdateBanner.ReadyScript(version, uiLocale), token),
+            (version, token) => shared.Pump.ShowBannerWhenReadyAsync(
+                accessorProvider()!, UpdateBanner.ReadyScript(version, shared.UiLocale), token),
             closeGate.ApproveExit,
             () => accessorProvider()?.Current?.Close(),
             ct => exitProvider().ScheduleExitFallback(ct),
@@ -87,7 +115,7 @@ internal static class PreBuildRegistration
             accessorProvider,
             closeGate,
             closeBehavior,
-            uiLocale,
+            shared.UiLocale,
             updates.Machine,
             HostLog.Write);
 

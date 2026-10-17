@@ -106,6 +106,8 @@ public class LauncherActivationTests
                 fired.TrySetResult();
                 return Task.CompletedTask;
             },
+            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromSeconds(2),
             null,
             out PrimaryListener? listener));
         using (listener)
@@ -121,11 +123,11 @@ public class LauncherActivationTests
     public async Task TryBindPrimary_SecondBindWhileAlive_ReturnsFalse()
     {
         string path = NewSocketPath();
-        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? first));
+        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(2), null, out PrimaryListener? first));
         using (first)
         {
             await Task.Delay(50); // 给 accept loop 起来留一拍，模拟稳态
-            Assert.False(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out _));
+            Assert.False(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(2), null, out _));
         }
     }
 
@@ -145,7 +147,7 @@ public class LauncherActivationTests
         // 崩溃残留形态：文件存在但对端不存在（探活必败）
         File.WriteAllText(path, "stale");
 
-        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? listener));
+        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(2), null, out PrimaryListener? listener));
         using (listener)
         {
             await Task.Delay(50);
@@ -160,11 +162,11 @@ public class LauncherActivationTests
     public void Listener_Dispose_UnlinksSocket_AndAllowsRebind()
     {
         string path = NewSocketPath();
-        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? listener));
+        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(2), null, out PrimaryListener? listener));
         listener!.Dispose();
 
         Assert.False(File.Exists(path)); // unlink 清理
-        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? rebound));
+        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(2), null, out PrimaryListener? rebound));
         using (rebound)
         {
             Assert.True(File.Exists(path)); // 已重建为活 socket
@@ -178,7 +180,7 @@ public class LauncherActivationTests
         // 双击托盘退出会二次进入退出编排：Dispose 必须幂等，
         // 不得以 ObjectDisposedException 在路由层炸出误导性「退出关窗失败」
         string path = NewSocketPath();
-        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? listener));
+        Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(2), null, out PrimaryListener? listener));
         listener!.Dispose();
         listener.Dispose(); // 第二次必须安全
 
@@ -223,7 +225,7 @@ public class LauncherActivationTests
         {
             // 残留清不掉 → 降级为主实例无监听照常启动（true + null listener）；
             // 绝不返回 false 让调用方误判「有存活主实例」而陪葬成零实例
-            Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, null, out PrimaryListener? listener));
+            Assert.True(LauncherActivation.TryBindPrimary(path, () => Task.CompletedTask, TimeSpan.FromMilliseconds(20), TimeSpan.FromSeconds(2), null, out PrimaryListener? listener));
             Assert.Null(listener);
         }
         finally
@@ -247,6 +249,8 @@ public class LauncherActivationTests
                 fired.TrySetResult();
                 return Task.CompletedTask;
             },
+            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromSeconds(2),
             null,
             out PrimaryListener? listener));
         using (listener)

@@ -17,9 +17,10 @@ internal static class StartupUseCaseRegistration
     /// <param name="services">服务集合。</param>
     /// <param name="bootstrap">首启引导服务（监督用例的落定握手句柄来源；告知用例的落定门控）。</param>
     /// <param name="proxy">回环代理源；null = 绑定失败（导航用例降级不导航）。</param>
+    /// <param name="pump">页面注入单点（装配期创建的唯一实例）。</param>
     /// <returns>服务集合（链式）。</returns>
     public static IServiceCollection AddStartupUseCases(
-        this IServiceCollection services, IFirstBootBootstrap bootstrap, DshLoopbackProxy? proxy)
+        this IServiceCollection services, IFirstBootBootstrap bootstrap, DshLoopbackProxy? proxy, PagePump pump)
     {
         services.AddSingleton<IMintEpoch>(
             sp => new ShellMintEpochAdapter(sp.GetRequiredService<DshShellForward>(), HostLog.Write));
@@ -58,24 +59,9 @@ internal static class StartupUseCaseRegistration
             sp.GetRequiredService<RynNavigationCallbacks>(),
             sp.GetRequiredService<CaptionBarOptions>(),
             sp.GetRequiredService<UiLocale>(),
-            sp.GetRequiredService<CancellationTokenSource>()));
-        // 启动期告知用例（ADR shared-home-desktop-profile + B3）：用例编排住 Infrastructure，展示面闭包与
-        // 脏退标志在注册处装配；宿主惰性解析，调用点晚于编排首个 HostSetup 解析，marker 语义不变。
-        services.AddSingleton(sp =>
-        {
-            HostSetup host = sp.GetRequiredService<HostSetup>();
-            CurrentWindowAccessor accessor = sp.GetRequiredService<CurrentWindowAccessor>();
-            UiLocale uiLocale = sp.GetRequiredService<UiLocale>();
-            return new StartupNoticeService(
-                bootstrap,
-                TimeSpan.FromSeconds(sp.GetRequiredService<RuntimeTimeouts>().BootstrapSettleTimeoutSeconds),
-                host.Marker.PreviousRunUnclean,
-                HostLog.Write,
-                (version, ct) => PagePump.ShowBannerWhenReadyAsync(
-                    accessor, DesktopBanner.BuildVersionFloorBanner(version, uiLocale), ct),
-                ct => PagePump.ShowBannerWhenReadyAsync(
-                    accessor, DesktopBanner.BuildUncleanExitBanner(uiLocale), ct));
-        });
+            sp.GetRequiredService<CancellationTokenSource>(),
+            pump));
+        AddStartupNotice(services, bootstrap, pump);
         AddExitOrchestration(services, bootstrap);
         // 排序器运行期解析面（ADR sequencer-resolution-injection）：两个基础设施用例为实例单例
         // （原静态入口是 R1b 静态调用面），九项运行期单例以 Lazy 携带——Value 落在原解析点，
@@ -97,6 +83,31 @@ internal static class StartupUseCaseRegistration
             new Lazy<TrayService>(() => sp.GetRequiredService<TrayService>())));
         return services;
     }
+
+    /// <summary>启动期告知用例（ADR shared-home-desktop-profile + B3）：用例编排住 Infrastructure，展示面闭包与
+    /// 脏退标志在注册处装配；宿主惰性解析，调用点晚于编排首个 HostSetup 解析，marker 语义不变。</summary>
+    /// <param name="services">服务集合。</param>
+    /// <param name="bootstrap">首启引导服务（告知的落定门控）。</param>
+    /// <param name="pump">页面注入单点（横幅推送）。</param>
+    private static void AddStartupNotice(
+        IServiceCollection services, IFirstBootBootstrap bootstrap, PagePump pump) =>
+        services.AddSingleton(sp =>
+        {
+            HostSetup host = sp.GetRequiredService<HostSetup>();
+            CurrentWindowAccessor accessor = sp.GetRequiredService<CurrentWindowAccessor>();
+            UiLocale uiLocale = sp.GetRequiredService<UiLocale>();
+            RuntimeTimeouts timeouts = sp.GetRequiredService<RuntimeTimeouts>();
+            return new StartupNoticeService(
+                bootstrap,
+                TimeSpan.FromSeconds(timeouts.BootstrapSettleTimeoutSeconds),
+                TimeSpan.FromSeconds(timeouts.VersionProbeTimeoutSeconds),
+                host.Marker.PreviousRunUnclean,
+                HostLog.Write,
+                (version, ct) => pump.ShowBannerWhenReadyAsync(
+                    accessor, DesktopBanner.BuildVersionFloorBanner(version, uiLocale), ct),
+                ct => pump.ShowBannerWhenReadyAsync(
+                    accessor, DesktopBanner.BuildUncleanExitBanner(uiLocale), ct));
+        });
 
     /// <summary>退出编排用例登记（ADR app-exit-orchestration-core-usecase；join 预算按配置模型投影）。</summary>
     /// <param name="services">服务集合。</param>

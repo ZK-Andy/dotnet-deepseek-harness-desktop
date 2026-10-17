@@ -21,14 +21,20 @@ public class CompositionRootSequenceTests
         string[] chain =
         [
             "WebkitSandboxFallback.Apply();",
+            "PreBuildRegistration.CreateSharedState();",
+            "PreBuildRegistration.CreateShellResources();",
+            "resources.Attach(supervisorCts);",
             "PreBuildRegistration.CreatePreflight(",
             "AcquireSingleInstance(preflight, () => builtApp,",
-            "StartProxy(shellForward);",
+            "resources.Attach(instanceListener);",
+            "StartProxy(shared.ShellForward);",
+            "resources.Attach(proxy);",
             "PreBuildRegistration.CreateUpdateAndTrayAssembly(",
             "BuildApp(preflight, proxy.Proxy, update, tray,",
             "ActivatorUtilities.CreateInstance<Bootstrap.StartupSequence>(builtApp.Services, app)",
             "sequence.RunStartupAsync().GetAwaiter().GetResult();",
             "return sequence.RunMainLoop();",
+            "resources.Dispose();",
         ];
 
         AssertChainOrder(source, chain);
@@ -87,7 +93,7 @@ public class CompositionRootSequenceTests
     public void BuildApp_EnablesRynWindowStatePersistence()
     {
         string source = File.ReadAllText(Path.Combine(TestRepoRoot.Find(),
-            "src/DeepSeek.Harness.Desktop/DesktopAdapter.App.cs"));
+            "src/DeepSeek.Harness.Desktop/RynOptionsProfile.cs"));
 
         Assert.Contains("opts.PersistWindowState = true;", source, StringComparison.Ordinal);
         // 注释失效同红（R2 评审建议）：源锚只防删除不防注释，补一发防注释锚

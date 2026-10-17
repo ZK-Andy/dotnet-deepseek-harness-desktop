@@ -64,7 +64,10 @@ public class PluginInstallProbeTests
             Uri? url;
             try
             {
-                url = await PluginProcessRunner.RunProbeAsync(PluginInstallProbe.BuildProbePsi(home), CancellationToken.None);
+                url = await PluginProcessRunner.RunProbeAsync(
+                    PluginInstallProbe.BuildProbePsi(home),
+                    TimeSpan.FromSeconds(60),
+                    CancellationToken.None);
             }
             catch (Win32Exception)
             {

@@ -9,6 +9,7 @@ public sealed class StartupNoticeService
 {
     private readonly IFirstBootBootstrap _bootstrap;
     private readonly TimeSpan _settleTimeout;
+    private readonly TimeSpan _versionProbeTimeout;
     private readonly bool _previousRunUnclean;
     private readonly Action<string> _log;
     private readonly Func<string, CancellationToken, Task> _showVersionFloorBanner;
@@ -21,9 +22,11 @@ public sealed class StartupNoticeService
     /// <param name="log">日志回调。</param>
     /// <param name="showVersionFloorBanner">版本低于底线的横幅推送（接收探测到的版本；展示面构建脚本）。</param>
     /// <param name="showUncleanExitBanner">非受控退出横幅推送。</param>
+    /// <param name="versionProbeTimeout">dsh 版本探测时限（配置模型投影）。</param>
     public StartupNoticeService(
         IFirstBootBootstrap bootstrap,
         TimeSpan settleTimeout,
+        TimeSpan versionProbeTimeout,
         bool previousRunUnclean,
         Action<string> log,
         Func<string, CancellationToken, Task> showVersionFloorBanner,
@@ -31,10 +34,18 @@ public sealed class StartupNoticeService
     {
         _bootstrap = bootstrap;
         _settleTimeout = settleTimeout;
+        _versionProbeTimeout = versionProbeTimeout;
         _previousRunUnclean = previousRunUnclean;
         _log = log;
         _showVersionFloorBanner = showVersionFloorBanner;
         _showUncleanExitBanner = showUncleanExitBanner;
+
+        // 脏退留痕与横幅同处一个消费点（ADR 组合根寿命与配置单一来源 D3）：marker 的读取与解释都归本用例，
+        // 组合根不再为打这一行去解析宿主。
+        if (previousRunUnclean)
+        {
+            _log("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");
+        }
     }
 
     /// <summary>执行启动期告知（后台任务体；调用方以 fire-and-forget 启动）。取消即放弃未推送的告知。</summary>
@@ -51,7 +62,7 @@ public sealed class StartupNoticeService
         }
 
         string home = HarnessRuntimeHost.ResolveDshHome();
-        string? detected = await RuntimeVersionGate.ProbeAsync(ct);
+        string? detected = await RuntimeVersionGate.ProbeAsync(_versionProbeTimeout, ct);
         if (detected is not null)
         {
             _log($"[host] dsh 版本 {detected}（底线 {RuntimeVersionGate.MinimumVersion}）");

@@ -12,15 +12,6 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// </summary>
 public static class RuntimeLineageProbes
 {
-    /// <summary>运行时超时家（单例装载，见 <see cref="RuntimeTimeouts"/>）。</summary>
-    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
-
-    /// <summary>端口探活的单次超时（TCP 连接本机回环：连不上即无人监听）。</summary>
-    private static TimeSpan s_portProbeTimeout => TimeSpan.FromMilliseconds(s_timeouts.PortProbeTimeoutMilliseconds);
-
-    /// <summary>web 面就绪探针的单次超时（HTTP 要等后端应答，比 TCP 探活留更宽余量）。</summary>
-    private static TimeSpan s_webProbeTimeout => TimeSpan.FromMilliseconds(s_timeouts.WebProbeTimeoutMilliseconds);
-
     /// <summary>web 面就绪探针的复用客户端：不跟随重定向（3xx 本身就是「已应答」判据）、环回不走代理；
     /// 超时交每次探测自己的取消令牌（<c>Timeout.InfiniteTimeSpan</c> 防两处超时打架）。</summary>
     private static readonly HttpClient s_webProbeClient = new(new SocketsHttpHandler
@@ -191,16 +182,18 @@ public static class RuntimeLineageProbes
     /// <remarks>只证「有人监听」：dsh 先 bind 端口、web 面（认证 + 前端静态）由更晚挂载的行提供，
     /// 「可导航」的就绪判定见 <see cref="ProbeLoopbackWebAsync"/>（ADR relay-web-readiness）。</remarks>
     /// <param name="port">端口。</param>
-    /// <param name="timeout">单次探测超时；传 null 用 <see cref="s_portProbeTimeout"/>。</param>
+    /// <param name="defaultTimeout">单次探测的默认超时（TCP 连接本机回环：由调用方从配置模型投影传入）。</param>
+    /// <param name="timeout">单次探测超时覆写；null 用 <paramref name="defaultTimeout"/>。</param>
     /// <param name="ct">取消令牌：调用方取消即立即返回（不额外等待完探测超时）。</param>
     /// <returns>有人监听返回 true。</returns>
-    public static async Task<bool> IsLoopbackServingAsync(int port, TimeSpan? timeout = null, CancellationToken ct = default)
+    public static async Task<bool> IsLoopbackServingAsync(
+        int port, TimeSpan defaultTimeout, TimeSpan? timeout = null, CancellationToken ct = default)
     {
         using var client = new TcpClient();
         try
         {
             await client.ConnectAsync(IPAddress.Loopback, port)
-                .WaitAsync(timeout ?? s_portProbeTimeout, ct)
+                .WaitAsync(timeout ?? defaultTimeout, ct)
                 .ConfigureAwait(false);
             return true;
         }
@@ -228,17 +221,20 @@ public static class RuntimeLineageProbes
     /// （ADR relay-web-readiness——dsh 先 bind、web-runtime 行后挂载，两者之间有一段只监听不应答的窗口）。</summary>
     /// <param name="port">端口。</param>
     /// <param name="ct">取消令牌（调用方取消即按未就绪返回，上层循环立刻回落）。</param>
-    /// <param name="timeout">可用预算上界：实际单次等待取它与 <see cref="s_webProbeTimeout"/> 的较小者，
+    /// <param name="defaultTimeout">单次探测的默认超时（web 面要等后端应答，比 TCP 探活留更宽余量；
+    /// 由调用方从配置模型投影传入）。</param>
+    /// <param name="timeout">可用预算上界：实际单次等待取它与 <paramref name="defaultTimeout"/> 的较小者，
     /// 供调用方按剩余预算收紧（每轮迭代总耗时因此有界）；传 null 即用默认值。</param>
     /// <returns>就绪三态；探测失败一律折算为「未就绪」语义，绝不因探测异常判死。</returns>
-    public static async Task<LoopbackWebProbe> ProbeLoopbackWebAsync(int port, CancellationToken ct, TimeSpan? timeout = null)
+    public static async Task<LoopbackWebProbe> ProbeLoopbackWebAsync(
+        int port, TimeSpan defaultTimeout, CancellationToken ct, TimeSpan? timeout = null)
     {
         // 整次探测（TCP 预检 + HTTP）共用一个预算：单轮迭代因此有界，不会把等待拖过调用方总预算
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        TimeSpan wait = timeout is { } budget && budget < s_webProbeTimeout ? budget : s_webProbeTimeout;
+        TimeSpan wait = timeout is { } budget && budget < defaultTimeout ? budget : defaultTimeout;
         cts.CancelAfter(wait < TimeSpan.Zero ? TimeSpan.Zero : wait);
 
-        if (!await IsLoopbackServingAsync(port, ct: cts.Token).ConfigureAwait(false))
+        if (!await IsLoopbackServingAsync(port, defaultTimeout, ct: cts.Token).ConfigureAwait(false))
         {
             return LoopbackWebProbe.NotServing;
         }

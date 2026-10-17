@@ -15,7 +15,7 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 /// <c>Core.Ui.MainUiEntry</c> + <c>Core.Bootstrap.RuntimeSupervision</c> + <c>PageBridge.CaptionBarInstaller</c>
 /// + <c>Infrastructure.Bootstrap.StartupNoticeService</c> + <c>Core.Bootstrap.AppExitOrchestration</c>）。
 /// </summary>
-internal sealed partial class StartupSequence : IStartupSequence
+internal sealed partial class StartupSequence
 {
     private readonly AppSetup _app;
     private readonly Preflight _preflight;

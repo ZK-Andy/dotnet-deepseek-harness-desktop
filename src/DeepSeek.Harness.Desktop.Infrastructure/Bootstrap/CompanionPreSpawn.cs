@@ -10,6 +10,12 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Bootstrap;
 /// </summary>
 public sealed class CompanionPreSpawn
 {
+    private readonly RuntimeTimeouts _timeouts;
+
+    /// <summary>创建随包插件安装用例。</summary>
+    /// <param name="timeouts">运行时超时/重试配置（探针时限从中投影；容器单例）。</param>
+    public CompanionPreSpawn(RuntimeTimeouts timeouts) => _timeouts = timeouts;
+
     /// <summary>安装随包插件（companion）到共享 home。调用时点契约：宿主已建、dsh spawn 之前
     /// （启动主链位置锚定该偏序，对齐参照 dsh-tauri-desk launch.rs：绝不「启动后 3s 装 → 重启」）。</summary>
     /// <param name="bootstrapNeeded">首启引导是否待执行（引导路径自含插件装配，此路径须让位防双装）。</param>
@@ -34,7 +40,8 @@ public sealed class CompanionPreSpawn
                 Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
                 HostLog.Write,
                 PluginProcessRunner.RunAsync,
-                PluginProcessRunner.RunProbeAsync,
+                (psi, ct) => PluginProcessRunner.RunProbeAsync(
+                    psi, TimeSpan.FromSeconds(_timeouts.SpawnTimeoutSeconds), ct),
                 CancellationToken.None).GetAwaiter().GetResult();
         }
         catch (Exception ex)

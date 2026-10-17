@@ -18,7 +18,7 @@
 ## 分层与组合根
 
 * 三工程：`Core`（纯逻辑，零外层引用）/ `Infrastructure`（Ryn、dsh 进程、文件/网络、更新适配器）/ 壳工程（Presentation + 组合根）。
-* **Ryn 适配接线层只装配**（ADR `2026-09-28-compose-root-form-separation` + `2026-10-08-composition-mechanism-container-assembly`；规范见 [architecture-standards.md](architecture-standards.md) R1，语义闸 `verify-compose-root.py` 的 C1–C7）：`Program.cs` 薄壳 + `DesktopAdapter.cs` 只保留容器之前的启动头部 + 唯一 dot 分部 `DesktopAdapter.App.cs` 按域注册。启动编排由容器组装对象图：`Bootstrap.StartupSequence` 是**排序器**——构造参数经容器解图、入口只按序触发用例（起步/导航/监督/顶栏注入/告知/退出编排各自成面），唯一显式供给项是 Build 后应用产出；入口桥一处（ADR `entry-bridge-two-phase`），阶段产出为正式类型（`Preflight` 等），排序器形状由 C6 断言。
+* **Ryn 适配接线层只装配**（ADR `2026-09-28-compose-root-form-separation` + `2026-10-08-composition-mechanism-container-assembly`；规范见 [architecture-standards.md](architecture-standards.md) R1，语义闸 `verify-compose-root.py`（根集管重量、装配面管方向））：`Program.cs` 薄壳 + `DesktopAdapter.cs` 只保留容器之前的启动头部 + 唯一 dot 分部 `DesktopAdapter.App.cs` 按域注册。启动编排由容器组装对象图：`Bootstrap.StartupSequence` 是**排序器**——构造参数经容器解图、入口只按序触发用例（起步/导航/监督/顶栏注入/告知/退出编排各自成面），唯一显式供给项是 Build 后应用产出；入口桥一处（ADR `entry-bridge-two-phase`），阶段产出为正式类型（`Preflight` 等），排序器形状由 C6 断言。
 * **端口在 Core，实现按触面落 Infrastructure 或壳工程**：`IRuntimeHost`（监督，ADR `2026-09-28-runtime-supervisor-core-port`）、`IReleaseFeed`/`IPackageDownloader`/`IPackageInstaller`/`IUpdateEnvironment`（自更新，ADR `2026-09-28-update-coordinator-core-port`）、`IFirstBootBootstrap` 落 Infrastructure；触 Ryn/UI 的 `IWebViewNavigator`/`IRecoverySurface`/`IMintEpoch`（导航/失败面/铸币态，ADR `2026-10-15-startup-usecases-sink-to-core`）适配器落 Presentation（理由见 [architecture-standards.md](architecture-standards.md) R3）；各用例（`RuntimeSupervisor`/`UpdateCoordinator`/`RuntimeStarter`/`MainUiEntry`/`RuntimeSupervision`）一律构造注入（端口 + 委托注入）。
 
 ## 启动模型：回环代理源

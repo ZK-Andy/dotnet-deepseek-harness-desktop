@@ -19,15 +19,6 @@ public static class LauncherActivation
     /// <summary>二启通知命令行（值即协议契约，保持固定；可见性随清账批 2 收窄）。</summary>
     internal const string ShowCommand = "show";
 
-    /// <summary>单实例 IPC 超时家（单例装载，见 <see cref="RuntimeTimeouts"/>；同文件 <c>PrimaryListener</c> 共用）。</summary>
-    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
-
-    /// <summary>accept 循环异常退避节拍（供 <c>PrimaryListener</c>）。</summary>
-    internal static TimeSpan IpcAcceptRetryDelay => TimeSpan.FromSeconds(s_timeouts.IpcAcceptRetryDelaySeconds);
-
-    /// <summary>服务端单次读超时（供 <c>PrimaryListener</c>）。</summary>
-    internal static TimeSpan IpcServeTimeout => TimeSpan.FromSeconds(s_timeouts.IpcServeTimeoutSeconds);
-
     /// <summary>主实例对 <see cref="ShowCommand"/> 的应答（值即协议契约，保持固定；可见性随清账批 2 收窄）。</summary>
     internal const string AckResponse = "ok";
 
@@ -91,9 +82,14 @@ public static class LauncherActivation
     /// 系统级 socket 异常或残留文件清理失败时降级为无监听空转（仲裁是增强能力，绝不挡启动，
     /// 降级原因见 <paramref name="log"/>）。false=地址被占且探活可达——存在存活的主实例，
     /// 调用方应走 <see cref="NotifyPrimary"/> 后退出。</summary>
+    /// <param name="acceptRetryDelay">accept 循环异常退避节拍（配置模型投影，调用方给）。</param>
+    /// <param name="serveTimeout">服务端单次读超时（配置模型投影，调用方给）。</param>
+    /// <param name="log">日志回调。</param>
     internal static bool TryBindPrimary(
         string path,
         Func<Task> onShowRequested,
+        TimeSpan acceptRetryDelay,
+        TimeSpan serveTimeout,
         Action<string>? log,
         out PrimaryListener? listener)
     {
@@ -112,7 +108,7 @@ public static class LauncherActivation
                 return false;
             }
 
-            listener = new PrimaryListener(socket, path, onShowRequested, log);
+            listener = new PrimaryListener(socket, path, onShowRequested, acceptRetryDelay, serveTimeout, log);
             listener.Start();
             return true;
         }
@@ -245,13 +241,23 @@ internal sealed class PrimaryListener : IDisposable
     private readonly Func<Task> _onShowRequested;
     private readonly Action<string>? _log;
     private readonly CancellationTokenSource _cts = new();
+    private readonly TimeSpan _acceptRetryDelay;
+    private readonly TimeSpan _serveTimeout;
     private int _disposed;
 
-    internal PrimaryListener(Socket socket, string path, Func<Task> onShowRequested, Action<string>? log)
+    internal PrimaryListener(
+        Socket socket,
+        string path,
+        Func<Task> onShowRequested,
+        TimeSpan acceptRetryDelay,
+        TimeSpan serveTimeout,
+        Action<string>? log)
     {
         _socket = socket;
         _path = path;
         _onShowRequested = onShowRequested;
+        _acceptRetryDelay = acceptRetryDelay;
+        _serveTimeout = serveTimeout;
         _log = log;
     }
 
@@ -284,7 +290,7 @@ internal sealed class PrimaryListener : IDisposable
                 // 退避一拍再续：持久性故障（如 fd 耗尽）下避免热旋刷爆 host.log
                 try
                 {
-                    await Task.Delay(LauncherActivation.IpcAcceptRetryDelay, ct);
+                    await Task.Delay(_acceptRetryDelay, ct);
                 }
                 catch (OperationCanceledException)
                 {
@@ -306,7 +312,7 @@ internal sealed class PrimaryListener : IDisposable
         {
             using (client)
             {
-                using var cts = new CancellationTokenSource(LauncherActivation.IpcServeTimeout);
+                using var cts = new CancellationTokenSource(_serveTimeout);
                 byte[] buffer = new byte[256];
                 int read = await client.ReceiveAsync(buffer, cts.Token).ConfigureAwait(false);
                 string command = System.Text.Encoding.UTF8.GetString(buffer, 0, read).Trim();

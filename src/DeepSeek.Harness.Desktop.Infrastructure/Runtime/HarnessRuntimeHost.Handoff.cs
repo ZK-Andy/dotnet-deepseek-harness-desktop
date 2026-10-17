@@ -30,18 +30,14 @@ public sealed partial class HarnessRuntimeHost
     /// <summary>在管运行时 pid：本进程子进程优先，其次收养的续任者；皆无则 null。</summary>
     private int? TrackedPid => _process is { HasExited: false } process ? process.Id : _adoptedPid;
 
-    /// <summary>运行时超时家（单例装载，见 <see cref="RuntimeTimeouts"/>）：relay 节拍/宽限/稳定窗与收养轮询
-    /// 皆出此源；测试经内部注入口覆写延迟以压缩时长（<see cref="RelayDelayOverride"/>）。</summary>
-    private static readonly RuntimeTimeouts s_timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
-
-    /// <summary>relay 等待的探测节拍。</summary>
-    private static TimeSpan s_relayWaitInterval => TimeSpan.FromSeconds(s_timeouts.RelayWaitIntervalSeconds);
+    /// <summary>relay 等待的探测节拍（超时家由构造注入，见 <see cref="HarnessRuntimeHost"/>）。</summary>
+    private TimeSpan RelayWaitInterval => TimeSpan.FromSeconds(_timeouts.RelayWaitIntervalSeconds);
 
     /// <summary>relay 等待的 helper 宽限窗。</summary>
-    private static TimeSpan s_relayHelperGrace => TimeSpan.FromSeconds(s_timeouts.RelayHelperGraceSeconds);
+    private TimeSpan RelayHelperGrace => TimeSpan.FromSeconds(_timeouts.RelayHelperGraceSeconds);
 
     /// <summary>接力就绪的稳定窗：单拍 Ready 可能是将死前驱的应答，须连续维持该窗才收养（见 <see cref="RelayWebReadinessGate"/>）。</summary>
-    private static TimeSpan s_relayReadyStableWindow => TimeSpan.FromSeconds(s_timeouts.RelayReadyStableWindowSeconds);
+    private TimeSpan RelayReadyStableWindow => TimeSpan.FromSeconds(_timeouts.RelayReadyStableWindowSeconds);
 
     /// <summary>relay 等待的血统残留枚举注入口（生产 null = 真扫 /proc；仅供测试闭环）。</summary>
     internal Func<IReadOnlyList<RuntimeLineage.Subject>>? RelayResidueOverride { get; set; }
@@ -72,10 +68,10 @@ public sealed partial class HarnessRuntimeHost
         CancellationToken ct)
     {
         DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
-        DateTimeOffset graceEnd = DateTimeOffset.UtcNow + s_relayHelperGrace;
+        DateTimeOffset graceEnd = DateTimeOffset.UtcNow + RelayHelperGrace;
         bool helperSeen = false;
         bool webPendingLogged = false;
-        var readyGate = new RelayWebReadinessGate(s_relayReadyStableWindow);
+        var readyGate = new RelayWebReadinessGate(RelayReadyStableWindow);
         while (true)
         {
             if (ct.IsCancellationRequested)
@@ -103,11 +99,11 @@ public sealed partial class HarnessRuntimeHost
             helperSeen |= helperNow;
             // 探针按剩余预算收紧（整次探测 ≤ min(剩余预算, 1.5s)）：不会把窗口拖过总预算
             RuntimeLineageProbes.LoopbackWebProbe readiness = await RuntimeLineageProbes
-                .ProbeLoopbackWebAsync(port, ct, deadline - DateTimeOffset.UtcNow)
+                .ProbeLoopbackWebAsync(port, TimeSpan.FromMilliseconds(_timeouts.WebProbeTimeoutMilliseconds), ct, deadline - DateTimeOffset.UtcNow)
                 .ConfigureAwait(false);
             if (readyGate.Observe(readiness, DateTimeOffset.UtcNow))
             {
-                _log?.Invoke($"[host] 市场接力续任者已接管首选端口 {port}（就绪连续维持 ≥{s_relayReadyStableWindow.TotalSeconds:0}s）：跳过竞争 spawn，转入收养处置");
+                _log?.Invoke($"[host] 市场接力续任者已接管首选端口 {port}（就绪连续维持 ≥{RelayReadyStableWindow.TotalSeconds:0}s）：跳过竞争 spawn，转入收养处置");
                 return await RecoverFromFailureAsync(port, StartFailure.PortConflict, supervisedStart, timeout, ct)
                     .ConfigureAwait(false);
             }
@@ -135,7 +131,7 @@ public sealed partial class HarnessRuntimeHost
                 }
                 else
                 {
-                    await Task.Delay(s_relayWaitInterval, ct).ConfigureAwait(false);
+                    await Task.Delay(RelayWaitInterval, ct).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -184,7 +180,9 @@ public sealed partial class HarnessRuntimeHost
         TimeSpan timeout,
         CancellationToken ct)
     {
-        bool portBusy = await RuntimeLineageProbes.IsLoopbackServingAsync(preferred).ConfigureAwait(false);
+        bool portBusy = await RuntimeLineageProbes.IsLoopbackServingAsync(
+            preferred,
+            TimeSpan.FromMilliseconds(_timeouts.PortProbeTimeoutMilliseconds)).ConfigureAwait(false);
         RuntimeLineage.PortConflictPlan plan = RuntimeLineage.PlanPortConflict(
             portBusy,
             supervisedStart,
@@ -318,7 +316,7 @@ public sealed partial class HarnessRuntimeHost
     /// <remarks>判活必须带身份复验：pid 复用（正是本仓用 token 复验防范的同一风险）会让「/proc 存在」恒真，
     /// 监督器将永远看不到该运行时退出、会话崩溃恢复静默失效。token 读不到（无权限/僵尸）按「仍在运行」
     /// 处理——宁可晚恢复，也不把活着的运行时判死而触发抢端口。</remarks>
-    private static async Task WaitAdoptedExitAsync(int pid, string expectedToken)
+    private async Task WaitAdoptedExitAsync(int pid, string expectedToken)
     {
         while (true)
         {
@@ -334,7 +332,7 @@ public sealed partial class HarnessRuntimeHost
                 return;
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(s_timeouts.AdoptedExitPollIntervalSeconds)).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(_timeouts.AdoptedExitPollIntervalSeconds)).ConfigureAwait(false);
         }
     }
 

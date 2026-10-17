@@ -73,7 +73,7 @@ public class RuntimeLineageProbeTests
 
         Assert.Equal(
             RuntimeLineageProbes.LoopbackWebProbe.NotServing,
-            await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, CancellationToken.None));
+            await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, TimeSpan.FromMilliseconds(1500), CancellationToken.None));
     }
 
     /// <summary>web 就绪探针：端口可连但 HTTP 无声判 ServingNotReady——正是「dsh 已 bind、web-runtime 行
@@ -90,7 +90,7 @@ public class RuntimeLineageProbeTests
             Assert.Equal(
                 RuntimeLineageProbes.LoopbackWebProbe.ServingNotReady,
                 await RuntimeLineageProbes.ProbeLoopbackWebAsync(
-                    port, CancellationToken.None, TimeSpan.FromMilliseconds(300)));
+                    port, TimeSpan.FromMilliseconds(1500), CancellationToken.None, TimeSpan.FromMilliseconds(300)));
         }
         finally
         {
@@ -112,7 +112,7 @@ public class RuntimeLineageProbeTests
         {
             Assert.Equal(
                 RuntimeLineageProbes.LoopbackWebProbe.Ready,
-                await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, CancellationToken.None));
+                await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, TimeSpan.FromMilliseconds(1500), CancellationToken.None));
         }
         finally
         {
@@ -134,7 +134,7 @@ public class RuntimeLineageProbeTests
         {
             Assert.Equal(
                 RuntimeLineageProbes.LoopbackWebProbe.ServingNotReady,
-                await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, CancellationToken.None));
+                await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, TimeSpan.FromMilliseconds(1500), CancellationToken.None));
         }
         finally
         {
@@ -158,7 +158,7 @@ public class RuntimeLineageProbeTests
         {
             Assert.Equal(
                 RuntimeLineageProbes.LoopbackWebProbe.Ready,
-                await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, CancellationToken.None));
+                await RuntimeLineageProbes.ProbeLoopbackWebAsync(port, TimeSpan.FromMilliseconds(1500), CancellationToken.None));
         }
         finally
         {

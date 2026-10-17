@@ -17,6 +17,7 @@ internal sealed class CaptionBarInstaller
     private readonly CaptionBarOptions _captionBar;
     private readonly UiLocale _uiLocale;
     private readonly CancellationTokenSource _supervisorCts;
+    private readonly PagePump _pump;
     // 「首次导航到达补注册顶栏脚本」的一次性闩：该到达事件只在 webview 就绪后发，
     // 补注册只做一次，避免每次导航都新增一条引擎注册。
     private int _reregistered;
@@ -28,13 +29,15 @@ internal sealed class CaptionBarInstaller
     /// <param name="captionBar">自绘标题栏参数家（ADR frameless-uniform-caption-bar）。</param>
     /// <param name="uiLocale">宿主 UI 语言单点（ADR host-ui-locale）。</param>
     /// <param name="supervisorCts">监督器取消令牌源（注入侧取消面；寿命 = 本次 Run，容器单例）。</param>
+    /// <param name="pump">页面注入单点（装配期创建的唯一实例）。</param>
     public CaptionBarInstaller(
         CurrentWindowAccessor windowAccessor,
         IRynWebView webView,
         RynNavigationCallbacks callbacks,
         CaptionBarOptions captionBar,
         UiLocale uiLocale,
-        CancellationTokenSource supervisorCts)
+        CancellationTokenSource supervisorCts,
+        PagePump pump)
     {
         _windowAccessor = windowAccessor;
         _webView = webView;
@@ -42,6 +45,7 @@ internal sealed class CaptionBarInstaller
         _captionBar = captionBar;
         _uiLocale = uiLocale;
         _supervisorCts = supervisorCts;
+        _pump = pump;
     }
 
     /// <summary>三路注入（调用序＝注册前的常驻钩子挂载 → 当窗即注入 → 每页加载注册）。</summary>
@@ -54,15 +58,15 @@ internal sealed class CaptionBarInstaller
         Func<IRynWebView> webView = () => _webView;
         _callbacks.SetOnNavigatedPersistent(() => Task.Run(() =>
         {
-            _ = PagePump.InjectCaptionBarWhenReadyAsync(_windowAccessor, script, ct);
+            _ = _pump.InjectCaptionBarWhenReadyAsync(_windowAccessor, script, ct);
             // 首次到达补注册一次（该事件只在 webview 就绪后发）：到点预算折算出的注册之外再保一路「后到
             // 但确实活着」的注册时机。
             if (Interlocked.Exchange(ref _reregistered, 1) == 0)
             {
-                _ = PagePump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct);
+                _ = _pump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct);
             }
         }));
-        _ = Task.Run(() => PagePump.InjectCaptionBarWhenReadyAsync(_windowAccessor, script, ct));
-        _ = Task.Run(() => PagePump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct));
+        _ = Task.Run(() => _pump.InjectCaptionBarWhenReadyAsync(_windowAccessor, script, ct));
+        _ = Task.Run(() => _pump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct));
     }
 }

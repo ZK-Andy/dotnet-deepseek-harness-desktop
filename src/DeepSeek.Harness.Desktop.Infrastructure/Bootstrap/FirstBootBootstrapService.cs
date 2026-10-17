@@ -12,7 +12,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     private readonly Func<bool> _isEnglish;
     private readonly Action<string> _log;
     private RuntimeBootstrapOptions _options = new();
-    private RuntimeTimeouts _timeouts = new();
+    private readonly RuntimeTimeouts _timeouts;
     private bool _needed;
     private TaskCompletionSource? _settled;
     private CancellationTokenSource? _cts;
@@ -23,11 +23,18 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     /// <param name="isEnglish">失败文案是否取英文分支（惰性委托：宿主 UI 语言单点在组合根稍后构造，
     /// 引导任务启动时已就绪——与 <paramref name="host"/> 同一延迟捕获理由）。</param>
     /// <param name="log">日志回调。</param>
-    public FirstBootBootstrapService(Func<HarnessRuntimeHost> host, IFirstBootUi ui, Func<bool> isEnglish, Action<string> log)
+    /// <param name="timeouts">运行时超时/重试配置（装配期唯一创建点传入，服务不再自行解析 appsettings）。</param>
+    public FirstBootBootstrapService(
+        Func<HarnessRuntimeHost> host,
+        IFirstBootUi ui,
+        Func<bool> isEnglish,
+        RuntimeTimeouts timeouts,
+        Action<string> log)
     {
         _host = host;
         _ui = ui;
         _isEnglish = isEnglish;
+        _timeouts = timeouts;
         _log = log;
     }
 
@@ -44,14 +51,15 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
         // 全局 dsh（都在 PATH 上），桌面与终端共用同一套；没有系统 node 时由桌面装 node 到系统全局前缀
         //（需 sudo 则提示手动命令），而非桌面包私有运行时/私有 PATH。
         _options = RuntimeBootstrapOptions.Load(AppContext.BaseDirectory);
-        _timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
         // 若系统全局 node 已由桌面装好（此前安装/用户手动），把它暴露到进程 PATH，让宿主 spawn 与探测能解析。
         EnsureRuntimeNodeOnPath();
 
         // 启动只读探测 PATH 上全局 dsh——没有 → 走首启引导（npm install -g 装/更新到 @next）。
         // dev 判定只认显式环境标记（DSH_DESKTOP_RUNTIME_DIR / DSH_DESKTOP_DEV=1）——绝不以
         // 捆绑闭包存在性探测（打包新装同样没有闭包，探测会误判全部新装用户）。
-        string? pathVersion = RuntimeVersionGate.ProbeAsync(CancellationToken.None)
+        string? pathVersion = RuntimeVersionGate.ProbeAsync(
+                TimeSpan.FromSeconds(_timeouts.VersionProbeTimeoutSeconds),
+                CancellationToken.None)
             .GetAwaiter().GetResult();
         // 没有 → 装；落后 next 兼容底线（低于底部）→ 经引导更新到 @next；否则直接用。
         // 引导内 npm install -g @next 幂等（安装或更新）；检测"落后"以兼容底线（MinimumVersion）为
@@ -246,7 +254,8 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
                 Path.Combine(AppContext.BaseDirectory, "resources", "plugins"),
                 _log,
                 PluginProcessRunner.RunAsync,
-                PluginProcessRunner.RunProbeAsync,
+                (psi, ct) => PluginProcessRunner.RunProbeAsync(
+                    psi, TimeSpan.FromSeconds(_timeouts.SpawnTimeoutSeconds), ct),
                 bootCt);
             // 随包驱动自带 staged 探针 + journal 换入（ADR transactional-plugin-pipeline）：换入前已证明
             // 能活，启动前的 active 事后探针随其 reconcile 分支退役。
