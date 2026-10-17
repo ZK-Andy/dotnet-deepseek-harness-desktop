@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Callbacks;
 using Ryn.Core;
@@ -49,8 +50,7 @@ public sealed partial class DesktopAdapter
                 opts.TitleBarAutoDragHeight = captionBar.HeightPx;
                 opts.Backdrop = MacNativeChrome.IsEnabled ? BackdropMaterial.Blur : BackdropMaterial.None; // macOS 毛玻璃（官方 vibrancy）；闸外恒 None（判据单点见 MacNativeChrome）
                 opts.PersistWindowState = true; // 几何持久化：rationale 见 ADR window-geometry-ryn-native-persist
-                // Linux 帧传递路径不在此赋值：Ryn 的 Build 从 appsettings 的 Ryn:LinuxRenderingMode 绑定
-                // （ADR webview-shared-memory-rendering），回调里再写一遍会静默压掉那个框架键。
+                // Linux 帧传递路径不在此赋值：Ryn 的 Build 从 appsettings 的 Ryn:LinuxRenderingMode 绑定，回调再写一遍会压掉那个框架键
                 // A 类启动配置经类型化值消费（批次 3）：dev 后缀规则封装进 LaunchOptions。
                 opts.ApplicationId = preflight.Launch.ApplicationIdFor("io.github.ZK-Andy.dotnet-deepseek-harness-desktop");
                 if (File.Exists(iconPath)) // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
@@ -59,7 +59,7 @@ public sealed partial class DesktopAdapter
                 }
                 // 缺失不告警分支：icon 缺失由下方 Ryn opts 摘要行的 Icon=missing 留痕（托盘侧 IsReady 同样降级）
 
-                HostLog.Write($"[host] Ryn opts: Url={(proxy?.Url?.ToString() ?? "null")} ApplicationId={opts.ApplicationId} LinuxRendering={opts.LinuxRenderingMode} ForceShmEnv={Environment.GetEnvironmentVariable("WEBKIT_DMABUF_RENDERER_FORCE_SHM") ?? "-"} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
+                HostLog.Write($"[host] Ryn opts: Url={(proxy?.Url?.ToString() ?? "null")} ApplicationId={opts.ApplicationId} Rid={RuntimeInformation.RuntimeIdentifier} LinuxRendering={opts.LinuxRenderingMode} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
                 // WebView 调试器默认关闭；开发期设 DSH_DEVTOOLS=1 开启（与 dev 判定无关，
                 // 打包产品形态下同样生效）——判定随 A 类启动配置在 LaunchOptions.Resolve 单点解析
                 // （ADR post-restructure-ledger-batch）。
