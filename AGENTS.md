@@ -79,7 +79,7 @@ web 检索一律 anysearch 插件（唯一搜索后端，已 Provider 级接管�
 python3 scripts/verify-adr-format.py     # ADR 头/骨架/状态-目录一致性
 python3 scripts/verify-cookbook.py       # 踩坑记录格式/阶段标签封闭集（缺省校验主档 + 冷归档层）
 python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json # 字数预算
-python3 scripts/verify-md-links.py       # 相对链接/锚点（skills/ 与 .plan/ 排除；archived/ 已纳入校验——排除面唯一家是脚本 docstring）
+python3 scripts/verify-md-links.py       # 相对链接/锚点（目标须入库，本地专有文件链了即红；skills/ 与 .plan/ 排除；排除面唯一家是脚本 docstring）
 bash scripts/install-linters.sh          # 装 shellcheck + actionlint（钉版 + sha256 校验；下两条的前置）
 actionlint -shellcheck="shellcheck -S warning" # 工作流静态检查（对 run: 块跑 shellcheck）
 bash scripts/verify-shell-standards.sh   # 脚本规范 S1-S6（含 shellcheck -S warning；规范见 docs/script-standards.md）
