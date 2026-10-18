@@ -6,7 +6,7 @@
 
 <p align="center"><a href="README.md">中文</a> · <strong>English</strong></p>
 
-<p align="center"><strong>A .NET desktop client for DeepSeek Harness — a simple shell that depends on the one global dsh: installs it when missing, updates to @next when behind.</strong></p>
+<p align="center"><strong>A .NET desktop shell for DeepSeek Harness — the interaction and the models live in the global dsh; the shell only owns windows, supervision and updates.</strong></p>
 
 <p align="center">
   <a href="#features">Features</a> ·
@@ -15,7 +15,7 @@
   <a href="docs/faq.en.md">FAQ</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#development">Development</a> ·
-  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="#documentation">Docs</a> ·
   <a href="LICENSE">MIT License</a>
 </p>
 
@@ -31,52 +31,76 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-A **.NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell is a **simple shell that depends on the system-global node + global dsh** (both on the user's `PATH`; installed/updated with `npm install -g @deepseek-ai/dsh@next`, shared by the desktop and terminal — one copy, no version fork). On first launch it detects the global dsh: installs it if missing, updates it to `@next` if behind, and uses it directly if already current. **Node stays system-global** (the user's node/npm, or the desktop downloads the latest official Node into a system-global location when absent), shared by desktop and terminal; the desktop never ships a private node / private PATH.
+A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell ships no runtime: node and dsh are the system-global ones (`npm install -g @deepseek-ai/dsh@next`), and the desktop shares one data directory with the terminal, so sessions, credentials and plugins interoperate. On first launch it probes the global dsh on `PATH` — installs it when missing, updates it to `@next` when behind, and uses it directly when already current.
+
+<p align="center">
+  <a href="assets/screenshot.png"><img src="assets/screenshot.png" width="880" alt="DeepSeek Harness Desktop window showing the plugin market"></a>
+</p>
+
+<p align="center"><sub>Plugin market (<code>dshmarket</code>, which you install from within dsh; shown with 5 plugins installed)</sub></p>
+
+## Why a shell
+
+- **No runtime inside** — the installer carries the shell only (~30MB class); there is no second runtime closure and no private `PATH`, and node stays system-global.
+- **Nothing pinned** — dsh follows the `@next` stable channel, so an upstream release takes effect immediately instead of waiting for a desktop release.
+- **One data directory** — sessions, credentials and workspaces in `~/.dsh` are shared with the CLI, TUI and Web UI; desktop plugins occupy only `profiles/dotnet-desktop`.
+- **No host impersonation** — everything runs in the OS webview, so pages and plugin behavior match the browser, and dsh plugins are unaffected.
+- **No bundled market** — you install `dshmarket` from within dsh (`1200+` plugins searchable and one-click installable); its plugin updates never wait for a desktop release.
 
 ## Features
 
-- ⚡️ **Simple shell, depends on system-global node + global dsh (online-first)** — the installer ships only the shell (~30MB), no runtime closure. On first launch it detects the global dsh on the user's `PATH`: installs it via the global node's `npm install -g @deepseek-ai/dsh@next` into the system-global location when missing, updates it to `@next` when behind, and uses it directly when already current. **The dsh kernel follows the `@next` stable channel — not pinned.** Node check happens once when dsh must be ensured (reuse the system-global node; if absent, the desktop downloads the latest official Node into a system-global location — giving a manual command when sudo is needed), with no repeated downloads. The shell spawns dsh in the shared data directory `~/.dsh` under a dedicated `desktop` profile. Sessions, credentials and plugins are **one universe with the CLI, TUI and Web**.
-- ⌨️ **Terminal commands (CLI shim registration)** — dsh is already globally on `PATH`; the shell registers the content-constant `pnpm` shim onto the user's `PATH` (Windows `%LOCALAPPDATA%\deepseek-harness\bin` + idempotent `HKCU\Environment\Path` merge; macOS/Linux `~/.local/bin` + idempotent shell-rc block; no dsh shim needed), so `pnpm` is usable straight from the terminal. It never overwrites a user's own same-named command.
-- 🔒 **Native, lightweight shell** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
-- 🔄 **Crash self-heal & session return** — the shell supervises the runtime process: crash → failure surface (native dialog first: cause / stderr tail + auto-exported diagnostics + keep/quit confirmation (only an explicit Yes quits); falls back to the recovery screen when no dialog tool exists or the native channel fails) → auto-restart → same window back to a new URL; **the port stays stable** so the Web UI origin (and page-level session memory) survives — **return to your previous conversation after a crash or restart**. A restart after a plugin-market update uses **adopt-first** market relay: the successor the market brings up is adopted directly — one process, one navigation, no doomed competing launch or tens-of-seconds recovery screen. **Exception**: when the preferred port is held by a program the app cannot attribute to itself (another program, a dsh from another profile, or a leftover dsh whose ownership cannot be proven), that launch drifts to a new port — the origin changes and page-level session memory is no longer kept; if the drift happens after the page has loaded (crash recovery, market-relay restarts), the Update, Launch at sign-in, Minimize to tray on close and Export diagnostics controls in Settings fail for that session too — restart the app to recover.
-- 💓 **Page-health watch (fake-alive watchdog)** — a host-side, read-only probe polls for the "dsh process running but page blank" fake-alive state (no script injection, no reliance on the bundled companion surviving); after consecutive blanks cross a threshold it triggers one bounded reload for self-heal, exhausts back to observation, and resets its budget on successful recovery — preventing an unlimited reload loop on false positives.
-- ⬆️ **Self-update** — background check at launch plus a manual check under Settings → Desktop Settings; one-click install & restart when a new version is found (`SHA256`-verified packages; `macOS` guides manual update). See [Auto-Update](#auto-update) below.
-- 🧩 **Plugin market (you install it) + version-aware upgrades** — the shell does not install the market for you: `dshmarket` is installed by you from within dsh, registry-shaped (fully equivalent to a self-install: new upstream releases show up in the market without waiting for a desktop release). The bundled desktop companion plugin upgrades by version awareness — when the bundled copy is newer it upgrades automatically and never downgrades. `1200+` plugins are searchable and one-click installable.
-- 🖥️ **System tray** — closing the window minimizes to the tray by default (switchable in Settings), with a tray menu for show main window / check for updates / restart / quit (zh/en following the dsh language); quitting runs an orderly shutdown so the runtime child process is reaped cleanly, and restart uses the same pipeline — spawning the successor only after the runtime is reaped and the single-instance claim released.
-- 🪟 **Frameless window (official macOS look)** — the native title bar is gone on all three platforms, drawn by the shell instead: traffic-light dots at the top left (official position), the sidebar's top clearance filled by the sidebar's own background (seamless, no color band), the collapse toggle inline with the lights, top-strip areas dragging the window, double-click to zoom. No host identity is impersonated, so dsh plugin behavior is unaffected.
-- 🪟 **Window state memory** — the last window size and maximized state are restored on restart (already kept across tray hide/recall); handled entirely by the shell's built-in persistence, zero fuss.
-- 🚀 **Single-instance activation** — clicking the launcher/icon again while the app is running raises the existing main window instead of spawning a duplicate instance.
-- 🔁 **Launch at login** — one-click toggle in Settings (XDG autostart on Linux / registry Run on Windows / LaunchAgents on macOS).
-- 🖼️ **Native icons / Wayland-ready** — icons ship into `hicolor`; `ryn.json:identifier` and `StartupWMClass` are both `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`, so the taskbar associates correctly.
+**Shell and runtime**
+
+- ⚡️ **Online-first first launch** — installs when missing through the global node, updates to `@next` when behind, uses it directly when current; the node check runs once, only when dsh must be ensured.
+- ⌨️ **CLI shim** — idempotently registers a content-constant `pnpm` shim on the user `PATH` (never overwriting a same-named command); dsh itself is already on `PATH` and usable from the terminal.
+- 🔒 **Native and lightweight** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
+
+**Window and system integration**
+
+- 🪟 **Frameless window** — all three platforms drop the native title bar for a shell-drawn one: traffic lights top left, seamless sidebar clearance, inline collapse toggle, draggable top strip, double-click zoom.
+- 🖥️ **System tray** — closing the window minimizes to the tray by default (switchable to quit in Settings); the menu offers show main window / check for updates / restart / quit, following the dsh language; quit and restart share one orderly pipeline that reaps the runtime cleanly.
+- 🪟 **Window state memory** — the last size and maximized state are restored on restart (already kept across tray hide/recall).
+- 🚀 **Single-instance activation** — clicking the launcher again raises the existing window instead of spawning a duplicate.
+- 🔁 **Launch at login** — one-click toggle in Settings (XDG autostart / registry Run / LaunchAgents).
+- 🖼️ **Icons and Wayland** — icons ship into `hicolor`, and `identifier` and `StartupWMClass` are the same value, so the taskbar associates correctly.
+
+**Runtime self-healing and updates**
+
+- 🔄 **Crash self-heal, back to the same conversation** — crash → failure surface (native dialog first: cause, stderr tail, exported diagnostics, keep or quit) → auto-restart → the same window returns to your conversation; **the port stays stable**, so origin and page-level session memory survive.
+- 🧩 **Successor adoption** — a market-triggered self-restart is adopted by the shell: one process, one navigation, no doomed competing launch or tens-of-seconds recovery screen.
+- 💓 **Page-health watch** — a read-only probe catches the "process running, page blank" state, runs one bounded reload within budget, then observes; budget resets on recovery — no script injection, no companion dependency.
+- ⬆️ **Self-update** — one background check at launch plus a manual check in Settings, then one-click install and restart (`SHA256`-verified packages; `macOS` guides a manual update). See [Staying current](#staying-current).
+
+> When the preferred port is held by a program the app cannot attribute to itself, the launch drifts to a new port and the origin changes — consequences and recovery are in the [FAQ](docs/faq.en.md). Drift criteria, adoption lineage and probe budgets are documented in [docs/architecture.md](docs/architecture.md).
 
 ## Download and install
 
 Download the package for your platform from [Releases](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases) (with `SHA256SUMS.txt`):
 
-| Platform | Arch | Formats |
-|---|---|---|
-| `Linux` | `x64` / `arm64` | `deb` (`…_linux-amd64.deb` / `…_linux-arm64.deb`) / `rpm` (`…_linux-x86_64.rpm` / `…_linux-aarch64.rpm`) |
-| `macOS` | `arm64` / `x64` | `dmg` |
-| `Windows` | `x64` | `exe` installer (`…-setup.exe`) |
+| Platform | Arch | Package | First launch |
+|---|---|---|---|
+| `Linux` | `x64` / `arm64` | `deb` (`…_linux-amd64.deb` / `…_linux-arm64.deb`), `rpm` (`…_linux-x86_64.rpm` / `…_linux-aarch64.rpm`) | `sudo apt install ./…deb` or `sudo dnf install ./…rpm` (dependencies resolved by the package manager) |
+| `macOS` | `arm64` / `x64` | `dmg` | Drag into Applications and launch; if Gatekeeper blocks it, right-click → Open, or System Settings → Privacy & Security → Open Anyway |
+| `Windows` | `x64` | `exe` installer (`…-setup.exe`) | Run the installer; on SmartScreen choose More info → Run anyway |
 
-> **Preview notice**: this project is in an early preview stage and may ship **breaking changes** (data directory layout, configuration format, runtime component versions). **Cross-version data compatibility is not guaranteed**; back up important sessions and configuration before upgrading.
+> **Unsigned**: this open-source project does not pay for signing, so releases are unsigned — the allow-through steps above exist for that. For dev/internal use, `SELF_SIGN=1` clears the local warning; see [docs/development.md](docs/development.md).
 >
-> **Upgrade note**: the desktop profile directory is `profiles/dotnet-desktop` — on upgrade the old `profiles/desktop` is renamed automatically on first launch (plugins and port memory are kept; no manual step); use `dsh --profile dotnet-desktop` in the terminal. See [docs/user-guide.en.md](docs/user-guide.en.md).
+> **Preview**: the project is in an early preview stage and may ship breaking changes (data directory layout, configuration format, runtime component versions). **Cross-version data compatibility is not guaranteed**; back up important sessions and configuration before upgrading.
 >
-> **Unsigned note**: this is an **open-source project and we do not do paid signing**, so releases are **unsigned**. On macOS, if Gatekeeper shows "unidentified developer", right-click → Open, or System Settings → Privacy & Security → Open Anyway. On Windows, if SmartScreen shows "unknown publisher", choose More info → Run anyway. For dev/internal use, `SELF_SIGN=1` signs locally to clear warnings; see [docs/development.md](docs/development.md).
+> **Upgrade**: the desktop profile directory is `profiles/dotnet-desktop` — an old `profiles/desktop` is renamed automatically on first launch (plugins and port memory kept); use `dsh --profile dotnet-desktop` in the terminal. See [docs/user-guide.en.md](docs/user-guide.en.md).
 >
-> **Test status**: unit tests are run automatically by `CI` (`dotnet test` green, see badge above); **real-machine acceptance has so far only been done on the `Linux` `x64` `rpm` package** — `deb`, `Linux arm64`, `macOS` (`dmg`) and `Windows` (`setup.exe`) are **all unvalidated on real hardware**, only built/packaged/smoke-tested by CI. Targeted real-machine testing for `macOS x64` / `Windows` **awaits community support** (no local Intel-mac / Windows hardware here). Treat installer, self-update and first-launch-bootstrap paths as per the boundaries listed in [docs/testing.md](docs/testing.md), and back up before trying anything.
+> **Real-machine validation**: acceptance has only been done on `Linux` `x64` `rpm`; `deb`, `Linux arm64`, `macOS` and `Windows` are built, packaged and smoke-tested by CI but unvalidated on real hardware, and `macOS x64` / `Windows` testing awaits community support. Boundaries are listed in [docs/testing.md](docs/testing.md).
 
-## Auto-Update
+## Staying current
 
-- New versions are checked once in the background at launch (no polling, no interruptions); you can also check manually under **Settings → Desktop Settings**.
+- New versions are checked once in the background at launch (no polling, no interruptions); you can also check manually under **Settings → Desktop Settings** or from the tray menu.
 - When a new version is found, a download button appears at the bottom of the sidebar — click it to download, verify and **install & restart in one click** (one system authorization prompt on `Linux`).
 - Packages are strictly verified against `SHA256SUMS.txt` before installation; a failed check refuses to install.
-- `macOS` does not support silent in-app updates yet — you will be guided to download the `dmg` manually.
+- `macOS` does not support silent in-app updates yet — you are guided to download the `dmg` manually.
 
 ## How it works
 
-The Ryn shell (C# + OS webview) serves the Web UI of the global `dsh` on `PATH` through a loopback proxy: crash supervision restarts on the same port, first launch bootstraps global node/dsh automatically, and plugins are in place before spawn. Startup model and layering: [docs/architecture.md](docs/architecture.md) (single source of truth).
+The Ryn shell (C# + OS webview) serves the Web UI of the global dsh on `PATH` through a loopback proxy: crash supervision restarts on the same port, first launch bootstraps global node/dsh, and the bundled companion is in place before spawn. Startup model and layering: [docs/architecture.md](docs/architecture.md) (single source of truth).
 
 [![Full architecture diagram](assets/architecture.svg)](docs/architecture.html)
 
@@ -97,22 +121,30 @@ dotnet test dotnet-deepseek-harness-desktop.slnx
 DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ```
 
-> The runtime needs a reachable DeepSeek provider credential (e.g. `DEEPSEEK_API_KEY`) to serve the Web UI.
+> The runtime needs a reachable DeepSeek provider credential (e.g. `DEEPSEEK_API_KEY`) to serve the Web UI. Packaging, dev isolation and the gate list are in [docs/development.md](docs/development.md) / [docs/testing.md](docs/testing.md).
 
 ## Layout
 
 ```
 ├── src/DeepSeek.Harness.Desktop/              # Ryn shell (Presentation): composition root + UI bridge
-├── src/DeepSeek.Harness.Desktop.Core/         # domain logic, zero outer references
+├── src/DeepSeek.Harness.Desktop.Core/         # pure logic, zero outer references
 ├── src/DeepSeek.Harness.Desktop.Infrastructure/  # adapters (Ryn/native, dsh process, file/network, updates)
-├── tests/DeepSeek.Harness.Desktop.Tests/          # xunit: shell / composition root
-├── tests/DeepSeek.Harness.Desktop.Core.Tests/     # xunit: Core
-├── tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/  # xunit: Infrastructure
-├── tests/DeepSeek.Harness.Desktop.Analyzers.Tests/      # xunit: DSH0001 analyzer behavior contract
-├── tools/DeepSeek.Harness.Desktop.Analyzers/            # Roslyn custom analyzer (D003 machine enforcement)
-├── scripts/                                    # gates + package-*.sh + release-preflight.sh + release-notes.sh
-└── docs/architecture.md、testing.md、development.md
+├── tests/                                     # xunit: shell / Core / Infrastructure / analyzer contract
+├── tools/DeepSeek.Harness.Desktop.Analyzers/  # Roslyn custom analyzer (D003 machine enforcement)
+├── scripts/                                   # gates + package-*.sh + release-preflight.sh + release-notes.sh
+└── docs/                                      # architecture, testing, development, user guide, FAQ, cookbook
 ```
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [User guide](docs/user-guide.en.md) | Install, first launch, daily use, data and log locations, troubleshooting |
+| [FAQ](docs/faq.en.md) | Port drift, plugin market, data interop, MCP connections and other frequent questions |
+| [Architecture](docs/architecture.md) | Startup model, supervision and failure surface, plugin assembly, self-update, packaging (single source of truth) |
+| [Testing](docs/testing.md) | CI matrix, real-machine validation boundaries, gate list |
+| [Development](docs/development.md) | Run steps, dev isolation, packaging and self-signing |
+| [Cookbook](docs/cookbook.md) | Field-tested discriminators (upstream symptoms vs. local faults) |
 
 ## License & acknowledgements
 
