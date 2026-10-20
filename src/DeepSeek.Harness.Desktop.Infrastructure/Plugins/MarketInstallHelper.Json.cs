@@ -181,32 +181,14 @@ public static partial class MarketInstallHelper
     /// 与 dsh 自身写盘格式一致；写入中途崩溃不产生半写状态）。</summary>
     internal static Task WriteProfilePkgAsync(string profilePkg, JsonNode root)
     {
-        AtomicWriteFile(profilePkg, RenderProfileJson(root));
+        AtomicFile.WriteAllText(profilePkg, RenderProfileJson(root));
         return Task.CompletedTask;
     }
 
     /// <summary>按缩进 JSON + 尾部换行原子写回 profile <c>package.json</c>（同步版，供启动前 reconcile 使用）。</summary>
     internal static void WriteProfilePkg(string profilePkg, JsonNode root)
     {
-        AtomicWriteFile(profilePkg, RenderProfileJson(root));
-    }
-
-    /// <summary>同目录临时文件 + 原子替换写文本（失败清理临时文件；目标不可写时抛，由调用方决定 fail-safe）。
-    /// internal：事务 journal（<see cref="PluginProfileTransaction"/>）与 profile 清单写回共用同一原子写实现。</summary>
-    internal static void AtomicWriteFile(string path, string text)
-    {
-        string dir = Path.GetDirectoryName(path) ?? ".";
-        string temp = Path.Combine(dir, $".{Path.GetFileName(path)}.tmp-{Guid.NewGuid():N}");
-        try
-        {
-            File.WriteAllText(temp, text);
-            File.Move(temp, path, overwrite: true);
-        }
-        catch
-        {
-            try { File.Delete(temp); } catch (Exception) { /* 临时文件清理失败不影响结果 */ }
-            throw;
-        }
+        AtomicFile.WriteAllText(profilePkg, RenderProfileJson(root));
     }
 
     /// <summary>把 profile <c>package.json</c> 序列化为缩进 JSON + 尾部换行（与 dsh 自身写盘格式一致）。</summary>

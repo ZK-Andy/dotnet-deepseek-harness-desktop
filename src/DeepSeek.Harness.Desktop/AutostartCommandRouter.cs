@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Core.Platform;
@@ -43,7 +42,7 @@ public sealed class AutostartCommandRouter : ICommandRouter
                 case HostCommandIds.AutostartGetState:
                     return ValueTask.FromResult(Frame(_autostart.IsEnabled()));
                 case HostCommandIds.AutostartSet:
-                    bool enabled = ParseEnabled(args);
+                    bool enabled = CommandFrame.ReadEnabled(args);
                     bool now = _autostart.SetEnabled(enabled);
                     _log?.Invoke($"[host] 开机自启已{(now ? "启用" : "停用")}");
                     return ValueTask.FromResult(Frame(now));
@@ -56,13 +55,6 @@ public sealed class AutostartCommandRouter : ICommandRouter
             _log?.Invoke($"[host] 开机自启切换失败：{ex.Message}");
             return ValueTask.FromResult(AppJsonContext.Error(ex.Message));
         }
-    }
-
-    private static bool ParseEnabled(ReadOnlyMemory<byte> args)
-    {
-        using var doc = JsonDocument.Parse(Encoding.UTF8.GetString(args.Span));
-        return doc.RootElement.TryGetProperty("enabled", out JsonElement e) &&
-               e.ValueKind == JsonValueKind.True;
     }
 
     /// <summary>状态帧 <c>{"enabled":B}</c>；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>

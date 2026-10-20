@@ -37,13 +37,11 @@ public static class RunMarker
         }
 
         string token = Guid.NewGuid().ToString("N");
-        string temp = path + $".tmp-{token}";
         // 经 InfrastructureJsonContext 源生成（AOT 安全）；Release 读方只认 token 键
         string json = JsonSerializer.Serialize(
             new MarkerFile(token, Environment.ProcessId, DateTimeOffset.Now),
             InfrastructureJsonContext.Default.MarkerFile);
-        File.WriteAllText(temp, json);
-        File.Move(temp, path, overwrite: true);
+        AtomicFile.WriteAllText(path, json);
         return new RunMarkerResult(previousUnclean, token);
     }
 

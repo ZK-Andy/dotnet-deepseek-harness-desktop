@@ -289,7 +289,7 @@ public sealed class PluginProfileTransaction
     private static readonly JsonSerializerOptions s_pendingJsonOptions = new() { WriteIndented = true };
 
     private void WritePending(PendingRecord record) =>
-        MarketInstallHelper.AtomicWriteFile(_pendingPath, JsonSerializer.Serialize(record, s_pendingJsonOptions));
+        AtomicFile.WriteAllText(_pendingPath, JsonSerializer.Serialize(record, s_pendingJsonOptions));
 
     private void TryDeleteDir(string dir, string what) => TryDeleteDir(dir, what, _log);
 

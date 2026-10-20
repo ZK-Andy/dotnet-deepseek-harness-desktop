@@ -68,10 +68,8 @@ public sealed class CloseBehaviorPreference
             Directory.CreateDirectory(dir);
         }
 
-        string tmp = filePath + ".tmp";
         // 经 InfrastructureJsonContext 源生成（AOT 安全）；Load 读方只认 hideToTrayOnClose 键
-        File.WriteAllText(tmp, JsonSerializer.Serialize(new PreferencesFile(hideOnClose), InfrastructureJsonContext.Default.PreferencesFile));
-        File.Move(tmp, filePath, overwrite: true);
+        AtomicFile.WriteAllText(filePath, JsonSerializer.Serialize(new PreferencesFile(hideOnClose), InfrastructureJsonContext.Default.PreferencesFile));
     }
 
     /// <summary>desktop-preferences.json 落盘帧；internal 供 <see cref="InfrastructureJsonContext"/> 源生成注册。</summary>

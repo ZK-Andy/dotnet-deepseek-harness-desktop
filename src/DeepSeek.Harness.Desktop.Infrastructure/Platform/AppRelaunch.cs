@@ -17,18 +17,28 @@ public static class AppRelaunch
     {
         string exePath = Environment.ProcessPath
             ?? throw new InvalidOperationException("无法定位当前可执行文件路径，无法重启");
+        // 跳过 argv[0]：框架依赖形态（dotnet app.dll …）下 FileName 是 dotnet、argv[1] 是 dll 路径，
+        // apphost 形态下 argv[1..] 就是原始参数——两种形态透传后语义都等价于 launcher 再启动一次。
+        ProcessStartInfo psi = BuildStartInfo(exePath, Environment.GetCommandLineArgs().Skip(1));
+        Process.Start(psi);
+    }
+
+    /// <summary>构造派生自身的新实例的启动信息（纯函数面：只组参数，不 spawn 进程——可单测）。</summary>
+    /// <param name="exePath">可执行文件路径。</param>
+    /// <param name="args">要透传的原始参数（不含 argv[0]）。</param>
+    /// <returns>已配好启动形态与参数的启动信息。</returns>
+    internal static ProcessStartInfo BuildStartInfo(string exePath, IEnumerable<string> args)
+    {
         var psi = new ProcessStartInfo
         {
             FileName = exePath,
             UseShellExecute = false,
         };
-        // 跳过 argv[0]：框架依赖形态（dotnet app.dll …）下 FileName 是 dotnet、argv[1] 是 dll 路径，
-        // apphost 形态下 argv[1..] 就是原始参数——两种形态透传后语义都等价于 launcher 再启动一次。
-        foreach (string arg in Environment.GetCommandLineArgs().Skip(1))
+        foreach (string arg in args)
         {
             psi.ArgumentList.Add(arg);
         }
 
-        Process.Start(psi);
+        return psi;
     }
 }

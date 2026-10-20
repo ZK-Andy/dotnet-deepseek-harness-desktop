@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
@@ -43,7 +42,7 @@ public sealed class CloseToTrayCommandRouter : ICommandRouter
                 case HostCommandIds.CloseToTrayGetState:
                     return ValueTask.FromResult(Frame());
                 case HostCommandIds.CloseToTraySet:
-                    bool enabled = ParseEnabled(args);
+                    bool enabled = CommandFrame.ReadEnabled(args);
                     _preference.Set(enabled);
                     _log?.Invoke($"[host] 关闭最小化到托盘已{(enabled ? "开启" : "关闭")}");
                     return ValueTask.FromResult(Frame());
@@ -66,11 +65,4 @@ public sealed class CloseToTrayCommandRouter : ICommandRouter
 
     private string Frame() =>
         JsonSerializer.Serialize(new StateFrame(_preference.HideOnClose, _available()), AppJsonContext.Default.CloseToTrayState);
-
-    private static bool ParseEnabled(ReadOnlyMemory<byte> args)
-    {
-        using var doc = JsonDocument.Parse(Encoding.UTF8.GetString(args.Span));
-        return doc.RootElement.TryGetProperty("enabled", out JsonElement e) &&
-               e.ValueKind == JsonValueKind.True;
-    }
 }

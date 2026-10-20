@@ -14,6 +14,7 @@ public sealed class StartupNoticeService
     private readonly Action<string> _log;
     private readonly Func<string, CancellationToken, Task> _showVersionFloorBanner;
     private readonly Func<CancellationToken, Task> _showUncleanExitBanner;
+    private readonly Func<TimeSpan, CancellationToken, Task<string?>> _versionProbe;
 
     /// <summary>创建启动期告知服务。</summary>
     /// <param name="bootstrap">首启引导端口（落定握手：引导未落定前横幅不抢跑）。</param>
@@ -23,6 +24,8 @@ public sealed class StartupNoticeService
     /// <param name="showVersionFloorBanner">版本低于底线的横幅推送（接收探测到的版本；展示面构建脚本）。</param>
     /// <param name="showUncleanExitBanner">非受控退出横幅推送。</param>
     /// <param name="versionProbeTimeout">dsh 版本探测时限（配置模型投影）。</param>
+    /// <param name="versionProbe">dsh 版本探测（缺省 <see cref="RuntimeVersionGate.ProbeAsync"/>）。探测会 spawn
+    /// <c>dsh --version</c> 进程，自动化测试经此注入假探针——真实探测不可测（进程面非确定性）。</param>
     public StartupNoticeService(
         IFirstBootBootstrap bootstrap,
         TimeSpan settleTimeout,
@@ -30,7 +33,8 @@ public sealed class StartupNoticeService
         bool previousRunUnclean,
         Action<string> log,
         Func<string, CancellationToken, Task> showVersionFloorBanner,
-        Func<CancellationToken, Task> showUncleanExitBanner)
+        Func<CancellationToken, Task> showUncleanExitBanner,
+        Func<TimeSpan, CancellationToken, Task<string?>>? versionProbe = null)
     {
         _bootstrap = bootstrap;
         _settleTimeout = settleTimeout;
@@ -39,6 +43,7 @@ public sealed class StartupNoticeService
         _log = log;
         _showVersionFloorBanner = showVersionFloorBanner;
         _showUncleanExitBanner = showUncleanExitBanner;
+        _versionProbe = versionProbe ?? RuntimeVersionGate.ProbeAsync;
 
         // 脏退留痕与横幅同处一个消费点（ADR 组合根寿命与配置单一来源 D3）：marker 的读取与解释都归本用例，
         // 组合根不再为打这一行去解析宿主。
@@ -62,7 +67,7 @@ public sealed class StartupNoticeService
         }
 
         string home = HarnessRuntimeHost.ResolveDshHome();
-        string? detected = await RuntimeVersionGate.ProbeAsync(_versionProbeTimeout, ct);
+        string? detected = await _versionProbe(_versionProbeTimeout, ct);
         if (detected is not null)
         {
             _log($"[host] dsh 版本 {detected}（底线 {RuntimeVersionGate.MinimumVersion}）");
