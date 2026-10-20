@@ -61,7 +61,8 @@ Categories=Development;IDE;Utility;
 StartupWMClass=io.github.ZK-Andy.dotnet-deepseek-harness-desktop
 EOF
 
-# 3b) 图标（对齐 pilot-harness assets/icon.png → hicolor 512 + brand-icon）
+# 3b) 图标（hicolor 多尺寸来自 assets/icons/*/apps.png；pixmaps 主图标来自 assets/icon.png
+#     ——两者同在一个 assets/icons 存在性判定内：该目录缺失时一并跳过）
 if [[ -d "$ROOT/assets/icons" ]]; then
   echo "   安装图标（hicolor）"
   for sz in 16 32 48 64 128 256 512 1024; do
