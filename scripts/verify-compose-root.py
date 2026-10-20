@@ -173,10 +173,14 @@ ROOT_ENTRY_BRIDGES = 1
 # took over the root's pre-Build assembly (ADR sequencer-resolution-injection).
 # C3 counts the root set only, so these constructions would otherwise be outside
 # every gate. They stay a deliberate inventory; reopening needs its own ADR.
-# DI-resolved services are absent by construction — only `new` sites (and the DI
-# factory channel) are listed.
+# DI-resolved services are absent by construction; listed entries are either `new`
+# sites (including the DI factory channel) or assembly-time constructions none of
+# the channels can see (today: static factories — reasons inline in the entry).
 PREBUILD_GLOB = "PreBuildRegistration*.cs"
 PREBUILD_CONSTRUCTIBLE = {
+    # CaptionBarOptions：装配期经静态工厂 `CaptionBarOptions.Load(...)` 构造（自绘标题栏参数家）。
+    # 在册的理由是「它确实在装配面被构造」——闸的三条通道（new／CreateInstance／target-typed new）
+    # 看不见静态工厂形态，属闸的盲区（待办区 C7 缺口①），不是「该类型不在装配面」。
     "CaptionBarOptions",
     "CloseBehaviorPreference",
     "CloseGate",
@@ -187,16 +191,22 @@ PREBUILD_CONSTRUCTIBLE = {
     # OsLocaleProbe：UiLocale 的宿主 locale 探测端口实现（Core 读环境变量下沉后的接线点，
     # ADR architecture/2026-10-20-core-purity-boundaries）——共享态在容器之前构造，故只能在此 new。
     "OsLocaleProbe",
+    # 自更新栈的三个薄适配器：拆自原单型适配器 UpdateStackAdapter（ADR
+    # architecture/2026-10-20-update-stack-adapter-split），装配期构造故只能在此 new；
+    # 安装器端口由 UpdateInstaller 直接实现（同一 ADR），不另设转发壳。
+    "PackageDownloaderAdapter",
     "PagePump",
     "Preflight",
+    "ReleaseFeedAdapter",
     "RuntimeStarter",
     "SharedState",
     "ShellResources",
     "TrayController",
     "UiLocale",
     "UpdateCoordinator",
+    "UpdateEnvironmentAdapter",
+    "UpdateInstaller",
     "UpdateSetup",
-    "UpdateStackAdapter",
 }
 
 # `Run()` must read as a call list: no branches/loops/exception structure.

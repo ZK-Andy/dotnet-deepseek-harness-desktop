@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-21 — 落点换家：正文第 2 条「`new HttpClient` 迁至 Infrastructure `UpdateHttpClient.Create()`」的工厂名已失效——`UpdateHttpClient` 收为 internal 且 public 工厂取消，现为进程级共享单例 `UpdateHttpClient.Shared`（见 [update-stack-adapter-split](2026-10-20-update-stack-adapter-split.md)）。正文与决定不动。
+
 Review: FULL/2026-09-15/R1=ok R2=ok R3=ok
 
 Superseded（部分）：组合根实例字段数由批次 2 续降至 10（[2026-09-15-value-flow-batch2-value-pipeline](2026-09-15-value-flow-batch2-value-pipeline.md)）；本 ADR 的 C 类状态下沉结论仍有效。

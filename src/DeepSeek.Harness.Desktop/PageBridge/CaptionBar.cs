@@ -3,9 +3,9 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// <summary>
 /// 无边框窗口 chrome 注入脚本的薄渲染器：官方 macOS 观感由<b>壳自己</b>实现——侧栏列顶部让位
 /// （padding 属元素自身背景盒，让位带被侧栏填充色无缝覆盖）、左上角红绿灯三点（壳绘制，走 Ryn
-/// 声明式 <c>data-webview-*</c> 控制）、并发布 dsh 的三变量几何。几何语义归 Core 端口
-/// （<see cref="Core.WindowChrome.ChromeInsets"/> + <see cref="Core.WindowChrome.IWindowChromePolicy"/>，
-/// ADR window-chrome-depatch-core-ports）：<c>top-clearance</c> 承担布局让位、<c>chrome-top</c> 恒为 0
+/// 声明式 <c>data-webview-*</c> 控制）、并发布 dsh 的三变量几何。几何语义归 Core 纯函数
+/// （<see cref="Core.WindowChrome.ChromeInsets"/>，ADR window-chrome-depatch-core-ports）：
+/// <c>top-clearance</c> 承担布局让位、<c>chrome-top</c> 恒为 0
 /// 使模态遮罩画满全视口（上游该变量只为窗外原生 caption 留空）、<c>overlay-top</c> 让对话框/菜单
 /// 避开顶带（台阶 + 20px）。本类只渲染不计算；<c>data-fullscreen</c> 静态不发（运行时状态）。
 /// </summary>
@@ -59,7 +59,7 @@ internal static class CaptionBar
     /// <summary>本壳自有变量（供下方 calc 复用；非上游协议）。</summary>
     private const string DeskCaptionHVar = "--dsh-desk-caption-h";
 
-    /// <summary>生成注入脚本（除 macOS 两项差异外三端同款，纯函数可单测）：三变量几何（Core 端口解出） +
+    /// <summary>生成注入脚本（除 macOS 两项差异外三端同款，纯函数可单测）：三变量几何（由 Core <c>ChromeInsets.Resolve</c> 解出） +
     /// 侧栏顶部让位 + 顶层文档守卫 + 幂等守卫 + 红绿灯三按钮 + 带内拖拽判定。可达名（aria-label）双语
     /// 经 <see cref="AppJsonContext.JsString"/> 管线转义注入，执行期按 <c>html[lang]</c> 现取；
     /// innerHTML 全段同样走 JsString（SVG 单引号裸拼会炸解析——FULL 评审 B1）。
@@ -83,9 +83,9 @@ internal static class CaptionBar
         string greenAttr = macChrome ? MacGreenAttr : ZoomGreenAttr;
         string greenZh = macChrome ? UiCopy.CaptionFullscreenName(english: false) : maximizeZh;
         string greenEn = macChrome ? UiCopy.CaptionFullscreenName(english: true) : maximizeEn;
-        // 三变量几何归 Core 端口（ADR window-chrome-depatch-core-ports）：本壳无全屏状态源，
+        // 三变量几何归 Core 纯函数（ADR window-chrome-depatch-core-ports）：本壳无全屏状态源，
         // 恒按非全屏解；data-fullscreen 静态不发（运行时状态，静态发即对上游 CSS 说谎）。
-        ChromeInsets insets = WindowChromePolicy.Default.ResolveInsets(heightPx, fullscreen: false);
+        var insets = ChromeInsets.Resolve(heightPx, fullscreen: false);
 
         return "(function(){" +
                // 注册式执行是全 frame 注入（Ryn 的 inject 传 no_frames=false）：只给顶层文档建壳顶栏，
@@ -124,7 +124,7 @@ internal static class CaptionBar
     /// <summary>注入样式的总装（只拼装不计算）：三变量发布 + 侧栏让位 + 折叠按钮归位 + 红绿灯几何
     /// + 窗口边缘描边环（macChrome 追加透明链）。拖拽判定另见 <see cref="BuildDragBinding"/>（行为保持——删除主张已
     /// 在订正中落败，见 ADR）。</summary>
-    /// <param name="insets">三变量几何（Core 端口解出，本方法只渲染）。</param>
+    /// <param name="insets">三变量几何（由 Core <c>ChromeInsets.Resolve</c> 解出，本方法只渲染）。</param>
     /// <param name="heightPx">chrome 高度（CSS 像素）。</param>
     /// <param name="greenAttr">绿灯按钮属性名（绿底规则随之切换）。</param>
     /// <param name="macChrome">是否追加 macOS 毛玻璃透明链。</param>
@@ -142,7 +142,7 @@ internal static class CaptionBar
     /// 只为窗外原生 caption 留空，本壳顶带是窗内页面，随高度发布会把顶带排除在模态遮罩绘制之外）；
     /// overlay-top 让对话框/菜单避开顶带（上游 overlay-top 语义；本壳无全屏状态源，恒按非全屏发布）。
     /// 自带本壳自有变量供下方 calc 复用。</summary>
-    /// <param name="insets">三变量几何（Core 端口解出）。</param>
+    /// <param name="insets">三变量几何（由 Core <c>ChromeInsets.Resolve</c> 解出）。</param>
     /// <returns><c>:root</c> 变量段 CSS 文本。</returns>
     private static string BuildChromeVariables(ChromeInsets insets) =>
         ":root{" + TopClearanceVar + ":" + insets.TopClearancePx + "px;" +

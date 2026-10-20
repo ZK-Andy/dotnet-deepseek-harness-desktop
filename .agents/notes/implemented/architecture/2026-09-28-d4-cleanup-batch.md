@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-20 — 正文第 4 条「`CliShimFile` 降 file-local……收益为零——保留现状」的裁定已被推翻：该类型与 `CliShimSetup`/`ShimWriteAction`/`CliShimPlanner` 一并收为 internal（见 [internal-visibility-narrowing](../simplification/2026-10-20-internal-visibility-narrowing.md)）——可见性收窄的收益不再是零：实现细节不再挂在程序集公共面上。正文与决定不动。
+
 Review: LIGHT/2026-09-28#4/R2=ok（2 轮：首轮 1 Blocker+1 Suggestion，验轮闭合）
 
 ## Problem

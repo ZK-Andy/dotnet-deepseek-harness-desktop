@@ -4,14 +4,14 @@ using Microsoft.Win32;
 namespace DeepSeek.Harness.Desktop.Infrastructure.CliShim;
 
 /// <summary>一个待落盘的 shim 文件。</summary>
-public sealed record CliShimFile(string TargetPath, string Content, bool Executable);
+internal sealed record CliShimFile(string TargetPath, string Content, bool Executable);
 
 /// <summary>
 /// CLI shim 注册的纯规划结果：要落盘的 shim 文件、bin 目录与 PATH 增量（Windows 为 HKCU 追加、
 /// Unix 为 rc key 块）。<paramref name="RuntimeNodeBinDir"/> 为系统全局 node 的 global bin 目录
 /// （无系统 node 时由桌面装到系统全局；把它一并暴露进终端 PATH，让桌面与终端共用同一份 node/dsh）。
 /// </summary>
-public sealed record CliShimSetup(
+internal sealed record CliShimSetup(
     IReadOnlyList<CliShimFile> Files,
     string BinDir,
     string PathSeparator,
@@ -19,7 +19,7 @@ public sealed record CliShimSetup(
     string? RuntimeNodeBinDir = null);
 
 /// <summary>写入 shim 目标的决策。</summary>
-public enum ShimWriteAction
+internal enum ShimWriteAction
 {
     /// <summary>目标不存在，或为本应用生成的 shim：直接写入。</summary>
     Write,
@@ -36,7 +36,7 @@ public enum ShimWriteAction
 /// 并判定写入动作（幂等合并、绝不覆盖用户配置）。dsh 已全局在 PATH（ADR simple-shell-single-global-dsh），
 /// 不再生成 dsh shim。平台 IO（注册表 / rc 落盘 / 广播）与编排见 <see cref="CliShimRegistrar"/>。
 /// </summary>
-public static class CliShimPlanner
+internal static class CliShimPlanner
 {
     /// <summary>Windows shim 文件名（pnpm 命令）。</summary>
     public const string PnpmCmdName = "pnpm.cmd";

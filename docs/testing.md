@@ -12,7 +12,7 @@
   * **监督与观测**：`PageHealthMonitorTests`（页面健康探针）、`HostLogAndDiagnosticsTests`（HostLog 出口脱敏集成）、`SecretMaskerTests`（凭据形状遮罩纯函数）、`DiagnosticsTests`（诊断包导出）、`RecoveryPageTests`（恢复页脚本构建）。
   * **托盘/窗口/单实例**：`TrayTests`（托盘命令记序）、`CloseToTrayTests`（关到托盘偏好）、`LauncherActivationTests`（单实例仲裁/uid 回退后缀）、`DesktopBannerTests`。
   * **随包插件**：`MarketInstallHelperTests`（检测/迁移/workspace 修正/伴生 spec/JsonNode 写盘格式钉子）、`PluginVersionCheckTests`（版本解包/升级判定/脏版本 fail loud）、`BundledPluginCatalogTests`（清单装配判定/端到端布局）、`DesktopProfileBootstrapTests`（reconcile 不可解析引用）。
-  * **自更新**：`UpdateVersionTests`、`UpdateStateMachineTests`（对账/恢复/并发去重）、`ReleaseAssetTests`（资产挑选/SUMS 解析/下载锁）、`FileReadyPersistenceTests`（ready.json 往返契约）、`InstallerDownloaderTests`（SHA256SUMS 强校验/原子改名）、`UpdateInstallerTests`（deb/rpm 命令 + Linux root 脚本内容级回归：PATH 硬化/哈希复验/symlink 守卫/降权拉起）、`DesktopUpdateCommandRouterTests`（后台 token 契约）、`UpdateOptionsTests`/`UpdateStateJsonTests`/`AppJsonTests`。
+  * **自更新**：`UpdateVersionTests`、`UpdateStateMachineTests`（对账/恢复/并发去重）、`ReleaseAssetTests`（资产挑选/SUMS 解析/下载锁）、`FileReadyPersistenceTests`（ready.json 往返契约）、`InstallerDownloaderTests`（SHA256SUMS 强校验/原子改名）、`UpdateInstallerTests`（deb/rpm 命令 + Linux root 脚本内容级回归：PATH 硬化/哈希复验/symlink 守卫/降权拉起）、`DesktopUpdateCommandRouterTests`（后台 token 契约）、`UpdateOptionsTests`/`UpdateStateJsonTests`/`AppJsonTests`、`UpdateHttpClientExposureTests`（自更新链路静态客户端来源唯一）。
   * **导航与外链**：`ExternalLinkPolicyTests`、`ExternalLinkCommandRouterTests`、`RynNavigationCallbacksTests`（拦截/放行/origin 刷新/失败 toast）。
   * **退出与环境**：`ExitPipelineTests`（退出管道记序与幂等契约）、`DevEnvironmentTests`（dev 隔离）、`UpdateBannerTests`（更新就绪横幅）、`AutostartBuilderTests`（自启条目构造）。
   * **架构边界**：`ArchitectureTests`（依赖方向断言）；Core 纯度门（Core 源文件不得直接做文件/环境 IO，IO 经端口、

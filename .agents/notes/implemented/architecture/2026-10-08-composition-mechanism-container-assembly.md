@@ -4,6 +4,8 @@ Status: implemented
 
 Erratum: 2026-10-15 — Problem 段落点换家：`DesktopBootstrap.App.cs`/`DesktopBootstrap.cs` 已改名 `DesktopAdapter*.cs`，`Supervision.cs` 现名 `Bootstrap/StartupSequence.Supervision.cs`，按旧名与旧行号 grep 今天落空。正文与决定不动。
 
+Erratum: 2026-10-21 — Decision 第 1 条列举的 `IWindowChromePolicy` 端口已撤回：该端口零替身、无具体变更被它挡住（见 [rejected/2026-10-21-window-chrome-policy-injection](../../rejected/architecture/2026-10-21-window-chrome-policy-injection.md)），几何判据仍留 Core 纯函数。用例下沉机制与其余住户不变。正文与决定不动。
+
 Review: FULL/2026-10-15#3/R1=ok R2=ok R3=ok
 
 四步落地篇（按序）：[runtime-starter-core-usecase](2026-10-08-runtime-starter-core-usecase.md)、[startupwiring-deletion-run-singletons](2026-10-08-startupwiring-deletion-run-singletons.md)、[root-fields-zero-shared-state-singletons](2026-10-08-root-fields-zero-shared-state-singletons.md)、[desktop-adapter-rename-final-assembly](2026-10-08-desktop-adapter-rename-final-assembly.md)、step-1 的 [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md) 与 [startup-sequencer-shape](2026-10-15-startup-sequencer-shape.md)；残留批 [sequencer-stage-value-retirement](2026-10-15-sequencer-stage-value-retirement.md)（波 A）与 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md)（波 B）；收口篇 [app-exit-orchestration-core-usecase](2026-10-15-app-exit-orchestration-core-usecase.md) 与 [entry-bridge-two-phase](2026-10-15-entry-bridge-two-phase.md)。

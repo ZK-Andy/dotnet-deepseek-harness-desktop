@@ -6,6 +6,8 @@ Review: FULL/2026-10-15#2/R1=ok R2=ok R3=ok
 
 Erratum: 2026-10-15 — Testing 的两个门禁读数已变：C3 16/16 → **6/6**、R1b 11 → **9/11**（[sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md) 的 C3 压舱与静态域入口实例化）。正文与决定不动。
 
+Erratum: 2026-10-21 — 正文提到的 `IWindowChromePolicy` 端口已撤回（零替身、无具体变更被它挡住，见 [rejected/2026-10-21-window-chrome-policy-injection](../../rejected/architecture/2026-10-21-window-chrome-policy-injection.md)）；用例下沉机制与其余住户不变。正文与决定不动。
+
 方案母篇见 [composition-mechanism-container-assembly](2026-10-08-composition-mechanism-container-assembly.md)（本篇落其 step-1 的 B1/B2；四步更正见 [desktop-adapter-rename-final-assembly](2026-10-08-desktop-adapter-rename-final-assembly.md) Erratum）。
 
 ## Problem

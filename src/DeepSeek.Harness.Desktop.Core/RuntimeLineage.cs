@@ -79,7 +79,7 @@ public static class RuntimeLineage
     public sealed record Subject(Candidate Candidate, LineageKind Kind);
 
     /// <summary>进程相对的父链归属（三态：可证在内 / 可证在外 / 不可证）。</summary>
-    public enum TreeMembership
+    internal enum TreeMembership
     {
         /// <summary>可证位于目标进程子树内。</summary>
         Inside,
@@ -271,7 +271,7 @@ public static class RuntimeLineage
     /// <param name="readParentPid">读父进程 id 的探针。</param>
     /// <returns>可证在内返回 <see cref="TreeMembership.Inside"/>；父链可读并上溯到 root 返回
     /// <see cref="TreeMembership.Outside"/>；读不到/自环/超深返回 <see cref="TreeMembership.Unknown"/>。</returns>
-    public static TreeMembership ClassifyMembership(int pid, int ancestorPid, Func<int, int?> readParentPid)
+    internal static TreeMembership ClassifyMembership(int pid, int ancestorPid, Func<int, int?> readParentPid)
     {
         if (pid == ancestorPid)
         {

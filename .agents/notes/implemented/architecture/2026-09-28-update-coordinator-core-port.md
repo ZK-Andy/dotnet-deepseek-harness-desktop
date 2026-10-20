@@ -2,6 +2,10 @@
 
 Status: implemented
 
+Erratum: 2026-10-20 — 落点换家：正文所述 Infrastructure 适配器 `UpdateStackAdapter` 已按端口拆为 `UpdateEnvironmentAdapter`／`ReleaseFeedAdapter`／`PackageDownloaderAdapter`／`UpdateInstaller`（安装器端口由后者直接实现，不设转发壳；见 [update-stack-adapter-split](2026-10-20-update-stack-adapter-split.md)）；四端口契约与协调器编排不变。正文与决定不动。
+
+Erratum: 2026-10-21 — 落点换家：正文两处指向 `UpdateHttpClient.Create` 的指针已失效——该 public 工厂已取消，`UpdateHttpClient` 收为 internal 且改为进程级共享单例 `UpdateHttpClient.Shared`（见 [update-stack-adapter-split](2026-10-20-update-stack-adapter-split.md)）。正文与决定不动。
+
 Review: FULL/2026-09-28#9/R1=ok R2=ok R3=ok
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）

@@ -8,7 +8,9 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Update;
 /// 状态机据此回退 ready；授权通过后脚本接管（本进程即将退出，等待自然超时返回）。
 /// Windows 走 Inno Setup 静默参数；macOS v1 不支持静默，转 Error。
 /// </summary>
-public static class UpdateInstaller
+/// <param name="log">可选日志注入（宿主接 HostLog）：安装派生的授权观察结果进 host.log——安装
+/// 成败结论状态机 Error 态已打，但「授权窗口是否通过/安装进程是否展开」的中间过程只有这里能留痕。</param>
+public sealed class UpdateInstaller(Action<string>? log = null) : IPackageInstaller
 {
     /// <summary>
     /// 启动安装流程。Linux 下等待授权窗口：快速非零退出（用户取消/拒绝）抛
@@ -20,9 +22,7 @@ public static class UpdateInstaller
     /// <param name="observeWindow">pkexec 授权窗口的最长观察时间（可调参数，见 <c>UpdateOptions.PkexecObserveSeconds</c>）：
     /// 超时视为授权通过、安装进行中。</param>
     /// <param name="cancellationToken">调用方取消令牌。</param>
-    /// <param name="log">可选日志注入（宿主接 HostLog）：安装派生的授权观察结果进 host.log——安装
-    /// 成败结论状态机 Error 态已打，但「授权窗口是否通过/安装进程是否展开」的中间过程只有这里能留痕。</param>
-    public static async Task LaunchAsync(string assetPath, string workDir, string expectedSha256, TimeSpan observeWindow, CancellationToken cancellationToken, Action<string>? log = null)
+    public async Task LaunchAsync(string assetPath, string workDir, string expectedSha256, TimeSpan observeWindow, CancellationToken cancellationToken)
     {
         string exePath = Environment.ProcessPath
             ?? throw new InvalidOperationException("无法定位当前可执行文件路径");

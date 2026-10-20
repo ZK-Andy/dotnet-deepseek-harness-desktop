@@ -89,15 +89,19 @@ internal static class PreBuildRegistration
             Path.Combine(HarnessRuntimeHost.ResolveDshHome(), CloseBehaviorPreference.FileName));
 
         // 自更新协调器在此构造并装载（早于 BuildApp）：Application 用例住 Core（ADR
-        // update-coordinator-core-port），栈协作经 UpdateStackAdapter 四端口注入（一个适配器同型实现），
+        // update-coordinator-core-port），栈协作经四端口注入（宿主事实/feed/下载/安装器各一实现，
+        // ADR architecture/2026-10-20-update-stack-adapter-split），
         // UI 交接以委托闭包接线（PagePump/横幅/关窗闸门/退出管道）——装配层只装配，编排策略随用例可单测。
-        var updateStack = new UpdateStackAdapter(HostLog.Write);
+        var updateEnvironment = new UpdateEnvironmentAdapter(HostLog.Write);
+        var updateFeed = new ReleaseFeedAdapter(HostLog.Write);
+        var updateDownloader = new PackageDownloaderAdapter(HostLog.Write);
+        var updateInstaller = new UpdateInstaller(HostLog.Write);
         var updates = new UpdateCoordinator(
             preflight.Launch.IsDev,
-            updateStack,
-            updateStack,
-            updateStack,
-            updateStack,
+            updateEnvironment,
+            updateFeed,
+            updateDownloader,
+            updateInstaller,
             () => supervisorCts.Token,
             state => PagePump.PushUpdateState(accessorProvider(), state),
             (version, token) => shared.Pump.ShowBannerWhenReadyAsync(
