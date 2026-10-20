@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop;
@@ -15,7 +16,7 @@ namespace DeepSeek.Harness.Desktop;
 public sealed class CompanionLocaleCommandRouter : ICommandRouter
 {
     /// <summary>本路由响应的命令名。</summary>
-    public const string CommandName = "desktop.companion.setLocale";
+    public const string CommandName = HostCommandIds.CompanionSetLocale;
 
     private readonly UiLocale _uiLocale;
     private readonly Action<string>? _log;

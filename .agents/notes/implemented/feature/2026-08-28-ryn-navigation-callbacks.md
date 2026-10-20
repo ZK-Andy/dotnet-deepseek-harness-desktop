@@ -2,6 +2,10 @@
 
 Status: implemented
 
+Erratum: 2026-10-20 — 本篇「经共享 `SystemBrowser` 打开」「`ExternalLinkCommandRouter` 与 `RynNavigationCallbacks` 的
+默认打开器收敛到它」的机制断言已被取代：打开动作改经 Core 端口 `ISystemBrowser`（实现落 Infrastructure，ADR
+`architecture/2026-10-20-host-boundary-ports`）。正文不动。
+
 ## Problem
 
 外部链接处理一直是**点击层 hack**，不覆盖导航层。companion `client.js`（`__ryn_externalLinkCatcher`）用 capture 阶段 `document.addEventListener('click', …, true)` 拦截 `a[href]` 点击、命中站外/`_blank` 的 http(s) 时 `preventDefault()` + `window.__ryn.invoke('app.openExternal')`。这只兜得住**用户点击 `<a>`** 这一条路径——`window.location = external`、`window.open()`、`<form>` 提交、`<meta http-equiv=refresh>` 这些**不经过点击的整页导航**，会直接把 dsh 页面替换成外部站（用户被"带走"，不可逆），现行机制完全覆盖不到。

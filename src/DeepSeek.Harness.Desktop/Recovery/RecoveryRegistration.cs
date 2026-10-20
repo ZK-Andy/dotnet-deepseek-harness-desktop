@@ -10,15 +10,15 @@ internal static class RecoveryRegistration
     /// <summary>诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）。
     /// 健康快照在调用期经容器解析（调用点必在观测启动之后；观测未起时快照为 null）。
     /// 同域登记失败面的自动导出端口（ADR native-failure-surface）：页面命令面与失败面共用同一导出器，
-    /// 只是入口不同（静态基础设施调用收在适配器内，R1b）。</summary>
+    /// 只是入口不同——命令面经端口拿结果（ADR host-boundary-ports），不再直调基础设施静态面。</summary>
     public static IServiceCollection AddDiagnosticsCommands(this IServiceCollection services)
     {
-        services.AddSingleton<ICommandRouter>(sp => new DesktopDiagnosticsCommandRouter(
-            log: HostLog.Write,
-            healthSnapshot: () => sp.GetRequiredService<PageHealthMonitor>().Snapshot));
         services.AddSingleton<IDiagnosticsExport>(sp => new DiagnosticsExportService(
             HostLog.Write,
             () => sp.GetRequiredService<PageHealthMonitor>().Snapshot));
+        services.AddSingleton<ICommandRouter>(sp => new DesktopDiagnosticsCommandRouter(
+            sp.GetRequiredService<IDiagnosticsExport>(),
+            log: HostLog.Write));
         return services;
     }
 

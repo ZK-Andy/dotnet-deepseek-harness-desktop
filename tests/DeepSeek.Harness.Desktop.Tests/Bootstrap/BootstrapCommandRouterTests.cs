@@ -1,3 +1,4 @@
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.Bootstrap;
@@ -12,9 +13,9 @@ public class BootstrapCommandRouterTests
     {
         var gate = new RuntimeBootstrapGate();
         var router = new BootstrapCommandRouter(gate);
-        Assert.True(router.CanRoute("desktop.bootstrap.retry"));
-        Assert.False(router.CanRoute("desktop.recovery.exit"));
-        ValueTask<string> result = router.RouteAsync("desktop.bootstrap.retry", default, null!, CancellationToken.None);
+        Assert.True(router.CanRoute(HostCommandIds.BootstrapRetry));
+        Assert.False(router.CanRoute(HostCommandIds.RecoveryExit));
+        ValueTask<string> result = router.RouteAsync(HostCommandIds.BootstrapRetry, default, null!, CancellationToken.None);
         Assert.True(result.IsCompletedSuccessfully);
         Assert.True(gate.IsSignaled);
     }

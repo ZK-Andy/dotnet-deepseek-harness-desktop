@@ -1,3 +1,4 @@
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.Tray;
@@ -12,9 +13,9 @@ public class CloseToTrayCommandRouterTests
         var router = new CloseToTrayCommandRouter(
             new CloseBehaviorPreference(Path.Combine(Path.GetTempPath(), "ddc-unused.json")),
             () => true);
-        Assert.True(router.CanRoute("desktop.closeToTray.getState"));
-        Assert.True(router.CanRoute("desktop.closeToTray.set"));
-        Assert.False(router.CanRoute("desktop.autostart.getState"));
+        Assert.True(router.CanRoute(HostCommandIds.CloseToTrayGetState));
+        Assert.True(router.CanRoute(HostCommandIds.CloseToTraySet));
+        Assert.False(router.CanRoute(HostCommandIds.AutostartGetState));
     }
 
     /// <summary>验证 getState 帧携带缺省 enabled=true 与托盘可用性 available=false 两字段。</summary>
@@ -24,7 +25,7 @@ public class CloseToTrayCommandRouterTests
         string path = Path.Combine(Path.GetTempPath(), "ddc-close-tests", Guid.NewGuid().ToString("N"),
             CloseBehaviorPreference.FileName);
         var router = new CloseToTrayCommandRouter(new CloseBehaviorPreference(path), () => false);
-        string frame = await router.RouteAsync("desktop.closeToTray.getState", ReadOnlyMemory<byte>.Empty,
+        string frame = await router.RouteAsync(HostCommandIds.CloseToTrayGetState, ReadOnlyMemory<byte>.Empty,
             null!, CancellationToken.None);
         // 缺省 true；available=false 时客户端禁用开关
         Assert.Equal("""{"enabled":true,"available":false}""", frame);
@@ -37,11 +38,11 @@ public class CloseToTrayCommandRouterTests
         string path = Path.Combine(Path.GetTempPath(), "ddc-close-tests", Guid.NewGuid().ToString("N"),
             CloseBehaviorPreference.FileName);
         var router = new CloseToTrayCommandRouter(new CloseBehaviorPreference(path), () => true);
-        await router.RouteAsync("desktop.closeToTray.set",
+        await router.RouteAsync(HostCommandIds.CloseToTraySet,
             System.Text.Encoding.UTF8.GetBytes("{\"enabled\":false}"), null!, CancellationToken.None);
         Assert.False(new CloseBehaviorPreference(path).HideOnClose);
 
-        string frame = await router.RouteAsync("desktop.closeToTray.getState", ReadOnlyMemory<byte>.Empty,
+        string frame = await router.RouteAsync(HostCommandIds.CloseToTrayGetState, ReadOnlyMemory<byte>.Empty,
             null!, CancellationToken.None);
         Assert.Equal("""{"enabled":false,"available":true}""", frame);
     }

@@ -1,5 +1,7 @@
 using System.IO.Compression;
 using System.Text;
+using DeepSeek.Harness.Desktop.Core.Ipc;
+using DeepSeek.Harness.Desktop.Tests.Fakes;
 
 namespace DeepSeek.Harness.Desktop.Tests.Recovery;
 
@@ -155,10 +157,10 @@ public class DesktopDiagnosticsCommandRouterTests
     [Fact]
     public void CanRoute_ExactCommandOnly()
     {
-        var router = new DesktopDiagnosticsCommandRouter();
-        Assert.True(router.CanRoute("desktop.diagnostics.export"));
+        var router = new DesktopDiagnosticsCommandRouter(new FakeDiagnosticsExport());
+        Assert.True(router.CanRoute(HostCommandIds.DiagnosticsExport));
         Assert.False(router.CanRoute("desktop.diagnostics.export.extra"));
-        Assert.False(router.CanRoute("app.openExternal"));
+        Assert.False(router.CanRoute(HostCommandIds.OpenExternal));
     }
 
     /// <summary>验证成功路径返回含 "path" 的 JSON 帧，且该路径确实写出可读取的 zip 文件。</summary>
@@ -170,9 +172,9 @@ public class DesktopDiagnosticsCommandRouterTests
         try
         {
             var router = new DesktopDiagnosticsCommandRouter(
-                home: home, outputDirectory: outDir, appVersion: "1.2.3-test", log: _ => { });
+                new DiagnosticsExportService(log: _ => { }, home: home, outputDirectory: outDir, appVersion: "1.2.3-test"));
             string frame = await router.RouteAsync(
-                "desktop.diagnostics.export",
+                HostCommandIds.DiagnosticsExport,
                 ReadOnlyMemory<byte>.Empty,
                 services: null!,
                 CancellationToken.None);
@@ -200,13 +202,14 @@ public class DesktopDiagnosticsCommandRouterTests
         {
             var logs = new List<string>();
             var router = new DesktopDiagnosticsCommandRouter(
-                home: fileAsDir,
-                outputDirectory: fileAsDir,
-                appVersion: "0.0.0-test",
-                log: msg => logs.Add(msg));
+                new DiagnosticsExportService(
+                    log: msg => logs.Add(msg),
+                    home: fileAsDir,
+                    outputDirectory: fileAsDir,
+                    appVersion: "0.0.0-test"));
 
             string frame = await router.RouteAsync(
-                "desktop.diagnostics.export",
+                HostCommandIds.DiagnosticsExport,
                 ReadOnlyMemory<byte>.Empty,
                 services: null!,
                 CancellationToken.None);

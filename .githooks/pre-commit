@@ -58,7 +58,16 @@ python3 scripts/verify-registration-discipline.py --enforce
 # 9a3) 增量纪律闸（耦合左移②：暂存集 gross/既有文件净增/跨层扇出/新包引用四帽，
 #      超帽即拦；不可判定 diff（fail-loud）亦拦——见 ADR coupling-increment-enforce）
 echo "-> verify-increment-discipline.py --staged --enforce"
-python3 scripts/verify-increment-discipline.py --staged --enforce
+python3 scripts/verify-increment-discipline.py --staged --enforce --exempt .agents/notes/implemented/testing/2026-10-20-new-gates-wiring.md
+
+# 9a4) 命令 ID 单一事实源闸（IPC 强类型：壳侧不得复写已知命令 ID 字面量，
+#      插件侧不得自造命令，常量不得无人引用——ADR host-command-ids）
+echo "-> verify-host-command-ids.py"
+python3 scripts/verify-host-command-ids.py --enforce
+
+# 9a5) Core 纯度闸（Core 不得直接做文件/环境 IO——IO 经 Core 端口，适配器落 Infrastructure）
+echo "-> verify-core-purity.py"
+python3 scripts/verify-core-purity.py --enforce
 
 # 9b) 脚本规范门禁（docs/script-standards.md 的机器强制面 S1-S6，含 shellcheck -S warning）。
 #     执行点与 CI 的 docs job 同源；缺 shellcheck 判红并提示 scripts/install-linters.sh

@@ -1,3 +1,4 @@
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Recovery;
@@ -12,7 +13,7 @@ namespace DeepSeek.Harness.Desktop.Recovery;
 public sealed class RecoveryCommandRouter : ICommandRouter
 {
     /// <summary>本路由响应的命令名。</summary>
-    public const string CommandName = "desktop.recovery.exit";
+    public const string CommandName = HostCommandIds.RecoveryExit;
 
     private readonly Action _closeWindow;
     private readonly CloseGate _closeGate;

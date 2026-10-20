@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using DeepSeek.Harness.Desktop.Core.Ipc;
+using DeepSeek.Harness.Desktop.Core.Platform;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop;
@@ -10,14 +12,21 @@ namespace DeepSeek.Harness.Desktop;
 /// </summary>
 public sealed class AutostartCommandRouter : ICommandRouter
 {
+    private readonly IAutostart _autostart;
     private readonly Action<string>? _log;
 
-    /// <summary>创建路由；日志委托默认不接（生产传 HostLog.Write，测试注入收集器）。</summary>
-    public AutostartCommandRouter(Action<string>? log = null) => _log = log;
+    /// <summary>创建路由。</summary>
+    /// <param name="autostart">开机自启端口（平台面在 Infrastructure 实现，壳侧只经端口读写）。</param>
+    /// <param name="log">日志委托默认不接（生产传 HostLog.Write，测试注入收集器）。</param>
+    public AutostartCommandRouter(IAutostart autostart, Action<string>? log = null)
+    {
+        _autostart = autostart;
+        _log = log;
+    }
 
     /// <inheritdoc />
     public bool CanRoute(string command) =>
-        command is "desktop.autostart.getState" or "desktop.autostart.set";
+        command is HostCommandIds.AutostartGetState or HostCommandIds.AutostartSet;
 
     /// <inheritdoc />
     public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
@@ -31,11 +40,11 @@ public sealed class AutostartCommandRouter : ICommandRouter
         {
             switch (command)
             {
-                case "desktop.autostart.getState":
-                    return ValueTask.FromResult(Frame(Autostart.IsEnabled()));
-                case "desktop.autostart.set":
+                case HostCommandIds.AutostartGetState:
+                    return ValueTask.FromResult(Frame(_autostart.IsEnabled()));
+                case HostCommandIds.AutostartSet:
                     bool enabled = ParseEnabled(args);
-                    bool now = Autostart.SetEnabled(enabled);
+                    bool now = _autostart.SetEnabled(enabled);
                     _log?.Invoke($"[host] 开机自启已{(now ? "启用" : "停用")}");
                     return ValueTask.FromResult(Frame(now));
                 default:

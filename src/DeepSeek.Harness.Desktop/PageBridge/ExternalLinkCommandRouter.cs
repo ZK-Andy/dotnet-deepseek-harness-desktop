@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using DeepSeek.Harness.Desktop.Core.Ipc;
+using DeepSeek.Harness.Desktop.Core.Platform;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.PageBridge;
@@ -9,24 +11,25 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// </summary>
 /// <remarks>
 /// 由 <see cref="RynCommandDispatcher"/> 按前缀收集分发（注册为 <see cref="ICommandRouter"/> 单例）。
-/// 打开动作通过 <see cref="Opener"/> 委托注入，默认 <see cref="SystemBrowser"/>；测试注入假开器避免真的弹浏览器。
+/// 打开动作经 <see cref="ISystemBrowser"/> 端口（ADR host-boundary-ports）：平台面（xdg-open /
+/// shell execute）在 Infrastructure 实现，测试注入假开器避免真的弹浏览器。
 /// 触发源：Ryn 0.32.0 起由导航层拦截（<see cref="RynNavigationCallbacks"/>）在 <c>WebViewNavigating</c>
 /// 里经本命令把站外 URL 交给系统浏览器；历史/已发布 companion 的注入脚本也经 <c>app.openExternal</c> 触达本路由。
 /// </remarks>
 public sealed class ExternalLinkCommandRouter : ICommandRouter
 {
     /// <summary>本路由响应的命令名（注入脚本用 <c>window.__ryn.invoke('app.openExternal', {{ url }})</c> 触发；导航层亦经此落系统浏览器）。</summary>
-    public const string CommandName = "app.openExternal";
+    public const string CommandName = HostCommandIds.OpenExternal;
 
-    private readonly Func<string, bool> _opener;
+    private readonly ISystemBrowser _browser;
     private readonly Action<string>? _log;
 
     /// <summary>创建路由。</summary>
-    /// <param name="opener">打开 URL 的委托；null 时默认用系统默认浏览器。</param>
+    /// <param name="browser">系统浏览器端口（平台面在 Infrastructure 实现）。</param>
     /// <param name="log">日志委托（可选；生产传 <see cref="HostLog"/>.Write，测试注入收集器）。</param>
-    public ExternalLinkCommandRouter(Func<string, bool>? opener = null, Action<string>? log = null)
+    public ExternalLinkCommandRouter(ISystemBrowser browser, Action<string>? log = null)
     {
-        _opener = opener ?? OpenWithDefaultBrowser;
+        _browser = browser;
         _log = log;
     }
 
@@ -71,7 +74,7 @@ public sealed class ExternalLinkCommandRouter : ICommandRouter
         bool opened = false;
         try
         {
-            opened = _opener(href);
+            opened = _browser.Open(href);
         }
         catch (Exception ex)
         {
@@ -81,10 +84,4 @@ public sealed class ExternalLinkCommandRouter : ICommandRouter
         // 成功与否都返回成功帧（避免 JS 抛 IPC 错误；失败已记日志）
         return ValueTask.FromResult(opened ? "{}" : "null");
     }
-
-    /// <summary>
-    /// 默认打开器：委托给 <see cref="SystemBrowser"/>（Linux 走 <c>xdg-open</c> 并重定向子进程输出，
-    /// 浏览器自身后台报错不回灌应用终端；其余平台 <c>Process.Start(UseShellExecute=true)</c>）。
-    /// </summary>
-    private static bool OpenWithDefaultBrowser(string url) => SystemBrowser.Open(url);
 }

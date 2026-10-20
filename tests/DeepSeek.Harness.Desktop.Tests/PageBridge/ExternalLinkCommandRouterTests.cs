@@ -1,4 +1,5 @@
 using System.Text;
+using DeepSeek.Harness.Desktop.Tests.Fakes;
 
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 
@@ -9,7 +10,7 @@ public class ExternalLinkCommandRouterTests
     [Fact]
     public void CanRoute_MatchesCommandName()
     {
-        var router = new ExternalLinkCommandRouter();
+        var router = new ExternalLinkCommandRouter(new FakeSystemBrowser());
         Assert.True(router.CanRoute(ExternalLinkCommandRouter.CommandName));
         Assert.False(router.CanRoute("window.close"));
         Assert.False(router.CanRoute(""));
@@ -19,8 +20,8 @@ public class ExternalLinkCommandRouterTests
     [Fact]
     public async Task RouteAsync_OpensValidHttpUrl()
     {
-        string? opened = null;
-        var router = new ExternalLinkCommandRouter(opener: url => { opened = url; return true; });
+        var browser = new FakeSystemBrowser();
+        var router = new ExternalLinkCommandRouter(browser: browser);
         byte[] body = Encoding.UTF8.GetBytes("""{"url":"https://x.com/foo/status/123"}""");
 
         string result = await router.RouteAsync(
@@ -30,7 +31,7 @@ public class ExternalLinkCommandRouterTests
             CancellationToken.None);
 
         Assert.Equal("{}", result);
-        Assert.Equal("https://x.com/foo/status/123", opened);
+        Assert.Equal("https://x.com/foo/status/123", Assert.Single(browser.Opened));
     }
 
     /// <summary>验证非 http(s) scheme（mailto/javascript）、相对路径、缺 url 字段、非 JSON 与空体一律不触发 opener，返回 null 帧。</summary>
@@ -44,8 +45,8 @@ public class ExternalLinkCommandRouterTests
     [InlineData("")]                                             // 空体
     public async Task RouteAsync_RejectsUnsafeOrNonHttp(string body)
     {
-        bool opened = false;
-        var router = new ExternalLinkCommandRouter(opener: _ => { opened = true; return true; });
+        var browser = new FakeSystemBrowser();
+        var router = new ExternalLinkCommandRouter(browser: browser);
 
         string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,
@@ -53,7 +54,7 @@ public class ExternalLinkCommandRouterTests
             services: null!,
             CancellationToken.None);
 
-        Assert.False(opened, $"不该打开：{body}");
+        Assert.Empty(browser.Opened);
         Assert.Equal("null", result);
     }
 
@@ -61,7 +62,7 @@ public class ExternalLinkCommandRouterTests
     [Fact]
     public async Task RouteAsync_OpenerReturnsFalse_StillReturnsSuccessFrame()
     {
-        var router = new ExternalLinkCommandRouter(opener: _ => false);
+        var router = new ExternalLinkCommandRouter(browser: new FakeSystemBrowser(result: false));
 
         string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,
@@ -76,7 +77,7 @@ public class ExternalLinkCommandRouterTests
     [Fact]
     public async Task RouteAsync_OpenerThrows_ReturnsNull_DoesNotThrow()
     {
-        var router = new ExternalLinkCommandRouter(opener: _ => throw new InvalidOperationException("no browser"));
+        var router = new ExternalLinkCommandRouter(browser: new FakeSystemBrowser(throwOnOpen: true));
 
         string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,

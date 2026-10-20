@@ -125,6 +125,26 @@ def _metrics(numstat: str) -> tuple[int, str, int]:
     return gross, top_path, file_max
 
 
+def _changed_paths(mode: str, since: str) -> set[str]:
+    """本次变更集的文件路径（按 diff 时刻取：staged / since / 工作树+未跟踪）。"""
+    if mode == "staged":
+        args = ["diff", "--cached", "--name-only"]
+    elif mode == "since":
+        args = ["diff", "--name-only", f"{since}..HEAD"]
+    else:
+        args = ["diff", "HEAD", "--name-only"]
+    r = subprocess.run(["git", *args], capture_output=True, text=True, check=False)
+    if r.returncode != 0:
+        return set()
+    paths = {ln.strip() for ln in r.stdout.splitlines() if ln.strip()}
+    if mode == "worktree":
+        u = subprocess.run(["git", "ls-files", "--others", "--exclude-standard"],
+                           capture_output=True, text=True, check=False)
+        if u.returncode == 0:
+            paths |= {ln.strip() for ln in u.stdout.splitlines() if ln.strip()}
+    return paths
+
+
 def _numstat_args(diff_args: list[str], existing_only: bool) -> list[str]:
     """`--numstat` argv for one diff moment; existing_only drops added files."""
     extra = [_EXISTING_DIFF_FILTER] if existing_only else []
@@ -552,6 +572,33 @@ def _self_test() -> int:
     return failed
 
 
+EXEMPT_RE = re.compile(r"增量闸豁免[：:]\s*gross\s*≤\s*(\d+)[，,]\s*fanout\s*≤\s*(\d+)")
+
+
+def _exemption(adr: str, mode: str, since: str) -> dict | None:
+    """一次性豁免：ADR 须在本次变更集内（新增或修改）且正文带豁免标记。
+
+    与评审证据的「本批新产出」同一思路——批次落地后该 ADR 进入基线，豁免不再生效，
+    故豁免天然是一次性的，不会变成长期放宽的默认帽。"""
+    if not adr:
+        return None
+    path = Path(adr)
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = EXEMPT_RE.search(text)
+    if not m:
+        return None
+    changed = _changed_paths(mode, since)
+    if adr not in changed:
+        print(f"  exempt: {adr} 不在本次变更集内——豁免不生效")
+        return None
+    return {"adr": adr, "gross": int(m.group(1)), "fanout": int(m.group(2))}
+
+
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--self-test":
         return _self_test()
@@ -566,6 +613,10 @@ def main() -> int:
     parser.add_argument("--max-packages", type=int, default=DEFAULT_MAX_PACKAGES)
     parser.add_argument("--enforce", action="store_true",
                         help="exit 1 on any OVER (default: report only)")
+    parser.add_argument("--exempt", default="",
+                        help="豁免依据 ADR 路径：仅当该 ADR 处于本次变更集内且正文带"
+                             "「增量闸豁免：gross ≤ N，fanout ≤ N」标记时，按该标记放宽上限；"
+                             "批次落地后 ADR 进入基线，豁免自动失效（一次性）")
     args = parser.parse_args()
     mode = "staged" if args.staged else ("since" if args.since else "worktree")
 
@@ -577,6 +628,11 @@ def main() -> int:
 
     caps = {"gross": args.max_gross, "file": args.max_file,
             "fanout": args.max_fanout, "packages": args.max_packages}
+    exempt = _exemption(args.exempt, mode, args.since)
+    if exempt:
+        caps["gross"] = max(caps["gross"], exempt["gross"])
+        caps["fanout"] = max(caps["fanout"], exempt["fanout"])
+        print(f"  exempt: {exempt['adr']}（本变更集内，gross ≤ {exempt['gross']} / fanout ≤ {exempt['fanout']}）")
     print(f"  gross: {m['gross']} (cap {caps['gross']}) | "
           f"file-max(existing): +{m['file_max']} {m['top_path'] or ''}(cap +{caps['file']}) | "
           f"fanout: {m['fanout']} (cap {caps['fanout']}) | packages: {m['packages']} (cap {caps['packages']})")

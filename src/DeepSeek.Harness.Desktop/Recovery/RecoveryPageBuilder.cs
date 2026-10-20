@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
 
+using DeepSeek.Harness.Desktop.Core.Ipc;
+
 namespace DeepSeek.Harness.Desktop.Recovery;
 
 /// <summary>
@@ -72,9 +74,9 @@ public static class RecoveryPageBuilder
         "function frame(r){try{return (typeof r==='string')?JSON.parse(r):(r||{});}catch(e){return {error:String(e)};}}" +
         "document.getElementById('ddc-export').onclick=async function(){var s=document.getElementById('ddc-status');" +
         "s.textContent='" + UiCopy.RecoveryExporting(english) + "';this.disabled=true;" +
-        "try{var o=frame(await window.__ryn.invoke('desktop.diagnostics.export',{}));" +
+        "try{var o=frame(await window.__ryn.invoke('" + HostCommandIds.DiagnosticsExport + "',{}));" +
         "s.textContent=o.path?('" + UiCopy.RecoveryExportedPrefix(english) + "'+o.path):('" + UiCopy.RecoveryExportFailedPrefix(english) + "'+(o.error||'" + UiCopy.RecoveryUnknownReason(english) + "'));}catch(e){s.textContent='" + UiCopy.RecoveryExportFailedPrefix(english) + "'+e;}" +
         "this.disabled=false;};" +
         "document.getElementById('ddc-exit').onclick=async function(){this.disabled=true;" +
-        "try{await window.__ryn.invoke('desktop.recovery.exit',{});}catch(e){}};";
+        "try{await window.__ryn.invoke('" + HostCommandIds.RecoveryExit + "',{});}catch(e){}};";
 }

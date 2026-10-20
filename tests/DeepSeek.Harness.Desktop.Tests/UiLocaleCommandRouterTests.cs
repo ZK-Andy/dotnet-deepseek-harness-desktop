@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 
@@ -45,7 +46,7 @@ public class UiLocaleCommandRouterTests
         var router = new UiLocaleCommandRouter(new UiLocale());
 
         Assert.True(router.CanRoute(UiLocaleCommandRouter.CommandName));
-        Assert.False(router.CanRoute("desktop.companion.setLocale"));
+        Assert.False(router.CanRoute(HostCommandIds.CompanionSetLocale));
         Assert.Throws<Ryn.Ipc.RynCommandNotFoundException>(
             () => router.RouteAsync("desktop.other", ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None));
     }

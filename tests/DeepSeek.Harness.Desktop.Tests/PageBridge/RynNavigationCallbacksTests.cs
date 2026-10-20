@@ -1,3 +1,4 @@
+using DeepSeek.Harness.Desktop.Tests.Fakes;
 using Ryn.Core;
 
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
@@ -15,17 +16,17 @@ public class RynNavigationCallbacksTests
     [InlineData("https://other.host:8443/path")]
     public void Navigating_ExternalHttp_BlocksAndOpens(string url)
     {
-        var opened = new List<string>();
+        var browser = new FakeSystemBrowser();
         var handler = new RynNavigationCallbacks(
-            opener: u => { opened.Add(u); return true; },
+            browser: browser,
             log: null,
             currentOrigin: "http://127.0.0.1:41449");
 
         NavigationDecision decision = handler.OnWebViewNavigating(Navigating(url));
 
         Assert.Equal(NavigationDecision.Block, decision);
-        Assert.Single(opened);
-        Assert.Equal(url, opened[0]);
+        Assert.Single(browser.Opened);
+        Assert.Equal(url, browser.Opened[0]);
     }
 
     /// <summary>同源绝对 http → Allow（SPA 内部导航），不交给打开器。</summary>
@@ -34,16 +35,16 @@ public class RynNavigationCallbacksTests
     [InlineData("http://127.0.0.1:41449/settings")]
     public void Navigating_SameOriginHttp_Allows(string url)
     {
-        var opened = new List<string>();
+        var browser = new FakeSystemBrowser();
         var handler = new RynNavigationCallbacks(
-            opener: u => { opened.Add(u); return true; },
+            browser: browser,
             log: null,
             currentOrigin: "http://127.0.0.1:41449");
 
         NavigationDecision decision = handler.OnWebViewNavigating(Navigating(url));
 
         Assert.Equal(NavigationDecision.Allow, decision);
-        Assert.Empty(opened);
+        Assert.Empty(browser.Opened);
     }
 
     /// <summary>非 http(s) scheme / 相对资源 → Allow（放行 ryn://、data:、SPA 内部锚点）。</summary>
@@ -53,16 +54,16 @@ public class RynNavigationCallbacksTests
     [InlineData("javascript:void(0)")]
     public void Navigating_NonHttpScheme_Allows(string url)
     {
-        var opened = new List<string>();
+        var browser = new FakeSystemBrowser();
         var handler = new RynNavigationCallbacks(
-            opener: u => { opened.Add(u); return true; },
+            browser: browser,
             log: null,
             currentOrigin: "http://127.0.0.1:41449");
 
         NavigationDecision decision = handler.OnWebViewNavigating(Navigating(url));
 
         Assert.Equal(NavigationDecision.Allow, decision);
-        Assert.Empty(opened);
+        Assert.Empty(browser.Opened);
     }
 
     /// <summary>打开器抛异常 → 仍 Block（避免 WebView 被带走），不向调用方外抛。</summary>
@@ -70,7 +71,7 @@ public class RynNavigationCallbacksTests
     public void Navigating_OpenerThrows_StillBlocks()
     {
         var handler = new RynNavigationCallbacks(
-            opener: _ => throw new InvalidOperationException("no browser"),
+            browser: new FakeSystemBrowser(throwOnOpen: true),
             log: null,
             currentOrigin: "http://127.0.0.1:41449");
 
@@ -83,16 +84,16 @@ public class RynNavigationCallbacksTests
     [Fact]
     public void Navigating_NoOrigin_BlocksAnyAbsoluteHttp()
     {
-        var opened = new List<string>();
+        var browser = new FakeSystemBrowser();
         var handler = new RynNavigationCallbacks(
-            opener: u => { opened.Add(u); return true; },
+            browser: browser,
             log: null,
             currentOrigin: null);
 
         NavigationDecision decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
 
         Assert.Equal(NavigationDecision.Block, decision);
-        Assert.Single(opened);
+        Assert.Single(browser.Opened);
     }
 
     /// <summary>WebViewNavigated：触发「页面已到达」回调。</summary>
@@ -100,7 +101,7 @@ public class RynNavigationCallbacksTests
     public void Navigated_InvokesOnNavigatedCallback()
     {
         int calls = 0;
-        var handler = new RynNavigationCallbacks();
+        var handler = new RynNavigationCallbacks(new FakeSystemBrowser());
         handler.SetOnNavigated(() => calls++);
 
         handler.OnWebViewNavigated(new WebViewNavigatedContext(new Uri("http://127.0.0.1:41449/")));
@@ -114,9 +115,9 @@ public class RynNavigationCallbacksTests
     [InlineData("http://127.0.0.1:9999/app", "http://127.0.0.1:41449")]
     public void Navigating_HostInitiated_AlwaysAllows(string url, string origin)
     {
-        var opened = new List<string>();
+        var browser = new FakeSystemBrowser();
         var handler = new RynNavigationCallbacks(
-            opener: u => { opened.Add(u); return true; },
+            browser: browser,
             log: null,
             currentOrigin: origin);
 
@@ -124,16 +125,16 @@ public class RynNavigationCallbacksTests
         NavigationDecision decision = handler.OnWebViewNavigating(Navigating(url, userInitiated: false));
 
         Assert.Equal(NavigationDecision.Allow, decision);
-        Assert.Empty(opened);
+        Assert.Empty(browser.Opened);
     }
 
     /// <summary>origin 随 WebViewNavigated 刷新（B1）：漂移到新 origin 后，新 origin 的同源 SPA 链接放行。</summary>
     [Fact]
     public void Navigating_OriginRefreshesOnNavigated()
     {
-        var opened = new List<string>();
+        var browser = new FakeSystemBrowser();
         var handler = new RynNavigationCallbacks(
-            opener: u => { opened.Add(u); return true; },
+            browser: browser,
             log: null,
             currentOrigin: "http://127.0.0.1:41449");
 
@@ -144,7 +145,7 @@ public class RynNavigationCallbacksTests
         NavigationDecision decision = handler.OnWebViewNavigating(Navigating("http://127.0.0.1:9999/app"));
 
         Assert.Equal(NavigationDecision.Allow, decision);
-        Assert.Empty(opened);
+        Assert.Empty(browser.Opened);
     }
 
     /// <summary>opener 返回 false（非抛异常）→ 打开失败通知触发（R2 N2 toast）。</summary>
@@ -153,7 +154,7 @@ public class RynNavigationCallbacksTests
     {
         var notified = new List<string>();
         var handler = new RynNavigationCallbacks(
-            opener: _ => false,
+            browser: new FakeSystemBrowser(result: false),
             log: null,
             currentOrigin: "http://127.0.0.1:41449",
             notifyLinkFail: url => notified.Add(url));
@@ -171,7 +172,7 @@ public class RynNavigationCallbacksTests
     {
         var notified = new List<string>();
         var handler = new RynNavigationCallbacks(
-            opener: _ => throw new InvalidOperationException("no browser"),
+            browser: new FakeSystemBrowser(throwOnOpen: true),
             log: null,
             currentOrigin: "http://127.0.0.1:41449",
             notifyLinkFail: url => notified.Add(url));
@@ -188,7 +189,7 @@ public class RynNavigationCallbacksTests
     {
         var notified = new List<string>();
         var handler = new RynNavigationCallbacks(
-            opener: _ => true,
+            browser: new FakeSystemBrowser(),
             log: null,
             currentOrigin: "http://127.0.0.1:41449",
             notifyLinkFail: url => notified.Add(url));
@@ -205,9 +206,9 @@ public class RynNavigationCallbacksTests
     [InlineData("http://127.0.0.1:37933/?token=abc", "http://127.0.0.1:37933/")]
     public void Navigating_AuthorizedOrigin_AllowsWithoutOpener(string url, string authorized)
     {
-        var opened = new List<string>();
+        var browser = new FakeSystemBrowser();
         var handler = new RynNavigationCallbacks(
-            opener: u => { opened.Add(u); return true; },
+            browser: browser,
             log: null,
             currentOrigin: "ryn://app");
         handler.AuthorizeOrigin(new Uri(authorized));
@@ -215,16 +216,16 @@ public class RynNavigationCallbacksTests
         NavigationDecision decision = handler.OnWebViewNavigating(Navigating(url));
 
         Assert.Equal(NavigationDecision.Allow, decision);
-        Assert.Empty(opened);
+        Assert.Empty(browser.Opened);
     }
 
     /// <summary>集外外站 → 仍 Block（已授权集不削弱外部拦截）。</summary>
     [Fact]
     public void Navigating_AuthorizedSetPresent_OtherExternalStillBlocks()
     {
-        var opened = new List<string>();
+        var browser = new FakeSystemBrowser();
         var handler = new RynNavigationCallbacks(
-            opener: u => { opened.Add(u); return true; },
+            browser: browser,
             log: null,
             currentOrigin: "ryn://app");
         handler.AuthorizeOrigin(new Uri("http://127.0.0.1:37933"));
@@ -232,16 +233,16 @@ public class RynNavigationCallbacksTests
         NavigationDecision decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
 
         Assert.Equal(NavigationDecision.Block, decision);
-        Assert.Single(opened);
+        Assert.Single(browser.Opened);
     }
 
     /// <summary>非法登记输入静默忽略（null/相对 URI/非环回绝对 URI 均不入集）。</summary>
     [Fact]
     public void AuthorizeOrigin_InvalidInput_Ignored()
     {
-        var opened = new List<string>();
+        var browser = new FakeSystemBrowser();
         var handler = new RynNavigationCallbacks(
-            opener: u => { opened.Add(u); return true; },
+            browser: browser,
             log: null,
             currentOrigin: "ryn://app");
         handler.AuthorizeOrigin(null);
@@ -251,6 +252,6 @@ public class RynNavigationCallbacksTests
         NavigationDecision decision = handler.OnWebViewNavigating(Navigating("https://x.example/"));
 
         Assert.Equal(NavigationDecision.Block, decision);
-        Assert.Single(opened);
+        Assert.Single(browser.Opened);
     }
 }

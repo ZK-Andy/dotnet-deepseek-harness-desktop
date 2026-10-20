@@ -21,6 +21,7 @@ public static class BundledPluginCatalog
     /// <param name="installerPluginsDir">安装器自带插件资源目录（resources/plugins）；开发/引导形态可 null。</param>
     /// <param name="profilePkg">profile 的 package.json 绝对路径。</param>
     /// <param name="profileDir">profile 目录（读取已装副本版本）。</param>
+    /// <param name="reader">包元数据读取端口（读盘在 Infrastructure；Core 不碰文件系统）。</param>
     /// <param name="log">诊断日志出口（host.log 同款行文）。</param>
     /// <returns>待安装/升级的 (包名, spec) 列表，顺序与清单一致。</returns>
     public static List<(string Package, string Spec)> AssemblePending(
@@ -28,6 +29,7 @@ public static class BundledPluginCatalog
         string? installerPluginsDir,
         string profilePkg,
         string profileDir,
+        IPluginPackageReader reader,
         Action<string> log)
     {
         var pending = new List<(string Package, string Spec)>();
@@ -52,7 +54,7 @@ public static class BundledPluginCatalog
                 continue;
             }
 
-            if (!ProfilePackageCheck.IsBundleInstalled(profilePkg, entry.Package))
+            if (!ProfilePackageCheck.IsBundleInstalled(reader.ReadProfilePackageJson(profilePkg), entry.Package))
             {
                 log($"[host] 随包插件 {entry.Package} 未就位，加入待装清单");
                 pending.Add((entry.Package, spec));
@@ -61,8 +63,11 @@ public static class BundledPluginCatalog
 
             try
             {
-                string bundledVersion = PluginVersionCheck.ReadBundledVersion(spec);
-                string? installedVersion = PluginVersionCheck.ReadInstalledVersion(profileDir, entry.Package);
+                string bundledJson = reader.ReadBundledPackageJson(spec)
+                    ?? throw new InvalidDataException($"随包插件 {entry.Package} 的 package.json 读不出：{spec}");
+                string bundledVersion = PluginVersionCheck.ReadVersion(bundledJson);
+                string? installedJson = reader.ReadInstalledPackageJson(profileDir, entry.Package);
+                string? installedVersion = installedJson is null ? null : PluginVersionCheck.TryReadVersion(installedJson);
                 if (PluginVersionCheck.NeedsUpgrade(installedVersion, bundledVersion))
                 {
                     log($"[host] 随包插件升级：{entry.Package} {installedVersion ?? "(不可读)"} → {bundledVersion}");

@@ -1,3 +1,4 @@
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop;
@@ -15,7 +16,7 @@ namespace DeepSeek.Harness.Desktop;
 public sealed class AppRestartCommandRouter : ICommandRouter
 {
     /// <summary>本路由响应的命令名。</summary>
-    public const string CommandName = "desktop.app.restart";
+    public const string CommandName = HostCommandIds.AppRestart;
 
     /// <summary>受理帧返回后的重启延迟：协议常量非可调参数——只服务「响应冲刷」这一个目的，
     /// 量级由 IPC 往返决定，不随部署环境变化。</summary>

@@ -184,6 +184,9 @@ PREBUILD_CONSTRUCTIBLE = {
     "DshShellForward",
     "FirstBootBootstrapService",
     "FirstBootUi",
+    # OsLocaleProbe：UiLocale 的宿主 locale 探测端口实现（Core 读环境变量下沉后的接线点，
+    # ADR architecture/2026-10-20-core-purity-boundaries）——共享态在容器之前构造，故只能在此 new。
+    "OsLocaleProbe",
     "PagePump",
     "Preflight",
     "RuntimeStarter",

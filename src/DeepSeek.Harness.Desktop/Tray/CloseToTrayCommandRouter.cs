@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tray;
@@ -25,7 +26,7 @@ public sealed class CloseToTrayCommandRouter : ICommandRouter
 
     /// <inheritdoc />
     public bool CanRoute(string command) =>
-        command is "desktop.closeToTray.getState" or "desktop.closeToTray.set";
+        command is HostCommandIds.CloseToTrayGetState or HostCommandIds.CloseToTraySet;
 
     /// <inheritdoc />
     public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
@@ -39,9 +40,9 @@ public sealed class CloseToTrayCommandRouter : ICommandRouter
         {
             switch (command)
             {
-                case "desktop.closeToTray.getState":
+                case HostCommandIds.CloseToTrayGetState:
                     return ValueTask.FromResult(Frame());
-                case "desktop.closeToTray.set":
+                case HostCommandIds.CloseToTraySet:
                     bool enabled = ParseEnabled(args);
                     _preference.Set(enabled);
                     _log?.Invoke($"[host] 关闭最小化到托盘已{(enabled ? "开启" : "关闭")}");

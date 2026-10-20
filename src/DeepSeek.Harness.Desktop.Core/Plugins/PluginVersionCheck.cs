@@ -1,64 +1,54 @@
-using System.Formats.Tar;
-using System.IO.Compression;
 using System.Text.Json;
 
 namespace DeepSeek.Harness.Desktop.Core.Plugins;
 
-/// <summary>随包插件版本感知的纯逻辑（可单测）：读随包 spec 与 profile 已装副本的版本号，判定是否需要升级。</summary>
+/// <summary>
+/// 随包插件版本判定的纯逻辑（ADR core-purity-boundaries）：只做 package.json 文本的版本解析与比较，
+/// **不读盘**——读盘在 Infrastructure 的 <see cref="IPluginPackageReader"/> 实现。
+/// </summary>
 /// <remarks>随包侧（tgz/闭包目录）结构异常 fail loud 抛出——那是我们自己的产物，坏了必须可见；
-/// 已装侧（profile node_modules）异常返回 <see langword="null"/> 视为未知并走重装修复——profile 是
-/// 可再生的运行时状态。版本比较复用 <see cref="Update.UpdateVersion"/>（数字段逐段比）。</remarks>
+/// 已装侧（profile node_modules）读不出/损坏按「未知」处理（返回 null），由调用方走重装修复。
+/// 版本比较复用 <see cref="Update.UpdateVersion"/>（数字段逐段比）。</remarks>
 public static class PluginVersionCheck
 {
-    /// <summary>读取随包插件的版本号：<c>.tgz</c> 解 gzip+tar 取 <c>package/package.json</c>；目录形态直读其 <c>package.json</c>。</summary>
-    /// <exception cref="InvalidDataException">tgz 内找不到 <c>package/package.json</c> 或 version 字段缺失/非字符串。</exception>
-    public static string ReadBundledVersion(string spec)
+    /// <summary>从 package.json 文本取版本号。</summary>
+    /// <param name="packageJson">package.json 文本。</param>
+    /// <returns>版本号；缺失/非字符串/空串返回 null（未知）。</returns>
+    private static string? TryExtractVersion(string packageJson)
     {
-        if (!spec.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase))
+        using var doc = JsonDocument.Parse(packageJson);
+        if (!doc.RootElement.TryGetProperty("version", out JsonElement v) ||
+            v.ValueKind != JsonValueKind.String)
         {
-            return ReadPackageJsonVersion(Path.Combine(spec, "package.json"));
+            return null;
         }
 
-        using FileStream fs = File.OpenRead(spec);
-        using var gz = new GZipStream(fs, CompressionMode.Decompress);
-        using var reader = new TarReader(gz);
-        while (reader.GetNextEntry() is { } entry)
-        {
-            // GNU tar 从 package/ 目录打包得 package/package.json；部分 tar 写 ./package/… 前缀
-            string name = entry.Name;
-            if (name != "package/package.json" && name != "./package/package.json")
-            {
-                continue;
-            }
-
-            if (entry.DataStream is null)
-            {
-                throw new InvalidDataException($"tgz 内 {name} 无数据流");
-            }
-
-            using var sr = new StreamReader(entry.DataStream);
-            return ReadPackageJsonVersionText(sr.ReadToEnd());
-        }
-
-        throw new InvalidDataException($"tgz 内未找到 package/package.json：{spec}");
+        string? version = v.GetString();
+        return string.IsNullOrWhiteSpace(version) ? null : version;
     }
 
-    /// <summary>读取 profile 内已安装插件副本（<c>node_modules/&lt;pkg&gt;/package.json</c>）的版本号。</summary>
-    /// <returns>副本缺失、JSON 损坏或无有效 version 时返回 <see langword="null"/>（未知 → 调用方按需重装修复）。</returns>
-    public static string? ReadInstalledVersion(string profileDir, string packageName)
+    /// <summary>从 package.json 文本取版本号；缺失或非法即抛（随包产物坏了必须可见）。</summary>
+    /// <param name="packageJson">package.json 文本。</param>
+    /// <returns>版本号。</returns>
+    /// <exception cref="InvalidDataException">package.json 缺少有效的 version 字段。</exception>
+    /// <exception cref="System.Text.Json.JsonException">package.json 文本不是合法 JSON。</exception>
+    public static string ReadVersion(string packageJson) =>
+        TryExtractVersion(packageJson)
+            ?? throw new InvalidDataException("package.json 缺少有效的 version 字段");
+
+    /// <summary>从 package.json 文本取版本号；文本损坏或字段缺失一律按未知（null）——用于「已装副本」侧
+    /// （profile 是可再生状态，读不出按未知走重装修复，不当故障）。</summary>
+    /// <param name="packageJson">package.json 文本。</param>
+    /// <returns>版本号；未知为 null。</returns>
+    public static string? TryReadVersion(string packageJson)
     {
-        string pkgJson = Path.Combine(profileDir, "node_modules", packageName, "package.json");
         try
         {
-            if (!File.Exists(pkgJson))
-            {
-                return null;
-            }
-
-            return TryExtractVersion(File.ReadAllText(pkgJson));
+            return TryExtractVersion(packageJson);
         }
-        catch (Exception ex) when (ex is JsonException or IOException)
+        catch (JsonException)
         {
+            // 文本损坏 = 版本未知（不是包坏了）——调用方据此走升级/重装
             return null;
         }
     }
@@ -68,26 +58,5 @@ public static class PluginVersionCheck
     public static bool NeedsUpgrade(string? installedVersion, string bundledVersion)
     {
         return installedVersion is null || Update.UpdateVersion.Compare(bundledVersion, installedVersion) > 0;
-    }
-
-    private static string ReadPackageJsonVersion(string path) => ReadPackageJsonVersionText(File.ReadAllText(path));
-
-    private static string ReadPackageJsonVersionText(string text)
-    {
-        return TryExtractVersion(text)
-            ?? throw new InvalidDataException("package.json 缺少有效的 version 字段");
-    }
-
-    private static string? TryExtractVersion(string text)
-    {
-        using var doc = JsonDocument.Parse(text);
-        if (!doc.RootElement.TryGetProperty("version", out JsonElement v) ||
-            v.ValueKind != JsonValueKind.String)
-        {
-            return null;
-        }
-
-        string? version = v.GetString();
-        return string.IsNullOrWhiteSpace(version) ? null : version;
     }
 }

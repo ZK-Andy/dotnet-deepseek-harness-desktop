@@ -1,3 +1,4 @@
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Bootstrap;
@@ -9,7 +10,7 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 public sealed class BootstrapCommandRouter : ICommandRouter
 {
     /// <summary>重试命令名。</summary>
-    public const string CommandName = "desktop.bootstrap.retry";
+    public const string CommandName = HostCommandIds.BootstrapRetry;
 
     private readonly RuntimeBootstrapGate _gate;
     private readonly Action<string>? _log;

@@ -1,3 +1,4 @@
+using DeepSeek.Harness.Desktop.Core.Platform;
 using Ryn.Callbacks;
 using Ryn.Core;
 
@@ -12,8 +13,8 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// <c>IRynCallbackRouter</c> 实现并注册为 DI 单例：
 /// <list type="bullet">
 /// <item><see cref="OnWebViewNavigating"/>：在原生引擎提交导航前裁决——用户发起的站外 http(s) 一律
-/// <see cref="NavigationDecision.Block"/> 并交给系统浏览器（经 <see cref="SystemBrowser"/>），同源 SPA
-/// 路由 / <c>ryn://</c> / <c>data:</c> 等非 http(s) scheme 放行；宿主程序化导航（鉴权重载/健康 reload）放行。</item>
+/// <see cref="NavigationDecision.Block"/> 并交给系统浏览器（经 <see cref="ISystemBrowser"/> 端口），
+/// 同源 SPA 路由 / <c>ryn://</c> / <c>data:</c> 等非 http(s) scheme 放行；宿主程序化导航（鉴权重载/健康 reload）放行。</item>
 /// <item><see cref="OnWebViewNavigated"/>：导航已到达（内容实际提交）后留痕、刷新当前 origin，
 /// 并回调「到达」信号（<see cref="SetOnNavigated"/>；宿主消费者见该成员说明）。</item>
 /// </list>
@@ -22,7 +23,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// </remarks>
 public sealed class RynNavigationCallbacks
 {
-    private readonly Func<string, bool> _opener;
+    private readonly ISystemBrowser _browser;
     private readonly Action<string>? _log;
     private readonly Action<string>? _notifyLinkFail;
     // 当前页面 origin（如 http://127.0.0.1:41449），供同源判定。随每次 WebViewNavigated 刷新为
@@ -38,18 +39,18 @@ public sealed class RynNavigationCallbacks
     private readonly object _originsGate = new();
 
     /// <summary>创建导航回调。</summary>
-    /// <param name="opener">打开外部 URL 的委托；null 时默认用系统默认浏览器（见 <see cref="SystemBrowser"/>）。</param>
+    /// <param name="browser">系统浏览器端口（平台面在 Infrastructure 实现；ADR host-boundary-ports）。</param>
     /// <param name="log">日志输出（可选）。</param>
     /// <param name="currentOrigin">当前页面 origin（如 <c>http://127.0.0.1:41449</c>）初始值；供同源判定。null 时 <see cref="ExternalLinkPolicy"/> 保守地把一切绝对 http(s) 视为外部。</param>
     /// <param name="notifyLinkFail">外部链接打开失败通知（可选）：携带失败的 URL。由 DesktopAdapter 接
     /// <c>IRynWebView.EmitEvent</c> 推给页面经 companion 渲染 toast（R2 N2）。委托注入保持本类可单测。</param>
     public RynNavigationCallbacks(
-        Func<string, bool>? opener = null,
+        ISystemBrowser browser,
         Action<string>? log = null,
         string? currentOrigin = null,
         Action<string>? notifyLinkFail = null)
     {
-        _opener = opener ?? SystemBrowser.Open;
+        _browser = browser;
         _log = log;
         _currentOrigin = currentOrigin;
         _notifyLinkFail = notifyLinkFail;
@@ -132,7 +133,7 @@ public sealed class RynNavigationCallbacks
         bool opened = false;
         try
         {
-            opened = _opener(url.ToString());
+            opened = _browser.Open(url.ToString());
         }
         catch (Exception ex)
         {

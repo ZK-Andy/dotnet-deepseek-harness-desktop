@@ -55,8 +55,11 @@ internal sealed class RecoverySurface : IRecoverySurface
     /// <inheritdoc />
     public async Task ShowNativeAsync(string reason, CancellationToken ct)
     {
+        // 诊断包导出走端口（ADR host-boundary-ports）：失败面只取路径——导出失败时结果里路径为空串，
+        // 原因已由实现记日志（原生对话框正文只展示可读路径，不塞异常栈）。
+        DiagnosticsExportOutcome diagnostics = _diagnosticsExport.Export();
         string message = RecoveryDialogText.Build(
-            reason, _host.StderrTail, _diagnosticsExport.Export(), _uiLocale.IsEnglish);
+            reason, _host.StderrTail, diagnostics.Ok ? diagnostics.Path : string.Empty, _uiLocale.IsEnglish);
         bool quit = await _dialog
             .ConfirmAsync(UiCopy.RecoveryDialogTitle(_uiLocale.IsEnglish), message, ct)
             .ConfigureAwait(false);

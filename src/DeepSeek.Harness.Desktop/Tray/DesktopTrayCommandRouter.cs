@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tray;
@@ -18,7 +19,7 @@ namespace DeepSeek.Harness.Desktop.Tray;
 public sealed class DesktopTrayCommandRouter : ICommandRouter
 {
     /// <summary>本路由响应的命令名（companion 中继 <c>__ryn.invoke('desktop.tray.event', {{ event, data }})</c> 触发）。</summary>
-    public const string CommandName = "desktop.tray.event";
+    public const string CommandName = HostCommandIds.TrayEvent;
 
     private readonly Func<Task> _showWindow;
     private readonly Action _closeWindow;

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Recovery;
@@ -8,31 +9,25 @@ namespace DeepSeek.Harness.Desktop.Recovery;
 /// 触发（点击即隐私确认——包内容为白名单日志与状态，不含会话/凭据）；
 /// zip 落用户文档目录，返回 <c>{"path":"..."}</c> 供页面展示，失败返回 <c>{"error":"..."}</c>。
 /// </summary>
+/// <remarks>
+/// 导出动作经 <see cref="IDiagnosticsExport"/> 端口（ADR host-boundary-ports）：与失败面自动导出
+/// 共用同一导出器，壳侧不再直调基础设施静态面（原先静态/端口双路径）。
+/// </remarks>
 public sealed class DesktopDiagnosticsCommandRouter : ICommandRouter
 {
     /// <summary>本路由响应的命令名。</summary>
-    public const string CommandName = "desktop.diagnostics.export";
+    public const string CommandName = HostCommandIds.DiagnosticsExport;
 
-    private readonly string? _home;
-    private readonly string? _outputDirectory;
-    private readonly string? _appVersion;
+    private readonly IDiagnosticsExport _export;
     private readonly Action<string>? _log;
-    private readonly Func<string?>? _healthSnapshot;
 
-    /// <summary>创建路由；home/输出目录/版本默认运行时解析，日志委托默认不接（测试注入固定值）。
-    /// <paramref name="healthSnapshot"/> 导出时刻求值页面健康快照（page-health-monitor 接线）。</summary>
-    public DesktopDiagnosticsCommandRouter(
-        string? home = null,
-        string? outputDirectory = null,
-        string? appVersion = null,
-        Action<string>? log = null,
-        Func<string?>? healthSnapshot = null)
+    /// <summary>创建路由。</summary>
+    /// <param name="export">诊断包导出端口（Infrastructure 实现；失败面与页面命令面共用同一实现）。</param>
+    /// <param name="log">日志委托（可选；生产传 HostLog.Write，测试注入收集器）。</param>
+    public DesktopDiagnosticsCommandRouter(IDiagnosticsExport export, Action<string>? log = null)
     {
-        _home = home;
-        _outputDirectory = outputDirectory;
-        _appVersion = appVersion;
+        _export = export;
         _log = log;
-        _healthSnapshot = healthSnapshot;
     }
 
     /// <inheritdoc />
@@ -46,23 +41,27 @@ public sealed class DesktopDiagnosticsCommandRouter : ICommandRouter
             throw new RynCommandNotFoundException(command);
         }
 
+        // 导出失败不抛 IPC 异常：页面按 error 展示原因，与更新路由同款帧形态。
+        // 端口契约要求实现不抛（失败进结果对象），此处仍兜一层——实现违约不至于变成 IPC 异常。
+        DiagnosticsExportOutcome outcome;
         try
         {
-            string home = _home ?? HarnessRuntimeHost.ResolveDshHome();
-            string version = _appVersion ?? AppVersion.Current();
-            DiagnosticsExportResult result = _outputDirectory is null
-                ? DiagnosticsExporter.ExportWithFallback(home, version, _log, _healthSnapshot)
-                : DiagnosticsExporter.Export(home, _outputDirectory, version, _healthSnapshot);
-            _log?.Invoke($"[host] 诊断包已导出：{result.ZipPath}（{result.Included.Count} 项）");
-            return ValueTask.FromResult(
-                JsonSerializer.Serialize(new PathFrame(result.ZipPath), AppJsonContext.Default.PathFrame));
+            outcome = _export.Export();
         }
         catch (Exception ex)
         {
-            // 导出失败不抛 IPC 异常：页面按 error 展示原因，与更新路由同款帧形态
             _log?.Invoke($"[host] 诊断包导出失败：{ex.Message}");
             return ValueTask.FromResult(AppJsonContext.Error(ex.Message));
         }
+
+        if (!outcome.Ok)
+        {
+            // 失败原因已由导出实现记日志（同一出口，不重复记一条）
+            return ValueTask.FromResult(AppJsonContext.Error(outcome.Error ?? "诊断包导出失败"));
+        }
+
+        return ValueTask.FromResult(
+            JsonSerializer.Serialize(new PathFrame(outcome.Path), AppJsonContext.Default.PathFrame));
     }
 
     /// <summary>导出成功帧 <c>{"path":"..."}</c>；internal 供 <see cref="AppJsonContext"/> 源生成注册。</summary>

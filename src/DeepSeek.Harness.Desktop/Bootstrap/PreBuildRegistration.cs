@@ -34,7 +34,7 @@ internal static class PreBuildRegistration
         return new SharedState(
             timeouts,
             CaptionBarOptions.Load(AppContext.BaseDirectory, HostLog.Write),
-            new UiLocale(new DesktopUiLocaleStore(HostLog.Write)),
+            new UiLocale(new DesktopUiLocaleStore(HostLog.Write), new OsLocaleProbe()),
             new DshShellForward(),
             new PagePump(timeouts));
     }

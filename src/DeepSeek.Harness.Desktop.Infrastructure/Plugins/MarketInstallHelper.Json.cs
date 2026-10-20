@@ -151,7 +151,7 @@ public static partial class MarketInstallHelper
             switch (profile?["bundles"])
             {
                 case JsonArray bundles:
-                    if (bundles.Any(BundleEntryEquals(packageName)))
+                    if (bundles.Any(entry => ProfilePackageCheck.BundleEntryEquals(entry, packageName)))
                     {
                         return false;
                     }
@@ -220,8 +220,4 @@ public static partial class MarketInstallHelper
 
         return System.Text.Encoding.UTF8.GetString(ms.ToArray()) + "\n";
     }
-
-    /// <summary>构造 bundles 数组条目与包名的等值谓词（非字符串条目视为不等）。</summary>
-    private static Func<JsonNode?, bool> BundleEntryEquals(string packageName) =>
-        b => b is JsonValue v && v.TryGetValue<string>(out string? s) && s == packageName;
 }

@@ -1,3 +1,5 @@
+using DeepSeek.Harness.Desktop.Core.Ipc;
+using DeepSeek.Harness.Desktop.Core.Platform;
 using Microsoft.Extensions.DependencyInjection;
 using Ryn.Core;
 using Ryn.Ipc;
@@ -12,21 +14,25 @@ internal static class ShellCommandRegistration
     /// <summary>外部链接打开（宿主命令路由，ADR open-external-links-in-system-browser）与导航回调依赖覆盖：
     /// 宿主导航回调（Ryn 0.32.0 Ryn.Callbacks）在导航边界统一拦截外部链接——当前页面 origin 即代理源
     /// （页面永驻代理内；dsh 自指 3xx 由代理内部跟完，外链照走系统浏览器）。覆盖源生成的 handler 无参注册：
-    /// 导航回调依赖（openExternal 打开器 / 日志 / 当前页面 origin）在 ConfigureServices 时已知，经工厂注入。</summary>
+    /// 导航回调依赖（系统浏览器端口 / 日志 / 当前页面 origin）在 ConfigureServices 时已知，经工厂注入。</summary>
     public static IServiceCollection AddExternalLinkRouting(this IServiceCollection services, DshLoopbackProxy? proxy)
     {
+        // 平台面在 Infrastructure 实现（ADR host-boundary-ports）；壳侧只认端口。
+        services.AddSingleton<ISystemBrowser>(new SystemBrowserService());
         services.AddSingleton(sp => new RynNavigationCallbacks(
-            opener: null,
+            browser: sp.GetRequiredService<ISystemBrowser>(),
             log: HostLog.Write,
             currentOrigin: proxy?.Origin,
             // 外部链接打开失败 → 推事件给页面，companion 渲染 toast（R2 N2）。EmitEvent 走
             // deferred IRynWebView（窗口就绪后转发），在导航回调触发时页面必然已加载。
             notifyLinkFail: url => sp.GetRequiredService<IRynWebView>().EmitEvent(
-                "desktop.externalLinkOpenerFailed",
+                HostCommandIds.ExternalLinkOpenerFailed,
                 new ExternalLinkOpenerFailedFrame(url),
                 AppJsonContext.Default.ExternalLinkOpenerFailedFrame)));
         // 外部链接 → 系统默认浏览器（宿主命令路由，见 implemented ADR open-external-links-in-system-browser）
-        services.AddSingleton<ICommandRouter>(new ExternalLinkCommandRouter(log: HostLog.Write));
+        services.AddSingleton<ICommandRouter>(sp => new ExternalLinkCommandRouter(
+            sp.GetRequiredService<ISystemBrowser>(),
+            log: HostLog.Write));
         return services;
     }
 
@@ -50,7 +56,11 @@ internal static class ShellCommandRegistration
     /// <summary>开机自启开关（desktop.autostart.getState/set）。</summary>
     public static IServiceCollection AddAutostartCommands(this IServiceCollection services)
     {
-        services.AddSingleton<ICommandRouter>(new AutostartCommandRouter(log: HostLog.Write));
+        // 平台面（注册表 / desktop entry / plist）在 Infrastructure 实现（ADR host-boundary-ports）。
+        services.AddSingleton<IAutostart>(new AutostartService());
+        services.AddSingleton<ICommandRouter>(sp => new AutostartCommandRouter(
+            sp.GetRequiredService<IAutostart>(),
+            log: HostLog.Write));
         return services;
     }
 

@@ -15,6 +15,8 @@
   * **自更新**：`UpdateVersionTests`、`UpdateStateMachineTests`（对账/恢复/并发去重）、`ReleaseAssetTests`（资产挑选/SUMS 解析/下载锁）、`FileReadyPersistenceTests`（ready.json 往返契约）、`InstallerDownloaderTests`（SHA256SUMS 强校验/原子改名）、`UpdateInstallerTests`（deb/rpm 命令 + Linux root 脚本内容级回归：PATH 硬化/哈希复验/symlink 守卫/降权拉起）、`DesktopUpdateCommandRouterTests`（后台 token 契约）、`UpdateOptionsTests`/`UpdateStateJsonTests`/`AppJsonTests`。
   * **导航与外链**：`ExternalLinkPolicyTests`、`ExternalLinkCommandRouterTests`、`RynNavigationCallbacksTests`（拦截/放行/origin 刷新/失败 toast）。
   * **退出与环境**：`ExitPipelineTests`（退出管道记序与幂等契约）、`DevEnvironmentTests`（dev 隔离）、`UpdateBannerTests`（更新就绪横幅）、`AutostartBuilderTests`（自启条目构造）。
+  * **架构边界**：`ArchitectureTests`（依赖方向断言）；Core 纯度门（Core 源文件不得直接做文件/环境 IO，IO 经端口、
+    适配器落 Infrastructure）是独立门禁 `verify-core-purity.py`（见「门禁」表）。
 * 运行：沙箱需 `DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget`（`/home` 只读）。
 
 ```sh
@@ -35,6 +37,8 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-governance.py` | Issue/PR 模板治理字段 + 工作流/composite action 的 run: 禁插值事件载荷/env 回读 | `python3 scripts/verify-governance.py` |
 | `verify-skill-format.py` | 技能格式（frontmatter/目录束/内链/结构，`.agents/skills/*/SKILL.md`） | `python3 scripts/verify-skill-format.py` |
 | `verify-shell-standards.sh` | 脚本规范 S1-S6（errexit / 尺寸 ≤250 行 / 库不可执行且不自设选项 / 旋钮声明 / 共享库单源 / `shellcheck -S warning`），规范见 [script-standards](script-standards.md) | `bash scripts/verify-shell-standards.sh`（`--self-test` 夹具） |
+| `verify-host-command-ids.py` | 命令 ID 单一事实源（壳侧不复写已知 ID 字面量 + 插件侧不自造命令 + 常量不悬空；`--enforce` 才 fail） | `python3 scripts/verify-host-command-ids.py`（`--self-test` 夹具） |
+| `verify-core-purity.py` | Core 纯度闸（Core 源文件不得直接做文件/环境 IO：IO 经 Core 端口、适配器落 Infrastructure；扫描用 `gate_common` 的 `CSharpLineScanner`，注释与字符串内的同形词不判红） | `python3 scripts/verify-core-purity.py`（`--self-test` 夹具） |
 | `install-linters.sh` + `actionlint` | 脚本层静态检查工具（shellcheck + actionlint，版本与 sha256 双钉）与工作流静态检查（对 `run:` 块跑 `shellcheck -S warning`） | `bash scripts/install-linters.sh` → `actionlint -shellcheck="shellcheck -S warning"` |
 | `verify-compose-root.py` | 组合根语义闸（根只装配：方法清单封闭 / new 自有类型 ≤6 / 单 dot 分部 / 禁同步编排）+ 排序器形状（C6；`--enforce` 才 fail） | `python3 scripts/verify-compose-root.py` |
 | `verify-review-brief.py` | 评审简报形状 + 评审对象冻结 + 轮次纪律（轮次上限、标题↔文件名互校、处置段与条目、验轮 `base` 须为上一轮冻结 tree 且增量非空）（`--enforce`；简报是 gitignore 本地文档） | `python3 scripts/verify-review-brief.py --enforce` |
@@ -58,6 +62,8 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-code-health.py` / `verify-code-conventions.py` | ✓（`--enforce`） | ✓ | — |
 | `verify-review-tier.py` | ✓（`--since`） | ✓（`--staged`） | ✓（`--since origin/main`） |
 | `verify-ui-copy.py` | ✓（`--self-test` + 全量） | — | — |
+| `verify-host-command-ids.py` | ✓（`--self-test` + 全量 `--enforce`） | ✓ | — |
+| `verify-core-purity.py` | ✓（`--self-test` + 全量 `--enforce`） | ✓ | — |
 | `package-version.sh` | ✓（`--self-test`；判据本体在打包腿调用链上） | — | — |
 | `release-preflight.sh` | ✓（`--self-test`；判据本体在 tag 触发的发布腿调用链上） | — | — |
 | `release-notes.sh` | ✓（`--self-test`；判据本体在 tag 触发的发布腿调用链上） | — | — |

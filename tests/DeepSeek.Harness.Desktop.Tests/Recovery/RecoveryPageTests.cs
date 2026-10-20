@@ -1,3 +1,4 @@
+using DeepSeek.Harness.Desktop.Core.Ipc;
 namespace DeepSeek.Harness.Desktop.Tests.Recovery;
 
 /// <summary>恢复页构建契约（ADR diag-masking-and-recovery-page）：数据只经 JSON+textContent
@@ -14,8 +15,8 @@ public class RecoveryPageBuilderTests
         Assert.Contains("ddc-tail", script);
         Assert.Contains("ddc-export", script);
         Assert.Contains("ddc-exit", script);
-        Assert.Contains("desktop.diagnostics.export", script);
-        Assert.Contains("desktop.recovery.exit", script);
+        Assert.Contains(HostCommandIds.DiagnosticsExport, script);
+        Assert.Contains(HostCommandIds.RecoveryExit, script);
         Assert.Contains("\\u8FD0\\u884C\\u65F6", script); // reason 经 JSON 序列化（非 ASCII 转义）
     }
 

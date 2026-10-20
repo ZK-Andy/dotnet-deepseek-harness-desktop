@@ -2,6 +2,10 @@
 
 Status: implemented
 
+Erratum: 2026-10-20 — 本篇「打开器经委托注入、测试用假开器」与「默认打开器收敛到共享 `SystemBrowser`」的机制断言
+已被取代：外部链接打开改经 Core 端口 `ISystemBrowser`（实现落 Infrastructure，ADR
+`architecture/2026-10-20-host-boundary-ports`），两路由的构造签名与「默认打开器」缺省一并退役。正文不动。
+
 Erratum: 2026-09-29 — 正文「注入点击拦截脚本」的落点 `Services/ExternalLinkClickCatcher.cs` 已随外部链接拦截迁入第一方伴生插件 `dsh-desktop-companion`（`0a4b6d4`）删除；宿主侧路由/策略两落点现址已随本批修注（PageBridge/Core）；除上述两处修注外，决定与正文不动。
 
 ## Problem

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop;
@@ -18,7 +19,7 @@ namespace DeepSeek.Harness.Desktop;
 public sealed class CompanionReportCommandRouter : ICommandRouter
 {
     /// <summary>本路由响应的命令名。</summary>
-    public const string CommandName = "desktop.companion.report";
+    public const string CommandName = HostCommandIds.CompanionReport;
 
     /// <summary>单条上报消息的字符上限（超出截断并留省略号）。</summary>
     internal const int MaxMessageLength = 400;

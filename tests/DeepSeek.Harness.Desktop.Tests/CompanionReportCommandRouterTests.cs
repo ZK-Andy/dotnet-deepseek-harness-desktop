@@ -1,4 +1,5 @@
 using System.Text;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests;
@@ -16,9 +17,9 @@ public class CompanionReportCommandRouterTests
     public void CanRoute_MatchesOnlyOwnCommand()
     {
         var router = new CompanionReportCommandRouter();
-        Assert.True(router.CanRoute("desktop.companion.report"));
-        Assert.False(router.CanRoute("desktop.companion.setLocale"));
-        Assert.False(router.CanRoute("desktop.autostart.getState"));
+        Assert.True(router.CanRoute(HostCommandIds.CompanionReport));
+        Assert.False(router.CanRoute(HostCommandIds.CompanionSetLocale));
+        Assert.False(router.CanRoute(HostCommandIds.AutostartGetState));
     }
 
     /// <summary>合法上报：scope 与 message 原样进日志（前缀 [companion]），返回空对象帧。</summary>
@@ -29,12 +30,13 @@ public class CompanionReportCommandRouterTests
         var router = new CompanionReportCommandRouter(lines.Add);
 
         string frame = await RouteAsync(router,
+            // scope 是页面报上来的数据（字符串内容），不是壳侧的命令 ID 引用——故此处是字面量
             """{"scope":"desktop.closeToTray.getState","message":"state unavailable after retry: IPC timeout"}""");
 
         Assert.Equal("{}", frame);
         string line = Assert.Single(lines);
         Assert.Contains("[companion]", line, StringComparison.Ordinal);
-        Assert.Contains("desktop.closeToTray.getState", line, StringComparison.Ordinal);
+        Assert.Contains(HostCommandIds.CloseToTrayGetState, line, StringComparison.Ordinal);
         Assert.Contains("state unavailable after retry", line, StringComparison.Ordinal);
     }
 

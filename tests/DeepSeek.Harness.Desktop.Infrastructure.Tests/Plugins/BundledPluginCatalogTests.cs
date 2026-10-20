@@ -53,7 +53,7 @@ public class BundledPluginCatalogTests
     {
         var logs = new List<string>();
         List<(string Package, string Spec)> pending = BundledPluginCatalog.AssemblePending(
-            catalog, pluginsDir, Path.Combine(profileDir, "package.json"), profileDir, logs.Add);
+            catalog, pluginsDir, Path.Combine(profileDir, "package.json"), profileDir, new PluginPackageReader(), logs.Add);
         return (pending, logs);
     }
 

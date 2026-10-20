@@ -1,4 +1,5 @@
 using System.Text;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 
@@ -64,6 +65,6 @@ public class CompanionLocaleCommandRouterTests
     {
         var router = new CompanionLocaleCommandRouter(new UiLocale());
         Assert.True(router.CanRoute(CompanionLocaleCommandRouter.CommandName));
-        Assert.False(router.CanRoute("desktop.update.getState"));
+        Assert.False(router.CanRoute(HostCommandIds.UpdateGetState));
     }
 }
