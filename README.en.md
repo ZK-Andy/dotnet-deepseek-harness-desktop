@@ -31,7 +31,7 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell ships no runtime: node and dsh are the system-global ones (`npm install -g @deepseek-ai/dsh@next`), and the desktop shares one data directory with the terminal, so sessions, credentials and plugins interoperate. On first launch it probes the global dsh on `PATH` — installs it when missing, updates it to `@next` when behind, and uses it directly when already current.
+A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell ships no runtime: node and dsh are the system-global ones (`npm install -g @deepseek-ai/dsh@next`), and the desktop shares one data directory with the terminal, so sessions, credentials and plugins interoperate. On first launch it probes the global dsh on `PATH` — installs it when missing; when the probed version is below the compatibility floor it bootstraps an update to `@next`; otherwise it uses it directly (the criterion is the compatibility floor, not a per-run npm dist-tag lookup).
 
 <p align="center">
   <a href="assets/screenshot.png"><img src="assets/screenshot.png" width="880" alt="DeepSeek Harness Desktop window showing the plugin market"></a>
@@ -51,23 +51,23 @@ A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deep
 
 **Shell and runtime**
 
-- ⚡️ **Online-first first launch** — installs when missing through the global node, updates to `@next` when behind, uses it directly when current; the node check runs once, only when dsh must be ensured.
+- ⚡️ **Online-first first launch** — installs when missing through the global node, bootstraps an update to `@next` when the probed version is below the compatibility floor, uses it directly otherwise; the node check runs once, only when dsh must be ensured.
 - ⌨️ **CLI shim** — idempotently registers a content-constant `pnpm` shim on the user `PATH` (never overwriting a same-named command); dsh itself is already on `PATH` and usable from the terminal.
-- 🔒 **Native and lightweight** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), NativeAOT-ready, deny-by-default capability sandbox (`ryn.json`).
+- 🔒 **Native and lightweight** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), shipped as JIT (NativeAOT is not enabled), deny-by-default capability sandbox (`ryn.json`).
 
 **Window and system integration**
 
 - 🪟 **Frameless window** — all three platforms drop the native title bar for a shell-drawn one: traffic lights top left, seamless sidebar clearance, inline collapse toggle, draggable top strip, double-click zoom.
 - 🖥️ **System tray** — closing the window minimizes to the tray by default (switchable to quit in Settings); the menu offers show main window / check for updates / restart / quit, following the dsh language; quit and restart share one orderly pipeline that reaps the runtime cleanly.
 - 🪟 **Window state memory** — the last size and maximized state are restored on restart (already kept across tray hide/recall).
-- 🚀 **Single-instance activation** — clicking the launcher again raises the existing window instead of spawning a duplicate.
+- 🚀 **Single-instance activation** — clicking the launcher again raises the existing window instead of spawning a duplicate (enforced on `Linux` / `macOS`; `Windows` does not arbitrate, so a second launch starts a new instance).
 - 🔁 **Launch at login** — one-click toggle in Settings (XDG autostart / registry Run / LaunchAgents).
 - 🖼️ **Icons and Wayland** — icons ship into `hicolor`, and `identifier` and `StartupWMClass` are the same value, so the taskbar associates correctly.
 
 **Runtime self-healing and updates**
 
-- 🔄 **Crash self-heal, back to the same conversation** — crash → failure surface (native dialog first: cause, stderr tail, exported diagnostics, keep or quit) → auto-restart → the same window returns to your conversation; **the port stays stable**, so origin and page-level session memory survive.
-- 🧩 **Successor adoption** — a market-triggered self-restart is adopted by the shell: one process, one navigation, no doomed competing launch or tens-of-seconds recovery screen.
+- 🔄 **Crash self-heal, back to the same conversation** — crash → failure surface (it appears only once the crash streak reaches the threshold, 3 by default; native dialog first: cause, stderr tail, exported diagnostics, keep or quit) → auto-restart → the same window returns to your conversation; **the port stays stable**, so origin and page-level session memory survive.
+- 🧩 **Successor adoption** — a plugin-triggered self-restart is adopted by the shell: one process, one navigation, no doomed competing launch or tens-of-seconds recovery screen.
 - 💓 **Page-health watch** — a read-only probe catches the "process running, page blank" state, runs one bounded reload within budget, then observes; budget resets on recovery — no script injection, no companion dependency.
 - ⬆️ **Self-update** — one background check at launch plus a manual check in Settings, then one-click install and restart (`SHA256`-verified packages; `macOS` guides a manual update). See [Staying current](#staying-current).
 
@@ -93,7 +93,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 ## Staying current
 
-- New versions are checked once in the background at launch (no polling, no interruptions); you can also check manually under **Settings → Desktop Settings** or from the tray menu.
+- New versions are checked once in the background at launch (no polling, no interruptions); you can also check manually under **Settings → Desktop Settings** or from the tray menu (dev runs do not load the self-update stack by default, so that path does nothing; `DSH_DESKTOP_UPDATE_FORCE=1` loads it explicitly).
 - When a new version is found, a download button appears at the bottom of the sidebar — click it to download, verify and **install & restart in one click** (one system authorization prompt on `Linux`).
 - Packages are strictly verified against `SHA256SUMS.txt` before installation; a failed check refuses to install.
 - `macOS` does not support silent in-app updates yet — you are guided to download the `dmg` manually.

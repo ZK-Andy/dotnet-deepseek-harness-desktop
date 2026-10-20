@@ -39,6 +39,12 @@ jobs:
               - 'src/**'
               - 'tests/**'
               - 'scripts/**'
+              - 'tools/**'
+              # 只列参与构建/打包的图标资产（csproj 的 Content 输入与 ryn.json 的 bundle.icon）；
+              # 其余 assets/（README 图、hicolor 图标档）是文档面/打包腿输入，不进 build-test
+              # 判据面——列进来只会让改截图也跑满三平台矩阵，却不增加任何检出。
+              - 'assets/icon.png'
+              - 'assets/icon.ico'
               - '*.slnx'
               - '.editorconfig'
               - 'Directory.Build.props'
@@ -91,6 +97,8 @@ jobs:
           bash scripts/smoke-install-macos.sh --self-test
           bash scripts/smoke-install-windows.sh --self-test
           bash scripts/smoke-linux-rpm-inner.sh --self-test
+          bash scripts/release-preflight.sh --self-test
+          bash scripts/release-notes.sh --self-test
       # Python 门禁自测（F 批）：gate_common 共享模块（slug/C# 字面量扫描器/自测
       # idiom 的离线夹具）+ 两道最薄门（md-links/doc-budgets）的补自测——两门
       # pre-commit 与 CI 都跑，此前判据回归无离线夹具兜底
@@ -101,6 +109,7 @@ jobs:
           python3 scripts/verify-md-links.py --self-test
           python3 scripts/verify-doc-budgets.py --self-test
           python3 scripts/verify-increment-discipline.py --self-test
+          python3 scripts/coverage-summary.py --self-test
       - name: UI 文案单一词典（批次 A）
         run: |
           python3 scripts/verify-ui-copy.py --self-test

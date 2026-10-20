@@ -84,11 +84,26 @@ jobs:
           version: ${{ inputs.version }}
           setup-node: 'true'
 
-      - name: 安装 rpmbuild 与冒烟显示栈（xvfb + 截图 + 会话总线）
-        run: sudo apt-get update && sudo apt-get install -y rpm xvfb scrot dbus imagemagick
+      # 载荷探针要真加载 libsaucer（动态链接 libwebkitgtk-6.0.so.4 与 libadwaita-1.so.0），
+      # 故运行时依赖与打包工具同一步装（不另开一步：省一次索引刷新，也免探针步的时限预算被 apt 吃掉）。
+      # 包名与 scripts/package-linux.sh 的 deb Depends 同源——该处改依赖时此处须同步；
+      # 不同步时探针会红在「原生库加载失败（缺依赖？）」，矛头指向包而非该改的元数据。
+      - name: 安装 rpmbuild、冒烟显示栈与载荷探针运行时依赖
+        run: sudo apt-get update && sudo apt-get install -y rpm xvfb scrot dbus imagemagick libwebkitgtk-6.0-4 libadwaita-1-0
 
       - name: dotnet publish（自包含 JIT，对齐 pilot-harness 打包前 build）
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} --self-contained true -p:Version="$VERSION" -o artifacts/publish-${{ matrix.rid }}
+
+      # Linux 腿的载荷冒烟探针（与 mac/win 腿同款，ADR testing/2026-09-13-payload-smoke-probe）：
+      # publish 产物的 native 面（FFI 加载/导出、图像解码、PTY）——此前只有 mac/win 腿跑，
+      # Linux 包缺 native 库不会被 CI 拦。运行时依赖已在上一步装好（见该步的同源注释）。
+      - name: 载荷冒烟探针（publish 产物 native 面：FFI 加载/导出、图像解码、PTY）
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet publish tools/DeepSeek.Harness.Desktop.PayloadSmoke -c Release -r ${{ matrix.rid }} --self-contained true -o artifacts/payload-smoke-${{ matrix.rid }}
+          artifacts/payload-smoke-${{ matrix.rid }}/DeepSeek.Harness.Desktop.PayloadSmoke artifacts/publish-${{ matrix.rid }}
 
       - name: 打 Linux 安装包（deb + rpm，参照 pilot-harness electron-builder 的 linux 产物）
         run: bash scripts/package-linux.sh artifacts/publish-${{ matrix.rid }}

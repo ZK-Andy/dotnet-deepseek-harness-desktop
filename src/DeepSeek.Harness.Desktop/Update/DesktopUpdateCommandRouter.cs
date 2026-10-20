@@ -8,9 +8,6 @@ namespace DeepSeek.Harness.Desktop.Update;
 /// </summary>
 public sealed class DesktopUpdateCommandRouter : ICommandRouter
 {
-    /// <summary>命令名前缀。</summary>
-    public const string Prefix = "desktop.update.";
-
     private readonly UpdateStateMachine _machine;
     private readonly Action<string>? _log;
     private readonly Func<CancellationToken>? _backgroundToken;

@@ -8,6 +8,14 @@
 * `Linux: WebKitGTK 6`（`libwebkitgtk-6.0-4` / `libwebkitgtk-6.0.so.4`），`Node 24.20.0`（仅打包脚本下载），`pnpm 11`，`dpkg-deb/rpmbuild`（仅 `package-linux.sh` 全量，`CI` 提供）。
 * 沙箱 `/home` 只读：`dotnet` 需 `DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget`。
 
+## 首次克隆（git hooks）
+
+```sh
+git config core.hooksPath .githooks
+```
+
+> 不设则 `pre-commit` / `pre-push` 快检查静默失效（本地提交不拦；CI 仍跑穷尽矩阵）。
+
 ## 目录与配置
 
 ```
@@ -21,7 +29,7 @@ scripts/lib/  common.sh, packaging-common.sh, smoke-wait-lib.sh, smoke-verdict-l
 packaging/windows/installer.iss.in  Inno 安装器模板（package-windows.sh 渲染占位后交 ISCC）
 ```
 
-* `appsettings.json`：`DevTools:false`；`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
+* `appsettings.json`：`DevTools:false`；`ryn.json` 无 `StartupWMClass`（顶层三键 `identifier`/`bundle`/`capabilities`，`identifier` = `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`）；同值键在 `package-linux.sh` 产出的 `.desktop`。
 * 环境变量：`DSH_DESKTOP_RUNTIME_DIR`（dev 信号之一；全局 dsh 模型下不解析运行时目录）、`DSH_DESKTOP_DEV=1`（显式 dev 声明——dev 判定只认这两个显式标记，不探测闭包存在性）、`DSH_DESKTOP_DSH_HOME`（桌面专属覆盖，默认共享 `~/.dsh`；dev 自动隔离到 `<仓库>/.cache/dev-home`）、`DSH_DEVTOOLS=1`（`WebView` 调试）、`DEEPSEEK_API_KEY`（`dsh` 启动必需）。CLI shim 注册的测试隔离覆盖：`DSH_DESKTOP_CLI_BIN_DIR`（覆盖 shim 落盘目录）、`DSH_DESKTOP_CLI_RC_HOME`（覆盖 shell rc 基目录）——**仅在设置这两个变量时** shim 注册不写用户真实路径；未设置时（正常运行）shim 写用户真实路径（`%LOCALAPPDATA%\deepseek-harness\bin` / `~/.local/bin` + HKCU Path / shell rc），此即产品行为。
 
 ## 运行时来源与插件装配

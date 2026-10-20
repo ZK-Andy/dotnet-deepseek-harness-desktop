@@ -31,7 +31,7 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端，基于 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 的原生 WebView 框架）。壳不自带运行时：node 与 dsh 都用系统全局的那一份（`npm install -g @deepseek-ai/dsh@next`），桌面与终端共享同一数据目录，会话、凭据、插件天然互通。首次启动检测 PATH 上的全局 dsh——没有就装、落后 `@next` 就更新、已是最新直接用。
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端，基于 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 的原生 WebView 框架）。壳不自带运行时：node 与 dsh 都用系统全局的那一份（`npm install -g @deepseek-ai/dsh@next`），桌面与终端共享同一数据目录，会话、凭据、插件天然互通。首次启动检测 PATH 上的全局 dsh——没有就装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用（判据是兼容底线，不逐次查 npm dist-tag）。
 
 <p align="center">
   <a href="assets/screenshot.png"><img src="assets/screenshot.png" width="880" alt="DeepSeek Harness Desktop 窗口：插件市场"></a>
@@ -51,23 +51,23 @@
 
 **外壳与运行时**
 
-- ⚡️ **online-first 首启** — 缺则经全局 node 装、落后升到 `@next`、已新直接用；node 检查只在需要确保 dsh 时做一次，不重复联网。
+- ⚡️ **online-first 首启** — 缺则经全局 node 装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用；node 检查只在需要确保 dsh 时做一次，不重复联网。
 - ⌨️ **CLI shim** — 幂等注册内容恒定的 `pnpm` shim 进用户 PATH（从不覆盖同名命令）；dsh 本身已在 PATH 上，终端直接可用。
-- 🔒 **原生轻量** — C# 后端 + 系统 WebView（WebView2 / WKWebView / WebKitGTK），NativeAOT 就绪，能力沙箱 deny-by-default（`ryn.json`）。
+- 🔒 **原生轻量** — C# 后端 + 系统 WebView（WebView2 / WKWebView / WebKitGTK），发布形态为 JIT（NativeAOT 未启用），能力沙箱 deny-by-default（`ryn.json`）。
 
 **窗口与系统集成**
 
 - 🪟 **无边框窗口** — 三端去掉原生标题栏由壳自绘：红绿灯在左上、侧栏顶部由自身背景无缝让位、折叠按钮同行、顶区可拖拽、双击缩放。
 - 🖥️ **系统托盘** — 关窗默认最小化到托盘（可在设置改为直接退出）；菜单含显示主窗 / 检查更新 / 重启 / 退出，随 dsh 语言中英切换；退出与重启走同一套有序编排，运行时子进程干净回收。
 - 🪟 **窗口状态记忆** — 重启恢复上次尺寸与最大化状态；托盘隐藏/唤回期间本就保留。
-- 🚀 **单实例仲裁** — 应用运行中再次点击启动器，唤起既有主窗而非新实例。
+- 🚀 **单实例仲裁** — 应用运行中再次点击启动器，唤起既有主窗而非新实例（`Linux` / `macOS` 生效；`Windows` 不启用互斥，二启照常拉起新实例）。
 - 🔁 **开机自启** — 设置页一键开关（Linux XDG autostart / Windows 注册表 Run / macOS LaunchAgents）。
 - 🖼️ **图标与 Wayland** — 图标随包入 `hicolor`，`identifier` 与 `StartupWMClass` 同值，任务栏正确关联。
 
 **运行时自愈与更新**
 
-- 🔄 **崩溃自愈、回到原会话** — 崩溃 → 失败面（原生对话框优先：原因、stderr 尾部、自动导出诊断、继续或退出）→ 自动重启 → 同一窗口回到新 URL；**端口保持稳定**，Web UI origin 与页面级会话记忆存活。
-- 🧩 **续任者收养** — 插件市场更新后的自重启由壳直接收养续任者：单进程、单导航，没有注定失败的竞争启动与数十秒恢复屏。
+- 🔄 **崩溃自愈、回到原会话** — 崩溃 → 失败面（连续崩溃达阈值（默认 3 次）才弹；原生对话框优先：原因、stderr 尾部、自动导出诊断、继续或退出）→ 自动重启 → 同一窗口回到新 URL；**端口保持稳定**，Web UI origin 与页面级会话记忆存活。
+- 🧩 **续任者收养** — 插件更新后的自重启由壳直接收养续任者：单进程、单导航，没有注定失败的竞争启动与数十秒恢复屏。
 - 💓 **页面健康监护** — 只读探针识别「进程在跑但页面空白」，预算内触发一次有界 reload 自愈，耗尽转观测、恢复即复位——不注入脚本，不依赖伴生插件存活。
 - ⬆️ **自更新** — 启动后台检查一次 + 设置页手动检查，一键安装并自动重启（安装包 `SHA256` 强校验；`macOS` 引导手动更新），见[保持最新](#保持最新)。
 
@@ -93,7 +93,7 @@
 
 ## 保持最新
 
-- 启动时后台检查一次新版本（不轮询、不打扰）；也可在 **设置 → 桌面设置** 或托盘菜单手动检查。
+- 启动时后台检查一次新版本（不轮询、不打扰）；也可在 **设置 → 桌面设置** 或托盘菜单手动检查（开发运行默认不装载自更新栈，此路径无动作；`DSH_DESKTOP_UPDATE_FORCE=1` 可显式装载）。
 - 发现新版本后，侧栏底部出现下载按钮——点击即下载、校验、**一键安装并自动重启**（`Linux` 会弹一次系统授权）。
 - 安装包落地前经 `SHA256SUMS.txt` 强校验，校验失败拒绝安装。
 - `macOS` 暂不支持应用内静默更新，检测到新版本时提示手动下载 `dmg`。

@@ -14,7 +14,7 @@
   * **随包插件**：`MarketInstallHelperTests`（检测/迁移/workspace 修正/伴生 spec/JsonNode 写盘格式钉子）、`PluginVersionCheckTests`（版本解包/升级判定/脏版本 fail loud）、`BundledPluginCatalogTests`（清单装配判定/端到端布局）、`DesktopProfileBootstrapTests`（reconcile 不可解析引用）。
   * **自更新**：`UpdateVersionTests`、`UpdateStateMachineTests`（对账/恢复/并发去重）、`ReleaseAssetTests`（资产挑选/SUMS 解析/下载锁）、`FileReadyPersistenceTests`（ready.json 往返契约）、`InstallerDownloaderTests`（SHA256SUMS 强校验/原子改名）、`UpdateInstallerTests`（deb/rpm 命令 + Linux root 脚本内容级回归：PATH 硬化/哈希复验/symlink 守卫/降权拉起）、`DesktopUpdateCommandRouterTests`（后台 token 契约）、`UpdateOptionsTests`/`UpdateStateJsonTests`/`AppJsonTests`。
   * **导航与外链**：`ExternalLinkPolicyTests`、`ExternalLinkCommandRouterTests`、`RynNavigationCallbacksTests`（拦截/放行/origin 刷新/失败 toast）。
-  * **退出与环境**：`ExitPipelineTests`（退出管道记序与幂等契约）、`DevEnvironmentTests`（dev 隔离）、`ConvenienceTests`（更新就绪横幅/自启条目）。
+  * **退出与环境**：`ExitPipelineTests`（退出管道记序与幂等契约）、`DevEnvironmentTests`（dev 隔离）、`UpdateBannerTests`（更新就绪横幅）、`AutostartBuilderTests`（自启条目构造）。
 * 运行：沙箱需 `DOTNET_CLI_HOME=$PWD/.dotnet-cache/cli NUGET_PACKAGES=$PWD/.dotnet-cache/nuget`（`/home` 只读）。
 
 ```sh
@@ -59,15 +59,18 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-review-tier.py` | ✓（`--since`） | ✓（`--staged`） | ✓（`--since origin/main`） |
 | `verify-ui-copy.py` | ✓（`--self-test` + 全量） | — | — |
 | `package-version.sh` | ✓（`--self-test`；判据本体在打包腿调用链上） | — | — |
+| `release-preflight.sh` | ✓（`--self-test`；判据本体在 tag 触发的发布腿调用链上） | — | — |
+| `release-notes.sh` | ✓（`--self-test`；判据本体在 tag 触发的发布腿调用链上） | — | — |
+| `coverage-summary.py` | ✓（`--self-test`；判据本体在 `build-test` 的 coverage summary 步） | — | — |
 | `change-scope.sh` | — | — | ✓（取证型，非判据：`\|\| true` 只打印范围） |
 
-`CI` (`ci.yml`)：`docs` job 无条件跑上表全部门禁，另跑两道**工具门**（`actionlint` 工作流静态检查 + `shellcheck -S warning`，工具由 `install-linters.sh` 钉版装）与**离线夹具自测**（三平台冒烟共用面、包布局三平台分支、三包脚本共用头部与 Inno 模板渲染——这些逻辑平时只在 tag/dispatch 打包腿上执行）；`build-test` job 三平台矩阵（ubuntu/windows/macos，`fail-fast: false`；ADR cross-process-filelock-semantics），只在 code 面命中时跑——code 面含 `src/**`、`tests/**`、`scripts/**`、`*.slnx`、`.editorconfig`、`Directory.*.props`、`global.json` 与 `ci.yml` 自身（结构级构建输入都能翻转 build/format 结论，漏判即整条 format 门禁跳过）。format 门禁与 `test with coverage`（每测试工程一个 cobertura，`coverage summary` 步合并后**比对基线**，`upload-artifact 7d`）仅 ubuntu 腿，windows/macos 腿跑清扫/资产锁两测试类全量。
+`CI` (`ci.yml`)：`docs` job 无条件跑上表全部门禁，另跑两道**工具门**（`actionlint` 工作流静态检查 + `shellcheck -S warning`，工具由 `install-linters.sh` 钉版装）与**离线夹具自测**（三平台冒烟共用面、包布局三平台分支、三包脚本共用头部与 Inno 模板渲染、发布总检、发布正文、覆盖率并集复算——这些逻辑平时只在 tag/dispatch 打包腿上执行）；`build-test` job 三平台矩阵（ubuntu/windows/macos，`fail-fast: false`；ADR cross-process-filelock-semantics），只在 code 面命中时跑——code 面含 `src/**`、`tests/**`、`scripts/**`、`tools/**`、`assets/icon.png`、`assets/icon.ico`、`*.slnx`、`.editorconfig`、`Directory.*.props`、`global.json` 与 `ci.yml` 自身（结构级构建输入与参与构建的图标都能翻转 build/format 结论，漏判即整条 format 门禁跳过；`assets/` 只列参与构建的图标，README 图与 hicolor 图标档是文档面/打包腿输入、不进 build-test 判据面，`packaging/` 模板则由无条件 docs job 的 `package-windows.sh --self-test` 覆盖）。format 门禁与 `test with coverage`（每测试工程一个 cobertura，`coverage summary` 步合并后**比对基线**，`upload-artifact 7d`）仅 ubuntu 腿，windows/macos 腿跑清扫/资产锁两测试类全量。
 
 ## 冒烟与集成
 
 * **沙箱冒烟**：`HarnessRuntimeHost` `StartAsync` 抓 `dsh web:`（`60s`），`RuntimeSupervisor` `kill` 子进程→自动重启+换 `URL`（回归断言重启 `URL` 相同以保 `origin`）。
 * **本机冒烟**：`dotnet run --project src/DeepSeek.Harness.Desktop` 起 `Ryn` 窗口加载 `dsh web:`（需 `DEEPSEEK_API_KEY` 与 `WebKitGTK`）。`DSH_DEVTOOLS=1` 开 `WebView` 调试。
-* **打包自检**：`verify-package-layout.sh --platform <linux|macos|windows>`（平台必填，判据不再按内容根隐式推断）断言内容根无闭包残留、插件 tgz 过名称/体积关、主程序在位且带可执行位（Windows 追加托管程序集/原生库/runtimes/wwwroot）（`build-companion-tgz.sh` 打包时现打现校验，新鲜度由「现打直进 staging」结构性保证）；`release-preflight.sh` 发布前复核资产矩阵/体积下限（15MB）/SHA256SUMS；`smoke-install-{linux,windows,macos}.sh` 三平台「静默安装/拷装 → 启动 → 双信号」（Linux 全链/安装链、win/mac runner 有桌面会话应达全链）。
+* **打包自检**：`verify-package-layout.sh --platform <linux|macos|windows>`（平台必填，判据不再按内容根隐式推断）断言内容根无闭包残留、插件 tgz 过名称/体积关、主程序在位且带可执行位（Windows 追加托管程序集/原生库/runtimes/wwwroot）（`build-companion-tgz.sh` 打包时现打现校验，新鲜度由「现打直进 staging」结构性保证）；`release-preflight.sh` 发布前复核资产矩阵/体积下限（15MB）/SHA256SUMS（离线夹具自测 `bash scripts/release-preflight.sh --self-test`，正例 + 五个反例）；`smoke-install-{linux,windows,macos}.sh` 三平台「静默安装/拷装 → 启动 → 双信号」（Linux 全链/安装链、win/mac runner 有桌面会话应达全链）。
 * **打包与发布流水线**：三平台打包的唯一家是 [`.github/workflows/package.yml`](../.github/workflows/package.yml)（`workflow_call` + `workflow_dispatch`，三平台 job 共用 [`.github/actions/package-setup`](../.github/actions/package-setup/action.yml) 前置；版本解析与 tag/输入一致性判据的唯一实现在 [`scripts/package-version.sh`](../scripts/package-version.sh)）。tag 发布走 [`release.yml`](../.github/workflows/release.yml)：先把三个包腿作为 reusable workflow 调用，再以 `needs:` 在**同一 run** 内 `download-artifact` 聚合 → preflight → 创建单个 Release（包腿失败即发布作业不启动）。
 * **插件面**：装配机制与 spawn 前就位的单一事实源在 [architecture.md](architecture.md)「插件装配」；测试关注点：`MarketInstallHelperTests`/`BundledPluginCatalogTests`/`DesktopProfileBootstrapTests`（见「单测」覆盖面）。
 

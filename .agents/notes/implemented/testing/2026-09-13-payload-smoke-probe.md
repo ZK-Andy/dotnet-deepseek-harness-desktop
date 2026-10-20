@@ -4,6 +4,8 @@ Status: implemented
 
 Erratum: 2026-09-28 — 正文所述接线落点已换家：`package-windows.yml`/`package-macos.yml` 合并为 `package.yml`，探针步仍在各平台 `dotnet publish` 之后、打包脚本之前（`build-macos`/`build-windows` job）。正文不动。
 
+Erratum: 2026-10-20 — 本篇「Linux 不接腿、探针保持 win/macos 两腿」与「同批接 package-linux 腿」的落败理由已换家：Linux 打包腿已接载荷探针（ADR `testing/2026-10-20-delivery-chain-gaps`），探针落点现为 `package.yml` 的 `build-linux`/`build-macos`/`build-windows` 三个 job（本行枚举 = 2026-09-28 那行的两个 job + 本次新增的 `build-linux`）。正文不动。
+
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
 Review: FULL/2026-09-13/R1=ok R2=ok R3=ok

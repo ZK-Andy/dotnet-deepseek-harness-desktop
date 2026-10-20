@@ -18,7 +18,7 @@
 ## 分层与组合根
 
 * 三工程：`Core`（纯逻辑，零外层引用）/ `Infrastructure`（Ryn、dsh 进程、文件/网络、更新适配器）/ 壳工程（Presentation + 组合根）。
-* **Ryn 适配接线层只装配**（ADR `2026-09-28-compose-root-form-separation` + `2026-10-08-composition-mechanism-container-assembly`；规范见 [architecture-standards.md](architecture-standards.md) R1，语义闸 `verify-compose-root.py`（根集管重量、装配面管方向））：`Program.cs` 薄壳 + `DesktopAdapter.cs` 只保留容器之前的启动头部 + 唯一 dot 分部 `DesktopAdapter.App.cs` 按域注册。启动编排由容器组装对象图：`Bootstrap.StartupSequence` 是**排序器**——构造参数经容器解图、入口只按序触发用例（起步/导航/监督/顶栏注入/告知/退出编排各自成面），唯一显式供给项是 Build 后应用产出；入口桥一处（ADR `entry-bridge-two-phase`），阶段产出为正式类型（`Preflight` 等），排序器形状由 C6 断言。
+* **组合根只装配**（ADR `2026-09-28-compose-root-form-separation` + `2026-10-08-composition-mechanism-container-assembly`；规范见 [architecture-standards](architecture-standards.md) R1，语义闸 `verify-compose-root.py`）：`Program.cs` 薄壳 + `DesktopAdapter.cs` 只保留容器前的启动头部 + 根集内唯一 dot 分部 `DesktopAdapter.App.cs` 按域注册；接线层另计（`Bootstrap/StartupSequence*`）同样只装配。启动编排由容器组装对象图：`Bootstrap.StartupSequence` 是**排序器**——构造参数经容器解图、入口只按序触发用例（起步/导航/监督/顶栏注入/告知/退出编排各自成面），唯一显式供给项是 Build 后应用产出；入口桥一处（ADR `entry-bridge-two-phase`），阶段产出为正式类型（`Preflight` 等），排序器形状由 C6 断言。
 * **端口在 Core，实现按触面落 Infrastructure 或壳工程**：`IRuntimeHost`（监督，ADR `2026-09-28-runtime-supervisor-core-port`）、`IReleaseFeed`/`IPackageDownloader`/`IPackageInstaller`/`IUpdateEnvironment`（自更新，ADR `2026-09-28-update-coordinator-core-port`）、`IFirstBootBootstrap` 落 Infrastructure；触 Ryn/UI 的 `IWebViewNavigator`/`IRecoverySurface`/`IMintEpoch`（导航/失败面/铸币态，ADR `2026-10-15-startup-usecases-sink-to-core`）适配器落 Presentation（理由见 [architecture-standards.md](architecture-standards.md) R3）；各用例（`RuntimeSupervisor`/`UpdateCoordinator`/`RuntimeStarter`/`MainUiEntry`/`RuntimeSupervision`）一律构造注入（端口 + 委托注入）。
 
 ## 启动模型：回环代理源
@@ -41,7 +41,7 @@
 ## 插件装配（spawn dsh 前就位）
 
 * 随包 `dsh-desktop-companion`（internal）spawn 前静默自愈：`EnsureBundledPluginsBeforeSpawnAsync` 按 `Core/Plugins/BundledPluginCatalog` 清单未装即装（安装器资源 tgz）、已装则版本感知升级。
-* 启动前 `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析 bundle 引用；`EnsureWorkspaceAllowBuilds` 放行 `allowBuilds` 6 项。
+* `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析的引用；市场安装侧 `EnsureWorkspaceAllowBuilds` 放行 `pnpm-workspace.yaml` 的 `allowBuilds` 6 项。
 * **CLI shim**：`CliShimRegistrar.TryRegister` 只注册内容恒定的 `pnpm` shim（Windows `%LOCALAPPDATA%\deepseek-harness\bin` + HKCU Path；Unix `~/.local/bin` + rc 幂等块），优先转发用户自装 pnpm，best-effort 不阻启动。
 
 ## 外部链接接管
@@ -61,5 +61,5 @@
 
 ## 配置与扩展
 
-* `appsettings.json`：`DevTools:false`（`DSH_DEVTOOLS=1` 开启）；`Update` 节。`ryn.json`：`identifier` 与 `StartupWMClass` 同值 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`。
+* `appsettings.json`：`DevTools:false`（`DSH_DEVTOOLS=1` 开启）；`Update` 节。`ryn.json` 无 `StartupWMClass`（顶层三键，`identifier` = `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`）；同值键在 `package-linux.sh` 的 `.desktop`。
 * dev 隔离（`DSH_DESKTOP_DEV=1` / `DSH_DESKTOP_RUNTIME_DIR`：ApplicationId 加 `.dev` 后缀、DSH_HOME 自动指向 `<仓库>/.cache/dev-home`、显式指回真实 home 时随包插件安装跳过）由 `Infrastructure/LaunchOptions.Resolve` 单点解析——运行步骤见 [development.md](development.md)。
