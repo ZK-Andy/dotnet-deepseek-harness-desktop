@@ -34,7 +34,7 @@ Review: FULL/2026-10-21/R1=ok R2=ok R3=ok
 
 - 收益：macOS 包带上应用图标；Linux/macOS 包缺原生库或 runtimes 在打包腿即红；`codesign`/`signtool`/`docker run` 的参数面进入离线回归（每次 push 执行）；README 的 dev 口径与产品一致。
 - 代价：`package-macos.sh` 增加了对 `sips` 的硬依赖——非 macOS 主机无法 staging macOS 包（本来就只能在 macOS 上产出 dmg，属既有约束的显式化）；布局脚本到 248 行，接近 S2 的 250 行上限，后续再加断言须先拆文件。
-- 未证项：本机无 macOS，`sips -s format icns` 产出的 icns 结构与 `CFBundleIconFile` 读取均未实跑【推断 · 未证】，首个执行点是 dispatch 后的 macOS 打包腿（离线夹具只钉判据逻辑）；真实 `.app` 的 Dock 观感属发版冒烟的人工确认项。
+- icns 生成与 bundle 元数据已在真实打包腿验证：预览 run `39563585169`（workflow_dispatch，commit `5103348`）五腿全 success，macOS 两腿把 dmg 挂载后跑 `verify-package-layout.sh --platform macos`，`Contents/Resources/icon.icns` 与 `Info.plist` 的 `CFBundleIconFile` 断言通过；真实 `.app` 的 Dock 观感仍属发版冒烟的人工确认项。
 
 ## Testing
 
