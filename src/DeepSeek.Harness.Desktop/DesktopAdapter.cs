@@ -25,8 +25,12 @@ public sealed partial class DesktopAdapter
         // renderer 进程继承本进程 env；判定在 Core 纯策略，此处仅触发。
         WebkitSandboxFallback.Apply();
 
+        // Build 后才就绪的窗口访问器：共享态里的脚本求值端口捕获其提供者；求值点可能早于
+        // <b>原生窗口</b>就绪（Ryn 的 Current 未就绪即抛），未就绪由各消费方自行处置（注入路按节拍重试，
+        // 健康探针记未知并续跑）。
+        CurrentWindowAccessor? builtAccessor = null;
         // 装配期共享态与进程级资源各一次创建：前者是值（容器登记同一实例），后者是唯一释放者。
-        SharedState shared = PreBuildRegistration.CreateSharedState();
+        SharedState shared = PreBuildRegistration.CreateSharedState(() => builtAccessor);
         ShellResources resources = PreBuildRegistration.CreateShellResources();
 
         try
@@ -36,9 +40,11 @@ public sealed partial class DesktopAdapter
             resources.Attach(supervisorCts);
             // Build 后才就绪的值（窗口/Ryn 应用）：注册闭包只捕获提供者，调用点均晚于赋值。
             RynApplication? builtApp = null;
-            CurrentWindowAccessor? builtAccessor = null;
 
-            Preflight preflight = PreBuildRegistration.CreatePreflight(() => builtApp!.Services.GetRequiredService<HostSetup>().Host, () => builtAccessor!, () => shared.UiLocale.IsEnglish, shared);
+            Preflight preflight = PreBuildRegistration.CreatePreflight(
+                () => builtApp!.Services.GetRequiredService<HostSetup>().Host,
+                () => shared.UiLocale.IsEnglish,
+                shared);
             if (!AcquireSingleInstance(preflight, () => builtApp, shared.Timeouts, out PrimaryListener? instanceListener))
             {
                 return 0;

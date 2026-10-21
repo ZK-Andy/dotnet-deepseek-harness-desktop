@@ -1,5 +1,4 @@
 using System.Globalization;
-using Ryn.Core;
 
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
@@ -13,8 +12,10 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// 触发一次 reload（ADR reference-alignment 批次五）；预算耗尽转入观测-only，成功恢复复位
 /// 预算窗口（见 <see cref="PageHealthRecovery"/>）。<paramref name="reload"/> 为 null 时保持纯观测
 /// （阶段 1 行为，向后兼容）。
+/// 探针求值经 <see cref="IWindowScriptTarget"/> 端口（ADR architecture/2026-10-21-window-script-target-port）：
+/// 「怎么对当前窗口求值 JS」在仓内只有一个答案，回报解码也只有 <see cref="RynProbeValue"/> 一处。
 /// </summary>
-public sealed class PageHealthMonitor
+internal sealed class PageHealthMonitor
 {
     /// <summary>
     /// 只读探针：回报 body 的可见文本长度观测值（<c>text:&lt;len&gt;</c>，len = <c>innerText.trim().length</c>，
@@ -25,7 +26,7 @@ public sealed class PageHealthMonitor
     public const string ProbeScript =
         "(function(){var b=document.body;var t=b?b.innerText:null;return 'text:'+(t?t.trim().length:0);})()";
 
-    private readonly CurrentWindowAccessor _window;
+    private readonly IWindowScriptTarget _scriptTarget;
     private readonly Action<string>? _log;
     private readonly PageHealthTracker _tracker;
     private readonly PageHealthRecovery _recovery;
@@ -35,20 +36,21 @@ public sealed class PageHealthMonitor
     public string? Snapshot { get; private set; }
 
     /// <summary>创建监视器。</summary>
-    /// <param name="window">当前窗口访问器（读探针与导航共用）。</param>
+    /// <param name="scriptTarget">当前窗口脚本求值端口（探针求值经它；Ryn 适配器另居一处，
+    /// ADR window-script-target-port）。</param>
     /// <param name="log">日志输出（可选）。</param>
     /// <param name="tracker">页面健康判定器（测试可注入；默认新实例）。</param>
     /// <param name="recovery">有界恢复预算（测试可注入；默认新实例）。</param>
     /// <param name="reload">有界恢复的 reload 委托；null=纯观测（向后兼容阶段 1）。纯观测与否
     /// 由 <paramref name="reload"/> 是否为 null 决定，预算对象与观测无关。</param>
     public PageHealthMonitor(
-        CurrentWindowAccessor window,
+        IWindowScriptTarget scriptTarget,
         Action<string>? log = null,
         PageHealthTracker? tracker = null,
         PageHealthRecovery? recovery = null,
         Func<CancellationToken, ValueTask>? reload = null)
     {
-        _window = window;
+        _scriptTarget = scriptTarget;
         _log = log;
         _tracker = tracker ?? new PageHealthTracker();
         _recovery = recovery ?? new PageHealthRecovery();
@@ -63,8 +65,8 @@ public sealed class PageHealthMonitor
             try
             {
                 await Task.Delay(interval, ct);
-                string raw = await _window.Current.EvaluateJavaScriptAsync(ProbeScript);
-                Record(Parse(raw), ct);
+                string raw = await _scriptTarget.EvaluateAsync(ProbeScript, ct);
+                Record(Parse(RynProbeValue.Decode(raw)), ct);
             }
             catch (OperationCanceledException)
             {
@@ -80,14 +82,16 @@ public sealed class PageHealthMonitor
 
     /// <summary>
     /// 探针观测值解析（纯函数可单测）：DOM 形态 → 健康态的单一判读点。<c>text:0</c> 判 Dead、
-    /// <c>text:&lt;n&gt;</c>（n&gt;0）判 Alive；桥接的引号包裹与空白照常容忍；空串、形状不认识或非十进制
+    /// <c>text:&lt;n&gt;</c>（n&gt;0）判 Alive；空白照常容忍；空串、形状不认识或非十进制
     /// 数字一律 Unknown——记不进探针计数，绝不因读不懂观测值触发恢复。
+    /// 入参是<b>已解码</b>的观测值（桥回报的引号外壳由 <see cref="RynProbeValue.Decode"/> 剥掉，
+    /// 解码只有那一处）；带引号的形态判 Unknown——读不懂就不猜，绝不触发恢复。
     /// </summary>
-    /// <param name="raw">探针原样回报值（桥接可能带引号包裹）。</param>
+    /// <param name="decoded">已解码的探针观测值（如 <c>text:42</c>）。</param>
     /// <returns>本次探针结论。</returns>
-    public static PageHealth Parse(string? raw)
+    public static PageHealth Parse(string? decoded)
     {
-        string value = raw?.Trim().Trim('"') ?? string.Empty;
+        string value = decoded?.Trim() ?? string.Empty;
         if (!value.StartsWith("text:", StringComparison.Ordinal)
             || !int.TryParse(value.AsSpan("text:".Length), NumberStyles.None, CultureInfo.InvariantCulture, out int length))
         {

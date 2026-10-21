@@ -1,51 +1,52 @@
-using Ryn.Core;
-
 namespace DeepSeek.Harness.Desktop.Recovery;
 
 /// <summary>
 /// 失败面承载适配器（R3：原生对话框与页内恢复面都是 Presentation 面；ADR native-failure-surface 的
 /// <c>StartupSequence</c> 各段整体搬迁，零行为变更）：原生通道可用即弹模态（正文 = 失败原因 + stderr 尾部 +
 /// 诊断包路径，退出动作挂显式 true），不可用或承载故障时由用例回落本类的页内恢复面。
+/// 窗口面只经两个端口进来：页内注入走 <see cref="IWindowScriptTarget"/>，退出走
+/// <see cref="CloseGate"/> + 关窗动作（与 <c>RecoveryCommandRouter</c> 同构）——Ryn 类型不进本类，
+/// 故本条用例可单测（ADR architecture/2026-10-21-window-script-target-port）。
 /// </summary>
 internal sealed class RecoverySurface : IRecoverySurface
 {
     private const int PageTailLines = 12;
 
     private readonly HarnessRuntimeHost _host;
-    private readonly CurrentWindowAccessor _accessor;
+    private readonly IWindowScriptTarget _scriptTarget;
     private readonly IFailureDialog _dialog;
     private readonly IDiagnosticsExport _diagnosticsExport;
     private readonly UiLocale _uiLocale;
-    private readonly Func<IRynWindow> _window;
-    private readonly TrayController _tray;
+    private readonly CloseGate _closeGate;
+    private readonly Action _closeWindow;
     private readonly Action<string> _log;
 
-    /// <summary>创建适配器（窗口以提供者惰性供给：装配期窗口尚不存在，调用点必在窗口就绪之后）。</summary>
+    /// <summary>创建适配器（窗口面以端口/动作供给：装配期窗口尚不存在，调用点必在窗口就绪之后）。</summary>
     /// <param name="host">运行时宿主（stderr 尾部来源）。</param>
-    /// <param name="accessor">当前窗口访问器（页内恢复面的注入靶点）。</param>
+    /// <param name="scriptTarget">当前窗口脚本求值端口（页内恢复面的注入靶点）。</param>
     /// <param name="dialog">原生失败模态端口。</param>
     /// <param name="diagnosticsExport">诊断包导出端口（正文里的求助路径）。</param>
     /// <param name="uiLocale">宿主 UI 语言单点（文案分支）。</param>
-    /// <param name="window">Ryn 窗口提供者（退出动作的关窗靶点）。</param>
-    /// <param name="tray">托盘控制器（关窗闸门的批准入口）。</param>
+    /// <param name="closeGate">关窗闸门（退出前先批准，hide-to-tray 拦截下未批准的 Close 会吞成隐藏）。</param>
+    /// <param name="closeWindow">关窗动作（装配处绑定到 Ryn 窗口；本类不持窗口类型）。</param>
     /// <param name="log">日志出口。</param>
     public RecoverySurface(
         HarnessRuntimeHost host,
-        CurrentWindowAccessor accessor,
+        IWindowScriptTarget scriptTarget,
         IFailureDialog dialog,
         IDiagnosticsExport diagnosticsExport,
         UiLocale uiLocale,
-        Func<IRynWindow> window,
-        TrayController tray,
+        CloseGate closeGate,
+        Action closeWindow,
         Action<string> log)
     {
         _host = host;
-        _accessor = accessor;
+        _scriptTarget = scriptTarget;
         _dialog = dialog;
         _diagnosticsExport = diagnosticsExport;
         _uiLocale = uiLocale;
-        _window = window;
-        _tray = tray;
+        _closeGate = closeGate;
+        _closeWindow = closeWindow;
         _log = log;
     }
 
@@ -73,8 +74,9 @@ internal sealed class RecoverySurface : IRecoverySurface
     public ValueTask ShowPageAsync(string reason)
     {
         IReadOnlyList<string> tail = _host.StderrTail;
-        _ = _accessor.Current.EvaluateJavaScriptAsync(
-            RecoveryPageBuilder.BuildScript(reason, tail.TakeLast(PageTailLines).ToList(), _uiLocale.IsEnglish));
+        _ = _scriptTarget.EvaluateAsync(
+            RecoveryPageBuilder.BuildScript(reason, tail.TakeLast(PageTailLines).ToList(), _uiLocale.IsEnglish),
+            CancellationToken.None);
         return ValueTask.CompletedTask;
     }
 
@@ -85,8 +87,8 @@ internal sealed class RecoverySurface : IRecoverySurface
         _log("[host] 用户在失败面选择退出应用");
         try
         {
-            _tray.CloseGate.ApproveExit();
-            _window().Close();
+            _closeGate.ApproveExit();
+            _closeWindow();
         }
         catch (Exception ex)
         {

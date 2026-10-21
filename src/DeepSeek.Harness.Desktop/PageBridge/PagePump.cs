@@ -5,8 +5,9 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
 /// 页面注入辅助（ADR 组合根只装配）：把 JS 注入类操作（横幅/引导进度/自更新状态）
-/// 从组合根抽出为单点。均以 <see cref="CurrentWindowAccessor"/>（或就绪前会抛的
-/// <see cref="IRynWebView"/> 惰性解析）为参数（未就绪的重试/丢弃语义在方法内）。
+/// 从组合根抽出为单点。窗口面经 <see cref="IWindowScriptTarget"/> 端口（Ryn 适配器另居一处，
+/// ADR architecture/2026-10-21-window-script-target-port），webview 注册面收
+/// 就绪前会抛的 <see cref="IRynWebView"/> 惰性解析；未就绪的重试/丢弃语义在本类方法内。
 /// 重试预算来自构造注入的配置（ADR 组合根寿命与配置单一来源 D4：预算由构造注入，不自行解析 appsettings）。
 /// </summary>
 internal sealed class PagePump
@@ -30,10 +31,10 @@ internal sealed class PagePump
 
     /// <summary>窗口就绪后注入横幅：Current 未就绪按节拍重试至次数用尽；其余异常记日志放弃——
     /// 横幅是增强告知，绝不拖垮启动链路。</summary>
-    internal async Task ShowBannerWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
+    internal async Task ShowBannerWhenReadyAsync(IWindowScriptTarget target, string script, CancellationToken ct)
     {
         RetryOutcome outcome = await RetryWhenReadyAsync(
-            _ => EvaluateAsync(accessor, script),
+            _ => target.EvaluateAsync(script, ct),
             ex => HostLog.Write($"[host] banner 注入失败：{ex.Message}"),
             _timeouts.BannerMaxAttempts,
             _bannerRetryDelay,
@@ -47,10 +48,10 @@ internal sealed class PagePump
     /// <summary>窗口就绪后注入自绘顶栏（ADR frameless-uniform-caption-bar）：重试语义与横幅同源
     /// （未就绪按节拍重试至次数用尽，其余异常记日志放弃——顶栏属增强面，绝不拖垮启动/导航链路；
     /// 失败退路是托盘菜单的唤回/最大化/退出命令）。脚本幂等，导航后重注入无副作用。</summary>
-    internal async Task InjectCaptionBarWhenReadyAsync(CurrentWindowAccessor accessor, string script, CancellationToken ct)
+    internal async Task InjectCaptionBarWhenReadyAsync(IWindowScriptTarget target, string script, CancellationToken ct)
     {
         RetryOutcome outcome = await RetryWhenReadyAsync(
-            _ => EvaluateAsync(accessor, script),
+            _ => target.EvaluateAsync(script, ct),
             ex => HostLog.Write($"[host] caption-bar 注入失败：{ex.Message}"),
             _timeouts.PushMaxAttempts,
             _pushRetryDelay,
@@ -119,7 +120,7 @@ internal sealed class PagePump
     }
 
     /// <summary>推一条引导进度到 wwwroot 引导页；未就绪按节拍重试至次数用尽，耗尽记日志放弃。</summary>
-    internal async Task PushBootstrapStateAsync(CurrentWindowAccessor accessor, string step, string message, bool failed)
+    internal async Task PushBootstrapStateAsync(IWindowScriptTarget target, string step, string message, bool failed)
     {
         // detail 必须是帧对象本身的 JSON（页面直接读 detail.step 等，无 JSON.parse）——
         // 与 PushUpdateState 的 state.ToJson() 同款形态，禁止二次包字符串
@@ -130,7 +131,7 @@ internal sealed class PagePump
             + frameJson
             + "}));}catch(e){}})();";
         RetryOutcome outcome = await RetryWhenReadyAsync(
-            _ => EvaluateAsync(accessor, script),
+            _ => target.EvaluateAsync(script, CancellationToken.None),
             ex => HostLog.Write($"[bootstrap] 进度推送失败（放弃）：{ex.Message}"),
             _timeouts.PushMaxAttempts,
             _pushRetryDelay,
@@ -198,10 +199,6 @@ internal sealed class PagePump
         return ct.IsCancellationRequested ? RetryOutcome.Stopped : RetryOutcome.Exhausted;
     }
 
-    /// <summary>对当前窗口求值注入脚本（窗口未就绪时 Current 抛 InvalidOperationException，交重试单点）。</summary>
-    private static Task EvaluateAsync(CurrentWindowAccessor accessor, string script) =>
-        accessor.Current.EvaluateJavaScriptAsync(script).AsTask();
-
     /// <summary>向 webview 注册「每次页面加载执行」的脚本（未就绪时惰性解析抛 InvalidOperationException，交重试单点）。</summary>
     private static Task RegisterScriptAsync(Func<IRynWebView> webView, string script, CancellationToken ct) =>
         webView().InjectScriptAsync(script, ct).AsTask();
@@ -223,20 +220,14 @@ internal sealed class PagePump
     /// <summary>把自更新状态变化推给页面：插件监听 <c>dsh-desktop-update</c> CustomEvent 渲染更新按钮。
     /// 窗口未就绪即丢弃（不重试）——自更新状态机每次变化都会经 onTransition 再推，无需逐次送达。
     /// 保留 <see langword="static"/>，不降级为带重试的推送（自更新靠状态机后续变化补送）。</summary>
-    internal static void PushUpdateState(CurrentWindowAccessor? accessor, UpdateState state)
+    internal static void PushUpdateState(IWindowScriptTarget target, UpdateState state)
     {
         try
         {
-            // Current 在窗口未创建/已关闭时抛异常（非返回 null）：启动早期与退出阶段都会走到
-            if (accessor?.Current is null)
-            {
-                return;
-            }
-
-            _ = accessor.Current.EvaluateJavaScriptAsync(
+            _ = target.EvaluateAsync(
                 "(function(){try{document.dispatchEvent(new CustomEvent('dsh-desktop-update',{detail:"
                 + state.ToJson()
-                + "}));}catch(e){}})();");
+                + "}));}catch(e){}})();", CancellationToken.None);
         }
         catch (InvalidOperationException)
         {

@@ -1,5 +1,4 @@
-using System.Text.Json.Serialization.Metadata;
-using Ryn.Core;
+using DeepSeek.Harness.Desktop.Tests.Fakes;
 
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 
@@ -130,93 +129,56 @@ public class PagePumpTests
             PagePump.AttemptsForBudget(
                 TimeSpan.FromSeconds(deadlineSeconds), TimeSpan.FromMilliseconds(delayMilliseconds)));
 
-    /// <summary>IRynWebView 假体：本路径只消费 <c>InjectScriptAsync</c>，其余成员为接口完备性占位。</summary>
-    private sealed class FakeWebView : IRynWebView
+    /// <summary>脚本求值端口：窗口未就绪（InvalidOperationException）按节拍重试、就绪后补上——
+    /// 原 accessor 分支的重试语义改由端口承载后同样可单测（ADR architecture/2026-10-21-window-script-target-port）。</summary>
+    [Fact]
+    public async Task InjectCaptionBarWhenReadyAsync_RetriesUntilTargetReady()
     {
-        private readonly Queue<Exception?> _outcomes = new();
+        var target = new FakeWindowScriptTarget();
+        target.Enqueue(new InvalidOperationException("window not ready"));
+        var pump = new PagePump(new RuntimeTimeouts { PushMaxAttempts = 3, PushRetryDelayMilliseconds = 1 });
 
-        /// <summary>未消费（显式存取器，免得「事件从未被使用」告警）。</summary>
-        public event EventHandler<FileDropEventArgs>? FileDrop
-        {
-            add { }
-            remove { }
-        }
+        await pump.InjectCaptionBarWhenReadyAsync(target, "SCRIPT", CancellationToken.None);
 
-        /// <summary>注册调用次数（含失败尝试）。</summary>
-        public int InjectCalls { get; private set; }
+        Assert.Equal(2, target.Scripts.Count);
+        Assert.Equal("SCRIPT", target.LastScript);
+    }
 
-        /// <summary>最后一次成功送进的脚本。</summary>
-        public string? LastScript { get; private set; }
+    /// <summary>端口抛其余异常即一次性放弃（顶栏属增强面，不空转重试）。</summary>
+    [Fact]
+    public async Task InjectCaptionBarWhenReadyAsync_GivesUpOnOtherFailures()
+    {
+        var target = new FakeWindowScriptTarget();
+        target.Enqueue(new HttpRequestException("boom"));
+        var pump = new PagePump(new RuntimeTimeouts { PushMaxAttempts = 3, PushRetryDelayMilliseconds = 1 });
 
-        /// <summary>按序排定每次注册要抛的异常；队空即注册成功。</summary>
-        /// <param name="outcomes">结局序列（异常；空表示成功）。</param>
-        public void Enqueue(params Exception[] outcomes)
-        {
-            foreach (Exception outcome in outcomes)
-            {
-                _outcomes.Enqueue(outcome);
-            }
-        }
+        await pump.InjectCaptionBarWhenReadyAsync(target, "SCRIPT", CancellationToken.None);
 
-        /// <summary>注册脚本（按排定结局抛或成功）。</summary>
-        /// <param name="script">待注册脚本。</param>
-        /// <param name="cancellationToken">取消令牌。</param>
-        /// <returns>完成的任务。</returns>
-        public ValueTask InjectScriptAsync(string script, CancellationToken cancellationToken = default)
-        {
-            InjectCalls++;
-            Exception? outcome = _outcomes.Count > 0 ? _outcomes.Dequeue() : null;
-            if (outcome is not null)
-            {
-                throw outcome;
-            }
+        Assert.Single(target.Scripts);
+    }
 
-            LastScript = script;
-            return ValueTask.CompletedTask;
-        }
+    /// <summary>自更新状态推送：把状态帧派发为页内事件（插件监听 <c>dsh-desktop-update</c>）。</summary>
+    [Fact]
+    public void PushUpdateState_Success_DispatchesUpdateEvent()
+    {
+        var target = new FakeWindowScriptTarget();
 
-        /// <summary>未消费。</summary>
-        /// <param name="url">目标 URL。</param>
-        /// <param name="cancellationToken">取消令牌。</param>
-        /// <returns>完成的任务。</returns>
-        public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
+        PagePump.PushUpdateState(target, new UpdateState(UpdateStatus.Ready, Version: "1.2.3"));
 
-        /// <summary>未消费。</summary>
-        /// <param name="html">页面 HTML。</param>
-        /// <param name="cancellationToken">取消令牌。</param>
-        /// <returns>完成的任务。</returns>
-        public ValueTask NavigateToStringAsync(string html, CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
+        string script = Assert.Single(target.Scripts);
+        Assert.Contains("dsh-desktop-update", script);
+        Assert.Contains("1.2.3", script);
+    }
 
-        /// <summary>未消费。</summary>
-        /// <param name="script">脚本。</param>
-        /// <param name="cancellationToken">取消令牌。</param>
-        /// <returns>空结果。</returns>
-        public ValueTask<string> EvaluateJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
-            new(string.Empty);
+    /// <summary>窗口未就绪：本次推送静默丢弃（状态机后续变化会再推），异常不外抛。</summary>
+    [Fact]
+    public void PushUpdateState_NotReady_DropsSilently()
+    {
+        var target = new FakeWindowScriptTarget();
+        target.Enqueue(new InvalidOperationException("window not ready"));
 
-        /// <summary>未消费。</summary>
-        /// <param name="scheme">自定义 scheme。</param>
-        /// <param name="handler">处理器。</param>
-        public void RegisterCustomScheme(string scheme, Func<RynSchemeRequest, ValueTask<RynSchemeResponse>> handler)
-        {
-        }
+        PagePump.PushUpdateState(target, new UpdateState(UpdateStatus.Ready, Version: "1.2.3"));
 
-        /// <summary>未消费。</summary>
-        /// <param name="eventName">事件名。</param>
-        /// <param name="jsonData">JSON 载荷。</param>
-        public void EmitEvent(string eventName, string jsonData)
-        {
-        }
-
-        /// <summary>未消费。</summary>
-        /// <typeparam name="T">载荷类型。</typeparam>
-        /// <param name="eventName">事件名。</param>
-        /// <param name="payload">载荷。</param>
-        /// <param name="typeInfo">源生成类型信息。</param>
-        public void EmitEvent<T>(string eventName, T payload, JsonTypeInfo<T> typeInfo)
-        {
-        }
+        Assert.Single(target.Scripts);
     }
 }

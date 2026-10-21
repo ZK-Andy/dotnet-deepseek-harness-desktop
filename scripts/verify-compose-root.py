@@ -196,6 +196,9 @@ PREBUILD_CONSTRUCTIBLE = {
     # 安装器端口由 UpdateInstaller 直接实现（同一 ADR），不另设转发壳。
     "PackageDownloaderAdapter",
     "PagePump",
+    # WindowScriptTarget：窗口脚本求值端口的 Ryn 适配器（ADR
+    # architecture/2026-10-21-window-script-target-port）——共享态在容器之前构造，访问器以提供者惰性供给。
+    "WindowScriptTarget",
     "Preflight",
     "ReleaseFeedAdapter",
     "RuntimeStarter",

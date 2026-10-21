@@ -36,7 +36,7 @@ internal sealed partial class StartupSequence
     /// 收官终局的 B3；注入时机与三路语义见该类）：解析用例即装。</summary>
     private void InstallCaptionBar()
     {
-        _resolutions.CaptionBarInstaller.Value.Install();
+        _ = _resolutions.CaptionBarInstaller.Value.InstallAsync();
     }
 
     /// <summary>启动期告知任务触发（ADR shared-home-desktop-profile）：用例编排住 <see cref="StartupNoticeService"/>，

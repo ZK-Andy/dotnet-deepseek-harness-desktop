@@ -11,7 +11,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// </summary>
 internal sealed class CaptionBarInstaller
 {
-    private readonly CurrentWindowAccessor _windowAccessor;
+    private readonly IWindowScriptTarget _scriptTarget;
     private readonly IRynWebView _webView;
     private readonly RynNavigationCallbacks _callbacks;
     private readonly CaptionBarOptions _captionBar;
@@ -22,8 +22,8 @@ internal sealed class CaptionBarInstaller
     // 补注册只做一次，避免每次导航都新增一条引擎注册。
     private int _reregistered;
 
-    /// <summary>创建顶栏注入用例（构造数据注入；脚本在 <see cref="Install"/> 时点按当前语言构建）。</summary>
-    /// <param name="windowAccessor">当前窗口访问器（注入与脚本求值的目标）。</param>
+    /// <summary>创建顶栏注入用例（构造数据注入；脚本在 <see cref="InstallAsync"/> 时点按当前语言构建）。</summary>
+    /// <param name="scriptTarget">当前窗口脚本求值端口（注入目标；Ryn 适配器另居一处，ADR window-script-target-port）。</param>
     /// <param name="webView">网页视图（Ryn 延迟代理，Build 后可解析；未就绪的语义在 <see cref="PagePump"/> 内）。</param>
     /// <param name="callbacks">导航回调集（常驻到达钩子的挂点）。</param>
     /// <param name="captionBar">自绘标题栏参数家（ADR frameless-uniform-caption-bar）。</param>
@@ -31,7 +31,7 @@ internal sealed class CaptionBarInstaller
     /// <param name="supervisorCts">监督器取消令牌源（注入侧取消面；寿命 = 本次 Run，容器单例）。</param>
     /// <param name="pump">页面注入单点（装配期创建的唯一实例）。</param>
     public CaptionBarInstaller(
-        CurrentWindowAccessor windowAccessor,
+        IWindowScriptTarget scriptTarget,
         IRynWebView webView,
         RynNavigationCallbacks callbacks,
         CaptionBarOptions captionBar,
@@ -39,7 +39,7 @@ internal sealed class CaptionBarInstaller
         CancellationTokenSource supervisorCts,
         PagePump pump)
     {
-        _windowAccessor = windowAccessor;
+        _scriptTarget = scriptTarget;
         _webView = webView;
         _callbacks = callbacks;
         _captionBar = captionBar;
@@ -48,8 +48,11 @@ internal sealed class CaptionBarInstaller
         _pump = pump;
     }
 
-    /// <summary>三路注入（调用序＝注册前的常驻钩子挂载 → 当窗即注入 → 每页加载注册）。</summary>
-    public void Install()
+    /// <summary>三路注入（调用序＝注册前的常驻钩子挂载 → 当窗即注入 → 每页加载注册）。
+    /// 返回当窗注入与每页加载注册两路的聚合任务：生产调用点按 fire-and-forget 消费（语义与原先
+    /// 两个无句柄 <c>Task.Run</c> 相同），测试据此确定性等待两路落地。</summary>
+    /// <returns>当窗注入与每页加载注册两路完成的任务。</returns>
+    public Task InstallAsync()
     {
         CancellationToken ct = _supervisorCts.Token;
         // macChrome = 是否启用原生 macOS chrome（判据单点见 MacNativeChrome）。
@@ -58,7 +61,7 @@ internal sealed class CaptionBarInstaller
         Func<IRynWebView> webView = () => _webView;
         _callbacks.SetOnNavigatedPersistent(() => Task.Run(() =>
         {
-            _ = _pump.InjectCaptionBarWhenReadyAsync(_windowAccessor, script, ct);
+            _ = _pump.InjectCaptionBarWhenReadyAsync(_scriptTarget, script, ct);
             // 首次到达补注册一次（该事件只在 webview 就绪后发）：到点预算折算出的注册之外再保一路「后到
             // 但确实活着」的注册时机。
             if (Interlocked.Exchange(ref _reregistered, 1) == 0)
@@ -66,7 +69,8 @@ internal sealed class CaptionBarInstaller
                 _ = _pump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct);
             }
         }));
-        _ = Task.Run(() => _pump.InjectCaptionBarWhenReadyAsync(_windowAccessor, script, ct));
-        _ = Task.Run(() => _pump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct));
+        return Task.WhenAll(
+            Task.Run(() => _pump.InjectCaptionBarWhenReadyAsync(_scriptTarget, script, ct)),
+            Task.Run(() => _pump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct)));
     }
 }

@@ -24,17 +24,21 @@ internal static class StartupUseCaseRegistration
     {
         services.AddSingleton<IMintEpoch>(
             sp => new ShellMintEpochAdapter(sp.GetRequiredService<DshShellForward>(), HostLog.Write));
-        services.AddSingleton<IWebViewNavigator>(sp => new WebViewNavigator(
+        // 导航端口的脚本求值经同一端口落到唯一的 Ryn 求值适配器（ADR
+        // architecture/2026-10-21-window-script-target-port）：故适配器实例只造一次，两个口径共用。
+        services.AddSingleton(sp => new WebViewNavigator(
             sp.GetRequiredService<CurrentWindowAccessor>(),
+            sp.GetRequiredService<IWindowScriptTarget>(),
             sp.GetRequiredService<RynNavigationCallbacks>()));
+        services.AddSingleton<IWebViewNavigator>(sp => sp.GetRequiredService<WebViewNavigator>());
         services.AddSingleton<IRecoverySurface>(sp => new RecoverySurface(
             sp.GetRequiredService<HostSetup>().Host,
-            sp.GetRequiredService<CurrentWindowAccessor>(),
+            sp.GetRequiredService<IWindowScriptTarget>(),
             sp.GetRequiredService<IFailureDialog>(),
             sp.GetRequiredService<IDiagnosticsExport>(),
             sp.GetRequiredService<UiLocale>(),
-            () => sp.GetRequiredService<IRynWindow>(),
-            sp.GetRequiredService<TrayController>(),
+            sp.GetRequiredService<TrayController>().CloseGate,
+            () => sp.GetRequiredService<IRynWindow>().Close(),
             HostLog.Write));
         services.AddSingleton(sp => new MainUiEntry(
             sp.GetRequiredService<IWebViewNavigator>(),
@@ -54,7 +58,7 @@ internal static class StartupUseCaseRegistration
             HostLog.Write));
         // 无边框顶栏注入用例（ADR frameless-uniform-caption-bar + B3）：脚本构建与三路注入全在用例内。
         services.AddSingleton(sp => new CaptionBarInstaller(
-            sp.GetRequiredService<CurrentWindowAccessor>(),
+            sp.GetRequiredService<IWindowScriptTarget>(),
             sp.GetRequiredService<IRynWebView>(),
             sp.GetRequiredService<RynNavigationCallbacks>(),
             sp.GetRequiredService<CaptionBarOptions>(),
@@ -94,7 +98,7 @@ internal static class StartupUseCaseRegistration
         services.AddSingleton(sp =>
         {
             HostSetup host = sp.GetRequiredService<HostSetup>();
-            CurrentWindowAccessor accessor = sp.GetRequiredService<CurrentWindowAccessor>();
+            IWindowScriptTarget scriptTarget = sp.GetRequiredService<IWindowScriptTarget>();
             UiLocale uiLocale = sp.GetRequiredService<UiLocale>();
             RuntimeTimeouts timeouts = sp.GetRequiredService<RuntimeTimeouts>();
             return new StartupNoticeService(
@@ -104,9 +108,9 @@ internal static class StartupUseCaseRegistration
                 host.Marker.PreviousRunUnclean,
                 HostLog.Write,
                 (version, ct) => pump.ShowBannerWhenReadyAsync(
-                    accessor, DesktopBanner.BuildVersionFloorBanner(version, uiLocale), ct),
+                    scriptTarget, DesktopBanner.BuildVersionFloorBanner(version, uiLocale), ct),
                 ct => pump.ShowBannerWhenReadyAsync(
-                    accessor, DesktopBanner.BuildUncleanExitBanner(uiLocale), ct));
+                    scriptTarget, DesktopBanner.BuildUncleanExitBanner(uiLocale), ct));
         });
 
     /// <summary>退出编排用例登记（ADR app-exit-orchestration-core-usecase；join 预算按配置模型投影）。</summary>

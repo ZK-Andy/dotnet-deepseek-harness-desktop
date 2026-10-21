@@ -26,9 +26,11 @@ internal static class PreBuildRegistration
 
     /// <summary>装配期共享态一次创建（ADR 组合根寿命与配置单一来源 D1）：超时家/标题栏参数两个配置模型与
     /// 语言单点、壳转发器在这里造好，前 Build 消费与编排期容器解析拿到同一实例。超时家是配置的唯一
-    /// <c>Load</c> 点（D4）：其余消费方按值接收，不各自解析。</summary>
+    /// <c>Load</c> 点（D4）：其余消费方按值接收，不各自解析。窗口脚本求值端口同样在此唯一创建
+    /// （访问器以提供者惰性供给，Build 后才有值；ADR architecture/2026-10-21-window-script-target-port）。</summary>
+    /// <param name="accessorProvider">窗口访问器提供者（惰性；Build 前为 null）。</param>
     /// <returns>共享态（值）；容器登记由 <c>AddBootstrapSharedState</c> 承担。</returns>
-    public static SharedState CreateSharedState()
+    public static SharedState CreateSharedState(Func<CurrentWindowAccessor?> accessorProvider)
     {
         var timeouts = RuntimeTimeouts.Load(AppContext.BaseDirectory, HostLog.Write);
         return new SharedState(
@@ -36,26 +38,25 @@ internal static class PreBuildRegistration
             CaptionBarOptions.Load(AppContext.BaseDirectory, HostLog.Write),
             new UiLocale(new DesktopUiLocaleStore(HostLog.Write), new OsLocaleProbe()),
             new DshShellForward(),
-            new PagePump(timeouts));
+            new PagePump(timeouts),
+            new WindowScriptTarget(accessorProvider));
     }
 
     /// <summary>首启引导服务与启动期 A 类配置（原组合根 <c>ResolveRuntimeAndDev</c>）：全局 node/dsh 引导、
     /// 插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主/窗口以提供者延迟供给
     /// （调用点均晚于 Build 赋值），UI 语言同样惰性（引导任务实际启动时求值）。</summary>
     /// <param name="hostProvider">宿主提供者（Build 后可用）。</param>
-    /// <param name="accessorProvider">窗口访问器提供者（Build 后可用）。</param>
     /// <param name="isEnglishProvider">UI 语言提供者（惰性求值）。</param>
-    /// <param name="shared">装配期共享态（页面注入单点与超时家）。</param>
+    /// <param name="shared">装配期共享态（页面注入单点、脚本求值端口与超时家）。</param>
     /// <returns>启动头部产出（引导服务 + 启动配置）。</returns>
     public static Preflight CreatePreflight(
         Func<HarnessRuntimeHost> hostProvider,
-        Func<CurrentWindowAccessor> accessorProvider,
         Func<bool> isEnglishProvider,
         SharedState shared)
     {
         IFirstBootBootstrap bootstrap = new FirstBootBootstrapService(
             hostProvider,
-            new FirstBootUi(accessorProvider, shared.Pump),
+            new FirstBootUi(shared.ScriptTarget, shared.Pump),
             isEnglishProvider,
             shared.Timeouts,
             HostLog.Write);
@@ -103,9 +104,9 @@ internal static class PreBuildRegistration
             updateDownloader,
             updateInstaller,
             () => supervisorCts.Token,
-            state => PagePump.PushUpdateState(accessorProvider(), state),
+            state => PagePump.PushUpdateState(shared.ScriptTarget, state),
             (version, token) => shared.Pump.ShowBannerWhenReadyAsync(
-                accessorProvider()!, UpdateBanner.ReadyScript(version, shared.UiLocale), token),
+                shared.ScriptTarget, UpdateBanner.ReadyScript(version, shared.UiLocale), token),
             closeGate.ApproveExit,
             () => accessorProvider()?.Current?.Close(),
             ct => exitProvider().ScheduleExitFallback(ct),

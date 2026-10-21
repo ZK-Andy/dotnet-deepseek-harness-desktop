@@ -39,9 +39,12 @@ internal readonly record struct InstanceListenerSetup(PrimaryListener? Listener)
 /// <param name="UiLocale">宿主 UI 语言单点。</param>
 /// <param name="ShellForward">壳转发器（铸币态唯一家）。</param>
 /// <param name="Pump">页面注入单点（重试预算取自 <paramref name="Timeouts"/>；装配期与编排期共用同一实例）。</param>
+/// <param name="ScriptTarget">当前窗口脚本求值端口（访问器惰性供给；装配期与容器登记同一实例，
+/// ADR architecture/2026-10-21-window-script-target-port）。</param>
 internal sealed record SharedState(
     RuntimeTimeouts Timeouts,
     CaptionBarOptions CaptionBar,
     UiLocale UiLocale,
     DshShellForward ShellForward,
-    PagePump Pump);
+    PagePump Pump,
+    IWindowScriptTarget ScriptTarget);

@@ -21,7 +21,7 @@ public class CompositionRootSequenceTests
         string[] chain =
         [
             "WebkitSandboxFallback.Apply();",
-            "PreBuildRegistration.CreateSharedState();",
+            "PreBuildRegistration.CreateSharedState(() => builtAccessor);",
             "PreBuildRegistration.CreateShellResources();",
             "resources.Attach(supervisorCts);",
             "PreBuildRegistration.CreatePreflight(",

@@ -22,6 +22,9 @@ internal static class RunServicesRegistration
         services.AddSingleton(shared.UiLocale);
         services.AddSingleton(shared.ShellForward);
         services.AddSingleton(shared.Pump);
+        // 窗口脚本求值端口：与装配期消费方（引导反馈/自更新横幅）同一实例，Ryn 适配器只在
+        // PreBuildRegistration 构造一次（ADR architecture/2026-10-21-window-script-target-port）。
+        services.AddSingleton(shared.ScriptTarget);
         return services;
     }
 
@@ -97,9 +100,12 @@ internal static class RunServicesRegistration
     {
         services.AddSingleton(sp =>
         {
+            // 探针求值经脚本求值端口（ADR architecture/2026-10-21-window-script-target-port）：
+            // 「怎么对当前窗口求值」在仓内只有一个答案；访问器仅留给 reload 委托的导航动作。
+            IWindowScriptTarget scriptTarget = sp.GetRequiredService<IWindowScriptTarget>();
             CurrentWindowAccessor accessor = sp.GetRequiredService<CurrentWindowAccessor>();
             return new PageHealthMonitor(
-                accessor,
+                scriptTarget,
                 HostLog.Write,
                 reload: ct => proxy is null
                     ? ValueTask.CompletedTask

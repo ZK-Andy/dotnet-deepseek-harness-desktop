@@ -149,7 +149,7 @@ jobs:
             echo "::warning::增量闸无 base 可比（首推/新建分支），本次跳过" >&2
           else
             echo "increment-discipline --since $BASE"
-            python3 scripts/verify-increment-discipline.py --since "$BASE" --enforce --exempt .agents/notes/implemented/testing/2026-10-20-new-gates-wiring.md
+            python3 scripts/verify-increment-discipline.py --since "$BASE" --enforce --exempt .agents/notes/implemented/architecture/2026-10-21-window-script-target-port.md
           fi
       - name: 评审档位硬闸（FULL 档变更须携 Review 证据；ADR review-tier-escape-proofing）
         env:
@@ -165,6 +165,20 @@ jobs:
           fi
           echo "review-tier --since $BASE"
           python3 scripts/verify-review-tier.py --since "$BASE" --enforce
+
+  # companion 客户端半边的 JS 测试腿（ADR testing/2026-10-21-companion-client-js-tests）：
+  # 插件改动不命中 code 过滤面，故无条件执行；node:test 零依赖，不需要 pnpm install。
+  companion-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: companion client JS tests
+        run: node --test plugins/dsh-desktop-companion/test/
 
   build-test:
     needs: changes

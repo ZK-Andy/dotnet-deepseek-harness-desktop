@@ -24,7 +24,8 @@ public interface IWebViewNavigator
     Task NavigateAsync(Uri target, CancellationToken ct);
 
     /// <summary>对当前页求值脚本并返回解码后的文本（桥回报的 JSON 字符串外壳由实现侧还原）。
-    /// Ryn 求值面无可取消位，取消由调用方对返回任务施加有界等待。</summary>
+    /// 本端口不暴露取消位（求值是一段短脚本，端口形状不因取消而变）；取消由调用方对返回任务施加
+    /// 有界等待（<c>MainUiEntry</c> 的 <c>WaitAsync(cts.Token)</c>）。</summary>
     /// <param name="script">注入脚本（探针等；脚本是 Presentation 资产，经构造数据交给用例）。</param>
     /// <returns>解码后的返回文本；探针无值 null。</returns>
     Task<string?> EvaluateScriptAsync(string script);
