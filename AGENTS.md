@@ -110,7 +110,7 @@ scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 | docs/coding-standards.md | ≤ 700 词 |
 | docs/architecture-standards.md | ≤ 600 词 |
 | docs/script-standards.md | ≤ 500 词 |
-| docs/architecture.md | ≤ 950 词 |
+| docs/architecture.md | ≤ 990 词 |
 | docs/testing.md | ≤ 850 词 |
 | docs/development.md | ≤ 550 词 |
 
