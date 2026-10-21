@@ -168,6 +168,8 @@ jobs:
 
   # companion 客户端半边的 JS 测试腿（ADR testing/2026-10-21-companion-client-js-tests）：
   # 插件改动不命中 code 过滤面，故无条件执行；node:test 零依赖，不需要 pnpm install。
+  # 命令用 Node 的默认测试发现（无位置参数）——目录位置参数的行为随 Node 版本变化，
+  # 实测矩阵与取舍见 ADR bug-fix/2026-10-21-companion-js-ci-node22。
   companion-js:
     runs-on: ubuntu-latest
     steps:
@@ -178,7 +180,8 @@ jobs:
         with:
           node-version: '22'
       - name: companion client JS tests
-        run: node --test plugins/dsh-desktop-companion/test/
+        working-directory: plugins/dsh-desktop-companion
+        run: node --test
 
   build-test:
     needs: changes

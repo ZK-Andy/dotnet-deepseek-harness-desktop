@@ -10,7 +10,7 @@
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { findAll, find, loadClient, settle, textOf } from './harness.js'
+import { findAll, find, loadClient, settle, textOf } from '../testkit/harness.js'
 
 /** Render the settings slot and settle the initial command round-trips. */
 async function openSettings(harness) {
