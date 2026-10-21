@@ -3,7 +3,7 @@ using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Core.Platform;
 using Ryn.Ipc;
 
-namespace DeepSeek.Harness.Desktop;
+namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
 /// 宿主命令路由：<c>desktop.autostart.getState / set</c>。companion「桌面」设置区块的

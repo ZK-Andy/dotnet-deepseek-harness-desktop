@@ -2,7 +2,7 @@ using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
-namespace DeepSeek.Harness.Desktop;
+namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
 /// 宿主命令路由：<c>desktop.ui.getLocale</c>——<c>wwwroot</c> 引导页在 dsh 启动前向宿主

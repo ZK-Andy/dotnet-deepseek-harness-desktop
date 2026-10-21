@@ -7,8 +7,7 @@ using Ryn.Ipc;
 namespace DeepSeek.Harness.Desktop;
 
 /// <summary>壳级命令路由注册（组合根注册下沉为按域 AddXxx，ADR compose-root-form-separation）：
-/// 外部链接导航、语言桥、开机自启、页面降级报障四域。TODO(rehome-shell-routers)：路由类型仍居根命名空间，
-/// 按域分文件归位时随迁并删除本行。</summary>
+/// 外部链接导航、语言桥、开机自启、页面降级报障、应用重启五域（ADR shell-router-rehoming）。</summary>
 internal static class ShellCommandRegistration
 {
     /// <summary>外部链接打开（宿主命令路由，ADR open-external-links-in-system-browser）与导航回调依赖覆盖：

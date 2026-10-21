@@ -1,7 +1,7 @@
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
-namespace DeepSeek.Harness.Desktop;
+namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
 /// 宿主命令路由：<c>desktop.app.restart</c>——companion「桌面设置」重启行的宿主语义。

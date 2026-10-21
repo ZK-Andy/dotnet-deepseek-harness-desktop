@@ -118,6 +118,7 @@ ALLOWED_METHODS = {
 # extensions, stage values and routers. A new file here must be declared (as
 # domain code or as assembly surface) — otherwise the gate fails.
 BOOTSTRAP_DOMAIN_FILES = {
+    "AppRestartCommandRouter.cs",
     "BootstrapCommandRouter.cs",
     "BootstrapRegistration.cs",
     "BootstrapStateFrame.cs",

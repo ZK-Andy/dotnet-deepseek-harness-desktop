@@ -3,7 +3,7 @@ using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using Ryn.Ipc;
 
-namespace DeepSeek.Harness.Desktop;
+namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
 /// 宿主命令路由：<c>desktop.companion.setLocale</c>——companion 桥接 dsh 语言变更
