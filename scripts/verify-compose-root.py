@@ -9,13 +9,14 @@ files, each dodging a per-file size budget.
 
 Two scopes, declared in this file (the single home for these judgements):
 
-  ROOT_SET       = `Program.cs` + `DesktopAdapter*.cs`. Weight and self-造假
-                   metrics: F3 budget (verify-code-health), F4, C3, C4, C5.
+  ROOT_SET       = `Program.cs` + `DesktopAdapter*.cs`. Metrics: F3 weight budget
+                   (verify-code-health), F4, C3, C4, C5.
   ASSEMBLY_SURFACE = ROOT_SET + ASSEMBLY_SURFACE_EXTRA (`Bootstrap/PreBuildRegistration.cs`,
                    `Bootstrap/ShellResources.cs`, `RynOptionsProfile.cs`). Direction
                    gates: C1 + C2 over the whole surface, C7 over
-                   `PreBuildRegistration*.cs`, C8 over every first-level domain directory (a file
-                   that is neither domain nor declared surface fails). Assembly code
+                   `PreBuildRegistration*.cs`, C8 over every first-level domain directory and over
+                   the root directory itself (a file that is neither domain nor declared
+                   surface fails; a declared surface file that vanished fails). Assembly code
                    must not escape the gates by moving out of the root files; adding a
                    file to ASSEMBLY_SURFACE_EXTRA is a gate change (FULL review) —
                    declaring a domain file is a data edit (LIGHT).
@@ -62,17 +63,24 @@ Eight checks:
       C3 counts the root set alone, so without C7 the moved constructions would
       sit outside every gate; here they stay a deliberate inventory (reopening
       it needs its own ADR).
-  C8  domain-file inventory: every domain directory — a first-level subdirectory
-      of `--src` holding `.cs` files (`bin`/`obj` excluded) — must be declared in
+  C8  file inventory: every domain directory — a first-level subdirectory of
+      `--src` holding `.cs` files (`bin`/`obj` excluded) — must be declared in
       the manifest
       (`scripts/domain-files.manifest.json`, `--domain-manifest`) together with
       its files. The check is two-way: an undeclared file, an undeclared
       directory, a declared file that no longer exists and a declared directory
       that no longer exists all fail — a rename or a deletion cannot drift the
       inventory silently, and a declared directory that lost every `.cs` still
-      has its entries checked. Whether a file IS assembly surface remains a judgement
-      recorded in ASSEMBLY_SURFACE_EXTRA; C8 only asks whether it was classified
-      at all.
+      has its entries checked. Two classification rules sit beside it: every
+      path in ASSEMBLY_SURFACE_EXTRA must exist (a vanished one is skipped
+      silently by `_assembly_files`, so the file would leave every gate
+      unwitnessed), and a root-level `.cs` file must be the root set or
+      declared assembly surface — the root directory is the assembly surface,
+      not a domain directory, and it carries no manifest key. Whether a file IS
+      assembly surface remains a judgement recorded in ASSEMBLY_SURFACE_EXTRA;
+      C8 asks whether that classification is recorded and unique. One file has
+      one home: a file listed in both the manifest and ASSEMBLY_SURFACE_EXTRA
+      fails.
 
 Default is report-only (exit 0). `--enforce` exits 1 on any violation.
 `--self-test` runs offline fixtures.
@@ -88,7 +96,8 @@ import re
 import sys
 from pathlib import Path
 
-from gate_common import CSharpLineScanner, STATIC_ACCESS_RE, TARGET_OWNER_RE, TYPE_DECL_RE
+from gate_common import (CSharpLineScanner, STATIC_ACCESS_RE, TARGET_OWNER_RE, TYPE_DECL_RE,
+                         is_compose_root_name)
 
 DEFAULT_SRC = "src/DeepSeek.Harness.Desktop"
 DEFAULT_OWNED_SRC = (
@@ -257,19 +266,54 @@ _COMPOSE_CTOR_RE = re.compile(r"^\s*(?:public|private|protected|internal)\s+(\w+
 _COMPOSE_PROPERTY_RE = re.compile(r"^\s*(?:public|private|protected|internal)\s+[\w<>\[\],.?]+\s+(\w+)\s*=>")
 
 
+def _assembly_identity() -> tuple[dict[str, set[str]], set[str]]:
+    """The assembly-surface identity table: the declared surface files grouped
+    by directory ("" for the root directory) and the root-level surface names.
+
+    One decomposition of ASSEMBLY_SURFACE_EXTRA, so the inventory rule and the
+    classification rule cannot drift apart.
+    """
+    by_dir: dict[str, set[str]] = {}
+    root_files: set[str] = set()
+    for rel in ASSEMBLY_SURFACE_EXTRA:
+        path = Path(rel)
+        parent = path.parent.as_posix()
+        key = "" if parent == "." else parent
+        by_dir.setdefault(key, set()).add(path.name)
+        if key == "":
+            root_files.add(path.name)
+    return by_dir, root_files
+
+
 def _root_files(src: Path) -> list[Path]:
+    """Root-set files: membership by file name (the shared predicate), at any
+    depth — a `Program.cs`/`DesktopAdapter*` name belongs to the root set
+    wherever it sits, so C1-C5 and the F3 weight budget see the same set."""
     return sorted(p for p in src.rglob("*.cs")
                   if "obj" not in p.parts and "bin" not in p.parts
-                  and (p.name == "Program.cs" or p.name.startswith("DesktopAdapter")))
+                  and is_compose_root_name(p.name))
 
 
 def _assembly_files(src: Path) -> list[Path]:
-    """C1/C2 scope: the root set plus the declared assembly-surface files."""
+    """C1/C2 scope: the root set plus the declared assembly-surface files and
+    their dot-partial families.
+
+    A surface file may be split into `Foo.Extra.cs` parts later; the
+    declaration is by exact path, so a part would leave the direction gates
+    unnoticed (C7 tracks `PreBuildRegistration*.cs` by glob, the surface
+    declaration does not). Expanding the family keeps the part inside C1/C2:
+    its assembly members then need an ALLOWED_METHODS entry of their own,
+    which is a deliberate gate edit.
+    """
     files = list(_root_files(src))
     for rel in ASSEMBLY_SURFACE_EXTRA:
         path = src / rel
-        if path.is_file():
-            files.append(path)
+        if not path.is_file():
+            continue
+        files.append(path)
+        stem = path.stem.split(".")[0]
+        files.extend(sibling for sibling in sorted(path.parent.glob(f"{stem}*.cs"))
+                     if sibling != path)
     return sorted(files)
 
 
@@ -517,10 +561,7 @@ def _load_domain_manifest(path: Path) -> dict[str, set[str]]:
 def _domain_inventory_violations(src: Path, manifest: dict[str, set[str]]) -> list[str]:
     """C8 over every domain directory under `src`, both directions (undeclared
     file, undeclared directory, dead file, dead directory)."""
-    surface: dict[str, set[str]] = {}
-    for rel in ASSEMBLY_SURFACE_EXTRA:
-        parent = Path(rel).parent.as_posix()
-        surface.setdefault("" if parent == "." else parent, set()).add(Path(rel).name)
+    surface, _ = _assembly_identity()
 
     actual = {p.name: p for p in sorted(src.iterdir())
               if p.is_dir() and p.name not in NON_DOMAIN_DIRS}
@@ -536,17 +577,28 @@ def _domain_inventory_violations(src: Path, manifest: dict[str, set[str]]) -> li
                 " (declare its files in scripts/domain-files.manifest.json)")
             continue
         surface_files = surface.get(name, set())
-        declared = declared | surface_files
-        for extra in sorted(files - declared):
+        for dup in sorted(declared & surface_files):
+            out.append(
+                f"  C8 {name}/{dup}: declared in both the manifest and ASSEMBLY_SURFACE_EXTRA"
+                " (one file, one home)")
+        # The root set is by name (any depth), so a manifest file carrying a
+        # root-set name would be two owners at once: the strict C1-C5 scope
+        # and the domain inventory.
+        for owned in sorted(f for f in declared if is_compose_root_name(f)):
+            out.append(
+                f"  C8 {name}/{owned}: declared in both the manifest and the root set"
+                " (one file, one home — the root set is by name)")
+        domain_files = declared - surface_files
+        for extra in sorted(files - domain_files - surface_files):
             out.append(
                 f"  C8 {name}/{extra}: new file is neither domain nor assembly surface"
                 " (declare it in scripts/domain-files.manifest.json, or in"
                 " ASSEMBLY_SURFACE_EXTRA if it is assembly code — moving assembly here"
                 " must not escape the gates)")
-        # Dead-entry check covers the manifest only. An assembly-surface path that
-        # disappears is missed by `_assembly_files` (its `if path.is_file()` skips
-        # silently) — carried debt in the inventory gate ADR, not re-reported here.
-        for gone in sorted((declared - surface_files) - files):
+        # Dead entries: a manifest file that no longer exists. Assembly-surface
+        # paths live in the script, not in the manifest (one file, one home);
+        # their existence is checked in `_assembly_surface_violations`.
+        for gone in sorted(domain_files - files):
             out.append(
                 f"  C8 {name}/{gone}: inventory lists a file that does not exist"
                 " (dead entry — drop it, or the file moved and the inventory must follow)")
@@ -554,6 +606,34 @@ def _domain_inventory_violations(src: Path, manifest: dict[str, set[str]]) -> li
         out.append(
             f"  C8 {name}/: inventory lists a directory that does not exist"
             " (dead entry — drop it)")
+    return out
+
+
+def _assembly_surface_violations(src: Path) -> list[str]:
+    """C8, the two classification rules the domain inventory cannot express: a
+    declared assembly-surface file must exist, and a root-level file must be
+    the root set or declared assembly surface.
+
+    A vanished assembly-surface path is skipped silently by `_assembly_files`
+    (`if path.is_file()`), so without this check the file leaves every gate
+    without a word. A root-level file outside both sets is outside every gate
+    as well: the root directory is the assembly surface, not a domain
+    directory, and it had no inventory face at all.
+    """
+    out: list[str] = []
+    _, root_surface = _assembly_identity()
+    for rel in ASSEMBLY_SURFACE_EXTRA:
+        if not (src / rel).is_file():
+            out.append(
+                f"  C8 assembly surface {rel}: declared in ASSEMBLY_SURFACE_EXTRA but the file"
+                " does not exist (drop it, or the file moved and the declaration must follow)")
+    for path in sorted(src.glob("*.cs")):
+        if is_compose_root_name(path.name) or path.name in root_surface:
+            continue
+        out.append(
+            f"  C8 {path.name}: root-level file is neither root set nor assembly surface"
+            " (move it into a domain directory, or declare it in ASSEMBLY_SURFACE_EXTRA"
+            " if it is assembly code)")
     return out
 
 
@@ -1007,7 +1087,10 @@ public sealed partial class DesktopAdapter
         # declared directory; each drift channel is exercised in turn.
         def _c8(label: str, rows: list[str], needle: str | None = None) -> None:
             nonlocal failed
-            if (not rows) if needle is None else any(needle in r for r in rows):
+            hit = any(needle in r for r in rows) if needle is not None else not rows
+            # A needle fixture also pins the row count: one hit means the check
+            # reported exactly that violation, not a bundle of them.
+            if hit and (needle is None or len(rows) == 1):
                 print(f"  ok: C8 {label}")
             else:
                 print(f"  ✗ C8 {label}: {rows}")
@@ -1020,10 +1103,24 @@ public sealed partial class DesktopAdapter
         c8_manifest = {"Bootstrap": {"Declared.cs"}}
         _c8("conforming inventory -> pass", _domain_inventory_violations(c8_src, c8_manifest))
 
+        # The root set is by name: a manifest file carrying a root-set name
+        # would be two owners at once (the strict C1-C5 scope and the domain
+        # inventory).
+        (c8_dir / "Program.cs").write_text("namespace D;\n", encoding="utf-8")
+        _c8("manifest entry named like the root set flagged",
+            _domain_inventory_violations(c8_src, {"Bootstrap": {"Declared.cs", "Program.cs"}}),
+            "C8 Bootstrap/Program.cs: declared in both the manifest and the root set")
+        (c8_dir / "Program.cs").unlink()
+
         # Assembly-surface files are classified by ASSEMBLY_SURFACE_EXTRA, so the
         # manifest need not list them.
         (c8_dir / "ShellResources.cs").write_text("namespace D;\n", encoding="utf-8")
         _c8("assembly-surface file needs no manifest entry", _domain_inventory_violations(c8_src, c8_manifest))
+
+        # One file, one home: a file listed in both places is a violation.
+        _c8("double registration flagged",
+            _domain_inventory_violations(c8_src, {"Bootstrap": {"Declared.cs", "ShellResources.cs"}}),
+            "C8 Bootstrap/ShellResources.cs: declared in both the manifest and ASSEMBLY_SURFACE_EXTRA")
         (c8_dir / "ShellResources.cs").unlink()
 
         # A new file inside a declared directory (the 1434271 shape: assembly code
@@ -1047,12 +1144,13 @@ public sealed partial class DesktopAdapter
         (c8_src / "wwwroot").rmdir()
 
         # Dead entries — a declared file and a declared directory that no longer
-        # exist (the rename/deletion drift a one-way list allowed).
-        rows_c8 = _domain_inventory_violations(
-            c8_src, {"Bootstrap": {"Declared.cs", "Ghost.cs"}, "Nope": {"Also.cs"}})
-        _c8("dead file entry flagged", rows_c8,
+        # exist (the rename/deletion drift a one-way list allowed). Each fixture
+        # carries one manifest so the expected row count is exactly one.
+        _c8("dead file entry flagged",
+            _domain_inventory_violations(c8_src, {"Bootstrap": {"Declared.cs", "Ghost.cs"}}),
             "C8 Bootstrap/Ghost.cs: inventory lists a file that does not exist")
-        _c8("dead directory entry flagged", rows_c8,
+        _c8("dead directory entry flagged",
+            _domain_inventory_violations(c8_src, {"Bootstrap": {"Declared.cs"}, "Nope": {"Also.cs"}}),
             "C8 Nope/: inventory lists a directory that does not exist")
 
         # A directory that still exists but lost all its .cs files must not keep
@@ -1062,6 +1160,42 @@ public sealed partial class DesktopAdapter
             _domain_inventory_violations(c8_src, {"Bootstrap": {"Declared.cs"}, "Emptied": {"Was.cs"}}),
             "C8 Emptied/Was.cs: inventory lists a file that does not exist")
         (c8_src / "Emptied").rmdir()
+
+        # C8, the two classification rules beside the inventory: the declared
+        # assembly surface must exist, and a root-level file must be the root
+        # set or declared assembly surface.
+        c8b_src = Path(td) / "Surface"
+        c8b_bootstrap = c8b_src / "Bootstrap"
+        c8b_bootstrap.mkdir(parents=True)
+        (c8b_src / "Program.cs").write_text("namespace D;\n", encoding="utf-8")
+        (c8b_src / "DesktopAdapter.cs").write_text("namespace D;\n", encoding="utf-8")
+        (c8b_src / "RynOptionsProfile.cs").write_text("namespace D;\n", encoding="utf-8")
+        (c8b_bootstrap / "PreBuildRegistration.cs").write_text("namespace D;\n", encoding="utf-8")
+        (c8b_bootstrap / "ShellResources.cs").write_text("namespace D;\n", encoding="utf-8")
+        _c8("root set and declared surface pass", _assembly_surface_violations(c8b_src))
+
+        (c8b_src / "Stray.cs").write_text("namespace D;\n", encoding="utf-8")
+        _c8("stray root-level file flagged", _assembly_surface_violations(c8b_src),
+            "C8 Stray.cs: root-level file is neither root set nor assembly surface")
+        (c8b_src / "Stray.cs").unlink()
+
+        (c8b_bootstrap / "ShellResources.cs").unlink()
+        _c8("vanished assembly-surface file flagged", _assembly_surface_violations(c8b_src),
+            "C8 assembly surface Bootstrap/ShellResources.cs: declared in ASSEMBLY_SURFACE_EXTRA"
+            " but the file does not exist")
+        (c8b_bootstrap / "ShellResources.cs").write_text("namespace D;\n", encoding="utf-8")
+
+        # A dot-partial of a declared surface file stays inside the C1/C2 scope:
+        # the declaration is by exact path, the scope is by family, so a part
+        # cannot leave the direction gates unnoticed.
+        (c8b_bootstrap / "PreBuildRegistration.Extra.cs").write_text("namespace D;\n", encoding="utf-8")
+        scope = {p.relative_to(c8b_src).as_posix() for p in _assembly_files(c8b_src)}
+        if "Bootstrap/PreBuildRegistration.Extra.cs" in scope:
+            print("  ok: C8 dot partial of a surface file stays in the C1/C2 scope")
+        else:
+            print("  ✗ C8 dot partial of a surface file escaped the C1/C2 scope")
+            failed = 1
+        (c8b_bootstrap / "PreBuildRegistration.Extra.cs").unlink()
 
         # An unreadable or malformed manifest is an error, not an empty inventory:
         # a bare list or a non-list entry would otherwise read as "no domains".
@@ -1112,6 +1246,7 @@ def main() -> int:
     rows, new_count = _violations(Path(args.src), [Path(s) for s in args.owned_src],
                                   args.max_new, args.max_dot_partials)
     rows.extend(_domain_inventory_violations(Path(args.src), manifest))
+    rows.extend(_assembly_surface_violations(Path(args.src)))
     print(f"  root new-of-owned count: {new_count} (cap {args.max_new})")
     print(f"  C7 inventory: {len(PREBUILD_CONSTRUCTIBLE)} entries")
     print(f"  C8 inventory: {sum(len(v) for v in manifest.values())} files in {len(manifest)} domain dirs")

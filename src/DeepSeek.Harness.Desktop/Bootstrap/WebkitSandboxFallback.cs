@@ -1,8 +1,7 @@
-namespace DeepSeek.Harness.Desktop;
+namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
-/// WebKit 沙箱 userns 降级（ADR webkit-sandbox-userns-fallback；原装配面分部随形态分离迁出，
-/// ADR compose-root-form-separation）：userns 受限主机上 bwrap 沙箱起不来即整进程 core。
+/// WebKit 沙箱 userns 降级（ADR webkit-sandbox-userns-fallback）：userns 受限主机上 bwrap 沙箱起不来即整进程 core。
 /// 决策在 <c>Core.WebkitSandboxPolicy</c> 纯策略，此处仅在 WebView 创建前编排 sysctl 采样/环境变量/日志（R1）。
 /// </summary>
 internal static class WebkitSandboxFallback

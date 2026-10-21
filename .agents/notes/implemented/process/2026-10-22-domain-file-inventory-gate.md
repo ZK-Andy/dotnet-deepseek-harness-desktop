@@ -1,6 +1,7 @@
 # Agent Note: 域文件在册闸泛化并双向校验
 
 Status: implemented
+Erratum: 2026-10-22 — 「装配面文件可登可不登」的口径已被收紧为「只能登一处」：域清单与 `ASSEMBLY_SURFACE_EXTRA` 双登记判红，域清单登记根集名的文件同样判红（[assembly-surface-inventory-closure](2026-10-22-assembly-surface-inventory-closure.md)）。其余决定与读数不变。
 Review: FULL/2026-10-22/R1=ok R2=ok R3=ok
 
 ## Problem
@@ -17,7 +18,7 @@ C8（域文件须在册）原来只覆盖壳工程的一个目录：`scripts/ver
 
 C8 的清单从判据文件里搬出来，判据泛化为「所有域目录 + 双向」。
 
-- **数据面**：`scripts/domain-files.manifest.json`，键 = 域目录名（相对 `--src` 的一级子目录），值 = 该目录下的 `.cs` 文件名列表；`_` 前缀键写说明，加载时忽略。当前内容：`Bootstrap` 12 项（该目录 14 个 `.cs` 中除两个装配面文件外的全部）、`PageBridge` 19、`Recovery` 7、`Tray` 8、`Update` 3，合计 49 项。
+- **数据面**：`scripts/domain-files.manifest.json`，键 = 域目录名（相对 `--src` 的一级子目录），值 = 该目录下的 `.cs` 文件名列表；`_` 前缀键写说明，加载时忽略。当前内容：`Bootstrap` 13 项（该目录 15 个 `.cs` 中除两个装配面文件外的全部）、`PageBridge` 19、`Recovery` 7、`Tray` 8、`Update` 3，合计 50 项。
 - **加载**：`_load_domain_manifest(path)` 读 JSON；文件不可读、非法 JSON、顶层不是对象、条目不是字符串列表一律 `SystemExit`（fail loud）。空清单不降级为「没有域文件」。
 - **判据**：`_domain_inventory_violations(src, manifest)` 扫 `--src` 下每个一级子目录（`bin`/`obj` 排除），四条行文：
   - `C8 <dir>/<file>: new file is neither domain nor assembly surface (...)`——目录在册但文件未在册；
@@ -40,7 +41,7 @@ C8 的清单从判据文件里搬出来，判据泛化为「所有域目录 + �
 ## Consequences
 
 - 买到：C8 从「一个目录 + 单向」变成「所有域目录 + 双向 + 数据面清单」，挂账 ②③ 同时清；新增域文件的例行税降到改数据文件（LIGHT），而装配面归属仍是判据（FULL）。
-- 付出：多一份需要维护的清单文件（49 行数据）。清单可能被「照抄实际文件」而失去分类判断力——机器只保证「没有人静默新增或改名」，分类正确性留评审（R1/R3 检查项）。
+- 付出：多一份需要维护的清单文件（50 行数据）。清单可能被「照抄实际文件」而失去分类判断力——机器只保证「没有人静默新增或改名」，分类正确性留评审（R1/R3 检查项）。
 - 实测读数：`verify-compose-root.py --enforce` → `root new-of-owned count: 3 (cap 6)`、`C7 inventory: 24 entries`、`C8 inventory: 49 files in 5 domain dirs`、OK；`--self-test` 全绿（11 条 C8 夹具）。
 - 判据改动：`verify-compose-root.py` 属 `gate-criteria` FULL 触发路径，本批按 FULL 走 R1/R2/R3 三审，证据行写本笔记头区。
 - 已继承的债：历史 ADR [shell-router-rehoming](../architecture/2026-10-21-shell-router-rehoming.md):31 引用了已消失的常量名 `BOOTSTRAP_DOMAIN_FILES`，按证据严肃性规则在该篇 Status 下补 `Erratum:` 行（正文与决定不动）。该篇另因同批删除 `ShellCommandRegistration.cs` 而补的第二句在同一条 Erratum 里。
@@ -51,3 +52,4 @@ C8 的清单从判据文件里搬出来，判据泛化为「所有域目录 + �
 - [per-domain-registration-files](../architecture/2026-10-22-per-domain-registration-files.md)（implemented）：清挂账 ①（注册文件按域下沉），本批清 ②③。
 - [assembly-surface-terminology](2026-10-22-assembly-surface-terminology.md)（implemented）：同批的治理词汇批次，C8 相关措辞随其定名。
 - [shell-router-rehoming](../architecture/2026-10-21-shell-router-rehoming.md)（implemented）：挂账 ②③ 的出处；常量名失效以 Erratum 行记录。
+- [assembly-surface-inventory-closure](2026-10-22-assembly-surface-inventory-closure.md)（implemented）：闭合本篇「待清偿项」的两条（装配面声明须存在、壳工程根目录纳入在册面），并把「装配面文件可登可不登」收紧为一个文件一个家。

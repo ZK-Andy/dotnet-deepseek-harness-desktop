@@ -36,6 +36,17 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def is_compose_root_name(name: str) -> bool:
+    """Assembly-surface root set membership by file name: `Program.cs` plus any
+    `DesktopAdapter*` partial.
+
+    One home: verify-compose-root (the C1-C5 scope) and verify-code-health
+    (the F3 weight budget) must agree on which files are the root set, or the
+    two gates drift apart on the next rename.
+    """
+    return name == "Program.cs" or name.startswith("DesktopAdapter")
+
+
 def slugify(text: str) -> str:
     text = text.strip().lower()
     text = re.sub(r"[^\w\u4e00-\u9fff \-]", "", text)

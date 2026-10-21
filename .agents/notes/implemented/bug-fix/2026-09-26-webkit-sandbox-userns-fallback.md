@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Erratum: 2026-09-28 — 编排落点换家：`DesktopBootstrap.WebkitSandbox.cs` 随组合根形态分离迁出（ADR architecture/2026-09-28-compose-root-form-separation），现为 `src/DeepSeek.Harness.Desktop/WebkitSandboxFallback.cs` 的 `WebkitSandboxFallback.Apply()`；机制与判定不变。
+Erratum: 2026-09-28 — 编排落点换家：`DesktopBootstrap.WebkitSandbox.cs` 随组合根形态分离迁出（ADR architecture/2026-09-28-compose-root-form-separation）；2026-10-22 随在册面闭包归位 `Bootstrap/` 域（ADR process/2026-10-22-assembly-surface-inventory-closure）。当前落点 `src/DeepSeek.Harness.Desktop/Bootstrap/WebkitSandboxFallback.cs` 的 `WebkitSandboxFallback.Apply()`；机制与判定不变。
 
 Review: FULL/2026-09-26/R1=ok R2=ok R3=ok
 

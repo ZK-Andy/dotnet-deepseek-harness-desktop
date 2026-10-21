@@ -1,7 +1,7 @@
 {
   "_readme": [
     "C8 域文件在册清单（verify-compose-root.py 读取；'_' 前缀条目被忽略；判据见该脚本 docstring 的 C8 段）。",
-    "键 = 壳工程 src/DeepSeek.Harness.Desktop 下的一级域目录名，值 = 该目录下的 .cs 文件名；装配面文件可登可不登（归属由 ASSEMBLY_SURFACE_EXTRA 判定，死项校验跳过它）。"
+    "键 = 壳工程 src/DeepSeek.Harness.Desktop 下的一级域目录名，值 = 该目录下的 .cs 文件名；装配面文件不登记（归属由 ASSEMBLY_SURFACE_EXTRA 判定，一个文件一个家）；壳工程根目录不在本清单（根级 .cs 只许根集或装配面两种身份，判据同见 docstring 的 C8 段）。"
   ],
   "Bootstrap": [
     "AppRestartCommandRouter.cs",
@@ -15,7 +15,8 @@
     "StartupSequence.cs",
     "StartupSequence.Supervision.cs",
     "StartupStages.cs",
-    "StartupUseCaseRegistration.cs"
+    "StartupUseCaseRegistration.cs",
+    "WebkitSandboxFallback.cs"
   ],
   "PageBridge": [
     "AppJson.cs",

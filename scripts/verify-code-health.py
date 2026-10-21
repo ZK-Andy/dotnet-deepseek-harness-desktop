@@ -36,7 +36,7 @@ import re
 import sys
 from pathlib import Path
 
-from gate_common import CSharpLineScanner
+from gate_common import CSharpLineScanner, is_compose_root_name
 
 DEFAULT_FILE_LIMIT = 400
 DEFAULT_METHOD_LIMIT = 80
@@ -177,8 +177,9 @@ def _file_ignore(lines: list[str], limit: int = 12) -> bool:
 
 
 def _is_compose_root(path: Path) -> bool:
-    """Compose-root set membership: Program.cs + any DesktopAdapter partial."""
-    return path.name == "Program.cs" or path.name.startswith("DesktopAdapter")
+    """Compose-root set membership: the shared predicate (gate_common) keeps
+    this gate and verify-compose-root on the same root set."""
+    return is_compose_root_name(path.name)
 
 
 def _violations(path: Path, file_limit: int, method_limit: int,
