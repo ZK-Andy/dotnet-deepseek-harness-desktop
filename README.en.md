@@ -58,7 +58,7 @@ A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deep
 **Window and system integration**
 
 - 🪟 **Frameless window** — all three platforms drop the native title bar for a shell-drawn one: traffic lights top left, seamless sidebar clearance, inline collapse toggle, draggable top strip, double-click zoom.
-- 🖥️ **System tray** — closing the window minimizes to the tray by default (switchable to quit in Settings); the menu offers show main window / check for updates / restart / quit, following the dsh language; quit and restart share one orderly pipeline that reaps the runtime cleanly.
+- 🖥️ **System tray** — closing the window minimizes to the tray by default (switchable to quit in Settings); the menu offers show main window / check for updates (when the self-update stack is available) / restart / quit, following the dsh language; quit and restart share one orderly pipeline that reaps the runtime cleanly.
 - 🪟 **Window state memory** — the last size and maximized state are restored on restart (already kept across tray hide/recall).
 - 🚀 **Single-instance activation** — clicking the launcher again raises the existing window instead of spawning a duplicate (enforced on `Linux` / `macOS`; `Windows` does not arbitrate, so a second launch starts a new instance).
 - 🔁 **Launch at login** — one-click toggle in Settings (XDG autostart / registry Run / LaunchAgents).
@@ -93,7 +93,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 ## Staying current
 
-- New versions are checked once in the background at launch (no polling, no interruptions); you can also check manually under **Settings → Desktop Settings** or from the tray menu (dev runs do not load the self-update stack by default, so that path does nothing; `DSH_DESKTOP_UPDATE_FORCE=1` loads it explicitly).
+- New versions are checked once in the background at launch (no polling, no interruptions); you can also check manually under **Settings → Desktop Settings** or from the tray menu. Dev runs do not load the self-update stack by default: Desktop Settings says the update stack is unavailable in that runtime and the tray menu omits **Check for updates**; `DSH_DESKTOP_UPDATE_FORCE=1` loads it explicitly.
 - When a new version is found, a download button appears at the bottom of the sidebar — click it to download, verify and **install & restart in one click** (one system authorization prompt on `Linux`).
 - Packages are strictly verified against `SHA256SUMS.txt` before installation; a failed check refuses to install.
 - `macOS` does not support silent in-app updates yet — you are guided to download the `dmg` manually.

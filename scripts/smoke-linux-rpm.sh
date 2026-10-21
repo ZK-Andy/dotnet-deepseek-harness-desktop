@@ -5,13 +5,93 @@
 # 容器内 root + 无 display：判定走双信号 + 行为落定（见 smoke-install-linux.sh 文件头），
 # 引导启动行先于窗口创建输出，恒为②安装链收工（无 X 出不了截图，见证门不适用）。
 #
+# 自测旋钮：STUB_DOCKER_RC（--self-test 里桩 docker 的退出码，缺省 0）。
 # 用法: SMOKE_PKG_DIR=<产物目录> smoke-linux-rpm.sh <rpm 路径>
+# 自测: smoke-linux-rpm.sh --self-test（离线夹具：docker 桩记录 argv，断容器命令面与退出码透传）
 # 环境：SMOKE_WAIT_SECONDS / SMOKE_SETTLE_SECONDS 可覆写窗口；SMOKE_LOG_DIR 置时落盘日志。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/smoke-verdict-lib.sh
 source "$SCRIPT_DIR/lib/smoke-verdict-lib.sh"
+# 离线夹具：注入 docker 桩（记录 argv），把容器命令面与退出码透传钉住——否则这条腿
+# 只有真产物 + 真 docker 才被执行过。
+smoke_rpm_self_test() {
+  common_tmp_trap
+  local tmp bin calls fails=0 rc out
+  tmp="$(common_tmp_dir)"
+  bin="$tmp/bin"
+  calls="$tmp/calls"
+  mkdir -p "$bin" "$tmp/pkg" "$tmp/logs"
+  : >"$tmp/pkg/app.rpm"
+  : >"$calls"
+  cat >"$bin/docker" <<'STUB'
+#!/usr/bin/env bash
+printf 'docker %s\n' "$*" >>"$STUB_CALLS"
+exit "${STUB_DOCKER_RC:-0}"
+STUB
+  chmod +x "$bin/docker"
+  _expect_rc() { # $1=描述 $2=期望 rc $3=实得 rc
+    if [[ "$2" -ne "$3" ]]; then
+      echo "FAIL: $1（期望 rc=$2，实得 rc=$3）" >&2
+      fails=$((fails + 1))
+    else
+      echo "ok: $1"
+    fi
+  }
+  _expect_line() { # $1=描述 $2=期望子串
+    if grep -qF -- "$2" "$calls"; then
+      echo "ok: $1"
+    else
+      echo "FAIL: $1（未见到「$2」）" >&2
+      fails=$((fails + 1))
+    fi
+  }
+
+  rc=0
+  PATH="$bin:$PATH" STUB_CALLS="$calls" SMOKE_PKG_DIR="$tmp/pkg" SMOKE_LOG_DIR="$tmp/logs" \
+    bash "${BASH_SOURCE[0]}" "$tmp/pkg/app.rpm" >/dev/null 2>&1 || rc=$?
+  _expect_rc "docker 腿放行" 0 "$rc"
+  _expect_line "docker run 有 --rm" "docker run --rm"
+  _expect_line "产物目录只读挂载" "-v $tmp/pkg:/pkg:ro"
+  _expect_line "共享库挂载" "-v $SCRIPT_DIR/lib:/smoke-lib:ro"
+  _expect_line "inner 脚本挂载" "-v $SCRIPT_DIR/smoke-linux-rpm-inner.sh:/smoke-inner.sh:ro"
+  _expect_line "日志目录可写挂载" "-v $tmp/logs:/smokelogs:rw"
+  _expect_line "包名透传" "-e SMOKE_PKG_NAME=app.rpm"
+  _expect_line "应用路径透传" "-e SMOKE_APP_BIN=/usr/bin/deepseek-harness-desktop"
+  _expect_line "镜像与入口" "fedora:44 bash /smoke-inner.sh"
+
+  rc=0
+  out="$(PATH="$bin:$PATH" STUB_CALLS="$calls" STUB_DOCKER_RC=7 SMOKE_PKG_DIR="$tmp/pkg" \
+    SMOKE_LOG_DIR="$tmp/logs" bash "${BASH_SOURCE[0]}" "$tmp/pkg/app.rpm" 2>&1)" || rc=$?
+  _expect_rc "容器非零退出码原样透传" 7 "$rc"
+  [[ "$out" == *"容器退出码 7"* ]] || { echo "FAIL: 非零退出缺留痕" >&2; fails=$((fails + 1)); }
+
+  rc=0
+  out="$(PATH="$bin:$PATH" STUB_CALLS="$calls" SMOKE_PKG_DIR="$tmp/pkg" \
+    bash "${BASH_SOURCE[0]}" 2>&1)" || rc=$?
+  _expect_rc "缺 rpm 参数即 fail loud" 1 "$rc"
+  [[ "$out" == *"usage:"* ]] || { echo "FAIL: 缺 rpm 参数缺用法提示" >&2; fails=$((fails + 1)); }
+
+  rc=0
+  out="$(env -u SMOKE_PKG_DIR PATH="$bin:$PATH" STUB_CALLS="$calls" \
+    bash "${BASH_SOURCE[0]}" "$tmp/pkg/app.rpm" 2>&1)" || rc=$?
+  _expect_rc "缺 SMOKE_PKG_DIR 即 fail loud" 1 "$rc"
+  [[ "$out" == *"usage:"* ]] || { echo "FAIL: 缺 SMOKE_PKG_DIR 缺用法提示" >&2; fails=$((fails + 1)); }
+
+  if [[ $fails -eq 0 ]]; then
+    echo "self-test: PASS"
+    return 0
+  fi
+  echo "self-test: FAIL（$fails 项）" >&2
+  return 1
+}
+
+if [[ "${1:-}" == "--self-test" ]]; then
+  smoke_rpm_self_test
+  exit $?
+fi
+
 RPM_PATH="${1:?usage: SMOKE_PKG_DIR=<dir> smoke-linux-rpm.sh <rpm>}"
 PKG_DIR="${SMOKE_PKG_DIR:?usage: SMOKE_PKG_DIR=<dir> smoke-linux-rpm.sh <rpm>}"
 APP_BIN="/usr/bin/deepseek-harness-desktop"

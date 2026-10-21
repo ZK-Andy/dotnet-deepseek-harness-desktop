@@ -35,13 +35,13 @@ Unsigned builds: this project is open source and ships without paid code signing
 - **Session restore**: restarting the app returns you to your last session; runtime crashes auto-recover into the current conversation — if the preferred port is taken and it drifts, the origin changes (the page's selection has to be picked again, and the Update, Launch at sign-in, Minimize to tray on close and Export diagnostics controls in Settings may stop working until you restart the app).
 - **External links** open in your system browser.
 - **Desktop update entry**: the "Desktop Settings" section in Settings shows the current version and offers a manual check.
-- **System tray**: a tray icon stays resident with a menu of Show window / Check for updates / Restart / Quit; clicking the window close button **hides to the tray** instead of quitting — reopen, restart or quit from the tray menu.
+- **System tray**: a tray icon stays resident with a menu of Show window / Check for updates (when the self-update stack is available) / Restart / Quit; clicking the window close button **hides to the tray** instead of quitting — reopen, restart or quit from the tray menu.
 - **Launch at login**: toggle it under Settings → "Desktop Settings" → "Launch at login".
 - **Restart app**: Settings → "Desktop Settings" → "Restart app" quits and relaunches the desktop shell (session data is unaffected); on desktops without a system tray this is the only in-page restart entry, and when the command channel is down use the tray menu's "Restart" instead.
 
 ## Updates
 
-- New versions are checked once at startup; you can also check manually under Settings → "Desktop Settings", or via the tray menu's "Check for updates".
+- New versions are checked once at startup; you can also check manually under Settings → "Desktop Settings", or via the tray menu's "Check for updates" (when the self-update stack is available).
 - When an update is found, one click runs the flow: authorize → app exits → install completes → relaunch on the new version.
 - Packages are SHA256-verified; macOS guides you through a manual replace.
 - Cancel at any time — the current version stays untouched.

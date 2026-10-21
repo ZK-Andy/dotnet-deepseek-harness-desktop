@@ -1,6 +1,7 @@
 # Agent Note: 文档口径纠偏（README 六类七处 + docs 五处）
 
 Status: implemented
+Erratum: 2026-10-21 — 「点「检查更新」静默无动作」的判据失效：dev 下托盘菜单不出现该项、设置页明确提示不可用（[delivery-surface-self-verification](../testing/2026-10-21-delivery-surface-self-verification.md)）；当时对其余六类的判断保留。
 
 Review: FULL/2026-10-20/R1=ok R2=ok R3=ok
 

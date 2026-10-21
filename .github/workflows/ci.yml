@@ -92,6 +92,8 @@ jobs:
           bash scripts/package-linux.sh --self-test
           bash scripts/package-macos.sh --self-test
           bash scripts/package-windows.sh --self-test
+          bash scripts/dev-sign.sh --self-test
+          bash scripts/smoke-linux-rpm.sh --self-test
           bash scripts/prepare-windows-smoke.sh --self-test
           bash scripts/smoke-install-linux.sh --self-test
           bash scripts/smoke-install-macos.sh --self-test
@@ -149,7 +151,7 @@ jobs:
             echo "::warning::增量闸无 base 可比（首推/新建分支），本次跳过" >&2
           else
             echo "increment-discipline --since $BASE"
-            python3 scripts/verify-increment-discipline.py --since "$BASE" --enforce --exempt .agents/notes/implemented/architecture/2026-10-21-window-script-target-port.md
+            python3 scripts/verify-increment-discipline.py --since "$BASE" --enforce --exempt .agents/notes/implemented/process/2026-10-21-audit-batch3-increment-exemption.md
           fi
       - name: 评审档位硬闸（FULL 档变更须携 Review 证据；ADR review-tier-escape-proofing）
         env:
@@ -189,8 +191,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 三平台测试腿：FileShare.None 跨进程锁语义等 OS 级行为只有跑在真内核上才算数
-        # （Windows 是多实例可达面；ubuntu 腿额外承担 format 门禁与覆盖率基线）
+        # 三平台测试腿：全量套件在三个真内核上都跑（FileShare.None 跨进程锁语义等 OS 级
+        # 行为只有跑在真内核上才算数；Windows 是多实例可达面）。ubuntu 腿额外承担 format
+        # 门禁与覆盖率基线；另两腿不设过滤，四个测试工程在真内核上一并执行。
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -211,9 +214,9 @@ jobs:
         id: test
         if: runner.os == 'Linux'
         run: dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build --collect:"XPlat Code Coverage" --results-directory TestResults -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
-      - name: test (os-level semantics leg)
+      - name: test (full suite on OS-level semantics legs)
         if: runner.os != 'Linux'
-        run: dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build --filter "FullyQualifiedName~StalePackagePrunerTests|FullyQualifiedName~ReleaseAssetTests"
+        run: dotnet test dotnet-deepseek-harness-desktop.slnx -c Debug --no-build
       - name: coverage summary（并集复算；测试绿时比对基线，低于基线超容差即 fail）
         if: always() && runner.os == 'Linux'
         env:

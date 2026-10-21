@@ -8,6 +8,7 @@
 # 用法:
 #   scripts/dev-sign.sh macos <app bundle 或可执行文件>
 #   scripts/dev-sign.sh windows <exe>
+#   scripts/dev-sign.sh --self-test        # 离线夹具（注入 codesign/signtool/pwsh 桩）
 # 环境: MACOS_SIGN_IDENTITY（macOS 身份，缺省 `-` = ad-hoc）
 set -euo pipefail
 
@@ -20,6 +21,7 @@ usage() {
 用法: dev-sign.sh <macos|windows> <目标>
   macos   对 .app bundle 或可执行文件做 codesign（身份取 MACOS_SIGN_IDENTITY，缺省 ad-hoc）
   windows 对 exe 做 Authenticode 自签（CurrentUser\My 自签证书，缺则自动创建）
+  --self-test 离线夹具（桩 codesign/signtool/pwsh，钉住两条腿的调用面）
 EOF
 }
 
@@ -32,20 +34,18 @@ sign_macos() {
   echo "  ad-hoc/自签通过（对终端用户 Gatekeeper 无效，属内部/开发验证）"
 }
 
-# signtool 位置：Windows SDK 两条标准路径 + PATH（原先的六路级联收敛为此三路）。
+# signtool 位置：PATH 优先（显式环境可覆盖，自测桩也靠它遮蔽），否则 Windows SDK
+# 两条标准路径。
 find_signtool() {
   local p
-  for p in "/c/Program Files (x86)/Windows Kits/10/bin/"*/x64/signtool.exe \
-    "/c/Program Files/Windows Kits/10/bin/"*/x64/signtool.exe; do
-    if [[ -f "$p" ]]; then
-      echo "$p"
-      return 0
-    fi
-  done
   if command -v signtool >/dev/null 2>&1; then
     command -v signtool
     return 0
   fi
+  for p in "/c/Program Files (x86)/Windows Kits/10/bin/"*/x64/signtool.exe \
+    "/c/Program Files/Windows Kits/10/bin/"*/x64/signtool.exe; do
+    [[ -f "$p" ]] && { echo "$p"; return 0; }
+  done
   return 1
 }
 
@@ -65,6 +65,95 @@ sign_windows() {
   "$st" sign /fd SHA256 /s My /n "DeepSeek Harness Desktop Dev" "$TARGET" 2>&1 | head -20 || die "signtool 签名失败: $TARGET"
   echo "   已签（自签，仅内部/开发）: $TARGET"
 }
+
+# 离线夹具：注入 codesign/signtool/pwsh 桩（记录 argv），在不具备真工具的机器上
+# 把两条腿的调用面钉住——否则签名腿只有真机手动跑才被执行过。
+dev_sign_self_test() {
+  common_tmp_trap
+  local tmp bin calls fails=0 rc out target
+  tmp="$(common_tmp_dir)"
+  bin="$tmp/bin"
+  calls="$tmp/calls"
+  mkdir -p "$bin"
+  target="$tmp/target.bin"
+  printf 'fake\n' >"$target"
+  : >"$calls"
+  _stub() { # $1=名字 $2=退出码
+    printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" "%s" "$*" >>"%s"\nexit %s\n' "$1" "$calls" "$2" >"$bin/$1"
+    chmod +x "$bin/$1"
+  }
+  _expect() { # $1=描述 $2=期望（数字精确比较；非0=任意失败） $3=实得 rc
+    if [[ ( "$2" == 非0 && "$3" -eq 0 ) || ( "$2" != 非0 && "$3" -ne "$2" ) ]]; then
+      echo "FAIL: $1（rc=$3）" >&2
+      fails=$((fails + 1))
+    else
+      echo "ok: $1"
+    fi
+  }
+  _run() { # $1..=argv；结果写 rc/out
+    rc=0
+    out="$(PATH="$bin:$PATH" "$@" 2>&1)" || rc=$?
+  }
+  _calls_has() { # $1=描述 $2=期望调用行
+    if grep -qF -- "$2" "$calls"; then
+      echo "ok: $1"
+    else
+      echo "FAIL: $1（见 $calls）" >&2
+      fails=$((fails + 1))
+    fi
+  }
+
+  _stub codesign 0
+  _stub signtool 0
+  _stub pwsh 0
+
+  _run bash "${BASH_SOURCE[0]}" macos "$target"
+  _expect "macos 默认 ad-hoc 签名放行" 0 "$rc"
+  _calls_has "macos 调用面（--sign - 后跟 --verify）" "codesign --force --deep --sign - $target"
+  _calls_has "macos verify" "codesign --verify --deep --strict $target"
+
+  : >"$calls"
+  MACOS_SIGN_IDENTITY="Dev Identity" _run bash "${BASH_SOURCE[0]}" macos "$target"
+  _expect "macos 指定身份签名放行" 0 "$rc"
+  _calls_has "MACOS_SIGN_IDENTITY 透传" "codesign --force --deep --sign Dev Identity $target"
+
+  _stub codesign 1
+  _run bash "${BASH_SOURCE[0]}" macos "$target"
+  _expect "codesign 失败即 fail loud" 非0 "$rc"
+  [[ "$out" == *"codesign 自签失败"* ]] || { echo "FAIL: codesign 失败缺诊断" >&2; fails=$((fails + 1)); }
+  _stub codesign 0
+
+  : >"$calls"
+  _run bash "${BASH_SOURCE[0]}" windows "$target"
+  _expect "windows 自签放行" 0 "$rc"
+  _calls_has "signtool 调用面" "signtool sign /fd SHA256 /s My /n DeepSeek Harness Desktop Dev $target"
+  _calls_has "自签证书路径先试 pwsh" "pwsh"
+
+  _stub signtool 1
+  _run bash "${BASH_SOURCE[0]}" windows "$target"
+  _expect "signtool 失败即 fail loud" 非0 "$rc"
+  [[ "$out" == *"signtool 签名失败"* ]] || { echo "FAIL: signtool 失败缺诊断" >&2; fails=$((fails + 1)); }
+  _stub signtool 0
+
+  _run bash "${BASH_SOURCE[0]}" macos "$tmp/nope"
+  _expect "缺目标即 fail loud" 非0 "$rc"
+  _run bash "${BASH_SOURCE[0]}"
+  _expect "缺参数走 usage（exit 2）" 2 "$rc"
+  _run bash "${BASH_SOURCE[0]}" aix "$target"
+  _expect "未知平台即 fail loud" 非0 "$rc"
+
+  if [[ $fails -eq 0 ]]; then
+    echo "self-test: PASS"
+    return 0
+  fi
+  echo "self-test: FAIL（$fails 项）" >&2
+  return 1
+}
+
+if [[ "${1:-}" == "--self-test" ]]; then
+  dev_sign_self_test
+  exit $?
+fi
 
 case "$PLATFORM" in
   macos)

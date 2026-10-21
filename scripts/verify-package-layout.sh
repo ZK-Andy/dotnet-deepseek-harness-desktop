@@ -7,9 +7,12 @@
 #     staging」结构性保证，无独立源可比对，故不做 tar 间比对）；
 #   ③主二进制存在且带可执行位——三平台共性（linux/mac 此前只断 Windows 主 exe，
 #     可静默发布「无主程序包」）；
-#   ④--platform windows 追加：壳托管程序集 + 原生库 + runtimes/win-*/native + wwwroot
-#     （PayloadSmoke 跑在 publish 直出目录上，Inno [Files] 漏配时探针照绿、产物照缺；
-#     断 staging 即断安装器，ADR windows-packaging-parity）。
+#   ④原生库 + runtimes/<rid>/native 探测源——三平台同形状检查（根或 runtimes/<rid>/native
+#     任一命中即放行；runtimes 目录本身也必须在）。Ryn 的 NativeLibraryResolver 只认这两个
+#     探测面，缺了要到首帧才炸；windows 另断壳托管程序集 + wwwroot（PayloadSmoke 跑在 publish
+#     直出目录上，Inno [Files] 漏配时探针照绿、产物照缺，ADR windows-packaging-parity）；
+#   macOS 追加 bundle 元数据：Info.plist 的 CFBundleIconFile 键与 Contents/Resources/icon.icns
+#   （图标放别处 Finder/Dock 不读，包「能启动但没图标」是静默缺陷）。
 #
 # 用法: verify-package-layout.sh --platform <linux|macos|windows> --target <内容根>
 #   --platform 必填：原先按「内容根里有没有 .exe」隐式判断平台，Linux/mac 腿整段静默跳过
@@ -25,10 +28,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 # 夹具：造一个合规内容根（真 tgz，含 package/package.json 与足量填充），按需破坏某一处。
-_layout_fixture() { # $1=目录 $2=平台
-  local dir="$1" plat="$2" main="DeepSeek.Harness.Desktop"
+# 平台原生库按「根 + runtimes/<rid>/native」双份放置，与 publish 直出目录同形；
+# macOS 的 bundle 元数据挂在内容根的上一层 Contents/（Info.plist 与 Resources/icon.icns）。
+_layout_fixture() { # $1=内容根 $2=平台
+  local dir="$1" plat="$2" main="DeepSeek.Harness.Desktop" native ext rid contents
   [[ "$plat" == windows ]] && main="DeepSeek.Harness.Desktop.exe"
-  mkdir -p "$dir/resources/plugins" "$dir/runtimes/win-x64/native" "$dir/wwwroot"
+  mkdir -p "$dir/resources/plugins" "$dir/wwwroot" "$dir/runtimes/win-x64/native"
   printf '%s\n' '{"name":"dsh-desktop-companion"}' >"$dir/package.json"
   mkdir -p "$dir/pkg/package"
   cp "$dir/package.json" "$dir/pkg/package/package.json"
@@ -38,16 +43,32 @@ _layout_fixture() { # $1=目录 $2=平台
   rm -rf "$dir/pkg" "$dir/package.json"
   printf '#!/bin/sh\necho fake\n' >"$dir/$main"
   chmod +x "$dir/$main"
-  if [[ "$plat" == windows ]]; then
-    printf 'x\n' >"$dir/DeepSeek.Harness.Desktop.dll"
-    for native in WebView2Loader.dll saucer.dll saucer-bindings.dll saucer-bindings-desktop.dll; do
-      printf 'x\n' >"$dir/$native"
-    done
+  case "$plat" in
+    windows)
+      printf 'x\n' >"$dir/DeepSeek.Harness.Desktop.dll"
+      for native in WebView2Loader.dll saucer.dll saucer-bindings.dll saucer-bindings-desktop.dll; do
+        printf 'x\n' >"$dir/$native"
+      done
+      ;;
+    linux | macos)
+      ext=so rid=linux-x64
+      [[ "$plat" == macos ]] && ext=dylib && rid=osx-arm64
+      mkdir -p "$dir/runtimes/$rid/native"
+      for native in "libryn-pty.$ext" "libsaucer.$ext" "libsaucer-bindings.$ext" "libsaucer-bindings-desktop.$ext"; do
+        printf 'x\n' >"$dir/$native"
+        printf 'x\n' >"$dir/runtimes/$rid/native/$native"
+      done
+      ;;
+  esac
+  if [[ "$plat" == macos ]]; then
+    contents="$(dirname "$dir")"; mkdir -p "$contents/Resources"
+    printf '<plist version="1.0"><dict><key>CFBundleIconFile</key><string>icon.icns</string></dict></plist>\n' >"$contents/Info.plist"
+    printf 'icns\n' >"$contents/Resources/icon.icns"
   fi
 }
 
 layout_self_test() {
-  local tmp fails=0 out
+  local tmp fails=0 out rc=0
   tmp="$(mktemp -d)"
   _lt_expect() { # $1=名字 $2=fail|pass $3=平台 $4=内容根
     local rc=0
@@ -73,11 +94,37 @@ layout_self_test() {
   mkdir -p "$tmp/linux/resources/runtime"
   _lt_expect "闭包残留 resources/runtime 判红" fail linux "$tmp/linux"
   rmdir "$tmp/linux/resources/runtime"
-  mkdir -p "$tmp/macos"
-  _layout_fixture "$tmp/macos" macos
-  _lt_expect "macos 合规内容根放行" pass macos "$tmp/macos"
-  mv "$tmp/macos/DeepSeek.Harness.Desktop" "$tmp/macos/gone"
-  _lt_expect "macos 缺主程序判红" fail macos "$tmp/macos"
+  rm -f "$tmp/linux/libsaucer-bindings.so" "$tmp/linux/runtimes/linux-x64/native/libsaucer-bindings.so"
+  _lt_expect "linux 缺原生库判红" fail linux "$tmp/linux"
+  _layout_fixture "$tmp/linux2" linux
+  rm -rf "$tmp/linux2/runtimes"
+  _lt_expect "linux 缺 runtimes 探测源判红" fail linux "$tmp/linux2"
+  _layout_fixture "$tmp/linux3" linux
+  rm -f "$tmp/linux3"/libryn-pty.so "$tmp/linux3"/libsaucer.so "$tmp/linux3"/libsaucer-bindings.so "$tmp/linux3"/libsaucer-bindings-desktop.so
+  _lt_expect "linux 仅 runtimes 探测面有原生库放行" pass linux "$tmp/linux3"
+  local mac="$tmp/macos/App.app/Contents/MacOS"
+  _layout_fixture "$mac" macos
+  _lt_expect "macos 合规内容根放行" pass macos "$mac"
+  mv "$mac/DeepSeek.Harness.Desktop" "$mac/gone"
+  _lt_expect "macos 缺主程序判红" fail macos "$mac"
+  _layout_fixture "$mac" macos
+  rm -f "$tmp/macos/App.app/Contents/Resources/icon.icns"
+  _lt_expect "macos 缺应用图标判红" fail macos "$mac"
+  _layout_fixture "$mac" macos
+  printf '<plist version="1.0"><dict/></plist>\n' >"$tmp/macos/App.app/Contents/Info.plist"
+  _lt_expect "macos Info.plist 缺 CFBundleIconFile 判红" fail macos "$mac"
+  _layout_fixture "$mac" macos
+  rm -f "$mac/libsaucer.dylib" "$mac/runtimes/osx-arm64/native/libsaucer.dylib"
+  _lt_expect "macos 缺原生库判红" fail macos "$mac"
+  _layout_fixture "$mac" macos
+  rm -f "$tmp/macos/App.app/Contents/Info.plist"
+  _lt_expect "macos 缺 Info.plist 判红" fail macos "$mac"
+  _layout_fixture "$mac" macos
+  printf '<plist version="1.0"><dict><key>CFBundleIconFile</key><string>icon.icns.bak</string></dict></plist>\n' >"$tmp/macos/App.app/Contents/Info.plist"
+  _lt_expect "macos CFBundleIconFile 值非精确 icon.icns 判红" fail macos "$mac"
+  _layout_fixture "$mac" macos
+  rm -rf "$mac/runtimes"
+  _lt_expect "macos 缺 runtimes 探测源判红" fail macos "$mac"
   _layout_fixture "$tmp/win" windows
   _lt_expect "windows 合规内容根放行" pass windows "$tmp/win"
   rm -f "$tmp/win/saucer.dll"
@@ -85,18 +132,13 @@ layout_self_test() {
   _layout_fixture "$tmp/win2" windows
   rm -rf "$tmp/win2/wwwroot"
   _lt_expect "windows 缺 wwwroot 判红" fail windows "$tmp/win2"
-  # 平台参数缺失即 fail loud（不再隐式跳过）
-  if bash "${BASH_SOURCE[0]}" --target "$tmp/linux" >/dev/null 2>&1; then
-    echo "FAIL: 缺 --platform 应 fail loud" >&2
-    fails=$((fails + 1))
-  else
-    echo "ok: 缺 --platform fail loud"
+  # 平台参数缺失即 fail loud（退出码 2 契约，不能只断非零）
+  bash "${BASH_SOURCE[0]}" --target "$tmp/linux" >/dev/null 2>&1 || rc=$?
+  if [[ $rc -eq 2 ]]; then echo "ok: 缺 --platform fail loud（rc=2）"; else
+    echo "FAIL: 缺 --platform 应 exit 2（实得 rc=$rc）" >&2; fails=$((fails + 1))
   fi
   rm -rf "$tmp"
-  if [[ $fails -eq 0 ]]; then
-    echo "self-test: PASS"
-    return 0
-  fi
+  if [[ $fails -eq 0 ]]; then echo "self-test: PASS"; return 0; fi
   echo "self-test: FAIL（$fails 项）" >&2
   return 1
 }
@@ -167,21 +209,38 @@ else
   echo "  ok: 主程序 $main_bin"
 fi
 
-# ④Windows 安装器内容断言（Inno [Files] 的内容源就是 staging）
-if [[ "$PLATFORM" == "windows" ]]; then
-  [[ -f "$TARGET/DeepSeek.Harness.Desktop.dll" ]] \
-    || errors+=("Windows staging 缺壳托管程序集: DeepSeek.Harness.Desktop.dll")
-  for native in WebView2Loader.dll saucer.dll saucer-bindings.dll saucer-bindings-desktop.dll; do
-    if [[ ! -f "$TARGET/$native" && ! -f "$TARGET/runtimes/win-x64/native/$native" && ! -f "$TARGET/runtimes/win-arm64/native/$native" ]]; then
-      errors+=("Windows staging 缺原生库: $native（根与 runtimes/win-*/native 均无）")
-    fi
-  done
-  if [[ ! -d "$TARGET/runtimes/win-x64/native" && ! -d "$TARGET/runtimes/win-arm64/native" ]]; then
-    errors+=("Windows staging 缺 runtimes/win-*/native（Ryn NativeLibraryResolver 唯一探测源）")
+# ④原生库 + runtimes 探测源（内容源即 staging；Ryn NativeLibraryResolver 只认根与
+#   runtimes/<rid>/native 两个探测面，缺了要到首帧才炸）+ 平台追加面：Windows 壳托管
+#   程序集/wwwroot，macOS bundle 元数据
+case "$PLATFORM" in
+  linux) natives=(libryn-pty.so libsaucer.so libsaucer-bindings.so libsaucer-bindings-desktop.so)
+    rid_glob="linux-*" label="Linux" ;;
+  macos) natives=(libryn-pty.dylib libsaucer.dylib libsaucer-bindings.dylib libsaucer-bindings-desktop.dylib)
+    rid_glob="osx-*" label="macOS" ;;
+  windows) natives=(WebView2Loader.dll saucer.dll saucer-bindings.dll saucer-bindings-desktop.dll)
+    rid_glob="win-*" label="Windows" ;;
+esac
+for native in "${natives[@]}"; do
+  if [[ ! -f "$TARGET/$native" ]] && ! compgen -G "$TARGET/runtimes/$rid_glob/native/$native" >/dev/null; then
+    errors+=("$label staging 缺原生库: $native（根与 runtimes/$rid_glob/native 均无）")
   fi
-  [[ -d "$TARGET/wwwroot" ]] || errors+=("Windows staging 缺 wwwroot（首屏壳页面）")
-  [[ ${#errors[@]} -gt 0 ]] || echo "  ok: Windows 安装器内容（exe/dll/原生库/runtimes/wwwroot）"
+done
+if ! compgen -G "$TARGET/runtimes/$rid_glob/native" >/dev/null; then
+  errors+=("$label staging 缺 runtimes/$rid_glob/native（Ryn NativeLibraryResolver 唯一探测源）")
 fi
+if [[ "$PLATFORM" == "windows" ]]; then
+  [[ -f "$TARGET/DeepSeek.Harness.Desktop.dll" ]] || errors+=("Windows staging 缺壳托管程序集: DeepSeek.Harness.Desktop.dll")
+  [[ -d "$TARGET/wwwroot" ]] || errors+=("Windows staging 缺 wwwroot（首屏壳页面）")
+elif [[ "$PLATFORM" == "macos" ]]; then
+  bundle="$(dirname "$TARGET")"
+  if [[ ! -f "$bundle/Info.plist" ]]; then
+    errors+=("macOS 包缺 Info.plist: $bundle/Info.plist")
+  elif ! grep -qE '<key>CFBundleIconFile</key>[[:space:]]*<string>icon\.icns</string>' "$bundle/Info.plist"; then
+    errors+=("macOS Info.plist 的 CFBundleIconFile 必须指向 icon.icns（Finder/Dock 回退通用图标）")
+  fi
+  [[ -f "$bundle/Resources/icon.icns" ]] || errors+=("macOS 包缺应用图标: $bundle/Resources/icon.icns（CFBundleIconFile 指向它）")
+fi
+[[ ${#errors[@]} -gt 0 ]] || echo "  ok: $label 包内容（主程序/原生库/runtimes）"
 
 if [[ ${#errors[@]} -gt 0 ]]; then
   error "包内容布局断言失败（${#errors[@]} 项，platform=${PLATFORM}）："

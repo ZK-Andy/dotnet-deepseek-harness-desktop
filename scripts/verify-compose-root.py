@@ -54,9 +54,13 @@ Seven checks:
   C7  pre-Build assembly inventory: `Bootstrap/PreBuildRegistration*.cs` (the
       registration-layer home that took over the root's pre-Build assembly,
       ADR sequencer-resolution-injection) may construct only types listed in
-      PREBUILD_CONSTRUCTIBLE. C3 counts the root set alone, so without C7 the
-      moved constructions would sit outside every gate; here they stay a
-      deliberate inventory (reopening it needs its own ADR).
+      PREBUILD_CONSTRUCTIBLE. Channels counted: `new` / DI factory (like C3),
+      target-typed `new()`, and static factories whose return type is the type
+      itself (`Foo.Load(...)` — the syntax channels cannot see those). The
+      inventory is also checked for dead entries (listed but never constructed).
+      C3 counts the root set alone, so without C7 the moved constructions would
+      sit outside every gate; here they stay a deliberate inventory (reopening
+      it needs its own ADR).
 
 Default is report-only (exit 0). `--enforce` exits 1 on any violation.
 `--self-test` runs offline fixtures.
@@ -71,7 +75,7 @@ import re
 import sys
 from pathlib import Path
 
-from gate_common import CSharpLineScanner, TARGET_OWNER_RE, TYPE_DECL_RE
+from gate_common import CSharpLineScanner, STATIC_ACCESS_RE, TARGET_OWNER_RE, TYPE_DECL_RE
 
 DEFAULT_SRC = "src/DeepSeek.Harness.Desktop"
 DEFAULT_OWNED_SRC = (
@@ -173,14 +177,13 @@ ROOT_ENTRY_BRIDGES = 1
 # took over the root's pre-Build assembly (ADR sequencer-resolution-injection).
 # C3 counts the root set only, so these constructions would otherwise be outside
 # every gate. They stay a deliberate inventory; reopening needs its own ADR.
-# DI-resolved services are absent by construction; listed entries are either `new`
-# sites (including the DI factory channel) or assembly-time constructions none of
-# the channels can see (today: static factories — reasons inline in the entry).
+# DI-resolved services are absent by construction; listed entries are assembly-time
+# constructions: `new` sites (including the DI factory channel), target-typed
+# `new()`, or static factories (`Foo.Load(...)`; reasons inline where non-obvious).
+# A listed name with no construction site in this file set is dead entry drift.
 PREBUILD_GLOB = "PreBuildRegistration*.cs"
 PREBUILD_CONSTRUCTIBLE = {
     # CaptionBarOptions：装配期经静态工厂 `CaptionBarOptions.Load(...)` 构造（自绘标题栏参数家）。
-    # 在册的理由是「它确实在装配面被构造」——闸的三条通道（new／CreateInstance／target-typed new）
-    # 看不见静态工厂形态，属闸的盲区（待办区 C7 缺口①），不是「该类型不在装配面」。
     "CaptionBarOptions",
     "CloseBehaviorPreference",
     "CloseGate",
@@ -188,6 +191,9 @@ PREBUILD_CONSTRUCTIBLE = {
     "DshShellForward",
     "FirstBootBootstrapService",
     "FirstBootUi",
+    # LaunchOptions：启动期配置值的唯一解析点 `LaunchOptions.Resolve(...)`（静态工厂，
+    # 不可变记录值；ADR composition-root-value-flow-pipeline 批次 3）。
+    "LaunchOptions",
     # OsLocaleProbe：UiLocale 的宿主 locale 探测端口实现（Core 读环境变量下沉后的接线点，
     # ADR architecture/2026-10-20-core-purity-boundaries）——共享态在容器之前构造，故只能在此 new。
     "OsLocaleProbe",
@@ -202,6 +208,9 @@ PREBUILD_CONSTRUCTIBLE = {
     "Preflight",
     "ReleaseFeedAdapter",
     "RuntimeStarter",
+    # RuntimeTimeouts：超时家经静态工厂 `RuntimeTimeouts.Load(...)` 构造，唯一 Load 点
+    # （fail-safe 读配置；ADR 组合根寿命与配置单一来源 D4）。
+    "RuntimeTimeouts",
     "SharedState",
     "ShellResources",
     "TrayController",
@@ -228,6 +237,11 @@ _RUN_SIGNATURE_RE = re.compile(
 # attributed by last segment (deeper generic nesting is a documented skip).
 _NEW_RE = re.compile(r"\bnew\s+([\w.]+)(?:<[^()<>]*>)?\s*\(")
 _CREATE_INSTANCE_RE = re.compile(r"\b(?:ActivatorUtilities\s*\.\s*)?CreateInstance<([\w.]+)>")
+# Static factory channel: `Foo.Load(...)` where a `static Foo Bar(...)` exists is a
+# construction the syntax channels cannot see (C7 counts it; see _factory_returns).
+# Derives from the shared access shape (single home: gate_common) plus the call paren.
+_STATIC_CALL_RE = re.compile(STATIC_ACCESS_RE.pattern + r"\s*\(")
+_STATIC_FACTORY_RE = re.compile(r"\bstatic\s+(?:async\s+)?([\w.<>\[\],?]+)\s+(\w+)\s*\(")
 # `Type field = new();` — the assigned declared type gives target-typed new its owner.
 _TARGET_NEW_RE = re.compile(r"\bnew\s*\(\)")
 _GETAWAITER_RE = re.compile(r"\.GetAwaiter\(\)\.GetResult\(\)")
@@ -254,18 +268,20 @@ def _assembly_files(src: Path) -> list[Path]:
     return sorted(files)
 
 
-def _owned_types(owned_srcs: list[Path]) -> set[str]:
-    types: set[str] = set()
+def _cleaned_tree(owned_srcs: list[Path]):
+    """`(lineno, cleaned_code)` for every source line under the owned trees."""
     for src in owned_srcs:
         for path in src.rglob("*.cs"):
             if any(part in ("obj", "bin") for part in path.relative_to(src).parts):
                 continue
             raws = path.read_text(encoding="utf-8").splitlines()
-            for code in CSharpLineScanner(raws).iter_cleaned():
-                m = TYPE_DECL_RE.match(code)
-                if m:
-                    types.add(m.group(1))
-    return types
+            for lineno, code in enumerate(CSharpLineScanner(raws).iter_cleaned(), start=1):
+                yield lineno, code
+
+
+def _owned_types(lines: list[tuple[int, str]]) -> set[str]:
+    """Type names declared anywhere in the owned trees (attribution面)."""
+    return {m.group(1) for _, code in lines if (m := TYPE_DECL_RE.match(code))}
 
 
 def _constructed_names(code: str) -> list[str]:
@@ -274,6 +290,24 @@ def _constructed_names(code: str) -> list[str]:
     return [m.group(1).split(".")[-1]
             for pattern in (_NEW_RE, _CREATE_INSTANCE_RE)
             for m in pattern.finditer(code)]
+
+
+def _factory_returns(lines: list[tuple[int, str]], owned: set[str]) -> dict[tuple[str, str], str]:
+    """`(Type, Method) -> Type` for static methods whose return type is an owned type.
+
+    Return type is matched by last segment, so `static Foo Bar(...)` anywhere in the
+    tree makes `Foo.Bar(...)` a Foo construction site. Deliberately over-approximate:
+    a helper that only *builds* a Foo still produces one.
+    """
+    found: dict[tuple[str, str], str] = {}
+    for _, code in lines:
+        m = _STATIC_FACTORY_RE.search(code)
+        if not m:
+            continue
+        ret = m.group(1).split(".")[-1].split("<")[0]
+        if ret in owned:
+            found.setdefault((ret, m.group(2)), ret)
+    return found
 
 
 def _sequencer_files(src: Path) -> list[Path]:
@@ -369,38 +403,91 @@ def _prebuild_files(src: Path) -> list[Path]:
     return sorted(bootstrap.glob(PREBUILD_GLOB))
 
 
-def _prebuild_violations(src: Path, owned: set[str]) -> list[str]:
-    """C7: constructions in the pre-Build assembly home must be inventoried.
+def _inventory_span() -> tuple[int, int]:
+    """1-based line range of the PREBUILD_CONSTRUCTIBLE literal (0, 0 when absent)."""
+    lines = Path(__file__).read_text(encoding="utf-8").splitlines()
+    start = next((i for i, line in enumerate(lines)
+                  if line.startswith("PREBUILD_CONSTRUCTIBLE")), None)
+    if start is None:
+        return 0, 0
+    end = next((i for i, line in enumerate(lines[start:], start=start)
+                if line.strip().startswith("}")), len(lines) - 1)
+    return start + 1, end + 1
 
-    Both channels (`new` / DI factory, target-typed `new()`) count; the message
-    mirrors C5's remedy (resolve via DI or update the inventory deliberately).
+
+def _inventory_line(name: str) -> int:
+    """Line of the `"<name>",` entry inside the PREBUILD_CONSTRUCTIBLE literal."""
+    start, end = _inventory_span()
+    if start == 0:
+        return 0
+    marker = f'"{name}",'
+    for lineno, line in enumerate(
+            Path(__file__).read_text(encoding="utf-8").splitlines()[start - 1:end],
+            start=start):
+        if line.strip().startswith(marker):
+            return lineno
+    return 0
+
+
+def _prebuild_constructions(
+        src: Path, owned: set[str], factories: dict[tuple[str, str], str],
+        inventory: set[str] = PREBUILD_CONSTRUCTIBLE) -> list[str]:
+    """C7: constructions in the pre-Build assembly home, and their violations.
+
+    Channels: `new` / DI factory, target-typed `new()`, and static factories
+    (`Foo.Load(...)`). Also reports inventory entries with no construction site
+    (dead entry drift). The dead-entry check deliberately does **not** filter by
+    the currently declared types: a type deleted or renamed by a refactor leaves
+    a real dead entry, and that is the most common drift shape. Returns rows.
     """
+    sites: dict[str, set[str]] = {}
     out: list[str] = []
     for path in _prebuild_files(src):
         raws = path.read_text(encoding="utf-8").splitlines()
-        for code in CSharpLineScanner(raws).iter_cleaned():
+        for lineno, code in enumerate(CSharpLineScanner(raws).iter_cleaned(), start=1):
             for constructed in _constructed_names(code):
-                if constructed in owned and constructed not in PREBUILD_CONSTRUCTIBLE:
+                if constructed not in owned:
+                    continue
+                sites.setdefault(constructed, set()).add("new")
+                if constructed not in inventory:
                     out.append(
-                        f"  C7 {path.name}: pre-Build assembly constructs `{constructed}`"
+                        f"  C7 {path.name}:{lineno}: pre-Build assembly constructs `{constructed}`"
                         " (assembly moved here is a deliberate inventory — resolve via DI or"
                         " update PREBUILD_CONSTRUCTIBLE + ADR)")
             if _TARGET_NEW_RE.search(code):
                 owner = TARGET_OWNER_RE.search(code)
                 attributed = owner.group(1).split(".")[-1] if owner else None
-                if attributed in owned and attributed not in PREBUILD_CONSTRUCTIBLE:
-                    out.append(
-                        f"  C7 {path.name}: pre-Build assembly constructs `{attributed}`"
-                        " (target-typed `new()`; add it to PREBUILD_CONSTRUCTIBLE deliberately)")
+                if attributed in owned:
+                    sites.setdefault(attributed, set()).add("target-typed new()")
+                    if attributed not in inventory:
+                        out.append(
+                            f"  C7 {path.name}:{lineno}: pre-Build assembly constructs `{attributed}`"
+                            " (target-typed `new()`; add it to PREBUILD_CONSTRUCTIBLE deliberately)")
                 elif owner is None:
                     out.append(
-                        f"  C7 {path.name}: unattributable target-typed `new()` "
+                        f"  C7 {path.name}:{lineno}: unattributable target-typed `new()` "
                         "(attribute the declared type or write it explicitly)")
+            for m in _STATIC_CALL_RE.finditer(code):
+                constructed = factories.get((m.group(1), m.group(2)))
+                if constructed is None:
+                    continue
+                sites.setdefault(constructed, set()).add(f"factory `{m.group(1)}.{m.group(2)}()`")
+                if constructed not in inventory:
+                    out.append(
+                        f"  C7 {path.name}:{lineno}: pre-Build assembly constructs `{constructed}` via"
+                        f" static factory `{m.group(1)}.{m.group(2)}()` (the syntax channels cannot"
+                        " see it — resolve via DI or update PREBUILD_CONSTRUCTIBLE + ADR)")
+    for name in sorted(set(inventory) - set(sites)):
+        where = _inventory_line(name)
+        at = f" (line {where})" if where else ""
+        out.append(
+            f"  C7 inventory lists `{name}`{at} but {PREBUILD_GLOB} never constructs it"
+            " (dead entry — drop it, or the construction moved and the inventory must follow)")
     return out
 
 
-def _violations(src: Path, owned_srcs: list[Path],
-                max_new: int, max_dot_partials: int) -> tuple[list[str], int]:
+def _violations(src: Path, owned_srcs: list[Path], max_new: int, max_dot_partials: int,
+                inventory: set[str] | None = None) -> tuple[list[str], int]:
     files = _root_files(src)
     if not files:
         return ([f"  compose-root set is empty under {src} (Program.cs / DesktopAdapter*.cs)"], 0)
@@ -423,9 +510,13 @@ def _violations(src: Path, owned_srcs: list[Path],
                     " (declare it in BOOTSTRAP_DOMAIN_FILES or ASSEMBLY_SURFACE_EXTRA —"
                     " moving assembly here must not escape the gates)")
 
-    owned = _owned_types(owned_srcs)
+    owned_lines = list(_cleaned_tree(owned_srcs))
+    owned = _owned_types(owned_lines)
     out.extend(_sequencer_violations(src, owned))
-    out.extend(_prebuild_violations(src, owned))
+    prebuild_rows = _prebuild_constructions(
+        src, owned, _factory_returns(owned_lines, owned),
+        PREBUILD_CONSTRUCTIBLE if inventory is None else inventory)
+    out.extend(prebuild_rows)
     new_count = 0
     bridges = 0
     # C1/C2 覆盖装配面（根集 + 声明的装配文件）；C3/C4/C5 只覆盖根集（重量与自造面）。
@@ -517,7 +608,7 @@ internal sealed class StartupSequence
     private int Wait() { return 1; }
 }
 """, encoding="utf-8")
-        rows, count = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, count = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if rows:
             print(f"  ✗ conforming root reported: {rows}")
             failed = 1
@@ -532,7 +623,7 @@ public sealed partial class DesktopAdapter
     private void EnsureDesktopProfile() { }
 }
 """, encoding="utf-8")
-        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if any("C2 " in r and "EnsureDesktopProfile" in r for r in rows):
             print("  ok: C2 unknown root method flagged")
         else:
@@ -550,7 +641,7 @@ public sealed partial class DesktopAdapter
     private static (int A, int B) MakePair() => (1, 2);
 }
 """, encoding="utf-8")
-        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if any("C2 " in r and "MakePair" in r for r in rows):
             print("  ok: C2 tuple-returning root method flagged by name")
         else:
@@ -567,7 +658,7 @@ public sealed partial class DesktopAdapter
     private static (Func<int> F, int G) MakeFn() => (null, 1);
 }
 """, encoding="utf-8")
-        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if any("C2 " in r and "MakeFn" in r for r in rows):
             print("  ok: C2 generic tuple return flagged by name")
         else:
@@ -580,7 +671,7 @@ public sealed partial class DesktopAdapter
             "namespace Shell;\npublic sealed partial class DesktopAdapter\n{\n}\n", encoding="utf-8")
         (root / "DesktopAdapter.Extra.cs").write_text(
             "namespace Shell;\npublic sealed partial class DesktopAdapter\n{\n}\n", encoding="utf-8")
-        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if any("C1 " in r for r in rows):
             print("  ok: C1 extra dot partial flagged")
         else:
@@ -601,7 +692,7 @@ public sealed partial class DesktopAdapter
     public int Resolve() { return 0; }
 }
 """, encoding="utf-8")
-        rows, _ = _violations(root, [root], 1, DEFAULT_MAX_DOT_PARTIALS)
+        rows, _ = _violations(root, [root], 1, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if any(r.startswith("  C3 root `new`") for r in rows):
             print("  ok: C3 new-of-owned cap flagged")
         else:
@@ -619,13 +710,13 @@ public sealed partial class DesktopAdapter
         # must trip C5, so rewriting a construction site cannot bypass the inventory.
         # 上一夹具的同类文件先清，计数以增量锚定（跨夹具残留的 ShellEntry 构造在 before 里）。
         (root / "DesktopAdapter.C3.cs").unlink()
-        _, before = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        _, before = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         (root / "DesktopAdapter.C3.cs").write_text(
             "namespace Shell;\npublic sealed partial class DesktopAdapter\n{\n"
             "    public int Resolve() { var e = new Whatever.ShellEntry();"
             " var f = ActivatorUtilities.CreateInstance<ShellEntry>(); return 0; }\n}\n",
             encoding="utf-8")
-        rows, after = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, after = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         flagged = [r for r in rows if "DesktopAdapter.C3.cs" in r and "C5 " in r]
         if after == before + 2 and len(flagged) == 2:
             print("  ok: C5 dotted + DI-factory constructions both flagged")
@@ -638,7 +729,7 @@ public sealed partial class DesktopAdapter
         # an unattributable `new()` is reported, not skipped.
         # 基线计数取自跨夹具残留（Program/DesktopAdapter 的 ShellEntry 构造）——
         # 断言以增量锚定，避免夹具间耦合读数漂移。
-        _, base_count = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        _, base_count = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         (root / "DesktopAdapter.TN.cs").write_text(
             """
 namespace Shell;
@@ -651,7 +742,7 @@ public sealed partial class DesktopAdapter
     public int Run() { return 0; }
 }
 """, encoding="utf-8")
-        rows, count = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, count = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if count == base_count + 2 and any("unattributable target-typed" in r for r in rows):
             print("  ok: C3 target-typed new attributed and unattributable flagged")
         else:
@@ -669,7 +760,7 @@ public sealed partial class DesktopAdapter
     private void Boot() { var x = Wait().GetAwaiter().GetResult(); }
 }
 """, encoding="utf-8")
-        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if any("C4 " in r for r in rows):
             print("  ok: C4 second sync-over-async bridge flagged")
         else:
@@ -687,7 +778,7 @@ public sealed partial class DesktopAdapter
     private void StartProxy() { }
 }
 """, encoding="utf-8")
-        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if any("C4 " in r for r in rows):
             print("  ok: C4 missing entry bridge flagged")
         else:
@@ -734,7 +825,7 @@ public sealed partial class DesktopAdapter
             (domain / "StartupSequence.cs").write_text(
                 "namespace Shell.Bootstrap;\ninternal sealed class StartupSequence\n{\n"
                 f"    public {run}\n}}\n", encoding="utf-8")
-            rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+            rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
             hits = [r for r in rows if "C6 " in r]
             confirmed = (not hits) if expected is None else any(expected in r for r in hits)
             if confirmed:
@@ -751,7 +842,7 @@ public sealed partial class DesktopAdapter
             "    public int RunMainLoop() => Helper();\n"
             "    private int Helper() { if (_ready) { return 1; } return 0; }\n}\n",
             encoding="utf-8")
-        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if not any("C6 " in r and "control flow" in r for r in rows):
             print("  ok: C6 expression-bodied entry does not swallow the next member")
         else:
@@ -774,7 +865,7 @@ public sealed partial class DesktopAdapter
         (domain / "PreBuildRegistration.cs").write_text(
             "namespace Shell.Bootstrap;\ninternal static class PreBuildRegistration\n{\n"
             "    public static object Make() => new StageValue(1);\n}\n", encoding="utf-8")
-        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if any("C7 " in r and "StageValue" in r for r in rows):
             print("  ok: C7 unlisted pre-Build construction flagged")
         else:
@@ -788,13 +879,60 @@ public sealed partial class DesktopAdapter
             "namespace Shell.Bootstrap;\ninternal static class PreBuildRegistration\n{\n"
             "    public static object Make() => Wrap(new());\n"
             "    private static object Wrap(object value) => value;\n}\n", encoding="utf-8")
-        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS)
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
         if any("C7 " in r and "unattributable" in r for r in rows):
             print("  ok: C7 unattributable target-typed new flagged")
         else:
             print(f"  ✗ C7 unattributable not flagged: {rows}")
             failed = 1
         (domain / "PreBuildRegistration.cs").unlink()
+
+        # C7: static factories (`Foo.Create(...)` returning `Foo`) are a fourth
+        # construction channel — an unlisted target must be flagged even though no
+        # `new` token appears at the assembly site.
+        (domain / "StageValue.cs").write_text(
+            "namespace Shell.Bootstrap;\ninternal readonly record struct StageValue(int A)\n{\n"
+            "    public static StageValue Create() => new(1);\n}\n", encoding="utf-8")
+        (domain / "PreBuildRegistration.cs").write_text(
+            "namespace Shell.Bootstrap;\ninternal static class PreBuildRegistration\n{\n"
+            "    public static object Make() => StageValue.Create();\n}\n", encoding="utf-8")
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS, inventory=set())
+        if any("C7 " in r and "static factory" in r and "StageValue" in r for r in rows):
+            print("  ok: C7 static-factory construction flagged")
+        else:
+            print(f"  ✗ C7 static factory not flagged: {rows}")
+            failed = 1
+
+        # C7: a listed type that nothing constructs is dead entry drift (the set
+        # must follow the construction, not outlive it). The type file itself is
+        # deleted below — the shape a type-rename refactor leaves behind, which an
+        # owned-types filter would silently skip.
+        (domain / "StageValue.cs").unlink()
+        (domain / "PreBuildRegistration.cs").write_text(
+            "namespace Shell.Bootstrap;\ninternal static class PreBuildRegistration\n{\n"
+            "    public static object Make() => new object();\n}\n", encoding="utf-8")
+        rows, _ = _violations(root, [root], DEFAULT_MAX_NEW, DEFAULT_MAX_DOT_PARTIALS,
+                              inventory={"StageValue"})
+        if any("C7 " in r and "dead entry" in r and "StageValue" in r for r in rows):
+            print("  ok: C7 dead inventory entry flagged after its type was deleted")
+        else:
+            print(f"  ✗ C7 dead entry not flagged: {rows}")
+            failed = 1
+        (domain / "PreBuildRegistration.cs").unlink()
+
+        # C7: every dead-entry pointer resolves inside the inventory literal itself —
+        # a name repeated in another inventory (ROOT_CONSTRUCTIBLE/ASSEMBLY_METHODS)
+        # must not capture it, and a 0 pointer is a miss, not the last line of the file.
+        inv_lines = Path(__file__).read_text(encoding="utf-8").splitlines()
+        start, end = _inventory_span()
+        stray = [n for n in PREBUILD_CONSTRUCTIBLE
+                 if not start <= (where := _inventory_line(n)) <= end
+                 or not inv_lines[where - 1].strip().startswith(f'"{n}",')]
+        if stray:
+            print(f"  ✗ C7 inventory pointers off: {stray}")
+            failed = 1
+        else:
+            print("  ok: C7 inventory pointers resolve inside the literal")
 
         # C6: a source root without the sequencer set is reported, not skipped.
         missing = _sequencer_violations(Path(td) / "Nope", set())
@@ -830,6 +968,7 @@ def main() -> int:
     rows, new_count = _violations(Path(args.src), [Path(s) for s in args.owned_src],
                                   args.max_new, args.max_dot_partials)
     print(f"  root new-of-owned count: {new_count} (cap {args.max_new})")
+    print(f"  C7 inventory: {len(PREBUILD_CONSTRUCTIBLE)} entries")
     if rows:
         print(f"compose-root: {len(rows)} violation(s)")
         for r in rows:

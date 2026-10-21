@@ -14,7 +14,7 @@ Review: FULL/2026-09-13/R1=ok R2=ok R3=ok
 
 - 新增 `ExternalFileLockHolder` 测试 helper：起**独立进程**按 OS 用与 .NET 运行时同机制的锁独占文件（Unix `python3 fcntl.flock`/BSD flock；Windows PowerShell `File.Open` FileShare.None），读 `HELD` 就绪行后返回。
 - 两个行为断言：`StalePackagePrunerTests.Run_HeldDownloadLockByOtherProcess_AbortsEntireSweep`（+ 释放后恢复的对照例）、`ReleaseAssetTests.DownloadLock_ReturnsNull_WhenHeldByOtherProcess`。
-- `ci.yml` `build-test` 改三平台矩阵（ubuntu/windows/macos，`fail-fast: false`）：format 门禁与覆盖率基线只留 ubuntu 腿，windows/macos 为纯测试腿（跑 `StalePackagePrunerTests`/`ReleaseAssetTests` 两类全量测试）。
+- `ci.yml` `build-test` 改三平台矩阵（ubuntu/windows/macos，`fail-fast: false`）：format 门禁与覆盖率基线只留 ubuntu 腿，windows/macos 跑同一全量套件（不按测试类过滤，见 [ci-full-suite-legs](2026-10-21-ci-full-suite-legs.md)）。
 
 ## Alternatives considered
 

@@ -71,16 +71,18 @@ actionlint -shellcheck="shellcheck -S warning"      # 工作流静态检查（�
 bash scripts/package-linux.sh --self-test           # 三包脚本共用头部 + 架构映射（离线）
 bash scripts/verify-package-layout.sh --self-test   # 包布局三平台分支（离线假内容根）
 bash scripts/smoke-install-linux.sh --self-test     # 冒烟判定面（共用夹具 + Linux 截图工具级联）
+bash scripts/dev-sign.sh --self-test                # 自签调用面（桩 codesign/signtool/pwsh 记录 argv）
+bash scripts/smoke-linux-rpm.sh --self-test         # rpm 容器冒烟调用面（桩 docker 记录挂载/env/镜像）
 # macos/windows 冒烟同法；CI docs job 每次 push 跑全集
 ```
 
 ## 打包
 
 ```sh
-# 仅校验布局（沙箱可用）
+# 仅校验布局（linux/windows 沙箱可用；macOS 需 sips）
 bash scripts/package-linux.sh --stage-only artifacts/publish-linux-x64
 ARCH=arm64 bash scripts/package-linux.sh --stage-only artifacts/publish-linux-arm64
-bash scripts/package-macos.sh --stage-only artifacts/publish-osx-arm64
+bash scripts/package-macos.sh --stage-only artifacts/publish-osx-arm64  # staging 也要 sips（生成 .icns，仅 macOS）
 bash scripts/package-windows.sh --stage-only artifacts/publish-win-x64
 # 全量（需 dpkg-deb/rpmbuild；mac 需 hdiutil，win 需 Inno Setup（唯一链，缺 ISCC 即 fail loud）—— CI 走此路）
 dotnet publish src/DeepSeek.Harness.Desktop -c Release -r linux-x64 --self-contained true -o artifacts/publish-linux-x64
