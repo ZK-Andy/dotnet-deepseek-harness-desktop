@@ -1,6 +1,7 @@
 # Agent Note: doc-adr-layer-cleanup（E 批：ADR 层裁定执行 + 文档层清理）
 
 Status: implemented
+Erratum: 2026-10-22 — Consequences 的挂账②「架构图重生成」随图退役关闭：图源与两个产物已删除，不再等 archify 环境（见 [retire-architecture-diagram](../simplification/2026-10-22-retire-architecture-diagram.md)）；正文不动。
 
 Review: FULL/2026-09-28/R1=ok R2=ok R3=ok
 

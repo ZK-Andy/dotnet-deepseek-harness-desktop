@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-22 — 架构图已退役：正文「`assets/` 剩下的五个顶层条目均有真实读者…`architecture.svg`」与「README 媒体引用只有 `icon.png`/`screenshot.png`/`architecture.svg`」已失真——该资产已删，`assets/` 顶层余四项（`icon.ico`/`icon.png`/`icons/`/`screenshot.png`），见 [retire-architecture-diagram](2026-10-22-retire-architecture-diagram.md)；本篇保留删资产决策。正文与决定不动。
+
 Review: LIGHT/2026-10-20/R2=ok（首轮 1 Blocker + 2 Suggestion：口径被自述证伪、计数错、注释漏说耦合；验轮 0 Blocker / 0 Suggestion 闭合）
 
 ## Problem

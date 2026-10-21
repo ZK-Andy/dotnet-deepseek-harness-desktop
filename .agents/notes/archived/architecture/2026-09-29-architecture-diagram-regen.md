@@ -2,6 +2,10 @@
 
 Status: implemented
 
+Erratum: 2026-10-22 — 架构图已退役：本篇处置对象 `docs/architecture.diagram.json` 已删，`docs/architecture.md` 启动模型节成为唯一家；本篇保留作图历史取证。正文与决定不动。
+
+Archived: 2026-10-22
+
 Review: FULL/2026-09-29#2/R1=ok R2=ok R3=ok
 
 ## Problem
@@ -36,5 +40,5 @@ Review: FULL/2026-09-29#2/R1=ok R2=ok R3=ok
 ## Related
 
 - [architecture-diagram-docs](2026-09-23-architecture-diagram-docs.md)（改图流程本篇执行：改 JSON → validate → deliver → 重抽 SVG → 双语 README 核对）。
-- [loopback-forward-proxy](2026-09-27-loopback-forward-proxy.md)（代理源语义来源）。
-- [dsh-follow-next-channel](2026-09-29-dsh-follow-next-channel.md)（`@next` 通道来源）。
+- [loopback-forward-proxy](../../implemented/architecture/2026-09-27-loopback-forward-proxy.md)（代理源语义来源）。
+- [dsh-follow-next-channel](../../implemented/architecture/2026-09-29-dsh-follow-next-channel.md)（`@next` 通道来源）。

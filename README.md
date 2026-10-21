@@ -102,10 +102,6 @@
 
 Ryn 壳（C# + 系统 WebView）经回环代理承载 PATH 上全局 dsh 的 Web UI：崩溃监督同端口重启、首启自动引导全局 node/dsh、随包伴生插件在 spawn 前就位。启动模型与分层见 [docs/architecture.md](docs/architecture.md)（单一事实源）。
 
-[![全量架构图](assets/architecture.svg)](docs/architecture.html)
-
-> 交互版（主题 / 平移缩放 / 搜索 / 关系追踪 / 导出）用浏览器本地打开 [docs/architecture.html](docs/architecture.html)。
-
 ## 开发
 
 ```sh

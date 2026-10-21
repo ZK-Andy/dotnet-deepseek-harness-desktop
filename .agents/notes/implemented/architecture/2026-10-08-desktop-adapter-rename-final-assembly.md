@@ -4,6 +4,8 @@ Status: implemented
 
 Erratum: 2026-10-14 — 「母篇四步全落地／剩余：无」不成立：母篇第 1 条的导航/监督用例下沉未落（`StartupSequence` 构造期仍自解析共享态、`StartRuntime` 仍同步阻塞、`SetupCaptionBar` 仍在编排面拼脚本），母篇维持 proposed。正文与决定不动。
 
+Erratum: 2026-10-22 — 架构图已退役：正文「架构图三件套为 label 同步」所指产物已删（`implemented/simplification/2026-10-22-retire-architecture-diagram`）；本篇保留改名与装配决策。正文与决定不动。
+
 Erratum: 2026-10-15 — 上一行的失效判据已部分消解：母篇第 1 条的导航/监督两件已落（B1/B2，ADR [startup-usecases-sink-to-core](2026-10-15-startup-usecases-sink-to-core.md)；B3/B4 仍缺）。本文引用的 `StartupSequence.Navigation.cs`/`StartupSequence.WebSession.cs` 两分部已删（内容入 `Core.Ui.MainUiEntry`），`StartupSequence` 构造签名已少 `proxy` 参。正文与决定不动。
 
 Erratum: 2026-10-15 — Decision 的 C5 清单不再是 16 项：`ROOT_CONSTRUCTIBLE` 随 [sequencer-resolution-injection](2026-10-15-sequencer-resolution-injection.md) 的 C3 压舱收成 **6 项**（触发器/共享态三件/Build 产物/排序器触发）、C3 帽 16→**6**，装配期构造另立 **C7** 清单（`Bootstrap/PreBuildRegistration*.cs` 的构造须在册）。正文与决定不动。

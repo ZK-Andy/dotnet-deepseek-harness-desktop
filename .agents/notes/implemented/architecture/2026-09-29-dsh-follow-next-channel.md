@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-22 — 架构图已退役：正文「`architecture.svg/html` 生成物中的 `PATH @alpha` 标注」所指产物已删（`implemented/simplification/2026-10-22-retire-architecture-diagram`），该标注随图消失；本篇保留跟版决策。正文与决定不动。
+
 Review: FULL/2026-09-29/R1=ok R2=ok R3=ok
 
 ## Problem

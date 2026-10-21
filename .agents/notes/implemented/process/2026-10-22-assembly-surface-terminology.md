@@ -1,6 +1,8 @@
 # Agent Note: 装配面术语退役组合根
 
 Status: implemented
+Erratum: 2026-10-22 — 本篇 Consequences 的图挂账已关闭：`docs/architecture.diagram.json` 与两个产物 `docs/architecture.html`/`assets/architecture.svg` 已删除（见 [retire-architecture-diagram](../simplification/2026-10-22-retire-architecture-diagram.md)）；正文不动。本篇保留术语退役决策。
+
 Review: FULL/2026-10-22/R1=ok R2=ok R3=ok
 
 ## Problem

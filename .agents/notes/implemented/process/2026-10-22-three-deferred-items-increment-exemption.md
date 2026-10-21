@@ -3,6 +3,8 @@
 Status: implemented
 Review: FULL/2026-10-22/R1=ok R2=ok R3=ok
 
+Erratum: 2026-10-22 — 三处豁免指针已转指 [architecture-diagram-retirement-increment-exemption](2026-10-22-architecture-diagram-retirement-increment-exemption.md)；本篇的 gross ≤ 800 豁免随三批入基线失效，指针不再指向本篇。正文与决定不动。
+
 增量闸豁免：gross ≤ 800，fanout ≤ 15（实测 gross 727、fanout 3，读数见 `## Problem` 与 `## Testing`；本篇合入基线后不再属任何 `--since <base>` 的变更集，豁免随之失效——合并前本分支的后续推送仍在此帽下）。
 
 ## Problem

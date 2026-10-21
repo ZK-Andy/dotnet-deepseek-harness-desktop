@@ -4,12 +4,6 @@
 
 ## 概览
 
-> 交互版架构图用浏览器本地打开 [architecture.html](architecture.html)（深/浅色主题、平移/缩放、搜索、关系追踪、导出 PNG/SVG）。静态预览：
->
-> [![全量架构图](../assets/architecture.svg)](architecture.html)
->
-> 图源规约见 [architecture.diagram.json](architecture.diagram.json)（archify `architecture` 类型，`--quality showcase` 校验后 `deliver` 生成 HTML 与缩略图 SVG；改图只改 JSON 并重新生成，不手改产物）。
-
 * 壳只管生命周期、窗口、恢复；`dsh` 的插件树即应用运行时。
 * **共享 home**：默认上游规范 `~/.dsh`（优先级 `DSH_DESKTOP_DSH_HOME` > 生态 `DSH_HOME` > `~/.dsh`），home 层数据与 CLI/TUI/Web 互通；桌面插件装配走专属 `profiles/dotnet-desktop`（ADR `2026-09-09-desktop-profile-rename`）。
 * **可观测性**：壳侧诊断经 `HostLog` 双写 stdout 与 `<home>/logs/host.log`（超限滚动）；`RunMarker` 判定非受控退出；`desktop.diagnostics.export` 导出白名单诊断 zip（ADR `2026-08-24-shell-observability-diagnostics`）。

@@ -1,6 +1,8 @@
 # Agent Note: 装配面在册面闭包（根目录纳入 + 装配面声明存在性）
 
 Status: implemented
+Erratum: 2026-10-22 — 本篇「本批不含架构图」所指的图源与两个产物已删除，图债随图退役关闭（见 [retire-architecture-diagram](../simplification/2026-10-22-retire-architecture-diagram.md)）；正文不动。本篇保留在册面闭包决策。
+
 Review: FULL/2026-10-22/R1=ok R2=ok R3=ok
 
 ## Problem

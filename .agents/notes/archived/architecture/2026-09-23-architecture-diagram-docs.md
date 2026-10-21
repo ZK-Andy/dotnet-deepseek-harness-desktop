@@ -1,6 +1,8 @@
 # Agent Note: architecture-diagram-docs（全量架构图进 docs，README 只留缩略图链接）
 
 Status: implemented
+Erratum: 2026-10-22 — 架构图已退役：本篇指向的 `docs/architecture.diagram.json`、`docs/architecture.html`、`assets/architecture.svg` 均已删除，README 与 `docs/architecture.md` 的图引用同批清除（见 [retire-architecture-diagram](../../implemented/simplification/2026-10-22-retire-architecture-diagram.md)）；保留本篇作历史取证，正文不动。
+Archived: 2026-10-22
 
 Review: FULL/2026-09-23/R1=ok R2=ok R3=ok
 
@@ -37,4 +39,4 @@ Review: FULL/2026-09-23/R1=ok R2=ok R3=ok
 
 - [docs/architecture.md](../../../../docs/architecture.md)：概览节承载本图。
 - [docs/architecture-standards.md](../../../../docs/architecture-standards.md)：规范（本图仅为其视图，非契约）。
-- [2026-09-14-official-clean-architecture-adoption](2026-09-14-official-clean-architecture-adoption.md)：三项目解组织（本图结构来源）。
+- [2026-09-14-official-clean-architecture-adoption](../../implemented/architecture/2026-09-14-official-clean-architecture-adoption.md)：三项目解组织（本图结构来源）。

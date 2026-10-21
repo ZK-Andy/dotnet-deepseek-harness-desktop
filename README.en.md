@@ -102,10 +102,6 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 The Ryn shell (C# + OS webview) serves the Web UI of the global dsh on `PATH` through a loopback proxy: crash supervision restarts on the same port, first launch bootstraps global node/dsh, and the bundled companion is in place before spawn. Startup model and layering: [docs/architecture.md](docs/architecture.md) (single source of truth).
 
-[![Full architecture diagram](assets/architecture.svg)](docs/architecture.html)
-
-> Interactive edition (themes / pan-zoom / search / relation tracing / export): open [docs/architecture.html](docs/architecture.html) locally in a browser.
-
 ## Development
 
 ```sh
