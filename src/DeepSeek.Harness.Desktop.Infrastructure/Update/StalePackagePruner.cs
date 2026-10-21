@@ -118,7 +118,7 @@ public static class StalePackagePruner
     }
 
     /// <summary>清扫主体（<see cref="Run"/> 的异常收拢面内）。非 IO/授权/路径类意外异常就此上抛，
-    /// 由组合根启动路径兜住（该类异常非清扫能自愈，应可见）。</summary>
+    /// 由装配面启动路径兜住（该类异常非清扫能自愈，应可见）。</summary>
     private static void RunInner(string updatesDir, string currentVersion, Action<string>? log)
     {
         if (!Directory.Exists(updatesDir))

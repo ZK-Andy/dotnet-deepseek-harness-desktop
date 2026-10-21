@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify compose-root semantics (architecture R1: the root only assembles).
+"""Verify assembly-surface semantics (architecture R1: the root set only assembles).
 
 Complements the size gates (verify-code-health.py): F3 caps what the root set
 WEIGHS in aggregate; this gate caps what the root HOLDS. The regression it
@@ -14,12 +14,13 @@ Two scopes, declared in this file (the single home for these judgements):
   ASSEMBLY_SURFACE = ROOT_SET + ASSEMBLY_SURFACE_EXTRA (`Bootstrap/PreBuildRegistration.cs`,
                    `Bootstrap/ShellResources.cs`, `RynOptionsProfile.cs`). Direction
                    gates: C1 + C2 over the whole surface, C7 over
-                   `PreBuildRegistration*.cs`, C8 over new `Bootstrap/` files (a file
+                   `PreBuildRegistration*.cs`, C8 over every first-level domain directory (a file
                    that is neither domain nor declared surface fails). Assembly code
                    must not escape the gates by moving out of the root files; adding a
-                   file to either list is a gate change (FULL review).
+                   file to ASSEMBLY_SURFACE_EXTRA is a gate change (FULL review) —
+                   declaring a domain file is a data edit (LIGHT).
 
-Seven checks:
+Eight checks:
 
   C1  dot partials ≤ `--max-dot-partials` (default 1) across the assembly surface:
       each surface file is a single file, no dot-partial siblings.
@@ -61,6 +62,17 @@ Seven checks:
       C3 counts the root set alone, so without C7 the moved constructions would
       sit outside every gate; here they stay a deliberate inventory (reopening
       it needs its own ADR).
+  C8  domain-file inventory: every domain directory — a first-level subdirectory
+      of `--src` holding `.cs` files (`bin`/`obj` excluded) — must be declared in
+      the manifest
+      (`scripts/domain-files.manifest.json`, `--domain-manifest`) together with
+      its files. The check is two-way: an undeclared file, an undeclared
+      directory, a declared file that no longer exists and a declared directory
+      that no longer exists all fail — a rename or a deletion cannot drift the
+      inventory silently, and a declared directory that lost every `.cs` still
+      has its entries checked. Whether a file IS assembly surface remains a judgement
+      recorded in ASSEMBLY_SURFACE_EXTRA; C8 only asks whether it was classified
+      at all.
 
 Default is report-only (exit 0). `--enforce` exits 1 on any violation.
 `--self-test` runs offline fixtures.
@@ -71,6 +83,7 @@ Exit code 0 = pass, 1 = violations.
 """
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -85,6 +98,7 @@ DEFAULT_OWNED_SRC = (
 )
 DEFAULT_MAX_NEW = 6
 DEFAULT_MAX_DOT_PARTIALS = 1
+DEFAULT_DOMAIN_MANIFEST = Path(__file__).with_name("domain-files.manifest.json")
 
 # Assembly surface (C1/C2): every file that carries assembly code, wherever it
 # lives. ROOT_SET alone is the weight gate (F3/F4) — moving assembly into
@@ -114,23 +128,13 @@ ALLOWED_METHODS = {
     "RynOptionsProfile.cs": {"Apply"},
 }
 
-# Files directly under Bootstrap/ that are NOT assembly: sequencer, registration
-# extensions, stage values and routers. A new file here must be declared (as
-# domain code or as assembly surface) — otherwise the gate fails.
-BOOTSTRAP_DOMAIN_FILES = {
-    "AppRestartCommandRouter.cs",
-    "BootstrapCommandRouter.cs",
-    "BootstrapRegistration.cs",
-    "BootstrapStateFrame.cs",
-    "FirstBootUi.cs",
-    "RunServicesRegistration.cs",
-    "RuntimeResolutions.cs",
-    "ShellMintEpochAdapter.cs",
-    "StartupSequence.cs",
-    "StartupSequence.Supervision.cs",
-    "StartupStages.cs",
-    "StartupUseCaseRegistration.cs",
-}
+# C8 domain inventory (C8 reads it; the criteria live in this file). The manifest
+# is data, not judgement: it records that a file was classified, not what it is.
+# Being assembly surface stays a judgement in ASSEMBLY_SURFACE_EXTRA above —
+# editing that list is a gate change (FULL review), declaring a domain file is a
+# manifest edit (data = LIGHT), so routine domain growth does not tax every batch
+# with a full three-way review.
+NON_DOMAIN_DIRS = ("bin", "obj")
 
 # Self-owned types the wiring layer may construct. Frozen at step-3 of
 # ADR composition-mechanism-container-assembly, then cut to six by ADR
@@ -487,6 +491,72 @@ def _prebuild_constructions(
     return out
 
 
+def _load_domain_manifest(path: Path) -> dict[str, set[str]]:
+    """C8 manifest (domain directory -> declared file names). An unreadable or
+    malformed manifest is a hard error, never an empty inventory: an empty
+    inventory would silently mean `no domain files exist`."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise SystemExit(f"C8 domain manifest unreadable: {path} ({exc})") from exc
+    except ValueError as exc:
+        raise SystemExit(f"C8 domain manifest is not valid JSON: {path} ({exc})") from exc
+    if not isinstance(raw, dict):
+        raise SystemExit(f"C8 domain manifest must be an object: {path}")
+
+    entries: dict[str, set[str]] = {}
+    for name, files in raw.items():
+        if name.startswith("_"):
+            continue
+        if not isinstance(files, list) or not all(isinstance(f, str) for f in files):
+            raise SystemExit(f"C8 domain manifest entry `{name}` must be a list of file names")
+        entries[name] = set(files)
+    return entries
+
+
+def _domain_inventory_violations(src: Path, manifest: dict[str, set[str]]) -> list[str]:
+    """C8 over every domain directory under `src`, both directions (undeclared
+    file, undeclared directory, dead file, dead directory)."""
+    surface: dict[str, set[str]] = {}
+    for rel in ASSEMBLY_SURFACE_EXTRA:
+        parent = Path(rel).parent.as_posix()
+        surface.setdefault("" if parent == "." else parent, set()).add(Path(rel).name)
+
+    actual = {p.name: p for p in sorted(src.iterdir())
+              if p.is_dir() and p.name not in NON_DOMAIN_DIRS}
+    out: list[str] = []
+    for name in sorted(actual):
+        files = {p.name for p in actual[name].glob("*.cs")}
+        declared = manifest.get(name)
+        if declared is None:
+            if not files:
+                continue  # not a domain directory, nothing to declare
+            out.append(
+                f"  C8 {name}/: domain directory is not in the manifest"
+                " (declare its files in scripts/domain-files.manifest.json)")
+            continue
+        surface_files = surface.get(name, set())
+        declared = declared | surface_files
+        for extra in sorted(files - declared):
+            out.append(
+                f"  C8 {name}/{extra}: new file is neither domain nor assembly surface"
+                " (declare it in scripts/domain-files.manifest.json, or in"
+                " ASSEMBLY_SURFACE_EXTRA if it is assembly code — moving assembly here"
+                " must not escape the gates)")
+        # Dead-entry check covers the manifest only. An assembly-surface path that
+        # disappears is missed by `_assembly_files` (its `if path.is_file()` skips
+        # silently) — carried debt in the inventory gate ADR, not re-reported here.
+        for gone in sorted((declared - surface_files) - files):
+            out.append(
+                f"  C8 {name}/{gone}: inventory lists a file that does not exist"
+                " (dead entry — drop it, or the file moved and the inventory must follow)")
+    for name in sorted(set(manifest) - set(actual)):
+        out.append(
+            f"  C8 {name}/: inventory lists a directory that does not exist"
+            " (dead entry — drop it)")
+    return out
+
+
 def _violations(src: Path, owned_srcs: list[Path], max_new: int, max_dot_partials: int,
                 inventory: set[str] | None = None) -> tuple[list[str], int]:
     files = _root_files(src)
@@ -500,16 +570,6 @@ def _violations(src: Path, owned_srcs: list[Path], max_new: int, max_dot_partial
         out.append(
             f"  C1 {len(dot_partials)} dot partials > {max_dot_partials}: {', '.join(dot_partials)}"
             " (orchestration belongs in Bootstrap/StartupSequence or a domain service)")
-
-    bootstrap = src / "Bootstrap"
-    if bootstrap.is_dir():
-        declared = set(BOOTSTRAP_DOMAIN_FILES) | {Path(rel).name for rel in ASSEMBLY_SURFACE_EXTRA}
-        for path in sorted(bootstrap.glob("*.cs")):
-            if path.name not in declared:
-                out.append(
-                    f"  C8 Bootstrap/{path.name}: new file is neither domain nor assembly surface"
-                    " (declare it in BOOTSTRAP_DOMAIN_FILES or ASSEMBLY_SURFACE_EXTRA —"
-                    " moving assembly here must not escape the gates)")
 
     owned_lines = list(_cleaned_tree(owned_srcs))
     owned = _owned_types(owned_lines)
@@ -943,6 +1003,86 @@ public sealed partial class DesktopAdapter
             print("  ✗ C6 empty sequencer set not flagged")
             failed = 1
 
+        # C8: the domain-file inventory is two-way. Fixture project with one
+        # declared directory; each drift channel is exercised in turn.
+        def _c8(label: str, rows: list[str], needle: str | None = None) -> None:
+            nonlocal failed
+            if (not rows) if needle is None else any(needle in r for r in rows):
+                print(f"  ok: C8 {label}")
+            else:
+                print(f"  ✗ C8 {label}: {rows}")
+                failed = 1
+
+        c8_src = Path(td) / "Domains"
+        c8_dir = c8_src / "Bootstrap"
+        c8_dir.mkdir(parents=True)
+        (c8_dir / "Declared.cs").write_text("namespace D;\n", encoding="utf-8")
+        c8_manifest = {"Bootstrap": {"Declared.cs"}}
+        _c8("conforming inventory -> pass", _domain_inventory_violations(c8_src, c8_manifest))
+
+        # Assembly-surface files are classified by ASSEMBLY_SURFACE_EXTRA, so the
+        # manifest need not list them.
+        (c8_dir / "ShellResources.cs").write_text("namespace D;\n", encoding="utf-8")
+        _c8("assembly-surface file needs no manifest entry", _domain_inventory_violations(c8_src, c8_manifest))
+        (c8_dir / "ShellResources.cs").unlink()
+
+        # A new file inside a declared directory (the 1434271 shape: assembly code
+        # moved into a domain directory).
+        (c8_dir / "Fresh.cs").write_text("namespace D;\n", encoding="utf-8")
+        _c8("undeclared domain file flagged", _domain_inventory_violations(c8_src, c8_manifest),
+            "C8 Bootstrap/Fresh.cs: new file is neither domain")
+        (c8_dir / "Fresh.cs").unlink()
+
+        # A domain directory the manifest never heard of.
+        (c8_src / "Tray").mkdir()
+        (c8_src / "Tray" / "Gone.cs").write_text("namespace D;\n", encoding="utf-8")
+        _c8("undeclared domain directory flagged", _domain_inventory_violations(c8_src, c8_manifest),
+            "C8 Tray/: domain directory is not in the manifest")
+        (c8_src / "Tray" / "Gone.cs").unlink()
+        (c8_src / "Tray").rmdir()
+
+        # A directory holding no .cs files is not a domain directory.
+        (c8_src / "wwwroot").mkdir()
+        _c8(".cs-free directory ignored", _domain_inventory_violations(c8_src, c8_manifest))
+        (c8_src / "wwwroot").rmdir()
+
+        # Dead entries — a declared file and a declared directory that no longer
+        # exist (the rename/deletion drift a one-way list allowed).
+        rows_c8 = _domain_inventory_violations(
+            c8_src, {"Bootstrap": {"Declared.cs", "Ghost.cs"}, "Nope": {"Also.cs"}})
+        _c8("dead file entry flagged", rows_c8,
+            "C8 Bootstrap/Ghost.cs: inventory lists a file that does not exist")
+        _c8("dead directory entry flagged", rows_c8,
+            "C8 Nope/: inventory lists a directory that does not exist")
+
+        # A directory that still exists but lost all its .cs files must not keep
+        # its inventory entries alive.
+        (c8_src / "Emptied").mkdir()
+        _c8("emptied directory cannot hide dead entries",
+            _domain_inventory_violations(c8_src, {"Bootstrap": {"Declared.cs"}, "Emptied": {"Was.cs"}}),
+            "C8 Emptied/Was.cs: inventory lists a file that does not exist")
+        (c8_src / "Emptied").rmdir()
+
+        # An unreadable or malformed manifest is an error, not an empty inventory:
+        # a bare list or a non-list entry would otherwise read as "no domains".
+        for label, payload, expect in [
+            ("malformed manifest", "{not json", "not valid JSON"),
+            ("non-object manifest", "[1, 2]", "must be an object"),
+            ("non-list entry", '{"Bootstrap": "A.cs"}', "must be a list of file names"),
+        ]:
+            path = Path(td) / f"{label.replace(' ', '-')}.json"
+            path.write_text(payload, encoding="utf-8")
+            try:
+                _load_domain_manifest(path)
+            except SystemExit as exc:
+                ok = expect in str(exc)
+            else:
+                ok = False
+            if ok:
+                print(f"  ok: C8 {label} is a hard error")
+            else:
+                print(f"  ✗ C8 {label} was not rejected as a hard error")
+                failed = 1
     if failed == 0:
         print("== verify-compose-root self-test passed ==")
     else:
@@ -962,14 +1102,19 @@ def main() -> int:
     parser.add_argument("--max-new", type=int, default=DEFAULT_MAX_NEW,
                         help="cap on `new` of self-owned concrete types in the root")
     parser.add_argument("--max-dot-partials", type=int, default=DEFAULT_MAX_DOT_PARTIALS)
+    parser.add_argument("--domain-manifest", default=str(DEFAULT_DOMAIN_MANIFEST),
+                        help="C8 domain-file inventory (JSON: directory -> file names)")
     parser.add_argument("--enforce", action="store_true",
                         help="exit 1 on any violation (default: report only)")
     args = parser.parse_args()
 
+    manifest = _load_domain_manifest(Path(args.domain_manifest))
     rows, new_count = _violations(Path(args.src), [Path(s) for s in args.owned_src],
                                   args.max_new, args.max_dot_partials)
+    rows.extend(_domain_inventory_violations(Path(args.src), manifest))
     print(f"  root new-of-owned count: {new_count} (cap {args.max_new})")
     print(f"  C7 inventory: {len(PREBUILD_CONSTRUCTIBLE)} entries")
+    print(f"  C8 inventory: {sum(len(v) for v in manifest.values())} files in {len(manifest)} domain dirs")
     if rows:
         print(f"compose-root: {len(rows)} violation(s)")
         for r in rows:

@@ -31,7 +31,7 @@ public static class LauncherActivation
     /// <summary>单实例应用锁名（socket 文件名字面量单源；锁地址解析唯一消费点在 <see cref="ResolveInstanceSocketPath"/>）。</summary>
     private const string SocketAppName = "deepseek-harness-desktop";
 
-    /// <summary>锁地址解析（平台策略单源，原组合根 <c>AcquireSingleInstance</c> 内联拼装随细搬下沉，ADR
+    /// <summary>锁地址解析（平台策略单源，原装配面 <c>AcquireSingleInstance</c> 内联拼装随细搬下沉，ADR
     /// restructure-compose-root-final-moves）：Linux/macOS 为 <c>XDG_RUNTIME_DIR</c>（缺失回退共享临时目录
     /// 并掺 <see cref="FallbackUidSuffix"/> 防跨用户抢占）下应用名 socket；dev 与正式各持一把锁。
     /// Windows 无验证环境不启用（返回 null，调用方直接放行为主实例）。</summary>

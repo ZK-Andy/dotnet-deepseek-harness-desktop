@@ -5,9 +5,9 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 /// <summary>
 /// 装配期（Build 之前）接线产物的构造函数（ADR sequencer-resolution-injection 的 C3 压舱）：引导装配、
 /// 关窗闸门/自更新栈/托盘控制器、运行时起步用例都是「容器之前的运行期产物」——它们必须在 Build 前就位
-/// （引导服务要宿主/窗口提供者），装不进解图；但把构造写在组合根里会让 C3 的「根 new 自有类型」读数长期顶格。
+/// （引导服务要宿主/窗口提供者），装不进解图；但把构造写在装配面里会让 C3 的「根 new 自有类型」读数长期顶格。
 /// 此处按注册层的构造纪律收拢（<c>verify-compose-root</c> 的 C5 文案即「resolve via DI or register the
-/// construction in *Registration.cs」），组合根只调用并登记实例。装配期共享态同样在此一次造好
+/// construction in *Registration.cs」），装配面只调用并登记实例。装配期共享态同样在此一次造好
 /// （见 <see cref="CreateSharedState"/>：壳转发器在 Build 前即被消费，故必须早于容器存在，
 /// ADR 组合根寿命与配置单一来源 D1）。
 /// 语句与搬迁前逐句等价：调用位、次序与既有 I/O 语义都不变（`bootstrap.Resolve()` 读配置/PATH 并同步跑
@@ -42,8 +42,8 @@ internal static class PreBuildRegistration
             new WindowScriptTarget(accessorProvider));
     }
 
-    /// <summary>首启引导服务与启动期 A 类配置（原组合根 <c>ResolveRuntimeAndDev</c>）：全局 node/dsh 引导、
-    /// 插件装配、CLI shim、宿主启动从组合根下沉；页面反馈经 FirstBootUi 注入，宿主/窗口以提供者延迟供给
+    /// <summary>首启引导服务与启动期 A 类配置（原装配面 <c>ResolveRuntimeAndDev</c>）：全局 node/dsh 引导、
+    /// 插件装配、CLI shim、宿主启动从装配面下沉；页面反馈经 FirstBootUi 注入，宿主/窗口以提供者延迟供给
     /// （调用点均晚于 Build 赋值），UI 语言同样惰性（引导任务实际启动时求值）。</summary>
     /// <param name="hostProvider">宿主提供者（Build 后可用）。</param>
     /// <param name="isEnglishProvider">UI 语言提供者（惰性求值）。</param>
@@ -64,7 +64,7 @@ internal static class PreBuildRegistration
         return new Preflight(bootstrap, LaunchOptions.Resolve(HostLog.Write));
     }
 
-    /// <summary>关窗闸门/自更新栈/托盘控制器装配（原组合根 <c>InitCloseGateAndUpdateStack</c>）：构造只收惰性
+    /// <summary>关窗闸门/自更新栈/托盘控制器装配（原装配面 <c>InitCloseGateAndUpdateStack</c>）：构造只收惰性
     /// 委托与配置，与运行时产出无交互——装配在 Build 之前（原 spawn→装配 反转为 装配→spawn）。委托均在调用期
     /// 求值（页面交互/后台任务），提供者赋值晚于本方法返回，与原接线槽语义等价。</summary>
     /// <param name="preflight">启动头部产出（dev 判定）。</param>
@@ -127,7 +127,7 @@ internal static class PreBuildRegistration
         return (new UpdateSetup(updates), tray);
     }
 
-    /// <summary>运行时起步用例（原组合根 <c>RegisterServices</c> 内联构造）：spawn→铸币→收 URL 的依赖全在手
+    /// <summary>运行时起步用例（原装配面 <c>RegisterServices</c> 内联构造）：spawn→铸币→收 URL 的依赖全在手
     /// （引导服务来自启动头部，超时/铸币来自共享单例）。</summary>
     /// <param name="preflight">启动头部产出（引导服务）。</param>
     /// <param name="timeouts">运行时超时家（spawn 预算）。</param>

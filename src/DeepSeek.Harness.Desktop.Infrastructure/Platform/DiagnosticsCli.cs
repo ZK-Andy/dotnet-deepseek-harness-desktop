@@ -1,7 +1,7 @@
 namespace DeepSeek.Harness.Desktop.Infrastructure.Platform;
 
 /// <summary>
-/// CLI 专用诊断导出入口（原组合根 <c>Program.ExportDiagnostics</c> 随细搬下沉，ADR
+/// CLI 专用诊断导出入口（原装配面 <c>Program.ExportDiagnostics</c> 随细搬下沉，ADR
 /// restructure-compose-root-final-moves）：无 UI 兜底取证路径——不 spawn dsh、不开窗、不做 dev 隔离，
 /// 覆盖「闪退进不了界面」的场景（ADR shell-observability-diagnostics）。开关字面量与实现同文件单源；
 /// 用户可见契约（<c>--export-diagnostics</c>）不变（docs/user-guide 双语记载）。

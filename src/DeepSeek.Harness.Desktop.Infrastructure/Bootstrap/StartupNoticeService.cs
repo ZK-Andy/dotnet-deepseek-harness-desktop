@@ -46,7 +46,7 @@ public sealed class StartupNoticeService
         _versionProbe = versionProbe ?? RuntimeVersionGate.ProbeAsync;
 
         // 脏退留痕与横幅同处一个消费点（ADR 组合根寿命与配置单一来源 D3）：marker 的读取与解释都归本用例，
-        // 组合根不再为打这一行去解析宿主。
+        // 装配面不再为打这一行去解析宿主。
         if (previousRunUnclean)
         {
             _log("[host] 检测到上轮未正常退出的标记；如频繁出现请在设置页导出诊断信息");

@@ -1,9 +1,9 @@
 namespace DeepSeek.Harness.Desktop.Bootstrap;
 
 /// <summary>
-/// 启动编排服务（ADR compose-root-form-separation）：阶段主链与用例编排自组合根整体搬迁至此
-/// （语句序/分支/异常边界逐一对应，纯搬家零行为变更）；组合根只装配与触发（R1）。Ryn 无 hosted-service
-/// 机制，编排器由组合根在 Build 后解析并触发（结构必然，见 ADR Alternatives）。
+/// 启动编排服务（ADR compose-root-form-separation）：阶段主链与用例编排自装配面整体搬迁至此
+/// （语句序/分支/异常边界逐一对应，纯搬家零行为变更）；装配面只装配与触发（R1）。Ryn 无 hosted-service
+/// 机制，编排器由装配面在 Build 后解析并触发（结构必然，见 ADR Alternatives）。
 /// 形状＝排序器：两相入口 <see cref="RunStartupAsync"/>（异步相，I/O 起步链）与 <see cref="RunMainLoop"/>
 /// （同步相，Ryn 面尾段 + 主循环 + 退出编排）都只按序触发用例/阶段（无分支、无域文本、不构造服务、
 /// 无同步桥——机器闸见 <c>verify-compose-root.py</c> C6；ADR entry-bridge-two-phase），用例与依赖经容器
@@ -79,7 +79,7 @@ internal sealed partial class StartupSequence
         // profile 前置（migrate→recover→ensure→reconcile 用例编排住 Infrastructure.ProfileLifecycle）
         _resolutions.Profile.EnsureReady();
         // 宿主装配产出（容器惰性单例）：首次解析即创建；必须先于随包插件安装与 spawn（偏序 = 宿主已建、spawn 前），
-        // 偏序在本相内自洽，不依赖组合根的 eager 解析兜底。
+        // 偏序在本相内自洽，不依赖装配面的 eager 解析兜底。
         HostSetup host = _resolutions.Host.Value;
         // 随包插件 spawn 前安装（策略谓词与安装住 Infrastructure.CompanionPreSpawn；偏序 = 宿主已建、spawn 前）
         _resolutions.Companion.EnsureInstalled(_preflight.Bootstrap.IsNeeded, _preflight.Launch);
@@ -125,7 +125,7 @@ internal sealed partial class StartupSequence
     /// <summary>托盘就绪化（装配壳）：解析 Ryn 托盘服务并交给控制器（无托盘环境传 null）。</summary>
     private void ShowTray()
     {
-        // 托盘在组合根装配期构造（容器单例），ShowTray 必然晚于它
+        // 托盘在装配面装配期构造（容器单例），ShowTray 必然晚于它
         Tray.TrayController tray = _resolutions.Tray.Value;
         tray.Show(tray.IsAvailable
             ? () => _resolutions.TrayService.Value

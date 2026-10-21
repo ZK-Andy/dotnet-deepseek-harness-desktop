@@ -17,7 +17,7 @@ public sealed partial class DesktopAdapter
     {
         // 托盘与窗口共用同一 icon 资产；缺失时托盘不注册（关窗保持直退，见 IsReady）
         string iconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
-        bool trayAvailable = File.Exists(iconPath); // verify-code-conventions: ignore 组合根装配：icon 存在性探测是配置面，非业务/领域直调
+        bool trayAvailable = File.Exists(iconPath); // verify-code-conventions: ignore 装配面：icon 存在性探测是配置面，非业务/领域直调
         tray.ConfigureIcon(iconPath, trayAvailable);
 
         RynApplication app = RynApplication.CreateBuilder()

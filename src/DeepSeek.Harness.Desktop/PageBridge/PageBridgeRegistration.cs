@@ -4,11 +4,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Ryn.Core;
 using Ryn.Ipc;
 
-namespace DeepSeek.Harness.Desktop;
+namespace DeepSeek.Harness.Desktop.PageBridge;
 
-/// <summary>壳级命令路由注册（组合根注册下沉为按域 AddXxx，ADR compose-root-form-separation）：
-/// 外部链接导航、语言桥、开机自启、页面降级报障、应用重启五域（ADR shell-router-rehoming）。</summary>
-internal static class ShellCommandRegistration
+/// <summary>页面桥域命令路由注册（装配面注册下沉为按域 AddXxx，ADR compose-root-form-separation）：
+/// 外部链接导航、语言桥、开机自启、页面降级报障四域（ADR shell-router-rehoming）。</summary>
+internal static class PageBridgeRegistration
 {
     /// <summary>外部链接打开（宿主命令路由，ADR open-external-links-in-system-browser）与导航回调依赖覆盖：
     /// 宿主导航回调（Ryn 0.32.0 Ryn.Callbacks）在导航边界统一拦截外部链接——当前页面 origin 即代理源
@@ -59,18 +59,6 @@ internal static class ShellCommandRegistration
         services.AddSingleton<IAutostart>(new AutostartService());
         services.AddSingleton<ICommandRouter>(sp => new AutostartCommandRouter(
             sp.GetRequiredService<IAutostart>(),
-            log: HostLog.Write));
-        return services;
-    }
-
-    /// <summary>应用重启（desktop.app.restart，ADR app-restart-native-switch）：受理即回帧、
-    /// 延迟冲刷窗口后先批准关窗闸门再走退出管道重启。管道与托盘控制器在调用期经容器解析，
-    /// 命令必经页面交互触发，调用时点必已就绪（与 TrayRegistration 的接线注释同理）。</summary>
-    public static IServiceCollection AddAppRestartCommand(this IServiceCollection services)
-    {
-        services.AddSingleton<ICommandRouter>(sp => new AppRestartCommandRouter(
-            closeGate: sp.GetRequiredService<TrayController>().CloseGate,
-            restart: () => sp.GetRequiredService<ExitPipeline>().Restart(AppRelaunch.SpawnSelf),
             log: HostLog.Write));
         return services;
     }

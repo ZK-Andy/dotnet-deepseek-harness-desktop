@@ -1,7 +1,7 @@
 namespace DeepSeek.Harness.Desktop.Core.Localization;
 
 /// <summary>
-/// UI 语言持久化端口（R3：接口在 Core、文件实现进 Infrastructure、组合根注入）：
+/// UI 语言持久化端口（R3：接口在 Core、文件实现进 Infrastructure、装配面注入）：
 /// 记住上一次 dsh 上报的语言，供<b>下次启动</b>在 dsh 起来之前使用。
 /// </summary>
 /// <remarks>

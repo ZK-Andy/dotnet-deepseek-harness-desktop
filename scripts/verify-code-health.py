@@ -6,7 +6,7 @@ Implements the size health gate from the architecture-mechanization ADR
 
   F1  any file > `--file-limit` physical lines (default 400)
   F2  any method > `--method-limit` lines (default 80)
-  F3  compose-root SET (DesktopAdapter*.cs + Program.cs) total
+  F3  assembly-surface ROOT set (DesktopAdapter*.cs + Program.cs), total
       > `--compose-total-limit` lines (default 500) — the root is gated by
       what it holds in aggregate, not by per-file budgets that fragment
       orchestration into new partials (ADR compose-root-form-separation)
@@ -219,7 +219,7 @@ def _scan(src: Path, file_limit: int, method_limit: int,
             rows.append(v)
     if compose_total > compose_total_limit:
         rows.append(
-            f"  F3 compose-root set {compose_total} lines > {compose_total_limit} "
+            f"  F3 assembly-surface root set {compose_total} lines > {compose_total_limit} "
             f"(Program.cs + DesktopAdapter*.cs; orchestration belongs in domain services, not new partials)")
     return rows
 
@@ -302,7 +302,7 @@ def _self_test() -> int:
         rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                      DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
         if any("F4" in r for r in rows):
-            print("  ok: F4 compose-root method violation flagged")
+            print("  ok: F4 assembly-surface method violation flagged")
         else:
             print(f"  ✗ F4 not flagged: {rows}")
             failed = 1
@@ -319,7 +319,7 @@ def _self_test() -> int:
         rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                      DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
         if any("F3" in r for r in rows) and not any("F1" in r and "App" in r for r in rows):
-            print("  ok: F3 compose-root set-total violation flagged")
+            print("  ok: F3 assembly-surface root set-total violation flagged")
         else:
             print(f"  ✗ F3 not flagged (or F1 misfired): {rows}")
             failed = 1

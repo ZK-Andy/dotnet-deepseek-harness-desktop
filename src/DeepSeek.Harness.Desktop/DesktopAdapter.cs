@@ -128,7 +128,7 @@ public sealed partial class DesktopAdapter
     /// <summary>启动回环代理源（ADR loopback-forward-proxy）：绑定失败 loud 后降级
     /// （窗口走 wwwroot，行为与 dsh 未起一致，不挡启动）。引导静态根随代理装配
     /// （未铸币时本地 holder/指南面；Ryn IPC 自窗口创建即活，不依赖 dsh 时序）。
-    /// 产出结果对象（组合根值流：消费段收参；绑定异常类型清单属协议/平台策略，在 Infrastructure）。</summary>
+    /// 产出结果对象（装配面值流：消费段收参；绑定异常类型清单属协议/平台策略，在 Infrastructure）。</summary>
     private static DshLoopbackProxy.ProxySetup StartProxy(DshShellForward shellForward) =>
         DshLoopbackProxy.TryCreate(shellForward, Path.Combine(AppContext.BaseDirectory, "wwwroot"), HostLog.Write);
 }

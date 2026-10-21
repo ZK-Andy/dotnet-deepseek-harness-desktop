@@ -1,7 +1,7 @@
 namespace DeepSeek.Harness.Desktop.Infrastructure.Platform;
 
 /// <summary>
-/// 桌面 profile 生命周期前置（原组合根/编排器 <c>EnsureDesktopProfile</c> 随细搬下沉，ADR
+/// 桌面 profile 生命周期前置（原装配面/编排器 <c>EnsureDesktopProfile</c> 随细搬下沉，ADR
 /// post-packaging-churn-restructure 余批）：migrate → 事务 recover → ensure → reconcile 四步用例编排，
 /// 与各步实现（<see cref="DesktopProfileBootstrap"/> / <see cref="PluginProfileTransaction"/>）同层共址。
 /// 必须在 spawn 前确保 profile 就绪；失败不阻断启动（dsh 起不来的后果由降级链路兜底）。

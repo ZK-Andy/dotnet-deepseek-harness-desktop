@@ -1,0 +1,65 @@
+{
+  "_readme": [
+    "C8 域文件在册清单（verify-compose-root.py 读取；'_' 前缀条目被忽略；判据见该脚本 docstring 的 C8 段）。",
+    "键 = 壳工程 src/DeepSeek.Harness.Desktop 下的一级域目录名，值 = 该目录下的 .cs 文件名；装配面文件可登可不登（归属由 ASSEMBLY_SURFACE_EXTRA 判定，死项校验跳过它）。"
+  ],
+  "Bootstrap": [
+    "AppRestartCommandRouter.cs",
+    "BootstrapCommandRouter.cs",
+    "BootstrapRegistration.cs",
+    "BootstrapStateFrame.cs",
+    "FirstBootUi.cs",
+    "RunServicesRegistration.cs",
+    "RuntimeResolutions.cs",
+    "ShellMintEpochAdapter.cs",
+    "StartupSequence.cs",
+    "StartupSequence.Supervision.cs",
+    "StartupStages.cs",
+    "StartupUseCaseRegistration.cs"
+  ],
+  "PageBridge": [
+    "AppJson.cs",
+    "AutostartCommandRouter.cs",
+    "CaptionBar.cs",
+    "CaptionBarInstaller.cs",
+    "CompanionLocaleCommandRouter.cs",
+    "CompanionReportCommandRouter.cs",
+    "DesktopBanner.cs",
+    "ExternalLinkCommandRouter.cs",
+    "IWindowScriptTarget.cs",
+    "MacNativeChrome.cs",
+    "PageBridgeRegistration.cs",
+    "PageHealthMonitor.cs",
+    "PagePump.cs",
+    "RynNavigationCallbacks.cs",
+    "RynProbeValue.cs",
+    "UiLocaleCommandRouter.cs",
+    "WebAuthProbe.cs",
+    "WebViewNavigator.cs",
+    "WindowScriptTarget.cs"
+  ],
+  "Recovery": [
+    "DesktopDiagnosticsCommandRouter.cs",
+    "RecoveryCommandRouter.cs",
+    "RecoveryDialogText.cs",
+    "RecoveryPageBuilder.cs",
+    "RecoveryRegistration.cs",
+    "RecoverySurface.cs",
+    "RynFailureDialog.cs"
+  ],
+  "Tray": [
+    "CloseGate.cs",
+    "CloseToTrayCommandRouter.cs",
+    "DesktopTrayCommandRouter.cs",
+    "TrayCheckFeedback.cs",
+    "TrayController.cs",
+    "TrayMenuActions.cs",
+    "TrayRecallMaximize.cs",
+    "TrayRegistration.cs"
+  ],
+  "Update": [
+    "DesktopUpdateCommandRouter.cs",
+    "UpdateBanner.cs",
+    "UpdateRegistration.cs"
+  ]
+}

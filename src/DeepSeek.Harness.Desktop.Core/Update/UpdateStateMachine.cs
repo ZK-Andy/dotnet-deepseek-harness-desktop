@@ -58,7 +58,7 @@ public sealed class UpdateStateMachine
     /// <param name="install">安装委托。</param>
     /// <param name="persistence">ready 持久化。</param>
     /// <param name="onTransition">每次状态变化的回调（UI 推送）；回调异常由状态机兜住并记日志。</param>
-    /// <param name="log">诊断日志出口（可选；组合根注入 host.log 同款行文）。缺省 null 时
+    /// <param name="log">诊断日志出口（可选；装配面注入 host.log 同款行文）。缺省 null 时
     /// Transition 兜住的回调异常静默吞掉不留痕——生产方必须注入，否则异常面不可排查。</param>
     public UpdateStateMachine(
         string currentVersion,

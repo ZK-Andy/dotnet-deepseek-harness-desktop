@@ -15,10 +15,10 @@
 * **可观测性**：壳侧诊断经 `HostLog` 双写 stdout 与 `<home>/logs/host.log`（超限滚动）；`RunMarker` 判定非受控退出；`desktop.diagnostics.export` 导出白名单诊断 zip（ADR `2026-08-24-shell-observability-diagnostics`）。
 * **托盘与 hide-to-tray**（ADR `2026-08-24-shell-tray-hide-to-tray`）：`Ryn.Plugins.Tray` + companion 事件中继；关窗默认隐藏，`CloseGate` 唯一放行通道。
 
-## 分层与组合根
+## 分层与装配面
 
-* 三工程：`Core`（纯逻辑，零外层引用）/ `Infrastructure`（Ryn、dsh 进程、文件/网络、更新适配器）/ 壳工程（Presentation + 组合根）。
-* **组合根只装配**（ADR `2026-09-28-compose-root-form-separation` + `2026-10-08-composition-mechanism-container-assembly`；规范见 [architecture-standards](architecture-standards.md) R1，语义闸 `verify-compose-root.py`）：`Program.cs` 薄壳 + `DesktopAdapter.cs` 只保留容器前的启动头部 + 根集内唯一 dot 分部 `DesktopAdapter.App.cs` 按域注册；接线层另计（`Bootstrap/StartupSequence*`）同样只装配。启动编排由容器组装对象图：`Bootstrap.StartupSequence` 是**排序器**——构造参数经容器解图、入口按序触发用例（起步/导航/监督/顶栏/告知/退出编排），唯一显式供给项是 Build 后产出；入口桥一处（ADR `entry-bridge-two-phase`），阶段产出为正式类型（`Preflight` 等），排序器形状由 C6 断言。
+* 三工程：`Core`（纯逻辑，零外层引用）/ `Infrastructure`（Ryn、dsh 进程、文件/网络、更新适配器）/ 壳工程（Presentation + 装配面）。
+* **装配面只装配**（ADR `2026-09-28-compose-root-form-separation` + `2026-10-08-composition-mechanism-container-assembly`；规范见 [architecture-standards](architecture-standards.md) R1，语义闸 `verify-compose-root.py`）：`Program.cs` 薄壳 + `DesktopAdapter.cs` 只保留容器前的启动头部 + 根集内唯一 dot 分部 `DesktopAdapter.App.cs` 按域注册；接线层另计（`Bootstrap/StartupSequence*`）同样只装配。启动编排由容器组装对象图：`Bootstrap.StartupSequence` 是**排序器**——构造参数经容器解图、入口按序触发用例（起步/导航/监督/顶栏/告知/退出编排），唯一显式供给项是 Build 后产出；入口桥一处（ADR `entry-bridge-two-phase`），阶段产出为正式类型（`Preflight` 等），排序器形状由 C6 断言。
 * **端口在 Core，实现按触面落 Infrastructure 或壳工程**：`IRuntimeHost`（监督，ADR `2026-09-28-runtime-supervisor-core-port`）、`IReleaseFeed`/`IPackageDownloader`/`IPackageInstaller`/`IUpdateEnvironment`（自更新，ADR `2026-09-28-update-coordinator-core-port`）、`IFirstBootBootstrap` 落 Infrastructure；触 Ryn/UI 的 `IWebViewNavigator`/`IRecoverySurface`/`IMintEpoch`（导航/失败面/铸币态，ADR `2026-10-15-startup-usecases-sink-to-core`）适配器落 Presentation（理由见 [architecture-standards](architecture-standards.md) R3）；各用例一律构造注入（端口 + 委托注入）。
 
 * **跨包契约**：命令 ID 单一事实源 `Core/Ipc/HostCommandIds`（门禁 `verify-host-command-ids.py`：壳侧不复写、插件侧不自造）；Core 不做文件/环境 IO（IO 经端口，适配器落 Infrastructure，门禁 `verify-core-purity.py` 机器化）；宿主平台面端口 `IAutostart`/`ISystemBrowser` 落 Infrastructure。

@@ -22,7 +22,7 @@ internal readonly record struct HostSetup(HarnessRuntimeHost Host, RunMarkerResu
 /// <param name="Updates">自更新协调器（Machine 已按 dev 门禁装载定稿；Application 用例住 Core，ADR update-coordinator-core-port）。</param>
 internal readonly record struct UpdateSetup(UpdateCoordinator Updates);
 
-/// <summary>应用装配产出（组合根 <c>Build()</c> 的产物；编排后续阶段的窗口/Ryn 服务来源）。</summary>
+/// <summary>应用装配产出（装配面 <c>Build()</c> 的产物；编排后续阶段的窗口/Ryn 服务来源）。</summary>
 /// <param name="App">Ryn 应用实例（主循环宿主）。</param>
 /// <param name="WindowAccessor">当前窗口访问器（容器解析；原生建窗前 <c>Current</c> 即抛）。</param>
 internal readonly record struct AppSetup(RynApplication App, CurrentWindowAccessor WindowAccessor);

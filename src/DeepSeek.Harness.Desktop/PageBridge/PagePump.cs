@@ -4,8 +4,8 @@ using Ryn.Core;
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
-/// 页面注入辅助（ADR 组合根只装配）：把 JS 注入类操作（横幅/引导进度/自更新状态）
-/// 从组合根抽出为单点。窗口面经 <see cref="IWindowScriptTarget"/> 端口（Ryn 适配器另居一处，
+/// 页面注入辅助（ADR 装配面只装配）：把 JS 注入类操作（横幅/引导进度/自更新状态）
+/// 从装配面抽出为单点。窗口面经 <see cref="IWindowScriptTarget"/> 端口（Ryn 适配器另居一处，
 /// ADR architecture/2026-10-21-window-script-target-port），webview 注册面收
 /// 就绪前会抛的 <see cref="IRynWebView"/> 惰性解析；未就绪的重试/丢弃语义在本类方法内。
 /// 重试预算来自构造注入的配置（ADR 组合根寿命与配置单一来源 D4：预算由构造注入，不自行解析 appsettings）。

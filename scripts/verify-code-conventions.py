@@ -42,7 +42,7 @@ D004_WHITELIST = {"HostLog.cs", "Program.cs", "DiagnosticsCli.cs"}
 
 # B4 白名单退役（ADR official-clean-architecture-adoption）：物理分层后 D005 的豁免
 # 按工程推导——Infrastructure 整工程豁免（边界层本体，适配器定义上直触外部世界）；
-# 主工程（Presentation/组合根）与 Core 零白名单。Core 仅保留 B1 既定的两个只读
+# 主工程（Presentation/装配面）与 Core 零白名单。Core 仅保留 B1 既定的两个只读
 # profile/package 边界文件（ADR official-clean-architecture-adoption B1 批内台账）。
 D005_PROJECT_EXEMPT = "DeepSeek.Harness.Desktop.Infrastructure"
 D005_CORE_WHITELIST = {
@@ -61,7 +61,7 @@ D005_RE = re.compile(
 
 def _file_is_allowed_d005(project: str, rel: Path) -> bool:
     """B4 退役形态：豁免按工程推导——Infrastructure 整工程豁免（边界层本体）；
-    Core 仅两个只读边界文件；主工程（Presentation/组合根）零豁免。"""
+    Core 仅两个只读边界文件；主工程（Presentation/装配面）零豁免。"""
     if project == D005_PROJECT_EXEMPT or project.endswith("." + D005_PROJECT_EXEMPT):
         return True
     if project == "DeepSeek.Harness.Desktop.Core" or project.endswith(".DeepSeek.Harness.Desktop.Core"):
@@ -151,7 +151,7 @@ def _self_test() -> int:
 
         # ignore marker on the same line suppresses that line's D005.
         (root / "Ignored.cs").write_text(
-            "public class I { bool Has(string p) => File.Exists(p); } // verify-code-conventions: ignore 组合根装配：配置面\n",
+            "public class I { bool Has(string p) => File.Exists(p); } // verify-code-conventions: ignore 装配面：配置面\n",
             encoding="utf-8")
         inf = _scan(root)
         if not any("Ignored.cs" in r for r in inf):

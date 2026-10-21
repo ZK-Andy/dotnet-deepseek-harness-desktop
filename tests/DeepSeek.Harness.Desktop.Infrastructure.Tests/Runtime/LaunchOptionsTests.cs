@@ -1,13 +1,13 @@
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
 /// <summary>A 类启动配置解析契约：DevTools 开关随 <see cref="LaunchOptions.Resolve"/> 单点读 env——
-/// 默认关、<c>=1</c> 开、其余值关，与 dev 判定相互独立；原组合根散读下沉后的行为钉
+/// 默认关、<c>=1</c> 开、其余值关，与 dev 判定相互独立；原装配面散读下沉后的行为钉
 /// （ADR post-restructure-ledger-batch）。</summary>
 [Collection("dsh-home-env")]
 public class LaunchOptionsTests
 {
     /// <summary>DevTools 只认 <see cref="LaunchOptions.DevToolsEnv"/>=1，任何其他值（含 null）关闭；
-    /// env 读取归 Resolve 单点，组合根不再散读。</summary>
+    /// env 读取归 Resolve 单点，装配面不再散读。</summary>
     [Theory]
     [InlineData(null, false)]
     [InlineData("0", false)]

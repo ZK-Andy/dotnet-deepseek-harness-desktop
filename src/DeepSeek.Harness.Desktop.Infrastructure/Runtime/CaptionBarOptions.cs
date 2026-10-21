@@ -13,7 +13,7 @@ public sealed record CaptionBarOptions
     /// <summary>顶部 chrome（红绿灯让位带）高度（CSS 像素）。默认 52 = 官方 macOS 侧栏顶条。</summary>
     public int HeightPx { get; init; } = 52;
 
-    /// <summary>全默认实例：组合根字段初始化的引用目标（目标类型 <c>new()</c> 会被组合根配额计数，
+    /// <summary>全默认实例：装配面字段初始化的引用目标（目标类型 <c>new()</c> 会被装配面配额计数，
     /// C3 的 new 只留给真正的装配必要面）。</summary>
     public static CaptionBarOptions Default { get; } = new();
 

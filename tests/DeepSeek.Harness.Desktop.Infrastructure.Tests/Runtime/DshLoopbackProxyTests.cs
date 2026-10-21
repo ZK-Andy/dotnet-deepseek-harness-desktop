@@ -1053,9 +1053,9 @@ public class DshLoopbackProxyTests
         }
     }
 
-    /// <summary>TryCreate 结果对象（组合根值流产出，ADR compose-root-form-separation）：绑定成功产出
-    /// 非空代理（http 回环 URL）与 CTS；Dispose 先 cancel 受理循环再放代理（顺序与组合根尾部一致）。
-    /// 绑定失败路径（Proxy null → 降级 wwwroot）无法稳定注入端口级故障，属组合根消费方语义。
+    /// <summary>TryCreate 结果对象（装配面值流产出，ADR compose-root-form-separation）：绑定成功产出
+    /// 非空代理（http 回环 URL）与 CTS；Dispose 先 cancel 受理循环再放代理（顺序与装配面尾部一致）。
+    /// 绑定失败路径（Proxy null → 降级 wwwroot）无法稳定注入端口级故障，属装配面消费方语义。
     /// 端口记忆缝注入密闭（缺省静态对会触真实 DSH_HOME）。</summary>
     [Fact]
     public void TryCreate_BindsAndDisposeCancelsToken()

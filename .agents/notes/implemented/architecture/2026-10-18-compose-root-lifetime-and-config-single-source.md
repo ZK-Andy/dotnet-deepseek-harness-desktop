@@ -25,7 +25,7 @@ Review: FULL/2026-10-18/R1=ok R2=ok R3=ok
 - **D3 创建序归位**：删根的 eager `GetRequiredService<HostSetup>()`，首解回到 `StartupSequence.RunStartupAsync` 的 `Host.Value`（`EnsureReady()` 之后）；脏退日志移入 `StartupNoticeService` 构造（与横幅同一 marker 消费点）。
 - **D4 配置单一来源**：`CreateSharedState` 是唯一 `Load`。六处静态站点改为按值接收（`LauncherActivation.TryBindPrimary` 收两个 `TimeSpan`、`RuntimeVersionGate.ProbeAsync` 收 probe 时限、`HarnessRuntimeHost` ctor 收记录、`RuntimeLineageProbes` 两个探针收默认超时、`PluginProcessRunner.RunProbeAsync` 收 probe 时限、`FirstBootBootstrapService` ctor 收记录）；`PagePump` 由静态类改为实例（ctor 收记录），装配期造一份、四处共用。传参口径：单值站点传 `TimeSpan`，多值站点传记录。
 - **D5 删 `IStartupSequence`**：零消费者（仅定义 + 一处 `implements`，解析走具体类型的 DI 工厂）。两篇引用它的 implemented ADR 同批补 Erratum。
-- **D6 门禁两层级**（`verify-compose-root.py`）：`ROOT_SET`（`Program.cs` + `DesktopAdapter*.cs`）担 F3/F4/C3/C4/C5；`ASSEMBLY_SURFACE`（根集 + `PreBuildRegistration.cs`/`ShellResources.cs`/`RynOptionsProfile.cs`）担 C1/C2，C7 覆盖 `PreBuildRegistration*.cs`，新增 **C8**：`Bootstrap/` 下未声明为域或装配面的新文件即违约。C2 清单改为**逐文件绑定**（同名单词不再跨文件豁免）。
+- **D6 门禁两层级**（`verify-compose-root.py`）：`ROOT_SET`（`Program.cs` + `DesktopAdapter*.cs`）担 F3/F4/C3/C4/C5；`ASSEMBLY_SURFACE`（根集 + `PreBuildRegistration.cs`/`ShellResources.cs`/`RynOptionsProfile.cs`）担 C1/C2，C7 覆盖 `PreBuildRegistration*.cs`，新增 **C8**：每个域目录下的 `.cs` 须在 `scripts/domain-files.manifest.json` 登记或属装配面，且清单里的死项同判（[domain-file-inventory-gate](../process/2026-10-22-domain-file-inventory-gate.md)）。C2 清单改为**逐文件绑定**（同名单词不再跨文件豁免）。
 - **D7 `RynOptionsProfile`（主工程根）**：`Apply(opts, preflight, proxy, captionBar, iconPath)` 承载全部 Ryn 装配选项（无状态、不构造自有类型），`BuildApp` 只留 icon 探测 + builder 三段。
 
 ## Alternatives considered

@@ -3,7 +3,7 @@
   <PropertyGroup>
     <!-- Infrastructure 的硬约束：只准引用 Core（R2 依赖方向，编译器强制 + ArchitectureTests
          项目引用断言）——主工程（Presentation）单向引用本工程，反向引用即成环编译失败。
-         端口（接口）在 Core、适配器实现在本工程，组合根注入（R3）。 -->
+         端口（接口）在 Core、适配器实现在本工程，装配面注入（R3）。 -->
     <NoWarn>$(NoWarn);EnableGenerateDocumentationFile</NoWarn>
   </PropertyGroup>
 

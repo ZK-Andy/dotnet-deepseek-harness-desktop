@@ -125,7 +125,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ## 目录
 
 ```
-├── src/DeepSeek.Harness.Desktop/              # Ryn 壳（Presentation）：组合根 + UI 桥
+├── src/DeepSeek.Harness.Desktop/              # Ryn 壳（Presentation）：装配面 + UI 桥
 ├── src/DeepSeek.Harness.Desktop.Core/         # 纯逻辑（零外层引用）
 ├── src/DeepSeek.Harness.Desktop.Infrastructure/  # 适配器（Ryn/native、dsh 进程、文件/网络、更新）
 ├── tests/                                     # xunit：壳 / Core / Infrastructure / 分析器契约

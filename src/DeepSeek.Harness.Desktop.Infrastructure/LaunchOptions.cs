@@ -1,7 +1,7 @@
 namespace DeepSeek.Harness.Desktop.Infrastructure;
 
 /// <summary>
-/// 启动期 A 类配置（ADR composition-root-value-flow-pipeline 批次 3）：dev 判定与自动隔离结论由组合根
+/// 启动期 A 类配置（ADR composition-root-value-flow-pipeline 批次 3）：dev 判定与自动隔离结论由装配面
 /// 裸 bool 升为类型化配置值，<see cref="Resolve"/> 单点解析一次，消费方经构造注入所需不可变值。
 /// 这是「配置解析一次 + 依赖注入」，与被否决的「阶段间传 <c>BootstrapContext</c>」不同构——后者把
 /// 可变阶段产出打包在阶段间流动，本类型是环境派生的不可变配置（边界见主 ADR Alternatives）。
@@ -26,11 +26,11 @@ public sealed record LaunchOptions
     public string ApplicationIdFor(string baseId) => DevEnvironment.ApplicationIdFor(baseId, IsDev);
 
     /// <summary>
-    /// 单点解析启动配置：读 dev 环境标记与 WebView 调试器开关（组合根上 dev 域 env 散读清零后的
+    /// 单点解析启动配置：读 dev 环境标记与 WebView 调试器开关（装配面上 dev 域 env 散读清零后的
     /// 唯一读点；Infrastructure 内 home 覆盖、强制自更新等其余 dev 域 env 由各自消费点直读），
     /// 并在 dev 且
     /// 未显式覆盖 DSH_HOME 时把 home 指向仓库内
-    /// <c>.cache/dev-home</c>（环境读写归 Infrastructure 边界；原组合根 <c>ResolveRuntimeAndDev</c> 的等价逻辑）。
+    /// <c>.cache/dev-home</c>（环境读写归 Infrastructure 边界；原装配面 <c>ResolveRuntimeAndDev</c> 的等价逻辑）。
     /// </summary>
     /// <param name="log">日志回调（隔离生效与误判诊断各一条）。</param>
     /// <returns>解析一次的不可变配置值。</returns>

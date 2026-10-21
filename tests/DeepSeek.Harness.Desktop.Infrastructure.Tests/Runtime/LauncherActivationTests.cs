@@ -7,7 +7,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 public class LauncherActivationTests
 {
     /// <summary>锁地址解析（平台策略单源）：Windows 恒 null（不启用仲裁）；Unix 上 XDG_RUNTIME_DIR
-    /// 在场即用之（不掺 uid 后缀），应用名固定、dev 后缀分域——原组合根内联拼装随细搬下沉后的行为钉。</summary>
+    /// 在场即用之（不掺 uid 后缀），应用名固定、dev 后缀分域——原装配面内联拼装随细搬下沉后的行为钉。</summary>
     [Fact]
     public void ResolveInstanceSocketPath_PlatformPolicy()
     {

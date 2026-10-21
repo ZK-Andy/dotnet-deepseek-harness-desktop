@@ -1,9 +1,9 @@
 namespace DeepSeek.Harness.Desktop.Core.Bootstrap;
 
 /// <summary>
-/// 首启引导端口（R3：接口在 Core、实现进 Infrastructure、组合根注入）：dsh 进程交互面
+/// 首启引导端口（R3：接口在 Core、实现进 Infrastructure、装配面注入）：dsh 进程交互面
 /// （全局 node/dsh 引导、插件装配、CLI shim、宿主启动）与引导落定握手句柄；壳侧导航收尾
-/// （WebKitGTK 两跳/IPC origin 授权）留组合根，经 <see cref="Start"/> 的就绪回调接回。
+/// （WebKitGTK 两跳/IPC origin 授权）留装配面，经 <see cref="Start"/> 的就绪回调接回。
 /// </summary>
 public interface IFirstBootBootstrap
 {
@@ -22,7 +22,7 @@ public interface IFirstBootBootstrap
 
     /// <summary>启动后台引导任务（仅 <see cref="IsNeeded"/> 时启动且只启动一次）；
     /// dsh 就位后回调 <paramref name="onRuntimeReady"/>（壳侧导航收尾）。</summary>
-    /// <param name="onRuntimeReady">dsh 就位端点回调（组合根两跳导航/IPC 授权）。</param>
+    /// <param name="onRuntimeReady">dsh 就位端点回调（装配面两跳导航/IPC 授权）。</param>
     void Start(Func<DshWebUrl, CancellationToken, Task> onRuntimeReady);
 
     /// <summary>取消引导任务（应用退出）；未启动时 no-op。</summary>

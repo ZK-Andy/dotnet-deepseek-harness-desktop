@@ -7,7 +7,7 @@ namespace DeepSeek.Harness.Desktop.Tests;
 /// 架构测试（B4 升级形态，ADR official-clean-architecture-adoption）：A2/A4/A5 命名空间前缀门
 /// 退役，升级为**项目引用断言**——依赖方向（R2）由编译器在 csproj 层强制，本测试断言引用图
 /// 形状（csproj 声明 + 编译产物程序集引用两级互证）：Core 零程序集项目引用、Infrastructure 只引 Core、
-/// 主工程（Presentation/组合根）引 Core + Infrastructure，测试工程按层镜像。D003 由自研分析器
+/// 主工程（Presentation/装配面）引 Core + Infrastructure，测试工程按层镜像。D003 由自研分析器
 /// DSH0001 机器化（Analyzer 引用非程序集引用，本文件取数时过滤，见 ProjectReferences）。
 /// </summary>
 public class ArchitectureTests
@@ -48,7 +48,7 @@ public class ArchitectureTests
         Assert.Equal(expected, refs);
     }
 
-    /// <summary>csproj 断言：主工程（Presentation/组合根）项目引用恰为 Core + Infrastructure。</summary>
+    /// <summary>csproj 断言：主工程（Presentation/装配面）项目引用恰为 Core + Infrastructure。</summary>
     [Fact]
     public void PresentationReferences_CoreAndInfrastructure()
     {

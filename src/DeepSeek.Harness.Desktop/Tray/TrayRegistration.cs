@@ -4,12 +4,12 @@ using Ryn.Plugins.Tray;
 
 namespace DeepSeek.Harness.Desktop.Tray;
 
-/// <summary>托盘域注册（组合根注册下沉为按域 AddXxx，ADR compose-root-form-separation）：
+/// <summary>托盘域注册（装配面注册下沉为按域 AddXxx，ADR compose-root-form-separation）：
 /// Ryn 托盘服务 + 托盘事件路由 + 关窗偏好路由。</summary>
 internal static class TrayRegistration
 {
     /// <summary>托盘服务注册（ADR shell-tray-hide-to-tray）：图标+菜单 + 事件路由（窗口动作经委托接 deferred 代理）。
-    /// 托盘控制器由组合根装配并注册为单例（<see cref="TrayController"/>），退出管道在调用期经容器解析
+    /// 托盘控制器在装配期构造并注册为单例（<see cref="TrayController"/>），退出管道在调用期经容器解析
     /// （注册期尚未接线；托盘交互必晚于编排接线，与原接线注释同理）。</summary>
     public static IServiceCollection AddTrayServices(this IServiceCollection services, UpdateSetup update, TrayController tray, UiLocale uiLocale)
     {

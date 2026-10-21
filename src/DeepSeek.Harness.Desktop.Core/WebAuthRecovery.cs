@@ -4,7 +4,7 @@ namespace DeepSeek.Harness.Desktop.Core;
 /// dsh 网页终页裁决（ADR webauth-token-reentry + page-verdict-gate + shell-mint-and-forward）：
 /// 把探针采样判成 <c>healthy</c>／<c>auth</c>／<c>unknown</c> 三态——壳侧自愈据此决定是否重铸重载，
 /// 冒烟门禁据此决定 CI 绿红（绿 = 同源且非鉴权页，不是"到达过"）。
-/// 纯函数可单测：编排在组合根，判定只此一处。
+/// 纯函数可单测：编排在装配面，判定只此一处。
 /// </summary>
 public static class WebAuthRecovery
 {

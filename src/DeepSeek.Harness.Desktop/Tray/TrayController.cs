@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Tray;
 
 /// <summary>
 /// 壳层托盘控制器（ADR composition-root-value-flow-pipeline 批次 1）：托盘可用/就绪、图标、
-/// hide-to-tray 拦截与唤回最大化采样从组合根下沉为构造注入的真类型服务。窗口与依赖以
+/// hide-to-tray 拦截与唤回最大化采样从装配面下沉为构造注入的真类型服务。窗口与依赖以
 /// 惰性委托注入——控制器在单实例仲裁前构造，窗口/Ryn 服务在 <c>BuildApp</c> 后才就绪。
 /// </summary>
 public sealed class TrayController

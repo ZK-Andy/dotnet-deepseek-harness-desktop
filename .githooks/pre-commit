@@ -46,7 +46,7 @@ python3 scripts/verify-code-health.py --enforce
 echo "-> verify-code-conventions.py"
 python3 scripts/verify-code-conventions.py --enforce
 
-# 9a) 组合根语义闸（R1：根只装配——方法清单封闭 + new 自有类型 ≤16 + 单 dot 分部）
+# 9a) 装配面语义闸（R1：根集只装配——方法清单封闭 + new 自有类型 ≤16 + 单 dot 分部）
 echo "-> verify-compose-root.py"
 python3 scripts/verify-compose-root.py --enforce
 
@@ -58,7 +58,7 @@ python3 scripts/verify-registration-discipline.py --enforce
 # 9a3) 增量纪律闸（耦合左移②：暂存集 gross/既有文件净增/跨层扇出/新包引用四帽，
 #      超帽即拦；不可判定 diff（fail-loud）亦拦——见 ADR coupling-increment-enforce）
 echo "-> verify-increment-discipline.py --staged --enforce"
-python3 scripts/verify-increment-discipline.py --staged --enforce --exempt .agents/notes/implemented/process/2026-10-21-audit-batch3-increment-exemption.md
+python3 scripts/verify-increment-discipline.py --staged --enforce --exempt .agents/notes/implemented/process/2026-10-22-three-deferred-items-increment-exemption.md
 
 # 9a4) 命令 ID 单一事实源闸（IPC 强类型：壳侧不得复写已知命令 ID 字面量，
 #      插件侧不得自造命令，常量不得无人引用——ADR host-command-ids）
@@ -75,7 +75,7 @@ python3 scripts/verify-core-purity.py --enforce
 echo "-> verify-shell-standards.sh"
 bash scripts/verify-shell-standards.sh
 
-# 10) 评审档位硬闸（ADR review-tier-escape-proofing）：FULL 档变更（组合根/门禁判据/
+# 10) 评审档位硬闸（ADR review-tier-escape-proofing）：FULL 档变更（装配面/门禁判据/
 #     承诺三重审核的 ADR/行为契约面）必须随变更携带 Review 证据，否则拦下——
 #     档位判定机械化，执行者不得以「轻审」跳过（防逃逸机械限制）。
 echo "-> verify-review-tier.py --staged"

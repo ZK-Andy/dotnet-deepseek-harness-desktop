@@ -1,6 +1,7 @@
 # Agent Note: 壳级命令路由按域归位
 
 Status: implemented
+Erratum: 2026-10-22 — 正文引用的 `BOOTSTRAP_DOMAIN_FILES` 常量已随 C8 泛化移除：域文件清单迁至 `scripts/domain-files.manifest.json`，判据覆盖全部域目录并双向校验（[domain-file-inventory-gate](../process/2026-10-22-domain-file-inventory-gate.md)）。壳根的 `ShellCommandRegistration` 类亦已随注册点按域下沉删除，五个扩展现分居 `PageBridge/PageBridgeRegistration.cs` 与 `Bootstrap/BootstrapRegistration.cs`（[per-domain-registration-files](2026-10-22-per-domain-registration-files.md)）。当批「迁入即在册」的事实不变。
 Review: FULL/2026-10-21/R1=ok R2=ok R3=ok
 
 ## Problem

@@ -11,7 +11,7 @@ internal sealed partial class StartupSequence
 {
     private Task SetupSupervisorAsync(HostSetup host)
     {
-        // 取消令牌源经构造注入（容器单例，寿命 = 本次 Run；释放随组合根作用域）。
+        // 取消令牌源经构造注入（容器单例，寿命 = 本次 Run；释放随装配面作用域）。
         // 引导落定门控、监督循环、失败面承载与恢复回调全在 Core 用例（ADR 组合根机制收官 step-1 的 B2）；
         // 宿主经阶段产出收参，其余依赖容器供给。返回任务以局部流转，供退出路径 join
         // （ADR sequencer-stage-value-retirement）。
@@ -32,7 +32,7 @@ internal sealed partial class StartupSequence
         _ = monitor.RunAsync(TimeSpan.FromSeconds(_timeouts.HealthInitialDelaySeconds), _supervisorCts.Token);
     }
 
-    /// <summary>无边框窗口 chrome 注入触发（用例与脚本构建下沉 <see cref="CaptionBarInstaller"/>，ADR 组合根机制
+    /// <summary>无边框窗口 chrome 注入触发（用例与脚本构建下沉 <see cref="CaptionBarInstaller"/>，ADR 装配面机制
     /// 收官终局的 B3；注入时机与三路语义见该类）：解析用例即装。</summary>
     private void InstallCaptionBar()
     {

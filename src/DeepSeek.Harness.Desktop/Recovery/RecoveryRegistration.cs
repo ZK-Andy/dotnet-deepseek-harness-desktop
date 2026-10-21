@@ -4,7 +4,7 @@ using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Recovery;
 
-/// <summary>诊断/恢复域命令路由注册（组合根注册下沉为按域 AddXxx，ADR compose-root-form-separation）。</summary>
+/// <summary>诊断/恢复域命令路由注册（装配面注册下沉为按域 AddXxx，ADR compose-root-form-separation）。</summary>
 internal static class RecoveryRegistration
 {
     /// <summary>诊断包导出（desktop.diagnostics.export；ryn.json 的 desktop 能力面已放行）。

@@ -2,7 +2,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Bootstrap;
 
 /// <summary>
 /// 首启引导服务（R3 端口实现，ADR composition-root-value-flow-pipeline 批次 1）：全局 node/dsh 引导、
-/// 随包插件装配、CLI shim、宿主启动的 dsh 进程交互面从组合根下沉为真类型服务；引导落定
+/// 随包插件装配、CLI shim、宿主启动的 dsh 进程交互面从装配面下沉为真类型服务；引导落定
 /// TCS 私有化，对外只暴露类型化等待句柄；壳侧导航收尾经 <see cref="Start"/> 回调接回。
 /// </summary>
 public sealed class FirstBootBootstrapService : IFirstBootBootstrap
@@ -20,7 +20,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     /// <summary>创建首启引导服务。</summary>
     /// <param name="host">运行时宿主提供者（宿主在引导服务之后构造，故为惰性委托）。</param>
     /// <param name="ui">引导页反馈端口（实现侧注入）。</param>
-    /// <param name="isEnglish">失败文案是否取英文分支（惰性委托：宿主 UI 语言单点在组合根稍后构造，
+    /// <param name="isEnglish">失败文案是否取英文分支（惰性委托：宿主 UI 语言单点在装配面稍后构造，
     /// 引导任务启动时已就绪——与 <paramref name="host"/> 同一延迟捕获理由）。</param>
     /// <param name="log">日志回调。</param>
     /// <param name="timeouts">运行时超时/重试配置（装配期唯一创建点传入，服务不再自行解析 appsettings）。</param>
@@ -89,7 +89,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     public void Start(Func<DshWebUrl, CancellationToken, Task> onRuntimeReady)
     {
         // 首启引导（ADR online-first-unbundled-runtime）：窗口先亮（wwwroot 引导页），后台任务完成
-        // 检测/下载/安装/验证状态机，成功后起 dsh 并把就位 URL 交回调接回组合根导航；失败推错误态等待
+        // 检测/下载/安装/验证状态机，成功后起 dsh 并把就位 URL 交回调接回装配面导航；失败推错误态等待
         // 用户重试（desktop.bootstrap.retry 经闸门放行）。引导未落定前监督器/插件安装均被门控。
         if (!_needed || _settled is not null)
         {

@@ -1,6 +1,7 @@
 # Agent Note: 组合根形态分离——注册下沉与编排搬出根
 
 Status: implemented
+Erratum: 2026-10-22 — 正文按类名引用的 `ShellCommandRegistration` 已随注册点按域下沉删除（[per-domain-registration-files](2026-10-22-per-domain-registration-files.md)）；其五个扩展现分居 `PageBridge/PageBridgeRegistration.cs` 与 `Bootstrap/BootstrapRegistration.cs`。
 
 Review: FULL/2026-09-28#7/R1=ok R2=ok R3=ok
 

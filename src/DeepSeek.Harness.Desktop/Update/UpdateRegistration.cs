@@ -3,7 +3,7 @@ using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Update;
 
-/// <summary>自更新域命令路由注册（组合根注册下沉为按域 AddXxx，ADR compose-root-form-separation）。</summary>
+/// <summary>自更新域命令路由注册（装配面注册下沉为按域 AddXxx，ADR compose-root-form-separation）。</summary>
 internal static class UpdateRegistration
 {
     /// <summary>自更新命令：desktop.update.getState / check / install（dev 门禁下不注册路由，invoke 自然失败）。

@@ -79,7 +79,7 @@ dotnet_diagnostic.CA1507.severity = warning
 
 # ======== 异步方法命名 Async 尾缀（D001 的机器化，评审兜底清单转 build 门禁） ========
 # Microsoft.VisualStudio.Threading.Analyzers（VSTHRD 系列）：误报面大的并发误用规则逐条
-# none（002/003 同步等待与上下文、103/110 未观察 awaitable——壳的组合根/监督同步等待场景
+# none（002/003 同步等待与上下文、103/110 未观察 awaitable——壳的装配面/监督同步等待场景
 # 属既有设计）；只保留命名规则 VSTHRD200 为 warning（新代码起强制）。
 dotnet_diagnostic.VSTHRD002.severity = none
 dotnet_diagnostic.VSTHRD003.severity = none

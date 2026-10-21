@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop;
 /// <summary>
 /// Ryn 应用装配选项（ADR 组合根寿命与配置单一来源 D7）：Ryn 适配面里唯一持续增长的一块——窗口行为、
 /// 代理源白名单、图标、调试器开关都属声明式配置。住在接线层之外（同属装配面，C2 方法清单覆盖），
-/// 让新增选项占自己的方法预算，而非组合根的。
+/// 让新增选项占自己的方法预算，而非装配面的。
 /// </summary>
 internal static class RynOptionsProfile
 {
@@ -51,13 +51,13 @@ internal static class RynOptionsProfile
         // Linux 帧传递路径不在此赋值：Ryn 的 Build 从 appsettings 的 Ryn:LinuxRenderingMode 绑定，回调再写一遍会压掉那个框架键
         // A 类启动配置经类型化值消费（批次 3）：dev 后缀规则封装进 LaunchOptions。
         opts.ApplicationId = preflight.Launch.ApplicationIdFor("io.github.ZK-Andy.dotnet-deepseek-harness-desktop");
-        if (File.Exists(iconPath)) // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
+        if (File.Exists(iconPath)) // verify-code-conventions: ignore 装配面：icon 探测是配置面
         {
             opts.IconPath = iconPath;
         }
         // 缺失不告警分支：icon 缺失由下方 Ryn opts 摘要行的 Icon=missing 留痕（托盘侧 IsReady 同样降级）
 
-        HostLog.Write($"[host] Ryn opts: Url={(proxy?.Url?.ToString() ?? "null")} ApplicationId={opts.ApplicationId} LinuxRendering={opts.LinuxRenderingMode} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 组合根装配：icon 探测是配置面
+        HostLog.Write($"[host] Ryn opts: Url={(proxy?.Url?.ToString() ?? "null")} ApplicationId={opts.ApplicationId} LinuxRendering={opts.LinuxRenderingMode} Icon={(File.Exists(iconPath) ? iconPath : "missing")}"); // verify-code-conventions: ignore 装配面：icon 探测是配置面
         // WebView 调试器默认关闭；开发期设 DSH_DEVTOOLS=1 开启（与 dev 判定无关，
         // 打包产品形态下同样生效）——判定随 A 类启动配置在 LaunchOptions.Resolve 单点解析
         // （ADR post-restructure-ledger-batch）。

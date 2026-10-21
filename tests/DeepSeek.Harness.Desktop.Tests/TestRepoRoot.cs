@@ -1,6 +1,6 @@
 namespace DeepSeek.Harness.Desktop.Tests;
 
-/// <summary>测试期仓库根定位（以解决方案文件为锚）：组合根源序测试与架构测试共用的单点，
+/// <summary>测试期仓库根定位（以解决方案文件为锚）：装配面启动序测试与架构测试共用的单点，
 /// 避免同一段目录上溯逻辑在多处逐字重复。</summary>
 internal static class TestRepoRoot
 {

@@ -41,7 +41,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-host-command-ids.py` | 命令 ID 单一事实源（壳侧不复写已知 ID 字面量 + 插件侧不自造命令 + 常量不悬空；`--enforce` 才 fail） | `python3 scripts/verify-host-command-ids.py`（`--self-test` 夹具） |
 | `verify-core-purity.py` | Core 纯度闸（Core 源文件不得直接做文件/环境 IO：IO 经 Core 端口、适配器落 Infrastructure；扫描用 `gate_common` 的 `CSharpLineScanner`，注释与字符串内的同形词不判红） | `python3 scripts/verify-core-purity.py`（`--self-test` 夹具） |
 | `install-linters.sh` + `actionlint` | 脚本层静态检查工具（shellcheck + actionlint，版本与 sha256 双钉）与工作流静态检查（对 `run:` 块跑 `shellcheck -S warning`） | `bash scripts/install-linters.sh` → `actionlint -shellcheck="shellcheck -S warning"` |
-| `verify-compose-root.py` | 组合根语义闸（根只装配：方法清单封闭 / new 自有类型 ≤6 / 单 dot 分部 / 禁同步编排）+ 排序器形状（C6；`--enforce` 才 fail） | `python3 scripts/verify-compose-root.py` |
+| `verify-compose-root.py` | 装配面语义闸（根只装配：方法清单封闭 / new 自有类型 ≤6 / 单 dot 分部 / 禁同步编排）+ 排序器形状（C6；`--enforce` 才 fail） | `python3 scripts/verify-compose-root.py` |
 | `verify-review-brief.py` | 评审简报形状 + 评审对象冻结 + 轮次纪律（轮次上限、标题↔文件名互校、处置段与条目、验轮 `base` 须为上一轮冻结 tree 且增量非空）（`--enforce`；简报是 gitignore 本地文档） | `python3 scripts/verify-review-brief.py --enforce` |
 | `change-scope.sh` | `push` 前最小证据（`merge-base` diff） | `scripts/change-scope.sh` |
 
