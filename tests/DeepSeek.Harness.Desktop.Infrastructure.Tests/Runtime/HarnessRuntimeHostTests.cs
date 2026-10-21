@@ -39,7 +39,9 @@ public class HarnessRuntimeHostTests
     [InlineData("")]
     public void BuildEnrichedPath_EmptyOrNullPath_BecomesLocalBinOnly(string? current)
     {
-        Assert.Equal("/home/u/.local/bin", HarnessRuntimeHost.BuildEnrichedPath(current, "/home/u", ':'));
+        // 期望路径用 Path.Combine 构造：Windows 上本机 bin 是 ~/.local\bin，写死 POSIX 串会假红
+        Assert.Equal(Path.Combine("/home/u", ".local", "bin"),
+            HarnessRuntimeHost.BuildEnrichedPath(current, "/home/u", ':'));
     }
 
     /// <summary>验证 spawn 环境注入血统 token 与生效 home：血统扫描、孤儿清扫、端口交接处置全依赖这两项。</summary>
@@ -57,15 +59,16 @@ public class HarnessRuntimeHostTests
     [Fact]
     public void BuildEnrichedPath_MissingLocalBin_AppendsAfterExisting()
     {
+        string localBin = Path.Combine("/home/u", ".local", "bin");
         string enriched = HarnessRuntimeHost.BuildEnrichedPath("/usr/local/bin:/usr/bin", "/home/u", ':');
-        Assert.Equal("/usr/local/bin:/usr/bin:/home/u/.local/bin", enriched);
+        Assert.Equal("/usr/local/bin:/usr/bin:" + localBin, enriched);
     }
 
     /// <summary>验证 ~/.local/bin 已在 PATH 中时富化结果原样返回，不产生重复段（幂等）。</summary>
     [Fact]
     public void BuildEnrichedPath_AlreadyPresent_Idempotent()
     {
-        const string path = "/home/u/.local/bin:/usr/bin";
+        string path = Path.Combine("/home/u", ".local", "bin") + ":/usr/bin";
         Assert.Equal(path, HarnessRuntimeHost.BuildEnrichedPath(path, "/home/u", ':'));
     }
 
@@ -74,8 +77,9 @@ public class HarnessRuntimeHostTests
     public void BuildEnrichedPath_SimilarPrefixSegment_DoesNotFalsePositive()
     {
         // /home/u/.local/bin-extra 不是 ~/.local/bin 本尊，不得据此判已含。
-        string enriched = HarnessRuntimeHost.BuildEnrichedPath("/home/u/.local/bin-extra", "/home/u", ':');
-        Assert.Equal("/home/u/.local/bin-extra:/home/u/.local/bin", enriched);
+        string localBin = Path.Combine("/home/u", ".local", "bin");
+        string enriched = HarnessRuntimeHost.BuildEnrichedPath(localBin + "-extra", "/home/u", ':');
+        Assert.Equal(localBin + "-extra:" + localBin, enriched);
     }
 
     /// <summary>DSH_TEST_E2E=1 且 PATH 中有 dsh 时真实 spawn dsh 并断言解析出的 URL 形如 http://127.0.0.1:&lt;port&gt;：未启用或找不到 dsh 时自动跳过并保持绿色。</summary>
@@ -469,14 +473,9 @@ public class HarnessRuntimeHostTests
     /// 竞争 dsh。假进程 = sh 携带血统 env（token + DSH_HOME），cmdline 分别按 helper 特征与服务端形状
     /// 构造；无 dsh 参与，无端口之争。非 Linux（无 /proc env 枚举）自跳过。
     /// </summary>
-    [Fact]
+    [LinuxFact("Linux-only 夹具：血统枚举读 /proc environ，非 Linux 恒空、接力路径不可达")]
     public async Task TryRideMarketRelayAsync_AdoptsLinuxLineageSuccessor_WhenRelayTakesOver()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return; // 血统枚举靠 /proc environ；其他平台 Enumerate 恒空，接力路径不可达
-        }
-
         var logs = new List<string>();
         string home = Path.Combine(Path.GetTempPath(), "dsh-relay-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable(HarnessRuntimeHost.HomeOverrideEnv, home);
@@ -587,7 +586,7 @@ public class HarnessRuntimeHostTests
     /// 后代类（MCP stdio 服务器/工具 runner）绝不算接力证据——它的父进程仍活也一样：一个活着的工具
     /// runner 若算作证据，端口无新生服务端时壳会白等满接力预算才回落（本用例以宽限窗内回落钉住）。
     /// </summary>
-    [Fact]
+    [LinuxFact]
     public async Task TryRideMarketRelayAsync_LiveToolRunnerDescendant_IsNotEvidence_BailsOnGrace()
     {
         var logs = new List<string>();
@@ -668,14 +667,9 @@ public class HarnessRuntimeHostTests
     /// HTTP 无声（续任者已 bind、web-runtime 行尚未挂载）——接力窗口必须继续等，绝不把 WebView 导航进
     /// 空白页；预算耗尽回落既有路径并留痕原因。非 Linux 自跳过。
     /// </summary>
-    [Fact]
+    [LinuxFact]
     public async Task TryRideMarketRelayAsync_SuccessorBoundButWebNotReady_KeepsWaitingToBudget()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return; // 血统枚举靠 /proc environ；其他平台接力路径不可达
-        }
-
         var logs = new List<string>();
         string home = Path.Combine(Path.GetTempPath(), "dsh-relay-webpending-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable(HarnessRuntimeHost.HomeOverrideEnv, home);
@@ -725,14 +719,9 @@ public class HarnessRuntimeHostTests
     /// 被导航进「连上随即断线」的窗口。这里走真 1s 节拍：第二拍 Ready（距首拍 ≥1s）仍不得收养，随后断线
     /// 更不得收养——把稳定窗降到一拍（≥1s）即会让本用例红。非 Linux（无 /proc env 枚举）自跳过。
     /// </summary>
-    [Fact]
+    [LinuxFact("Linux-only 夹具：血统枚举读 /proc environ，非 Linux 恒空、接力路径不可达")]
     public async Task TryRideMarketRelayAsync_TransientWebReady_DoesNotAdoptBeforeStableWindow()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return; // 血统枚举靠 /proc environ；其他平台 Enumerate 恒空，接力路径不可达
-        }
-
         var logs = new List<string>();
         string home = Path.Combine(Path.GetTempPath(), "dsh-relay-transient-" + Guid.NewGuid().ToString("N"));
         Environment.SetEnvironmentVariable(HarnessRuntimeHost.HomeOverrideEnv, home);

@@ -1,3 +1,4 @@
+using System.Text.Json;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Plugins;
 
@@ -11,6 +12,18 @@ public class PluginProfileTransactionTests
 
     private static string ProfileDir(string home)
         => Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+
+    // 事务 journal 用产品同款 JSON 序列化生成：手写 $$""" 原始插值不会转义 Windows 路径的反斜杠，
+    // 读回时会被判成非法转义（'\U' is an invalid escapable character），那是夹具缺陷不是产品缺陷。
+    private static string Journal(string stagingHome, string stagingProfile, string rollbackDir, ProfileTxStep step)
+        => JsonSerializer.Serialize(new
+        {
+            SchemaVersion = 1,
+            StagingHome = stagingHome,
+            StagingProfile = stagingProfile,
+            RollbackDir = rollbackDir,
+            Step = step,
+        });
 
     private static string SeedActiveProfile(string home, string marker)
     {
@@ -153,7 +166,7 @@ public class PluginProfileTransactionTests
             // 中断注入：Begin 后（journal Prepared）即被 kill——active 完整、staging 残留
             var tx = PluginProfileTransaction.Begin(home, _ => { });
             File.WriteAllText(Path.Combine(home, "profiles", ".pending.json"),
-                $$"""{"SchemaVersion":1,"StagingHome":"{{tx.StagingHome}}","StagingProfile":"{{tx.StagingProfileDir}}","RollbackDir":"x","Step":"Prepared"}""");
+                Journal(tx.StagingHome, tx.StagingProfileDir, "x", ProfileTxStep.Prepared));
 
             PluginProfileTransaction.Recover(home, _ => { });
 
@@ -182,7 +195,7 @@ public class PluginProfileTransactionTests
             Directory.CreateDirectory(Path.Combine(stagingHome, "profiles", HarnessRuntimeHost.DesktopProfileName));
             File.WriteAllText(Path.Combine(stagingHome, "profiles", HarnessRuntimeHost.DesktopProfileName, "package.json"), """{"marker":"new"}""");
             File.WriteAllText(Path.Combine(home, "profiles", ".pending.json"),
-                $$"""{"SchemaVersion":1,"StagingHome":"{{stagingHome}}","StagingProfile":"{{Path.Combine(stagingHome, "profiles", HarnessRuntimeHost.DesktopProfileName)}}","RollbackDir":"{{rollback}}","Step":"ActiveMoved"}""");
+                Journal(stagingHome, ProfileDir(stagingHome), rollback, ProfileTxStep.ActiveMoved));
 
             PluginProfileTransaction.Recover(home, _ => { });
 
@@ -208,7 +221,7 @@ public class PluginProfileTransactionTests
             string rollback = Path.Combine(home, "profiles", ".rollback-abc");
             Directory.Move(ProfileDir(home), rollback);
             File.WriteAllText(Path.Combine(home, "profiles", ".pending.json"),
-                $$"""{"SchemaVersion":1,"StagingHome":"{{Path.Combine(home, ".tx-abc")}}","StagingProfile":"{{Path.Combine(home, ".tx-abc", "profiles", HarnessRuntimeHost.DesktopProfileName)}}","RollbackDir":"{{rollback}}","Step":"ActiveMoved"}""");
+                Journal(Path.Combine(home, ".tx-abc"), ProfileDir(Path.Combine(home, ".tx-abc")), rollback, ProfileTxStep.ActiveMoved));
 
             PluginProfileTransaction.Recover(home, _ => { });
 
@@ -233,7 +246,7 @@ public class PluginProfileTransactionTests
             Directory.CreateDirectory(rollback);
             File.WriteAllText(Path.Combine(rollback, "package.json"), """{"marker":"old"}""");
             File.WriteAllText(Path.Combine(home, "profiles", ".pending.json"),
-                $$"""{"SchemaVersion":1,"StagingHome":"{{Path.Combine(home, ".tx-abc")}}","StagingProfile":"x","RollbackDir":"{{rollback}}","Step":"StagingActivated"}""");
+                Journal(Path.Combine(home, ".tx-abc"), "x", rollback, ProfileTxStep.StagingActivated));
 
             PluginProfileTransaction.Recover(home, _ => { });
 
@@ -313,7 +326,7 @@ public class PluginProfileTransactionTests
             string rollback = Path.Combine(home, "profiles", ".rollback-abc");
             Directory.Move(ProfileDir(home), rollback);
             File.WriteAllText(Path.Combine(home, "profiles", ".pending.json"),
-                $$"""{"SchemaVersion":1,"StagingHome":"{{Path.Combine(home, ".tx-abc")}}","StagingProfile":"x","RollbackDir":"{{rollback}}","Step":"Prepared"}""");
+                Journal(Path.Combine(home, ".tx-abc"), "x", rollback, ProfileTxStep.Prepared));
 
             PluginProfileTransaction.Recover(home, _ => { });
 
@@ -335,7 +348,7 @@ public class PluginProfileTransactionTests
         {
             Directory.Delete(ProfileDir(home), recursive: true);
             File.WriteAllText(Path.Combine(home, "profiles", ".pending.json"),
-                $$"""{"SchemaVersion":1,"StagingHome":"{{Path.Combine(home, ".tx-abc")}}","StagingProfile":"{{Path.Combine(home, ".tx-abc", "profiles", HarnessRuntimeHost.DesktopProfileName)}}","RollbackDir":"{{Path.Combine(home, "profiles", ".rollback-abc")}}","Step":"ActiveMoved"}""");
+                Journal(Path.Combine(home, ".tx-abc"), ProfileDir(Path.Combine(home, ".tx-abc")), Path.Combine(home, "profiles", ".rollback-abc"), ProfileTxStep.ActiveMoved));
 
             Assert.Throws<InvalidOperationException>(() => PluginProfileTransaction.Recover(home, _ => { }));
         }

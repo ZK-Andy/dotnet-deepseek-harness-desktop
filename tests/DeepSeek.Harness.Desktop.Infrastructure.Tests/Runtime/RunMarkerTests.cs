@@ -114,14 +114,9 @@ public class RunMarkerTests
     }
 
     /// <summary>验证 marker 为符号链接时先解链替换为常规文件、绝不穿透改写链接目标（仅 Linux 断言）。</summary>
-    [Fact]
+    [LinuxFact("Linux-only 断言：marker 为符号链接时解链替换的语义按 Linux 断言")]
     public void Acquire_SymlinkedMarker_UnlinksAndReplaces_NotWrittenThrough()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return; // 符号链接行为按 Linux 断言
-        }
-
         string home = NewDir();
         try
         {

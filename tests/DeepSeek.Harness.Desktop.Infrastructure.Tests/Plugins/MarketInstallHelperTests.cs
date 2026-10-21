@@ -309,17 +309,10 @@ public class MarketInstallHelperTests
         File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
 
         System.Diagnostics.ProcessStartInfo? capturedPsi = null;
-        var args = new List<string>();
-        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
             capturedPsi = psi;
-            args.Clear();
-            foreach (string a in psi.ArgumentList)
-            {
-                args.Add(a);
-            }
-
-            return (0, "installed", string.Empty);
+            return Task.FromResult((0, "installed", string.Empty));
         }
 
         try
@@ -329,11 +322,15 @@ public class MarketInstallHelperTests
 
             Assert.True(installed);
             Assert.NotNull(capturedPsi);
-            Assert.Equal("dsh", capturedPsi!.FileName);
-            // 参数形状：dsh plugin --profile <DesktopProfileName> add <companion tgz>（无 bin.js 入口）
-            Assert.Equal(
-                ["plugin", "--profile", HarnessRuntimeHost.DesktopProfileName, "add", Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz")],
-                args);
+            // 命令形状：dsh plugin --profile <DesktopProfileName> add <companion tgz>（无 bin.js 入口；
+            // Windows 经 cmd.exe 中转，见 DshSpawnAssert）
+            DshSpawnAssert.ExeAndArgs(
+                capturedPsi!,
+                "plugin",
+                "--profile",
+                HarnessRuntimeHost.DesktopProfileName,
+                "add",
+                Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"));
             Assert.Contains("dsh-desktop-companion", File.ReadAllText(profilePkg));
         }
         finally

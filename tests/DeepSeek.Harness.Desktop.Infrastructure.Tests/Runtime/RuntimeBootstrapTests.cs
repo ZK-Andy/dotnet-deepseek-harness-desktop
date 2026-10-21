@@ -167,7 +167,11 @@ public class RuntimeBootstrapTests
                 Directory.CreateDirectory(Path.Combine(inner, "bin"));
                 string node = OperatingSystem.IsWindows() ? Path.Combine(inner, "node.exe") : Path.Combine(inner, "bin", "node");
                 File.WriteAllText(node, "#!/bin/sh\n");
-                string npmCli = Path.Combine(inner, OperatingSystem.IsWindows() ? "node_modules" : "lib", "node_modules", "npm", "bin", "npm-cli.js");
+                // 发行包内 npm 布局按平台：Windows 在 node_modules/npm/bin，Unix 在 lib/node_modules/npm/bin
+                string npmCliRoot = OperatingSystem.IsWindows()
+                    ? Path.Combine(inner, "node_modules")
+                    : Path.Combine(inner, "lib", "node_modules");
+                string npmCli = Path.Combine(npmCliRoot, "npm", "bin", "npm-cli.js");
                 Directory.CreateDirectory(Path.GetDirectoryName(npmCli)!);
                 File.WriteAllText(npmCli, "// npm\n");
                 return Task.CompletedTask;
@@ -309,12 +313,16 @@ public class RuntimeBootstrapTests
                         return Task.FromResult((0, root + Environment.NewLine, string.Empty));
                     }
 
-                    if (string.Equals(exe, "dsh", StringComparison.Ordinal))
+                    // Windows 上垫片经 cmd.exe /d /s /c <shim> 中转：exe 是 cmd.exe、shim 在参数里
+                    bool refersToShim = args.Any(a => string.Equals(a, shim, pathCmp));
+                    if (!refersToShim
+                        && (string.Equals(exe, "dsh", StringComparison.Ordinal)
+                            || string.Equals(exe, "cmd.exe", StringComparison.OrdinalIgnoreCase)))
                     {
                         return Task.FromResult((1, string.Empty, "not found"));
                     }
 
-                    if (string.Equals(exe, shim, pathCmp))
+                    if (refersToShim || string.Equals(exe, shim, pathCmp))
                     {
                         return Task.FromResult((0, "0.1.2-alpha.3" + Environment.NewLine, string.Empty));
                     }
@@ -348,6 +356,7 @@ public class RuntimeBootstrapTests
         Directory.CreateDirectory(binDir);
         string shim = Path.Combine(binDir, OperatingSystem.IsWindows() ? "dsh.cmd" : "dsh");
         File.WriteAllText(shim, OperatingSystem.IsWindows() ? "@echo off\n" : "#!/bin/sh\n");
+        StringComparison pathCmp = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         string? oldPath = Environment.GetEnvironmentVariable("PATH");
         try
         {
@@ -368,8 +377,11 @@ public class RuntimeBootstrapTests
                         return Task.FromResult((0, root + Environment.NewLine, string.Empty));
                     }
 
-                    if (string.Equals(exe, "dsh", StringComparison.Ordinal)
-                        || string.Equals(exe, "cmd.exe", StringComparison.OrdinalIgnoreCase))
+                    // 只有「不指向垫片绝对路径」的那次 spawn 才抛（Windows 上主路径与垫片路径都经 cmd.exe 中转）
+                    bool refersToShim = args.Any(a => string.Equals(a, shim, pathCmp));
+                    if (!refersToShim
+                        && (string.Equals(exe, "dsh", StringComparison.Ordinal)
+                            || string.Equals(exe, "cmd.exe", StringComparison.OrdinalIgnoreCase)))
                     {
                         throw new System.ComponentModel.Win32Exception(2);
                     }

@@ -260,7 +260,7 @@ public class CliShimRegistrarTests : IDisposable
     private bool IsWindows() => OperatingSystem.IsWindows();
 
     /// <summary>验证 TryRegister 落盘 pnpm shim（含生成标记）且不落盘 dsh shim，注册返回成功。</summary>
-    [Fact]
+    [UnixFact("Unix-only 语义：Windows 的 RegisterPath 直写 HKCU 环境变量且无测试注入 seam，跑用例会永久污染用户 PATH")]
     public void TryRegister_Writes_Pnpm_Shim_Not_Dsh()
     {
         var reg = new CliShimRegistrar(_ => { });
@@ -276,7 +276,7 @@ public class CliShimRegistrarTests : IDisposable
     }
 
     /// <summary>验证重复注册两次不会在 shell rc 中重复插入 rc 块标记。</summary>
-    [Fact]
+    [UnixFact("Unix-only 语义：Windows 的 RegisterPath 直写 HKCU 环境变量，无测试注入 seam")]
     public void TryRegister_Is_Idempotent_For_Rc()
     {
         var reg = new CliShimRegistrar(_ => { });
@@ -288,7 +288,7 @@ public class CliShimRegistrarTests : IDisposable
     }
 
     /// <summary>验证目标 shim 已被用户文件占据时注册不改写其内容。</summary>
-    [Fact]
+    [UnixFact("Unix-only 语义：Windows 的 RegisterPath 直写 HKCU 环境变量且无测试注入 seam")]
     public void TryRegister_Preserves_User_Shim_File()
     {
         string pnpmShim = Path.Combine(_binDir, IsWindows() ? "pnpm.cmd" : "pnpm");
@@ -302,7 +302,7 @@ public class CliShimRegistrarTests : IDisposable
     }
 
     /// <summary>验证提供系统全局 node（无系统 node 场景）时 TryRegister 把其 global bin 目录写入 shell rc，终端可解析同一份 node/dsh。</summary>
-    [Fact]
+    [UnixFact("Unix-only 语义：Windows 的 RegisterPath 直写 HKCU 环境变量，无测试注入 seam")]
     public void TryRegister_ExposesSystemGlobalNodeBinDir()
     {
         const string nodeBin = "/home/user/.local/bin";

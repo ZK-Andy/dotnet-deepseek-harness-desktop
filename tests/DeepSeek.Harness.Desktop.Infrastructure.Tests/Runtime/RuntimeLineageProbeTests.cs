@@ -50,14 +50,9 @@ public class RuntimeLineageProbeTests
 
     /// <summary>Linux 内核只对 LISTEN 态 socket 判 EADDRINUSE：已 bind 未 listen 的占用者探测为 Free——
     /// 固化该平台行为防误判（真实占用者 dsh/占位进程都是监听态，主判据不受影响；非 Linux 不断言）。</summary>
-    [Fact]
+    [LinuxFact("Linux-only 断言：已 bind 未 listen 的 socket 仅在 Linux 判 Free（EADDRINUSE 语义）")]
     public void ProbeLoopbackBind_BoundButNotListening_Free_OnLinux()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return; // 平台行为差异不纳入断言
-        }
-
         using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         int port = ((IPEndPoint)socket.LocalEndPoint!).Port;

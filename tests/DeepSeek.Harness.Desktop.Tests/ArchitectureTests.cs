@@ -24,6 +24,7 @@ public class ArchitectureTests
             .Select(e => Path.GetRelativePath(TestRepoRoot.Find(),
                 Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!,
                     ((string?)e.Attribute("Include") ?? string.Empty).Replace('\\', '/')))))
+            .Select(p => p.Replace('\\', '/'))
             .OrderBy(p => p, StringComparer.Ordinal).ToArray();
     }
 

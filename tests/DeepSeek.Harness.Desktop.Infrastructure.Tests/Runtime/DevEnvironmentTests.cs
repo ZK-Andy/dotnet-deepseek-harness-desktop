@@ -34,8 +34,9 @@ public class DevEnvironmentTests
     public void DeriveDefaultDevHome_PrefersRuntimeDirTwoLevelsUp()
     {
         string runtimeDir = Path.Combine("/mnt/work/repo", "resources", "runtime");
-        // runtime 目录形态优先，即使 baseDirectory 也可用
-        Assert.Equal(Path.Combine("/mnt/work/repo", ".cache", "dev-home"),
+        // runtime 目录形态优先，即使 baseDirectory 也可用；期望值同样经 GetFullPath 归一
+        // （Windows 上相对根会补盘符，写死 POSIX 串会假红）
+        Assert.Equal(Path.Combine(Path.GetFullPath("/mnt/work/repo"), ".cache", "dev-home"),
             DevEnvironment.DeriveDefaultDevHome(runtimeDir, "/elsewhere/bin"));
     }
 

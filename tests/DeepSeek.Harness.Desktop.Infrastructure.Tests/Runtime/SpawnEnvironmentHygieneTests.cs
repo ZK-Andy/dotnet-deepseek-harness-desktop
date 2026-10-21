@@ -64,7 +64,7 @@ public class SpawnEnvironmentHygieneTests
         Assert.Equal("/home/u/.dsh", psi.Environment["DSH_HOME"]);
         Assert.Equal("tok", psi.Environment[RuntimeLineage.TokenEnv]);
         Assert.Equal("/home/u/.dsh", psi.Environment[RuntimeLineage.LineageHomeEnv]);
-        Assert.Equal("dsh", psi.FileName);
+        DshSpawnAssert.Exe(psi);
         return Task.CompletedTask;
     });
 
@@ -75,8 +75,7 @@ public class SpawnEnvironmentHygieneTests
         ProcessStartInfo psi = RuntimeVersionGate.BuildProbePsi();
 
         AssertInheritanceProof(psi);
-        Assert.Equal("dsh", psi.FileName);
-        Assert.Equal(["--version"], psi.ArgumentList);
+        DshSpawnAssert.ExeAndArgs(psi, "--version");
         return Task.CompletedTask;
     });
 

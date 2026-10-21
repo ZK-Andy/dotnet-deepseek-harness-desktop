@@ -94,7 +94,7 @@ public class LauncherActivationTests
     }
 
     /// <summary>验证主实例绑定成功后，二启进程 NotifyPrimary 能得到应答，且主实例注册的激活回调被触发。</summary>
-    [Fact]
+    [UnixFact]
     public async Task PrimaryThenNotify_SecondaryGetsAck_AndCallbackFires()
     {
         string path = NewSocketPath();
@@ -119,7 +119,7 @@ public class LauncherActivationTests
     }
 
     /// <summary>验证主实例存活期间再次 TryBindPrimary 返回 false，二启被正确判定而非重复创建监听。</summary>
-    [Fact]
+    [UnixFact]
     public async Task TryBindPrimary_SecondBindWhileAlive_ReturnsFalse()
     {
         string path = NewSocketPath();
@@ -140,7 +140,7 @@ public class LauncherActivationTests
     }
 
     /// <summary>验证文件残留但对端不存在的崩溃态能被探活识别并自愈重建为活 socket，通知功能随后恢复可用。</summary>
-    [Fact]
+    [UnixFact]
     public async Task StaleSocketFile_SelfHeals_AndRebinds()
     {
         string path = NewSocketPath();
@@ -158,7 +158,7 @@ public class LauncherActivationTests
     }
 
     /// <summary>验证 Dispose 时 unlink 掉 socket 文件，且释放后同一地址可立即重新绑定。</summary>
-    [Fact]
+    [UnixFact]
     public void Listener_Dispose_UnlinksSocket_AndAllowsRebind()
     {
         string path = NewSocketPath();
@@ -174,7 +174,7 @@ public class LauncherActivationTests
     }
 
     /// <summary>验证 Dispose 二次调用幂等、不抛 ObjectDisposedException，覆盖双击托盘退出触发重复清理的路径。</summary>
-    [Fact]
+    [UnixFact]
     public void Listener_Dispose_Twice_IsIdempotent_NoThrow()
     {
         // 双击托盘退出会二次进入退出编排：Dispose 必须幂等，
@@ -188,14 +188,11 @@ public class LauncherActivationTests
     }
 
     /// <summary>验证残留 socket 因只读目录删不掉时降级为「主实例但无监听」（返回 true + null listener），绝不返回 false 让调用方误判存在存活主实例而陪葬成零实例。</summary>
-    [Fact]
+    [UnixFact]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
     public void StaleUndeletableSocket_DegradesToPrimaryWithoutListener_NotZeroInstance()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return; // UDS 仲裁仅 Unix 启用
-        }
-
         string dir = NewDir();
         string path = Path.Combine(dir, "instance.sock");
         File.WriteAllText(path, "stale");
@@ -235,7 +232,7 @@ public class LauncherActivationTests
     }
 
     /// <summary>验证垃圾/空载荷不会误触发激活回调也不断链，随后发送的合法命令仍能到达并触发回调。</summary>
-    [Theory]
+    [UnixTheory]
     [InlineData("junk")]
     [InlineData("")]
     public async Task Serve_IgnoresForeignPayload_KeepsListening(string payload)
@@ -264,7 +261,7 @@ public class LauncherActivationTests
 
     /// <summary>0 字节读（连上即断）= 单实例探活：不是请求，日志里连一行都不该有；
     /// 且不断链——探活后紧跟的合法命令仍能到达并触发回调。</summary>
-    [Fact]
+    [UnixFact]
     public async Task Serve_ProbeConnection_LeavesNoRequestTrace()
     {
         string path = NewSocketPath();
@@ -295,7 +292,7 @@ public class LauncherActivationTests
 
     /// <summary>空白载荷（连上只发换行）= 畸形输入：仍留到达痕，两行都在冒号后用 &lt;空&gt; 占位，
     /// 日志读得懂，也仍能区分「到了被忽略」与「没到」。</summary>
-    [Fact]
+    [UnixFact]
     public async Task Serve_WhitespacePayload_IsLoggedWithEmptyPlaceholder()
     {
         string path = NewSocketPath();
@@ -398,7 +395,8 @@ public class LauncherActivationTests
 
     private static string NewDir()
     {
-        string dir = Path.Combine(Path.GetTempPath(), "dsh-launcher-" + Guid.NewGuid().ToString("N"));
+        // 目录名压短：macOS 临时根（约 49 字符）+ 目录 + /instance.sock 必须落在 UDS 104 字符上限内
+        string dir = Path.Combine(Path.GetTempPath(), "dsh-l-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);
         return dir;
     }

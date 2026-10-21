@@ -16,11 +16,8 @@ public class PluginInstallProbeTests
     {
         System.Diagnostics.ProcessStartInfo psi = PluginInstallProbe.BuildProbePsi("/home/u/.dsh");
 
-        Assert.Equal("dsh", psi.FileName);
-        string[] args = [.. psi.ArgumentList];
-        Assert.Equal(
-            ["--profile", HarnessRuntimeHost.DesktopProfileName, "--port", "0", "--no-open"],
-            args);
+        DshSpawnAssert.ExeAndArgs(
+            psi, "--profile", HarnessRuntimeHost.DesktopProfileName, "--port", "0", "--no-open");
         Assert.Equal("/home/u/.dsh", psi.Environment["DSH_HOME"]);
         Assert.False(string.IsNullOrWhiteSpace(psi.Environment[RuntimeLineage.TokenEnv]));
         Assert.True(psi.CreateNoWindow);
@@ -33,11 +30,8 @@ public class PluginInstallProbeTests
     {
         System.Diagnostics.ProcessStartInfo psi = PluginInstallProbe.BuildProbePsi("/home/u/.dsh", "/home/u/.dsh/.tx-abc");
 
-        Assert.Equal("dsh", psi.FileName);
-        string[] args = [.. psi.ArgumentList];
-        Assert.Equal(
-            ["--profile", HarnessRuntimeHost.DesktopProfileName, "--port", "0", "--no-open"],
-            args);
+        DshSpawnAssert.ExeAndArgs(
+            psi, "--profile", HarnessRuntimeHost.DesktopProfileName, "--port", "0", "--no-open");
         Assert.Equal("/home/u/.dsh/.tx-abc", psi.Environment["DSH_HOME"]);
         Assert.False(string.IsNullOrWhiteSpace(psi.Environment[RuntimeLineage.TokenEnv]));
         Assert.True(psi.CreateNoWindow);
