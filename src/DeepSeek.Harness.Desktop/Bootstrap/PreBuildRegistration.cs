@@ -127,15 +127,18 @@ internal static class PreBuildRegistration
         return (new UpdateSetup(updates), tray);
     }
 
-    /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：G0 不接唤回（回调 no-op）；
-    /// false = 已有主实例（已通知），调用方退出。锁地址解析与绑定策略住 Infrastructure。</summary>
+    /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：false = 已有主实例（已通知），
+    /// 调用方退出；<paramref name="onShowRequested"/> 是主实例收到 <c>show</c> 时的唤回回调。
+    /// 锁地址解析与绑定策略住 Infrastructure。</summary>
     /// <param name="preflight">启动头部产出（dev 判定）。</param>
     /// <param name="timeouts">运行时超时家（IPC 预算）。</param>
+    /// <param name="onShowRequested">二启唤回回调（主窗就绪前由唤回单点挂起）。</param>
     /// <param name="listener">仲裁成功时持有的监听器；平台不支持/降级时为 null。</param>
     /// <returns>true = 本进程是主实例。</returns>
-    public static bool TryBecomePrimary(Preflight preflight, RuntimeTimeouts timeouts, out PrimaryListener? listener) =>
+    public static bool TryBecomePrimary(Preflight preflight, RuntimeTimeouts timeouts, Func<Task> onShowRequested, out PrimaryListener? listener) =>
         LauncherActivation.TryBecomePrimary(
             preflight.Launch.IsDev,
+            onShowRequested,
             TimeSpan.FromSeconds(timeouts.IpcAcceptRetryDelaySeconds),
             TimeSpan.FromSeconds(timeouts.IpcServeTimeoutSeconds),
             TimeSpan.FromSeconds(timeouts.NotifyPrimaryTimeoutSeconds),

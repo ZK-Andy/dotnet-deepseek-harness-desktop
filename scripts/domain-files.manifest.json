@@ -65,7 +65,10 @@
   ],
   "Hosting": [
     "ShellApplication.cs",
+    "ShellClosePolicy.cs",
+    "ShellRecall.cs",
     "ShellStartup.cs",
+    "ShellTray.cs",
     "ShellWindow.cs"
   ]
 }

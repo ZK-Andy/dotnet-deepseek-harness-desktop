@@ -2,9 +2,9 @@ using Avalonia;
 
 namespace DeepSeek.Harness.Desktop.Hosting;
 
-/// <summary>G0 宿主入口（ADR implemented/architecture/2026-10-22-avalonia-g0-entry-switch）：Avalonia 窗口 +
-/// 包自带 WebView 承接既有 dsh spawn 与回环代理源。本片只验证「窗口 → dsh UI 可见」；托盘/顶栏/
-/// <c>window.__shell</c> 桥、监督器与恢复面留 G1–G3，Ryn 装配面保留可回退。
+/// <summary>宿主入口（ADR implemented/architecture/2026-10-22-avalonia-g0-entry-switch、-g1-tray-recall）：
+/// Avalonia 窗口 + 包自带 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回随 G1
+/// 首批接入。无边框顶栏、<c>window.__shell</c> 桥、监督器与恢复面留 G1 其余片与 G2–G3，Ryn 装配面保留可回退。
 /// 装配面成员（C2）：本文件只许 <c>Run</c>；新增成员须先在 <c>verify-compose-root.py</c> 列册。</summary>
 internal static class AvaloniaHost
 {
@@ -29,8 +29,11 @@ internal static class AvaloniaHost
             Preflight preflight = PreBuildRegistration.CreatePreflight(
                 () => host, () => shared.UiLocale.IsEnglish, shared);
 
-            // 单实例仲裁：只防第二实例冷启动清扫并击杀第一实例的 dsh（唤回回调 no-op）。
-            if (!PreBuildRegistration.TryBecomePrimary(preflight, shared.Timeouts, out PrimaryListener? instanceListener))
+            // 单实例仲裁：只防第二实例冷启动清扫并击杀第一实例的 dsh；二启通知经唤回单点转给主窗，
+            // 建窗前的请求由 ShellRecall 挂起、窗口就绪后补发。
+            var recall = new ShellRecall();
+            if (!PreBuildRegistration.TryBecomePrimary(
+                    preflight, shared.Timeouts, () => { recall.Request(); return Task.CompletedTask; }, out PrimaryListener? instanceListener))
             {
                 return 0;
             }
@@ -60,7 +63,11 @@ internal static class AvaloniaHost
                     await starter.StartAsync(host, ct).ConfigureAwait(false);
                 },
                 proxy.Proxy?.Url);
-            return AppBuilder.Configure(() => new ShellApplication(startup, preflight.Launch.DevTools))
+            // 托盘图标存在性是装配期配置探测（与旧入口 DesktopAdapter.App 同款，D005 显式豁免）
+            string trayIconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
+            bool trayIconAvailable = File.Exists(trayIconPath); // verify-code-conventions: ignore 装配面：托盘图标存在性是配置探测，非业务直调
+            return AppBuilder.Configure(() => new ShellApplication(
+                    startup, preflight.Launch.DevTools, recall, shared.UiLocale, trayIconPath, trayIconAvailable))
                 .UsePlatformDetect()
                 .StartWithClassicDesktopLifetime(args);
         }

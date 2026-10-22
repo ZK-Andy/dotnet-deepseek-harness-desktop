@@ -1,5 +1,3 @@
-using DeepSeek.Harness.Desktop.Hosting;
-
 namespace DeepSeek.Harness.Desktop.Tests.Hosting;
 
 /// <summary>G0 起步壳的并发收口契约（ADR avalonia-g0-entry-switch）：单次触发、关窗取消、

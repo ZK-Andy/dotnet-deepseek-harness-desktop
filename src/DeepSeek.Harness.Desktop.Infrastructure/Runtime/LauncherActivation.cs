@@ -120,14 +120,13 @@ public static class LauncherActivation
         }
     }
 
-    /// <summary>单实例仲裁（G0 宿主迁移入口）：本进程是否主实例；false = 已通知既有实例。
-    /// 唤回回调为 no-op（G0 不接唤回），锁名后缀随 dev 判定。</summary>
-    /// <param name="isDev">dev 判定（dev 与正式各持一把锁）。</param><param name="acceptRetryDelay">accept 循环退避节拍。</param><param name="serveTimeout">单次读超时。</param>
-    /// <param name="notifyTimeout">通知既有实例的时限。</param>
-    /// <param name="listener">主实例监听器；平台不支持时为 null。</param>
+    /// <summary>单实例仲裁：本进程是否主实例；false = 已通知既有实例。</summary>
+    /// <param name="isDev">dev 判定（dev 与正式各持一把锁）。</param><param name="onShowRequested">二启唤回回调（主实例收到 <c>show</c> 时调用）。</param>
+    /// <param name="acceptRetryDelay">accept 循环退避节拍。</param><param name="serveTimeout">单次读超时。</param>
+    /// <param name="notifyTimeout">通知既有实例的时限。</param><param name="listener">主实例监听器；平台不支持时为 null。</param>
     /// <returns>true = 本进程是主实例（含平台不支持情形）。</returns>
     internal static bool TryBecomePrimary(
-        bool isDev, TimeSpan acceptRetryDelay, TimeSpan serveTimeout, TimeSpan notifyTimeout, out PrimaryListener? listener)
+        bool isDev, Func<Task> onShowRequested, TimeSpan acceptRetryDelay, TimeSpan serveTimeout, TimeSpan notifyTimeout, out PrimaryListener? listener)
     {
         listener = null;
         string? path = ResolveInstanceSocketPath(isDev);
@@ -136,13 +135,13 @@ public static class LauncherActivation
             return true;
         }
 
-        if (TryBindPrimary(path, static () => Task.CompletedTask, acceptRetryDelay, serveTimeout, HostLog.Write, out listener))
+        if (TryBindPrimary(path, onShowRequested, acceptRetryDelay, serveTimeout, HostLog.Write, out listener))
         {
             return true;
         }
 
         bool notified = NotifyPrimary(path, notifyTimeout);
-        HostLog.Write($"[host] 已有主实例在运行（G0 不接唤回）：通知{(notified ? "成功" : "未达（主实例可能正忙）")}，本次启动退出");
+        HostLog.Write($"[host] 已有主实例在运行：通知{(notified ? "成功（主实例已受理）" : "未达（主实例可能正忙）")}，本次启动退出");
         return false;
     }
 

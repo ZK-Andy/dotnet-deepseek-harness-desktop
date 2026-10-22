@@ -47,6 +47,7 @@
     <Using Include="DeepSeek.Harness.Desktop.Bootstrap" />
     <Using Include="DeepSeek.Harness.Desktop.Recovery" />
     <Using Include="DeepSeek.Harness.Desktop.PageBridge" />
+    <Using Include="DeepSeek.Harness.Desktop.Hosting" />
   </ItemGroup>
 
   <ItemGroup>

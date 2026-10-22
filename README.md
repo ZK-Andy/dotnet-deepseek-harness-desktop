@@ -25,13 +25,13 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-1096%2F1096-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-66.51%25-yellowgreen" alt="coverage"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-1107%2F1107-brightgreen" alt="tests"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-65.52%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端。宿主层正从 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 的原生 WebView 框架）迁向 [Avalonia](https://avaloniaui.net/) 12.1.x：G0 已落地（Avalonia 窗口 + 包自带原生 WebView 承接既有 dsh spawn 与回环代理源），托盘、顶栏、桥与监督随迁移片补。壳不自带运行时：node 与 dsh 都用系统全局的那一份（`npm install -g @deepseek-ai/dsh@next`），桌面与终端共享同一数据目录，会话、凭据、插件天然互通。首次启动检测 PATH 上的全局 dsh——没有就装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用（判据是兼容底线，不逐次查 npm dist-tag）。
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端。宿主层正从 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 的原生 WebView 框架）迁向 [Avalonia](https://avaloniaui.net/) 12.1.x：G0 与 G1 首批已落地（Avalonia 窗口 + 包自带原生 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回走 Avalonia 自带控件），顶栏、桥与监督随迁移片补。壳不自带运行时：node 与 dsh 都用系统全局的那一份（`npm install -g @deepseek-ai/dsh@next`），桌面与终端共享同一数据目录，会话、凭据、插件天然互通。首次启动检测 PATH 上的全局 dsh——没有就装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用（判据是兼容底线，不逐次查 npm dist-tag）。
 
 <p align="center">
   <a href="assets/screenshot.png"><img src="assets/screenshot.png" width="880" alt="DeepSeek Harness Desktop 窗口：插件市场"></a>

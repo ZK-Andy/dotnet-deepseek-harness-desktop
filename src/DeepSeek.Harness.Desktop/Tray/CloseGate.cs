@@ -10,6 +10,9 @@ public sealed class CloseGate
 {
     private volatile bool _exitApproved;
 
+    /// <summary>是否已批准退出（关窗放行）。</summary>
+    public bool ExitApproved => _exitApproved;
+
     /// <summary>批准本次及后续关窗（幂等）。调用后必须紧接 Close 才有语义。</summary>
     public void ApproveExit() => _exitApproved = true;
 

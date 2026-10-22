@@ -1,13 +1,13 @@
 # Architecture
 
-> 现状。宿主层正从 `Ryn` 迁向 Avalonia 12.1.x：G0 已落地（Avalonia 窗口 + 包自带原生 WebView 承接既有 dsh spawn 与回环代理源），托盘/顶栏/桥/监督随 G1–G3 迁入，Ryn 装配面暂留可回退。回环代理源承载全局 dsh Web UI（ADR `implemented/architecture/2026-09-27-loopback-forward-proxy`）+ Core/Infrastructure/壳三层与端口适配 + 崩溃监督 + 首启引导 + 随包 companion 装配。
+> 现状。宿主层正从 `Ryn` 迁向 Avalonia 12.1.x：G0 与 G1 首批已落地（Avalonia 窗口 + 包自带原生 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回走 Avalonia `TrayIcon` + 唤回单点），顶栏/桥/监督随 G1–G3 其余片迁入，Ryn 装配面暂留可回退。回环代理源承载全局 dsh Web UI（ADR `implemented/architecture/2026-09-27-loopback-forward-proxy`）+ Core/Infrastructure/壳三层与端口适配 + 崩溃监督 + 首启引导 + 随包 companion 装配。
 
 ## 概览
 
 * 壳只管生命周期、窗口、恢复；`dsh` 的插件树即应用运行时。
 * **共享 home**：默认上游规范 `~/.dsh`（优先级 `DSH_DESKTOP_DSH_HOME` > 生态 `DSH_HOME` > `~/.dsh`），home 层数据与 CLI/TUI/Web 互通；桌面插件装配走专属 `profiles/dotnet-desktop`（ADR `2026-09-09-desktop-profile-rename`）。
 * **可观测性**：壳侧诊断经 `HostLog` 双写 stdout 与 `<home>/logs/host.log`（超限滚动）；`RunMarker` 判定非受控退出；`desktop.diagnostics.export` 导出白名单诊断 zip（ADR `2026-08-24-shell-observability-diagnostics`）。
-* **托盘与 hide-to-tray**（ADR `2026-08-24-shell-tray-hide-to-tray`）：`Ryn.Plugins.Tray` + companion 事件中继；关窗默认隐藏，`CloseGate` 唯一放行通道。
+* **托盘与 hide-to-tray**（ADR `2026-08-24-shell-tray-hide-to-tray`、`2026-10-22-avalonia-g1-tray-recall`）：旧宿主走 `Ryn.Plugins.Tray` + companion 事件中继；Avalonia 宿主用自带 `TrayIcon`（显示主窗/退出），关窗在托盘可用时隐藏、不可用即直退，托盘退出经 `CloseGate` 放行，平台注销/关机由关窗判据直接放行。
 
 ## 分层与装配面
 
