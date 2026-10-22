@@ -25,8 +25,8 @@ public class LauncherActivationTests
             string prod = LauncherActivation.ResolveInstanceSocketPath(isDev: false)!;
             string dev = LauncherActivation.ResolveInstanceSocketPath(isDev: true)!;
 
-            Assert.Equal(Path.Combine(dir, "deepseek-harness-desktop.sock"), prod);
-            Assert.Equal(Path.Combine(dir, "deepseek-harness-desktop.dev.sock"), dev);
+            Assert.Equal(Path.Combine(dir, "dotnet-deepseek-harness-desktop.sock"), prod);
+            Assert.Equal(Path.Combine(dir, "dotnet-deepseek-harness-desktop.dev.sock"), dev);
         }
         finally
         {
@@ -54,8 +54,8 @@ public class LauncherActivationTests
             string uid = LauncherActivation.FallbackUidSuffix();
 
             Assert.StartsWith(Path.GetTempPath(), prod);
-            Assert.EndsWith($"deepseek-harness-desktop{uid}.sock", prod);
-            Assert.EndsWith($"deepseek-harness-desktop{uid}.dev.sock", dev);
+            Assert.EndsWith($"dotnet-deepseek-harness-desktop{uid}.sock", prod);
+            Assert.EndsWith($"dotnet-deepseek-harness-desktop{uid}.dev.sock", dev);
         }
         finally
         {

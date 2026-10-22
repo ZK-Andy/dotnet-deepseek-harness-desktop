@@ -28,8 +28,8 @@ public static class LauncherActivation
     internal static string SocketPath(string runtimeDir, string appName, bool isDev) =>
         Path.Combine(runtimeDir, $"{appName}{(isDev ? ".dev" : string.Empty)}.sock");
 
-    /// <summary>单实例应用锁名（socket 文件名字面量单源；锁地址解析唯一消费点在 <see cref="ResolveInstanceSocketPath"/>）。</summary>
-    private const string SocketAppName = "deepseek-harness-desktop";
+    /// <summary>单实例应用锁名（字面量单源；唯一消费点 <see cref="ResolveInstanceSocketPath"/>）：带 <c>dotnet-</c> 前缀避开与 dsh 同名的 socket（ADR instance-socket-name-collision）。</summary>
+    private const string SocketAppName = "dotnet-deepseek-harness-desktop";
 
     /// <summary>锁地址解析（平台策略单源，原装配面 <c>AcquireSingleInstance</c> 内联拼装随细搬下沉，ADR
     /// restructure-compose-root-final-moves）：Linux/macOS 为 <c>XDG_RUNTIME_DIR</c>（缺失回退共享临时目录
