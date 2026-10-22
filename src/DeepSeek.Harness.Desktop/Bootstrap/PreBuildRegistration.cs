@@ -127,6 +127,26 @@ internal static class PreBuildRegistration
         return (new UpdateSetup(updates), tray);
     }
 
+    /// <summary>单实例仲裁（ADR single-instance-launcher-activation）：G0 不接唤回（回调 no-op）；
+    /// false = 已有主实例（已通知），调用方退出。锁地址解析与绑定策略住 Infrastructure。</summary>
+    /// <param name="preflight">启动头部产出（dev 判定）。</param>
+    /// <param name="timeouts">运行时超时家（IPC 预算）。</param>
+    /// <param name="listener">仲裁成功时持有的监听器；平台不支持/降级时为 null。</param>
+    /// <returns>true = 本进程是主实例。</returns>
+    public static bool TryBecomePrimary(Preflight preflight, RuntimeTimeouts timeouts, out PrimaryListener? listener) =>
+        LauncherActivation.TryBecomePrimary(
+            preflight.Launch.IsDev,
+            TimeSpan.FromSeconds(timeouts.IpcAcceptRetryDelaySeconds),
+            TimeSpan.FromSeconds(timeouts.IpcServeTimeoutSeconds),
+            TimeSpan.FromSeconds(timeouts.NotifyPrimaryTimeoutSeconds),
+            out listener);
+
+    /// <summary>启动前置用例（profile 生命周期 + 随包插件安装；均 headless，spawn 前执行）。</summary>
+    /// <param name="timeouts">运行时超时家（插件安装探针预算）。</param>
+    /// <returns>profile 前置与随包插件安装用例。</returns>
+    public static (ProfileLifecycle Profile, CompanionPreSpawn Companion) CreateStartupPrerequisites(RuntimeTimeouts timeouts) =>
+        (new ProfileLifecycle(), new CompanionPreSpawn(timeouts));
+
     /// <summary>运行时起步用例（原装配面 <c>RegisterServices</c> 内联构造）：spawn→铸币→收 URL 的依赖全在手
     /// （引导服务来自启动头部，超时/铸币来自共享单例）。</summary>
     /// <param name="preflight">启动头部产出（引导服务）。</param>

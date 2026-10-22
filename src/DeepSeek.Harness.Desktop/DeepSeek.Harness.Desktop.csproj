@@ -18,6 +18,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Controls.WebView" />
     <PackageReference Include="Ryn" />
     <PackageReference Include="Ryn.Plugins.Tray" />
     <PackageReference Include="Ryn.Plugins.Dialog" />

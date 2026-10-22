@@ -565,6 +565,14 @@ def _self_test() -> int:
         print(f"  ✗ caps: {rows}")
         failed = 1
 
+    ex = EXEMPT_RE.search("增量闸豁免：gross ≤ 600，fanout ≤ 15，packages ≤ 3")
+    ex2 = EXEMPT_RE.search("增量闸豁免：gross ≤ 600，fanout ≤ 15")
+    if ex and ex.group(3) == "3" and ex2 and ex2.group(3) is None:
+        print("  ok: exemption marker takes an optional packages cap")
+    else:
+        print(f"  ✗ exemption packages: {ex and ex.groups()} / {ex2 and ex2.groups()}")
+        failed = 1
+
     if failed == 0:
         print("== verify-increment-discipline self-test passed ==")
     else:
@@ -572,7 +580,9 @@ def _self_test() -> int:
     return failed
 
 
-EXEMPT_RE = re.compile(r"增量闸豁免[：:]\s*gross\s*≤\s*(\d+)[，,]\s*fanout\s*≤\s*(\d+)")
+EXEMPT_RE = re.compile(
+    r"增量闸豁免[：:]\s*gross\s*≤\s*(\d+)[，,]\s*fanout\s*≤\s*(\d+)"
+    r"(?:[，,]\s*packages\s*≤\s*(\d+))?")
 
 
 def _exemption(adr: str, mode: str, since: str) -> dict | None:
@@ -592,11 +602,20 @@ def _exemption(adr: str, mode: str, since: str) -> dict | None:
     m = EXEMPT_RE.search(text)
     if not m:
         return None
+    added = _plus_lines(_git([*_diff_args(mode, since), "-U0", "--", adr]))
+    marked = [line for line in added if "增量闸豁免" in line]
+    if not marked:
+        print("  exempt: 豁免标记不在本次新增行内——不生效（旧标记随批次失效）")
+        return None
+    if m.group(3) and not any("packages" in line for line in marked):
+        print("  exempt: packages 帽须写在同一新增标记行内——不生效")
+        return None
     changed = _changed_paths(mode, since)
     if adr not in changed:
         print(f"  exempt: {adr} 不在本次变更集内——豁免不生效")
         return None
-    return {"adr": adr, "gross": int(m.group(1)), "fanout": int(m.group(2))}
+    return {"adr": adr, "gross": int(m.group(1)), "fanout": int(m.group(2)),
+            "packages": int(m.group(3)) if m.group(3) else None}
 
 
 def main() -> int:
@@ -615,7 +634,7 @@ def main() -> int:
                         help="exit 1 on any OVER (default: report only)")
     parser.add_argument("--exempt", default="",
                         help="豁免依据 ADR 路径：仅当该 ADR 处于本次变更集内且正文带"
-                             "「增量闸豁免：gross ≤ N，fanout ≤ N」标记时，按该标记放宽上限；"
+                             "「增量闸豁免：gross ≤ N，fanout ≤ N，packages ≤ N」标记时，按该标记放宽上限；"
                              "批次落地后 ADR 进入基线，豁免自动失效（一次性）")
     args = parser.parse_args()
     mode = "staged" if args.staged else ("since" if args.since else "worktree")
@@ -632,7 +651,10 @@ def main() -> int:
     if exempt:
         caps["gross"] = max(caps["gross"], exempt["gross"])
         caps["fanout"] = max(caps["fanout"], exempt["fanout"])
-        print(f"  exempt: {exempt['adr']}（本变更集内，gross ≤ {exempt['gross']} / fanout ≤ {exempt['fanout']}）")
+        if exempt["packages"] is not None:
+            caps["packages"] = max(caps["packages"], exempt["packages"])
+        extra = f" / packages ≤ {exempt['packages']}" if exempt["packages"] is not None else ""
+        print(f"  exempt: {exempt['adr']}（本变更集内，gross ≤ {exempt['gross']} / fanout ≤ {exempt['fanout']}{extra}）")
     print(f"  gross: {m['gross']} (cap {caps['gross']}) | "
           f"file-max(existing): +{m['file_max']} {m['top_path'] or ''}(cap +{caps['file']}) | "
           f"fanout: {m['fanout']} (cap {caps['fanout']}) | packages: {m['packages']} (cap {caps['packages']})")

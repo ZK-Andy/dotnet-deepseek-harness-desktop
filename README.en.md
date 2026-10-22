@@ -25,13 +25,13 @@
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop"><img src="https://img.shields.io/github/stars/ZK-Andy/dotnet-deepseek-harness-desktop?style=flat&label=stars&color=4D6BFE" alt="stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml/badge.svg" alt="build &amp; test"></a>
-  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-1093%2F1093-brightgreen" alt="tests"></a>
-  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-67.07%25-yellowgreen" alt="coverage"></a>
+  <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-1096%2F1096-brightgreen" alt="tests"></a>
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/coverage-66.51%25-yellowgreen" alt="coverage"></a>
   <a href="https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-4f6ef7" alt="platform"></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT), built on [Ryn](https://github.com/Yupmoh/Ryn) — a Tauri-for-C# native-webview framework. The shell ships no runtime: node and dsh are the system-global ones (`npm install -g @deepseek-ai/dsh@next`), and the desktop shares one data directory with the terminal, so sessions, credentials and plugins interoperate. On first launch it probes the global dsh on `PATH` — installs it when missing; when the probed version is below the compatibility floor it bootstraps an update to `@next`; otherwise it uses it directly (the criterion is the compatibility floor, not a per-run npm dist-tag lookup).
+A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT). The host layer is migrating from [Ryn](https://github.com/Yupmoh/Ryn) (a Tauri-for-C# native-webview framework) to [Avalonia](https://avaloniaui.net/) 12.1.x: G0 has landed (an Avalonia window plus the package's native WebView, reusing the existing dsh spawn and loopback proxy), with tray, title bar, bridge and supervision following in later stages. The shell ships no runtime: node and dsh are the system-global ones (`npm install -g @deepseek-ai/dsh@next`), and the desktop shares one data directory with the terminal, so sessions, credentials and plugins interoperate. On first launch it probes the global dsh on `PATH` — installs it when missing; when the probed version is below the compatibility floor it bootstraps an update to `@next`; otherwise it uses it directly (the criterion is the compatibility floor, not a per-run npm dist-tag lookup).
 
 <p align="center">
   <a href="assets/screenshot.png"><img src="assets/screenshot.png" width="880" alt="DeepSeek Harness Desktop window showing the plugin market"></a>
@@ -100,7 +100,7 @@ Download the package for your platform from [Releases](https://github.com/ZK-And
 
 ## How it works
 
-The Ryn shell (C# + OS webview) serves the Web UI of the global dsh on `PATH` through a loopback proxy: crash supervision restarts on the same port, first launch bootstraps global node/dsh, and the bundled companion is in place before spawn. Startup model and layering: [docs/architecture.md](docs/architecture.md) (single source of truth).
+The desktop shell (C# + OS webview) serves the Web UI of the global dsh on `PATH` through a loopback proxy: crash supervision restarts on the same port, first launch bootstraps global node/dsh, and the bundled companion is in place before spawn. Startup model and layering: [docs/architecture.md](docs/architecture.md) (single source of truth).
 
 ## Development
 
@@ -122,7 +122,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ## Layout
 
 ```
-├── src/DeepSeek.Harness.Desktop/              # Ryn shell (Presentation): composition root + UI bridge
+├── src/DeepSeek.Harness.Desktop/              # shell (Presentation): Avalonia host (migrating) + Ryn composition root
 ├── src/DeepSeek.Harness.Desktop.Core/         # pure logic, zero outer references
 ├── src/DeepSeek.Harness.Desktop.Infrastructure/  # adapters (Ryn/native, dsh process, file/network, updates)
 ├── tests/                                     # xunit: shell / Core / Infrastructure / analyzer contract
@@ -146,7 +146,8 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 - This project: MIT.
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) — the runtime this shell hosts.
-- [Ryn](https://github.com/Yupmoh/Ryn) (MIT) — the desktop-shell framework.
+- [Avalonia](https://avaloniaui.net/) (MIT) — the migration-target host framework.
+- [Ryn](https://github.com/Yupmoh/Ryn) (MIT) — the original desktop-shell framework (kept for rollback during migration).
 - Packaging approach references [pilot-harness](https://github.com/op7418/pilot-harness).
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

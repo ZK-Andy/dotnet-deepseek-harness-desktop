@@ -15,8 +15,10 @@ Status: proposed
 **决定：宿主层从 Ryn 迁到 Avalonia 12.1.x + `Avalonia.Controls.WebView` 12.1.1（MIT）。**
 
 - TFM 维持 `net10.0`（Avalonia 12 的最低支持版本恰为 .NET 10，见官方支持矩阵）；发运形态维持 JIT self-contained，AOT 决策不变。
+- Linux 运行时换栈：渲染面 **WPE WebKit 优先**（离屏合成进 Avalonia 视觉树）；WPE 缺失时 Avalonia 自动回退 WebKitGTK 4.1，故基线依赖是 GTK3 + `webkit2gtk-4.1` + `libsoup3`（Avalonia 不支持 WebKitGTK 6.0 的 GTK4 构建）。后端选择保持 Avalonia 官方默认，不自带 WPE 运行时、不硬依赖 WPE。deb `Depends:` / rpm `Requires:` 从 `libwebkitgtk-6.0-4` + `libadwaita-1-0` 换成 GTK3 栈；Ubuntu 不打包 WPE。
 - 只换宿主与桥接：保留 dsh Web 客户端与 JS 插件生态；不转原生界面；不承诺内存下降。
-- JS↔C# 走包自带 `av-webview` 消息桥（`WebMessageReceived` / `InvokeScript`），实现 `window.__shell` 替换 `window.__ryn`；`ICommandRouter` / `CommandFrame` 契约与命令 ID 不变，窗口命令（startDrag / toggleMaximize / close）走同一通道。
+- JS↔C# 走包自带消息桥（`WebMessageReceived` / `InvokeScript`），实现 `window.__shell` 替换 `window.__ryn`：`invoke` 由 `WebMessageReceived` 承接，且消息须校验来源为壳 origin（等价旧 `AllowedOrigins`/`AuthorizeOrigin` 面，否则外源页面可直投命令帧）；Avalonia 无 host→page 订阅语义，`on` 与 `__shell_titlebar` 由壳用 `InvokeScript` 主动派发（companion 托盘中继、顶栏脚本各自改消费新通道）；`ICommandRouter` / `CommandFrame` 契约与命令 ID 不变，窗口命令（startDrag / toggleMaximize / close）走同一通道。
+- `ryn.json` 能力沙箱随 Ryn 退役：等效面收窄为命令注册表——未注册命令一律拒绝（ID 单一事实源与壳侧复写闸见 `verify-host-command-ids.py`），补一条「未注册 ID 被拒」回归；README 的 deny-by-default 表述改为按命令表描述。
 - `DSH_DEVTOOLS=1` 映射到 `EnvironmentRequested.EnableDevTools`，仅保留开发开关，不进 parity 范围。
 - dsh 的 `inspector-profile` / `session-inspector` / `inspector` 系列是上游 Web 插件，随 dsh 页面运行，不属于壳迁移范围。
 
@@ -45,12 +47,14 @@ Status: proposed
 ## Consequences
 
 - 0.6.14（Ryn 宿主）保留为回滚产物；0.7.0 为 Avalonia 首发。
-- 内存不承诺下降：Linux 仍是 WebKitGTK（Avalonia 可按环境走 WPE），dsh 进程树 636 MB 的实测（node 452 MB + codegraph 三进程 184 MB，n=1【探索性】）含 codegraph 三进程；该组件不在当前环境，184 MB 部分不可复用，node 的 452 MB 仍只有 n=1。
+- 0.6.14 定版：迁移期间不再出补丁版，非迁移工作排在迁移之后；迁移在 `main` 逐片落地——不设 spike 分支、不设宿主开关，每片自带文档与测试，失败用 revert 或 fix-forward。
+- 内存不承诺下降：Linux 首选 WPE、缺失时回退 WebKitGTK 4.1，dsh 进程树 636 MB 的实测（node 452 MB + codegraph 三进程 184 MB，n=1【探索性】）含 codegraph 三进程；该组件不在当前环境，184 MB 部分不可复用，node 的 452 MB 仍只有 n=1。
 - Windows 依赖 WebView2 运行时：复用现有「缺时提示自装」路径，并按 UniGetUI 的实机教训补检测（缺失时回退旧 EdgeHTML 会在 `async void` 续体里崩进程）。
-- 打包面变化：`verify-package-layout.sh` 的 `libsaucer*` / `libryn-pty` 断言改为 Avalonia 原生库清单；更新 feed 与三平台 smoke 同步修改。
-- 文档需在迁移完成前保持旧口径、迁移后同步改写：`docs/architecture.md`（技术栈与启动链）、`docs/development.md`（构建与 `DSH_DEVTOOLS`）、`docs/testing.md`（打包校验清单）、`docs/cookbook.md`（Ryn/WebKitGTK 条目）、README 技术栈段。旧宿主 ADR `architecture/2026-08-20-ryn-shell-bundled-dsh-runtime` 需要交叉链接或 Erratum。
-- 待证项（G0/G1 实跑验收，不另设能力探针）：`av-webview` 在本仓页面里的消息契约细节、Linux 托盘菜单行为、无边框拖拽/缩放体验。
+- 打包面变化：`verify-package-layout.sh` 的 `libsaucer*` / `libryn-pty` 断言改为 Avalonia 原生库清单；Linux 包依赖换 GTK3 栈（见 Proposal），`libadwaita-1-0` 可删；更新 feed 与三平台 smoke 同步修改。
+- 文档随片同批改，不留到迁移完成：每个改变宿主行为的提交同时改对应文档——`docs/architecture.md`（技术栈与启动链）、`docs/development.md`（构建、`DSH_DEVTOOLS`、Linux 依赖清单）、`docs/testing.md`（打包校验清单、本机冒烟行）、`docs/cookbook.md`（Ryn/WebKitGTK 条目）、`docs/architecture-standards.md`（工程表、R3 例外、R1 的「Ryn 无 hosted-service」前提、`ShellResources` 补 Ryn 缺口的理由）、`docs/faq.md`/`faq.en.md` 与 `docs/user-guide.md`/`.en.md`（安装依赖）、README 技术栈与致谢段、仓库树注释。第一片（宿主装配切换）就改 `architecture.md` 与 README 栈段，其余随各自片；旧宿主 ADR `architecture/2026-08-20-ryn-shell-bundled-dsh-runtime` 的交叉链接或 Erratum 同批落。
+- 待证项（G0/G1 实跑验收，不另设能力探针）：`av-webview` 在本仓页面里的消息契约细节（含 `invoke` 的 JSON 解析语义与失败面）、Linux 托盘菜单行为、无边框拖拽/缩放体验；Linux 双后端差异——WPE 优先（离屏合成）与 WebKitGTK 回退（原生子窗）在输入法、剪贴板、拖拽与 `TryGetPlatformHandle` 上不同，两种机器都要过一遍；`EnableDevTools` 是否在无 WPE 的 GTK 路径生效需实测（官方文档 WPE 节称该事件仅在 WPE 路径触发，与 GTK 示例矛盾）；`PermissionRequested` / `DownloadStarting` 三端默认差异与接管形状（G0 未接，附件下载/通知/媒体权限会静默失败或不受控弹窗）。
 - 迁移期与 0.6.14 并行存在两套宿主代码，评审与测试面按阶段切换，不长期双轨。
+- G0 已落地（首片）：`Program` 入口切到 `Hosting/AvaloniaHost`，Avalonia 窗口 + `NativeWebView` 加载壳 origin，既有 `RuntimeStarter`/`HarnessRuntimeHost`/`DshLoopbackProxy` 原样复用；实跑取得 `dsh web` URL、铸币 303、就绪探活与页面 WS 升级（本机验证见 `.plan/scratch/g0-run2.log`）。`docs/architecture.md` 与 README 栈段/树注释/致谢同片更新。增量闸的 `packages ≤ 3` 一次性豁免见 [avalonia-g0-entry-switch](../../implemented/architecture/2026-10-22-avalonia-g0-entry-switch.md)。
 
 ## Related
 

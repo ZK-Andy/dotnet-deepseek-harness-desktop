@@ -62,5 +62,10 @@
     "DesktopUpdateCommandRouter.cs",
     "UpdateBanner.cs",
     "UpdateRegistration.cs"
+  ],
+  "Hosting": [
+    "ShellApplication.cs",
+    "ShellStartup.cs",
+    "ShellWindow.cs"
   ]
 }

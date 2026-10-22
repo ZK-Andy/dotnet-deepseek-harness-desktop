@@ -120,6 +120,32 @@ public static class LauncherActivation
         }
     }
 
+    /// <summary>单实例仲裁（G0 宿主迁移入口）：本进程是否主实例；false = 已通知既有实例。
+    /// 唤回回调为 no-op（G0 不接唤回），锁名后缀随 dev 判定。</summary>
+    /// <param name="isDev">dev 判定（dev 与正式各持一把锁）。</param><param name="acceptRetryDelay">accept 循环退避节拍。</param><param name="serveTimeout">单次读超时。</param>
+    /// <param name="notifyTimeout">通知既有实例的时限。</param>
+    /// <param name="listener">主实例监听器；平台不支持时为 null。</param>
+    /// <returns>true = 本进程是主实例（含平台不支持情形）。</returns>
+    internal static bool TryBecomePrimary(
+        bool isDev, TimeSpan acceptRetryDelay, TimeSpan serveTimeout, TimeSpan notifyTimeout, out PrimaryListener? listener)
+    {
+        listener = null;
+        string? path = ResolveInstanceSocketPath(isDev);
+        if (path is null)
+        {
+            return true;
+        }
+
+        if (TryBindPrimary(path, static () => Task.CompletedTask, acceptRetryDelay, serveTimeout, HostLog.Write, out listener))
+        {
+            return true;
+        }
+
+        bool notified = NotifyPrimary(path, notifyTimeout);
+        HostLog.Write($"[host] 已有主实例在运行（G0 不接唤回）：通知{(notified ? "成功" : "未达（主实例可能正忙）")}，本次启动退出");
+        return false;
+    }
+
     /// <summary>向既有主实例发送显示主窗请求。返回是否收到应答；任何失败都返回 false，
     /// 调用方无论成败都应退出（绝不重复拉起运行时）。</summary>
     internal static bool NotifyPrimary(string path, TimeSpan timeout)

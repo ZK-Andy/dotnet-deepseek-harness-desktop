@@ -118,6 +118,11 @@ ASSEMBLY_SURFACE_EXTRA = (
     "Bootstrap/PreBuildRegistration.cs",
     "Bootstrap/ShellResources.cs",
     "RynOptionsProfile.cs",
+    # Avalonia 宿主入口（G0 片，ADR avalonia-g0-entry-switch）：真实入口从
+    # DesktopAdapter 换到此处，方向闸 C1/C2 必须覆盖它。根集（C3/C4/C5/F3）仍指
+    # Program + DesktopAdapter*；根集重绑需要先重议 C4 的「恰一处同步桥」，
+    # 故 G0 只把该文件纳入装配面并记债，不改根集判据。
+    "Hosting/AvaloniaHost.cs",
 )
 
 # C2 inventory, bound per file (path relative to --src). A name here asserts
@@ -127,6 +132,8 @@ ALLOWED_METHODS = {
     "DesktopAdapter.cs": {"Run", "AcquireSingleInstance", "StartProxy"},
     "DesktopAdapter.App.cs": {"BuildApp", "RegisterServices"},
     "Bootstrap/PreBuildRegistration.cs": {
+        "CreateStartupPrerequisites",
+        "TryBecomePrimary",
         "CreatePreflight",
         "CreateUpdateAndTrayAssembly",
         "CreateRuntimeStarter",
@@ -135,6 +142,7 @@ ALLOWED_METHODS = {
     },
     "Bootstrap/ShellResources.cs": {"ShellResources", "Attach", "Track", "Dispose"},
     "RynOptionsProfile.cs": {"Apply"},
+    "Hosting/AvaloniaHost.cs": {"Run"},
 }
 
 # C8 domain inventory (C8 reads it; the criteria live in this file). The manifest
@@ -199,6 +207,10 @@ PREBUILD_GLOB = "PreBuildRegistration*.cs"
 PREBUILD_CONSTRUCTIBLE = {
     # CaptionBarOptions：装配期经静态工厂 `CaptionBarOptions.Load(...)` 构造（自绘标题栏参数家）。
     "CaptionBarOptions",
+    # 启动前置用例（G0 宿主迁移，ADR avalonia-g0-entry-switch）：均 headless，spawn 前执行；
+    # 构造随启动体下沉到装配期注册层，供 Hosting/AvaloniaHost 取用。
+    "ProfileLifecycle",
+    "CompanionPreSpawn",
     "CloseBehaviorPreference",
     "CloseGate",
     "DesktopUiLocaleStore",
