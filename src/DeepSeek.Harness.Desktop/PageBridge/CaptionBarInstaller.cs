@@ -1,5 +1,3 @@
-using Ryn.Core;
-
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
@@ -12,7 +10,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 internal sealed class CaptionBarInstaller
 {
     private readonly IWindowScriptTarget _scriptTarget;
-    private readonly IRynWebView _webView;
+    private readonly IPageScriptRegistry _registry;
     private readonly RynNavigationCallbacks _callbacks;
     private readonly CaptionBarOptions _captionBar;
     private readonly UiLocale _uiLocale;
@@ -24,7 +22,7 @@ internal sealed class CaptionBarInstaller
 
     /// <summary>创建顶栏注入用例（构造数据注入；脚本在 <see cref="InstallAsync"/> 时点按当前语言构建）。</summary>
     /// <param name="scriptTarget">当前窗口脚本求值端口（注入目标；Ryn 适配器另居一处，ADR window-script-target-port）。</param>
-    /// <param name="webView">网页视图（Ryn 延迟代理，Build 后可解析；未就绪的语义在 <see cref="PagePump"/> 内）。</param>
+    /// <param name="registry">每页脚本注册端口（Ryn/Avalonia 各一实现；未就绪的语义在 <see cref="PagePump"/> 内）。</param>
     /// <param name="callbacks">导航回调集（常驻到达钩子的挂点）。</param>
     /// <param name="captionBar">自绘标题栏参数家（ADR frameless-uniform-caption-bar）。</param>
     /// <param name="uiLocale">宿主 UI 语言单点（ADR host-ui-locale）。</param>
@@ -32,7 +30,7 @@ internal sealed class CaptionBarInstaller
     /// <param name="pump">页面注入单点（装配期创建的唯一实例）。</param>
     public CaptionBarInstaller(
         IWindowScriptTarget scriptTarget,
-        IRynWebView webView,
+        IPageScriptRegistry registry,
         RynNavigationCallbacks callbacks,
         CaptionBarOptions captionBar,
         UiLocale uiLocale,
@@ -40,7 +38,7 @@ internal sealed class CaptionBarInstaller
         PagePump pump)
     {
         _scriptTarget = scriptTarget;
-        _webView = webView;
+        _registry = registry;
         _callbacks = callbacks;
         _captionBar = captionBar;
         _uiLocale = uiLocale;
@@ -58,7 +56,7 @@ internal sealed class CaptionBarInstaller
         // macChrome = 是否启用原生 macOS chrome（判据单点见 MacNativeChrome）。
         bool macChrome = MacNativeChrome.IsEnabled;
         string script = CaptionBar.Build(_captionBar.HeightPx, _uiLocale, macChrome);
-        Func<IRynWebView> webView = () => _webView;
+        Func<IPageScriptRegistry> registry = () => _registry;
         _callbacks.SetOnNavigatedPersistent(() => Task.Run(() =>
         {
             _ = _pump.InjectCaptionBarWhenReadyAsync(_scriptTarget, script, ct);
@@ -66,11 +64,11 @@ internal sealed class CaptionBarInstaller
             // 但确实活着」的注册时机。
             if (Interlocked.Exchange(ref _reregistered, 1) == 0)
             {
-                _ = _pump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct);
+                _ = _pump.RegisterCaptionBarScriptWhenReadyAsync(registry, script, ct);
             }
         }));
         return Task.WhenAll(
             Task.Run(() => _pump.InjectCaptionBarWhenReadyAsync(_scriptTarget, script, ct)),
-            Task.Run(() => _pump.RegisterCaptionBarScriptWhenReadyAsync(webView, script, ct)));
+            Task.Run(() => _pump.RegisterCaptionBarScriptWhenReadyAsync(registry, script, ct)));
     }
 }

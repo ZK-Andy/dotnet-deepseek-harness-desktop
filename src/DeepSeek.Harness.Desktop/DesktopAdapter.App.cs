@@ -54,6 +54,7 @@ public sealed partial class DesktopAdapter
         services.AddBootstrapCommands(preflight.Bootstrap);
         services.AddAutostartCommands();
         services.AddAppRestartCommand();
+        services.AddRynPageBridgePorts();
         services.AddSingleton(tray);
         services.AddSingleton(supervisorCts);
         services.AddBootstrapSharedState(shared);

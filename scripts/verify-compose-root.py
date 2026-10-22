@@ -142,7 +142,7 @@ ALLOWED_METHODS = {
     },
     "Bootstrap/ShellResources.cs": {"ShellResources", "Attach", "Track", "Dispose"},
     "RynOptionsProfile.cs": {"Apply"},
-    "Hosting/AvaloniaHost.cs": {"Run"},
+    "Hosting/AvaloniaHost.cs": {"Run", "RunUi", "CreateStartup"},
 }
 
 # C8 domain inventory (C8 reads it; the criteria live in this file). The manifest

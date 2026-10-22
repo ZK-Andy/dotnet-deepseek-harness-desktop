@@ -2,10 +2,12 @@ using Avalonia;
 
 namespace DeepSeek.Harness.Desktop.Hosting;
 
-/// <summary>宿主入口（ADR implemented/architecture/2026-10-22-avalonia-g0-entry-switch、-g1-tray-recall）：
-/// Avalonia 窗口 + 包自带 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回随 G1
-/// 首批接入。无边框顶栏、<c>window.__shell</c> 桥、监督器与恢复面留 G1 其余片与 G2–G3，Ryn 装配面保留可回退。
-/// 装配面成员（C2）：本文件只许 <c>Run</c>；新增成员须先在 <c>verify-compose-root.py</c> 列册。</summary>
+/// <summary>宿主入口（ADR implemented/architecture/2026-10-22-avalonia-g0-entry-switch、-g1-tray-recall、-g2-shell-bridge）：
+/// Avalonia 窗口 + 包自带 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回与
+/// <c>window.__shell</c> 页面桥（含外链拦截与页面健康观测）已接入。无边框顶栏、监督器与恢复面留
+/// G1 其余片与 G3，Ryn 装配面保留可回退。
+/// 装配面成员（C2）：本文件只许 <c>Run</c>、<c>RunUi</c>、<c>CreateStartup</c>；新增成员须先在
+/// <c>verify-compose-root.py</c> 的 ALLOWED_METHODS 列册（本片为拆 F2 方法长度上限而拆分启动面）。</summary>
 internal static class AvaloniaHost
 {
     /// <summary>启动 Avalonia 主循环：预检与单实例仲裁后开窗，dsh spawn 与铸币在后台相完成，页面经壳 origin 加载。</summary>
@@ -19,6 +21,7 @@ internal static class AvaloniaHost
         ShellResources resources = PreBuildRegistration.CreateShellResources();
         RunMarkerResult? marker = null;
         ShellStartup? startup = null;
+        ShellBridgeHost? bridgeHost = null;
         try
         {
             SharedState shared = PreBuildRegistration.CreateSharedState(static () => null);
@@ -53,23 +56,22 @@ internal static class AvaloniaHost
                 preflight, shared.Timeouts, shared.ShellForward);
 
             // 窗口加载壳 origin（代理）：dsh 就绪前代理按铸币等待预算转引导页，dsh 起后同一 origin 直达 UI。
-            (ProfileLifecycle profile, CompanionPreSpawn companion) = PreBuildRegistration.CreateStartupPrerequisites(shared.Timeouts);
-            startup = new ShellStartup(
-                async ct =>
-                {
-                    // 偏序与旧编排一致：profile 就绪 → 随包插件安装 → spawn；均在后台相执行。
-                    profile.EnsureReady();
-                    companion.EnsureInstalled(preflight.Bootstrap.IsNeeded, preflight.Launch);
-                    await starter.StartAsync(host, ct).ConfigureAwait(false);
-                },
-                proxy.Proxy?.Url);
+            startup = CreateStartup(preflight, shared, host, starter, proxy);
             // 托盘图标存在性是装配期配置探测（与旧入口 DesktopAdapter.App 同款，D005 显式豁免）
             string trayIconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
             bool trayIconAvailable = File.Exists(trayIconPath); // verify-code-conventions: ignore 装配面：托盘图标存在性是配置探测，非业务直调
-            return AppBuilder.Configure(() => new ShellApplication(
-                    startup, preflight.Launch.DevTools, recall, shared.UiLocale, trayIconPath, trayIconAvailable))
-                .UsePlatformDetect()
-                .StartWithClassicDesktopLifetime(args);
+
+            // 页面桥（ADR avalonia-g2-shell-bridge）：命令面先接 PageBridge 域四路由，其余随 G3；
+            // 代理未绑定时 origin 为 null，桥与健康观测整体降级跳过（ShellBridgeHost 自持该判据）。
+            bridgeHost = PageBridgeRegistration.CreateShellBridgeHost(
+                proxy.Proxy?.Url?.GetLeftPart(UriPartial.Authority),
+                shared.UiLocale,
+                MacNativeChrome.IsEnabled,
+                shared.CaptionBar.HeightPx,
+                TimeSpan.FromSeconds(shared.Timeouts.HealthInitialDelaySeconds),
+                HostLog.Write);
+
+            return RunUi(args, startup, preflight.Launch.DevTools, recall, shared.UiLocale, trayIconPath, trayIconAvailable, bridgeHost);
         }
         finally
         {
@@ -77,6 +79,7 @@ internal static class AvaloniaHost
             try
             {
                 startup?.Dispose();
+                bridgeHost?.Dispose();
                 resources.Dispose();
             }
             finally
@@ -88,4 +91,53 @@ internal static class AvaloniaHost
             }
         }
     }
+
+    /// <summary>后台起步体（profile 就绪 → 随包插件安装 → spawn；均在后台相执行）。</summary>
+    /// <param name="preflight">启动前置产出。</param>
+    /// <param name="shared">装配期共享态（超时家）。</param>
+    /// <param name="host">运行时宿主。</param>
+    /// <param name="starter">运行时起步用例。</param>
+    /// <param name="proxy">回环代理源（窗口初始 URL 来源）。</param>
+    /// <returns>起步壳。</returns>
+    private static ShellStartup CreateStartup(
+        Preflight preflight,
+        SharedState shared,
+        HarnessRuntimeHost host,
+        IRuntimeStarter starter,
+        DshLoopbackProxy.ProxySetup proxy)
+    {
+        (ProfileLifecycle profile, CompanionPreSpawn companion) = PreBuildRegistration.CreateStartupPrerequisites(shared.Timeouts);
+        return new ShellStartup(
+            async ct =>
+            {
+                profile.EnsureReady();
+                companion.EnsureInstalled(preflight.Bootstrap.IsNeeded, preflight.Launch);
+                await starter.StartAsync(host, ct).ConfigureAwait(false);
+            },
+            proxy.Proxy?.Url);
+    }
+
+    /// <summary>开 AvaLonia 主循环（窗口、托盘与页面桥都在 <see cref="ShellApplication"/> 里接线）。</summary>
+    /// <param name="args">命令行参数。</param>
+    /// <param name="startup">运行时起步壳。</param>
+    /// <param name="devTools">是否开启 WebView 调试器。</param>
+    /// <param name="recall">唤回单点。</param>
+    /// <param name="uiLocale">UI 语言单点。</param>
+    /// <param name="trayIconPath">托盘图标路径。</param>
+    /// <param name="trayIconAvailable">托盘图标是否存在。</param>
+    /// <param name="bridgeHost">页面桥装配。</param>
+    /// <returns>进程退出码。</returns>
+    private static int RunUi(
+        string[] args,
+        ShellStartup startup,
+        bool devTools,
+        ShellRecall recall,
+        UiLocale uiLocale,
+        string trayIconPath,
+        bool trayIconAvailable,
+        ShellBridgeHost bridgeHost) =>
+        AppBuilder.Configure(() => new ShellApplication(
+                startup, devTools, recall, uiLocale, trayIconPath, trayIconAvailable, bridgeHost))
+            .UsePlatformDetect()
+            .StartWithClassicDesktopLifetime(args);
 }

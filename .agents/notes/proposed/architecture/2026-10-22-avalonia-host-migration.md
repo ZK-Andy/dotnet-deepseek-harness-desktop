@@ -35,6 +35,8 @@ Status: proposed
 | G4 | 能发：三平台打包/更新/CI/smoke，WebView2 运行时缺失检测 | 1.5–2 周 |
 | G5 | 对齐回滚：0.6.14 parity、浸泡基线、0.7.0 | 1 周 |
 
+**执行序：G0 → G1 首批 → G2 → G1 余项 → G3 → G4 → G5。** 顶栏与恢复页的页面侧脚本依赖 `window.__shell`，桥必须先于消费方落地，故 G2 先于 G1 余项；阶段编号不改名（ADR、待办与 journal 已按编号引用）。G2 已落地（[avalonia-g2-shell-bridge](../../implemented/architecture/2026-10-22-avalonia-g2-shell-bridge.md)）；G1 余项中页面侧（顶栏/恢复页）是桥的纯消费方，失败面对话框走原生窗口、不涉桥。
+
 ## Alternatives considered
 
 - **维持 Ryn（pin 0.38.0 或 fork）**：零迁移成本；但上游停止交付，内存与 WebKitGTK 新能力无解，fork 需自持 C# 绑定 + 原生归档工具链。落败。
@@ -54,7 +56,7 @@ Status: proposed
 - 文档随片同批改，不留到迁移完成：每个改变宿主行为的提交同时改对应文档——`docs/architecture.md`（技术栈与启动链）、`docs/development.md`（构建、`DSH_DEVTOOLS`、Linux 依赖清单）、`docs/testing.md`（打包校验清单、本机冒烟行）、`docs/cookbook.md`（Ryn/WebKitGTK 条目）、`docs/architecture-standards.md`（工程表、R3 例外、R1 的「Ryn 无 hosted-service」前提、`ShellResources` 补 Ryn 缺口的理由）、`docs/faq.md`/`faq.en.md` 与 `docs/user-guide.md`/`.en.md`（安装依赖）、README 技术栈与致谢段、仓库树注释。第一片（宿主装配切换）就改 `architecture.md` 与 README 栈段，其余随各自片；旧宿主 ADR `architecture/2026-08-20-ryn-shell-bundled-dsh-runtime` 的交叉链接或 Erratum 同批落。
 - 待证项（G0/G1 实跑验收，不另设能力探针）：`av-webview` 在本仓页面里的消息契约细节（含 `invoke` 的 JSON 解析语义与失败面）、Linux 托盘菜单行为、无边框拖拽/缩放体验；Linux 双后端差异——WPE 优先（离屏合成）与 WebKitGTK 回退（原生子窗）在输入法、剪贴板、拖拽与 `TryGetPlatformHandle` 上不同，两种机器都要过一遍；`EnableDevTools` 是否在无 WPE 的 GTK 路径生效需实测（官方文档 WPE 节称该事件仅在 WPE 路径触发，与 GTK 示例矛盾）；`PermissionRequested` / `DownloadStarting` 三端默认差异与接管形状（G0 未接，附件下载/通知/媒体权限会静默失败或不受控弹窗）。
 - 迁移期与 0.6.14 并行存在两套宿主代码，评审与测试面按阶段切换，不长期双轨。
-- G0 已落地（首片）：`Program` 入口切到 `Hosting/AvaloniaHost`，Avalonia 窗口 + `NativeWebView` 加载壳 origin，既有 `RuntimeStarter`/`HarnessRuntimeHost`/`DshLoopbackProxy` 原样复用；实跑取得 `dsh web` URL、铸币 303、就绪探活与页面 WS 升级（本机验证见 `.plan/scratch/g0-run2.log`）。`docs/architecture.md` 与 README 栈段/树注释/致谢同片更新。增量闸的 `packages ≤ 3` 一次性豁免见 [avalonia-g0-entry-switch](../../implemented/architecture/2026-10-22-avalonia-g0-entry-switch.md)。G1 首批已落地（托盘、关窗到托盘、二启唤回），见 [avalonia-g1-tray-recall](../../implemented/architecture/2026-10-22-avalonia-g1-tray-recall.md)；G1 其余片（无边框顶栏、失败面对话框、恢复页）未动；首启引导按阶段表归 G3。
+- G0 已落地（首片）：`Program` 入口切到 `Hosting/AvaloniaHost`，Avalonia 窗口 + `NativeWebView` 加载壳 origin，既有 `RuntimeStarter`/`HarnessRuntimeHost`/`DshLoopbackProxy` 原样复用；实跑取得 `dsh web` URL、铸币 303、就绪探活与页面 WS 升级（本机验证见 `.plan/scratch/g0-run2.log`）。`docs/architecture.md` 与 README 栈段/树注释/致谢同片更新。增量闸的 `packages ≤ 3` 一次性豁免见 [avalonia-g0-entry-switch](../../implemented/architecture/2026-10-22-avalonia-g0-entry-switch.md)。G1 首批已落地（托盘、关窗到托盘、二启唤回），见 [avalonia-g1-tray-recall](../../implemented/architecture/2026-10-22-avalonia-g1-tray-recall.md)；G1 其余片（无边框顶栏、失败面对话框、恢复页）未动；首启引导按阶段表归 G3。页面桥已落地：`window.__shell`（invoke/on/_emit，nonce+顶层 origin 双判据）、PagePump 注册端口、健康探针与外链拦截，见 [avalonia-g2-shell-bridge](../../implemented/architecture/2026-10-22-avalonia-g2-shell-bridge.md)。
 
 ## Related
 

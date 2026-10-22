@@ -179,11 +179,21 @@
             } catch (e) { /* 渲染失败不影响宿主引导链路 */ }
         }
         setTimeout(releaseFrames, 1000);
-        try {
-            window.__ryn.invoke('desktop.ui.getLocale', {}).then(function (r) { applyLocale(r && r.locale); })
+        // 桥在 NavigationCompleted 后才注入（无 document-start 钩子），首屏只能轮询等它出现；
+        // 2s 内没等到就按「宿主未接命令」退化（保持中文并放行已排队帧）。
+        function withShell(fn) {
+            var tries = 0;
+            (function attempt() {
+                if (window.__shell && window.__shell.invoke) { fn(window.__shell); return; }
+                if (++tries > 40) { releaseFrames(); return; }
+                setTimeout(attempt, 50);
+            })();
+        }
+        withShell(function (shell) {
+            shell.invoke('desktop.ui.getLocale', {}).then(function (r) { applyLocale(r && r.locale); })
                 .catch(function () { /* 宿主未接命令：保持中文 */ })
                 .then(releaseFrames);
-        } catch (e) { releaseFrames(); /* __ryn 未就绪：保持中文并立即放行 */ }
+        });
 
         // 首启引导状态机渲染（ADR simple-shell-single-global-dsh）：宿主经 CustomEvent 推进度，
         // 数据一律 textContent 回填（stderr/错误信息是上游不可控输出，绝不 innerHTML 拼接）。
@@ -215,7 +225,11 @@
         }
 
         function retryBootstrap() {
-            try { window.__ryn.invoke('desktop.bootstrap.retry', {}); } catch (e) { /* IPC 未就绪时静默 */ }
+            try {
+                window.__shell.invoke('desktop.bootstrap.retry', {}).catch(function () {
+                    /* 宿主暂未接该命令（G3 前）：用户可再点一次；不产生未处理 rejection */
+                });
+            } catch (e) { /* 桥未就绪时静默 */ }
         }
 
         document.addEventListener('dsh-desktop-bootstrap', function (ev) {

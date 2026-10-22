@@ -1,6 +1,6 @@
 # Architecture
 
-> 现状。宿主层正从 `Ryn` 迁向 Avalonia 12.1.x：G0 与 G1 首批已落地（Avalonia 窗口 + 包自带原生 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回走 Avalonia `TrayIcon` + 唤回单点），顶栏/桥/监督随 G1–G3 其余片迁入，Ryn 装配面暂留可回退。回环代理源承载全局 dsh Web UI（ADR `implemented/architecture/2026-09-27-loopback-forward-proxy`）+ Core/Infrastructure/壳三层与端口适配 + 崩溃监督 + 首启引导 + 随包 companion 装配。
+> 现状。宿主层正从 `Ryn` 迁向 Avalonia 12.1.x：G0、G1 首批与 G2 页面桥已落地（Avalonia 窗口 + 包自带原生 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回走 `TrayIcon` + 唤回单点；`window.__shell` 承接页面命令/事件/每页脚本，外链拦截与页面健康观测已接），顶栏/监督随 G1 余项与 G3 迁入，Ryn 装配面暂留可回退。回环代理源承载全局 dsh Web UI（ADR `implemented/architecture/2026-09-27-loopback-forward-proxy`）+ Core/Infrastructure/壳三层与端口适配 + 崩溃监督 + 首启引导 + 随包 companion 装配。
 
 ## 概览
 
@@ -21,7 +21,7 @@
 
 * **窗口 URL 恒为回环代理源**（ADR `loopback-forward-proxy`）：`DshLoopbackProxy`（`TcpListener` 纯 loopback）在 `BuildApp` 前启动，逐请求向 dsh authority 转发；绑定失败 loud 后降级为空窗（wwwroot 降级随 G1）。**代理端口跨冷启动记忆**（`.dsh-shell-port`，ADR `2026-09-30-shell-proxy-port-persistence`）：有记忆试绑、被占 loud 降级并重记——origin 稳定，dsh 会话 localStorage 才能跨重启命中恢复。**启动链零 host 导航**——dsh 未就绪时代理本地端点出 holder 页（自 `fetch` 就绪后自 `reload`），绕开 saucer `set_url` 同步原生挂家族；`/__shell_ready` 长轮询铸币门、`/__shell_guide/*` 磁盘指南页。
 * **铸币与转发**：`DshShellForward.MintAsync` 用 token 铸 cookie（`redirect: manual`）；代理贴壳 cookie 转发、`Set-Cookie` 永不回页面、SSE 流式直通、POST content 头保真；WS 升级走裸 TCP 隧道 + 头手术（`Host`/`Origin`/`Referer` 同源 dsh authority，页源三值零透传，ADR `2026-09-27-upgrade-tunnel-host-authority`）。日志只记状态码/头名/字节数，token/cookie 值不落盘。
-* **落定与裁决**：`Core.Ui.MainUiEntry` 探针采 `location.origin` + 可见文本，`Core.WebAuthRecovery.ClassifyDetail` 三态裁决（`PageVerdict`：healthy/auth/unknown）；holder 标记排除、探针有限重试（`RuntimeTimeouts.AuthProbeAttempts`）。窗口导航面三项（Ryn 面，迁移期 G0 只加载代理根、未接）：首载与 origin 变化由 Ryn 页面生命周期承担（无宿主调用）；宿主主动导航两处——引导期鉴权重载（`Task.Run` 隔离同步原生 `set_url`）与页面健康 reload（走 Ryn 异步 `NavigateAsync`）；恢复路径**按承载面**决定——原生失败面不碰活动页 DOM 故不导航，回落页内恢复面覆写过 DOM，恢复成功后仍补一次回代理根的收口导航（ADR `2026-10-14-native-failure-surface`）。
+* **落定与裁决**：`Core.Ui.MainUiEntry` 探针采 `location.origin` + 可见文本，`Core.WebAuthRecovery.ClassifyDetail` 三态裁决（`PageVerdict`：healthy/auth/unknown）；holder 标记排除、探针有限重试（`RuntimeTimeouts.AuthProbeAttempts`）。窗口导航面：首载与 origin 变化随页面生命周期；宿主主动导航两处——引导期鉴权重载（`IWebViewNavigator`）、页面健康 reload（各宿主自有通道）；恢复路径**按承载面**决定——原生失败面不碰活动页 DOM 故不导航，回落页内恢复面覆写过 DOM，恢复成功后仍补一次回代理根的收口导航（ADR `2026-10-14-native-failure-surface`）。
 
 ## 运行时来源（系统全局 node + 全局 dsh）
 
@@ -42,7 +42,7 @@
 
 ## 外部链接接管
 
-* 站外导航在壳侧拦截：G0 的 `ShellWindow` 在 `NavigationStarted` 取消非壳 origin 的导航、`NewWindowRequested` 不弹新窗（不开系统浏览器）；`app.openExternal` 复核与 `SystemBrowser`（Linux 独立 transient scope）打开随 G2 接回。Ryn 面旧实现 `RynNavigationCallbacks` 保留到迁移片删除。
+* 页面桥与站外导航（ADR `2026-10-22-avalonia-g2-shell-bridge`）：注入 `window.__shell`（`invoke`/`on`/`_emit`；上行 `invokeCSharpAction`、下行 `InvokeScript`），消息按 nonce + 顶层 origin 双判据校验，导航完成后重注入；外站 http(s) 在 `NavigationStarted` 取消并交 `SystemBrowser`，`NewWindowRequested` 标记已处理。每页脚本与探针走各自端口的适配器；Ryn 旧实现 `RynNavigationCallbacks` 保留到迁移收尾删除。
 
 ## 自更新
 

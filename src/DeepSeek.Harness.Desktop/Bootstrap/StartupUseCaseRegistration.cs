@@ -59,7 +59,7 @@ internal static class StartupUseCaseRegistration
         // 无边框顶栏注入用例（ADR frameless-uniform-caption-bar + B3）：脚本构建与三路注入全在用例内。
         services.AddSingleton(sp => new CaptionBarInstaller(
             sp.GetRequiredService<IWindowScriptTarget>(),
-            sp.GetRequiredService<IRynWebView>(),
+            sp.GetRequiredService<IPageScriptRegistry>(),
             sp.GetRequiredService<RynNavigationCallbacks>(),
             sp.GetRequiredService<CaptionBarOptions>(),
             sp.GetRequiredService<UiLocale>(),

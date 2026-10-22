@@ -1,13 +1,13 @@
 using System.Text.Json;
-using Ryn.Core;
 
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
 /// 页面注入辅助（ADR 装配面只装配）：把 JS 注入类操作（横幅/引导进度/自更新状态）
-/// 从装配面抽出为单点。窗口面经 <see cref="IWindowScriptTarget"/> 端口（Ryn 适配器另居一处，
-/// ADR architecture/2026-10-21-window-script-target-port），webview 注册面收
-/// 就绪前会抛的 <see cref="IRynWebView"/> 惰性解析；未就绪的重试/丢弃语义在本类方法内。
+/// 从装配面抽出为单点。窗口面经 <see cref="IWindowScriptTarget"/> 端口（Ryn 与 Avalonia 各一适配器，
+/// ADR architecture/2026-10-21-window-script-target-port、2026-10-22-avalonia-g2-shell-bridge），
+/// 每页注册经 <see cref="IPageScriptRegistry"/> 端口（就绪前会抛的惰性解析由实现方负责）；
+/// 未就绪的重试/丢弃语义在本类方法内。
 /// 重试预算来自构造注入的配置（ADR 组合根寿命与配置单一来源 D4：预算由构造注入，不自行解析 appsettings）。
 /// </summary>
 internal sealed class PagePump
@@ -70,19 +70,19 @@ internal sealed class PagePump
     /// （<see cref="RuntimeTimeouts.CaptionBarRegisterSeconds"/> 经 <see cref="AttemptsForBudget"/> 折算；
     /// mac x64/Rosetta 的 webview 创建晚于按次数计的 6s 预算，发版腿实证），其余异常留痕放弃——
     /// 顶栏属增强面，绝不拖垮启动链路。</summary>
-    internal Task RegisterCaptionBarScriptWhenReadyAsync(Func<IRynWebView> webView, string script, CancellationToken ct) =>
+    internal Task RegisterCaptionBarScriptWhenReadyAsync(Func<IPageScriptRegistry> registry, string script, CancellationToken ct) =>
         RegisterCaptionBarScriptWhenReadyAsync(
-            webView, script,
+            registry, script,
             AttemptsForBudget(TimeSpan.FromSeconds(_timeouts.CaptionBarRegisterSeconds), _pushRetryDelay),
             _pushRetryDelay,
             ct);
 
     /// <summary>同上，次数预算可注入（单测覆盖「次数用尽」出口；生产走 <see cref="AttemptsForBudget"/> 折算）。</summary>
     internal static async Task RegisterCaptionBarScriptWhenReadyAsync(
-        Func<IRynWebView> webView, string script, int maxAttempts, TimeSpan retryDelay, CancellationToken ct)
+        Func<IPageScriptRegistry> registry, string script, int maxAttempts, TimeSpan retryDelay, CancellationToken ct)
     {
         RetryOutcome outcome = await RetryWhenReadyAsync(
-            token => RegisterScriptAsync(webView, script, token),
+            token => RegisterScriptAsync(registry, script, token),
             ex => HostLog.Write($"[caption-bar] 每页加载脚本注册失败（放弃）：{ex.Message}"),
             maxAttempts,
             retryDelay,
@@ -199,9 +199,9 @@ internal sealed class PagePump
         return ct.IsCancellationRequested ? RetryOutcome.Stopped : RetryOutcome.Exhausted;
     }
 
-    /// <summary>向 webview 注册「每次页面加载执行」的脚本（未就绪时惰性解析抛 InvalidOperationException，交重试单点）。</summary>
-    private static Task RegisterScriptAsync(Func<IRynWebView> webView, string script, CancellationToken ct) =>
-        webView().InjectScriptAsync(script, ct).AsTask();
+    /// <summary>向桥注册「每次页面加载执行」的脚本（未就绪时惰性解析抛 InvalidOperationException，交重试单点）。</summary>
+    private static Task RegisterScriptAsync(Func<IPageScriptRegistry> registry, string script, CancellationToken ct) =>
+        registry().RegisterOnLoadAsync(script, ct);
 
     /// <summary>重试单点的终态（调用点只区分「成功」与「次数用尽」两种需留痕的结局）。</summary>
     private enum RetryOutcome

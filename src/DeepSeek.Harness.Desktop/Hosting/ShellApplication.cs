@@ -17,6 +17,7 @@ internal sealed class ShellApplication : Application
     private readonly UiLocale _uiLocale;
     private readonly string _trayIconPath;
     private readonly bool _trayIconAvailable;
+    private readonly ShellBridgeHost _bridgeHost;
 
     /// <summary>创建应用对象。</summary>
     /// <param name="startup">运行时起步（dsh spawn 与铸币）。</param>
@@ -25,8 +26,15 @@ internal sealed class ShellApplication : Application
     /// <param name="uiLocale">UI 语言单点（托盘菜单文案）。</param>
     /// <param name="trayIconPath">托盘图标路径（装配层探测，本类不碰文件系统）。</param>
     /// <param name="trayIconAvailable">托盘图标是否存在。</param>
+    /// <param name="bridgeHost">页面桥装配（窗口挂载后接上，窗口销毁时收口）。</param>
     public ShellApplication(
-        ShellStartup startup, bool devTools, ShellRecall recall, UiLocale uiLocale, string trayIconPath, bool trayIconAvailable)
+        ShellStartup startup,
+        bool devTools,
+        ShellRecall recall,
+        UiLocale uiLocale,
+        string trayIconPath,
+        bool trayIconAvailable,
+        ShellBridgeHost bridgeHost)
     {
         _startup = startup;
         _devTools = devTools;
@@ -34,6 +42,7 @@ internal sealed class ShellApplication : Application
         _uiLocale = uiLocale;
         _trayIconPath = trayIconPath;
         _trayIconAvailable = trayIconAvailable;
+        _bridgeHost = bridgeHost;
     }
 
     /// <inheritdoc />
@@ -45,7 +54,7 @@ internal sealed class ShellApplication : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            var window = new ShellWindow(_startup.InitialUri, _devTools);
+            var window = new ShellWindow(_startup.InitialUri, _devTools, _bridgeHost);
             desktop.MainWindow = window;
 
             var closeGate = new CloseGate();
@@ -81,6 +90,7 @@ internal sealed class ShellApplication : Application
                 _recall.Detach();
                 try
                 {
+                    _bridgeHost.Dispose();
                     tray?.Dispose();
                 }
                 finally

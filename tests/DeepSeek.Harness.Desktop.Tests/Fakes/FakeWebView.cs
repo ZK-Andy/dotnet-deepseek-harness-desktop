@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Tests.Fakes;
 
 /// <summary>IRynWebView 假体（自 <c>PagePumpTests</c> 私有嵌套提取为共享假件）：本仓多条注入/注册路径只消费
 /// <c>InjectScriptAsync</c>，其余成员为接口完备性占位；注册路可按序排定失败结局。</summary>
-internal sealed class FakeWebView : IRynWebView
+internal sealed class FakeWebView : IRynWebView, DeepSeek.Harness.Desktop.PageBridge.IPageScriptRegistry
 {
     private readonly Queue<Exception?> _outcomes = new();
     private readonly object _gate = new();
@@ -82,6 +82,13 @@ internal sealed class FakeWebView : IRynWebView
 
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>每页加载脚本注册（新端口适配：语义等同 <see cref="InjectScriptAsync"/>）。</summary>
+    /// <param name="script">待注册脚本。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>完成的任务。</returns>
+    public Task RegisterOnLoadAsync(string script, CancellationToken cancellationToken) =>
+        InjectScriptAsync(script, cancellationToken).AsTask();
 
     /// <summary>未消费。</summary>
     /// <param name="url">目标 URL。</param>
