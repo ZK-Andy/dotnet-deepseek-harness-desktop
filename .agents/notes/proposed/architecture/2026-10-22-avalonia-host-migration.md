@@ -18,6 +18,8 @@ Status: proposed
 - Linux 运行时换栈：渲染面 **WPE WebKit 优先**（离屏合成进 Avalonia 视觉树）；WPE 缺失时 Avalonia 自动回退 WebKitGTK 4.1，故基线依赖是 GTK3 + `webkit2gtk-4.1` + `libsoup3`（Avalonia 不支持 WebKitGTK 6.0 的 GTK4 构建）。后端选择保持 Avalonia 官方默认，不自带 WPE 运行时、不硬依赖 WPE。deb `Depends:` / rpm `Requires:` 从 `libwebkitgtk-6.0-4` + `libadwaita-1-0` 换成 GTK3 栈；Ubuntu 不打包 WPE。
 - 只换宿主与桥接：保留 dsh Web 客户端与 JS 插件生态；不转原生界面；不承诺内存下降。
 - JS↔C# 走包自带消息桥（`WebMessageReceived` / `InvokeScript`），实现 `window.__shell` 替换 `window.__ryn`：`invoke` 由 `WebMessageReceived` 承接，且消息须校验来源为壳 origin（等价旧 `AllowedOrigins`/`AuthorizeOrigin` 面，否则外源页面可直投命令帧）；Avalonia 无 host→page 订阅语义，`on` 与 `__shell_titlebar` 由壳用 `InvokeScript` 主动派发（companion 托盘中继、顶栏脚本各自改消费新通道）；`ICommandRouter` / `CommandFrame` 契约与命令 ID 不变，窗口命令（startDrag / toggleMaximize / close）走同一通道。
+- 命令面在新宿主的实际形状少一条：`desktop.tray.event` 只留在旧宿主装配面（Avalonia 托盘菜单是原生回调，
+  页面侧没有事件源），见 [`avalonia-g3-exit-restart`](../../implemented/architecture/2026-10-23-avalonia-g3-exit-restart.md)。
 - `ryn.json` 能力沙箱随 Ryn 退役：等效面收窄为命令注册表——未注册命令一律拒绝（ID 单一事实源与壳侧复写闸见 `verify-host-command-ids.py`），补一条「未注册 ID 被拒」回归；README 的 deny-by-default 表述改为按命令表描述。
 - `DSH_DEVTOOLS=1` 映射到 `EnvironmentRequested.EnableDevTools`，仅保留开发开关，不进 parity 范围。
 - dsh 的 `inspector-profile` / `session-inspector` / `inspector` 系列是上游 Web 插件，随 dsh 页面运行，不属于壳迁移范围。
@@ -31,7 +33,7 @@ Status: proposed
 | G0 | 跑起来：Avalonia 窗口 → NativeWebView → 复用既有 spawn/代理 → dsh UI 可见 | 1–2 天 |
 | G1 | 壳齐：托盘/关窗到托盘、单实例、无边框顶栏、失败面对话框、恢复页 | 1 周 |
 | G2 | 桥通：`av-webview` 替换 `__ryn`，PagePump、健康探针、外链拦截 | 1.5 周 |
-| G3 | 面齐：12 个命令路由、引导/首启、locale、更新 UI、诊断、companion | 2 周 |
+| G3 | 面齐：11 个命令路由（`desktop.tray.event` 随新宿主退役）、引导/首启、locale、更新 UI、诊断、companion | 2 周 |
 | G4 | 能发：三平台打包/更新/CI/smoke，WebView2 运行时缺失检测 | 1.5–2 周 |
 | G5 | 对齐回滚：0.6.14 parity、浸泡基线、0.7.0 | 1 周 |
 
@@ -57,7 +59,7 @@ Status: proposed
 - 待证项（G0/G1 实跑验收，不另设能力探针）：`av-webview` 在本仓页面里的消息契约细节（含 `invoke` 的 JSON 解析语义与失败面）、Linux 托盘菜单行为、无边框拖拽/缩放体验；Linux 双后端差异——WPE 优先（离屏合成）与 WebKitGTK 回退（原生子窗）在输入法、剪贴板、拖拽与 `TryGetPlatformHandle` 上不同，两种机器都要过一遍；`EnableDevTools` 是否在无 WPE 的 GTK 路径生效需实测（官方文档 WPE 节称该事件仅在 WPE 路径触发，与 GTK 示例矛盾）；`PermissionRequested` / `DownloadStarting` 三端默认差异与接管形状（G0 未接，附件下载/通知/媒体权限会静默失败或不受控弹窗）。
 - **无边框顶栏不是桥的纯消费方**（2026-10-23 核实）：`Avalonia.Controls.Window.BeginMoveDrag` 只接受 `PointerPressedEventArgs`，且三后端都真正消费它（Win32 `e.Pointer.Capture/IsPrimary`、X11 从指针坐标发 `_NET_WM_MOVERESIZE`、Wayland 取 `e.PlatformInputEventCookie` 作 `xdg_toplevel.move` 的 serial）；页面区域的指针被原生 WebView 子窗消费，Avalonia 收不到按下事件。故自绘顶栏的拖拽/缩放必须补平台原生互操作（Win32 `WM_SYSCOMMAND`+`WM_LBUTTONUP` 或 `WM_NCLBUTTONDOWN`、X11 `_NET_WM_MOVERESIZE`），Wayland 无公开路径；macOS 可复用 `Avalonia.Native` 的分支（其 `BeginMoveDrag()` 显式回退到 `[NSApp currentEvent]`，正为 WebView 消费按下的场景而写）。顶栏片的估时因此不含「仅接线」。
 - 迁移期与 0.6.14 并行存在两套宿主代码，评审与测试面按阶段切换，不长期双轨。
-- G0 已落地（首片）：`Program` 入口切到 `Hosting/AvaloniaHost`，Avalonia 窗口 + `NativeWebView` 加载壳 origin，既有 `RuntimeStarter`/`HarnessRuntimeHost`/`DshLoopbackProxy` 原样复用；实跑取得 `dsh web` URL、铸币 303、就绪探活与页面 WS 升级（本机验证见 `.plan/scratch/g0-run2.log`）。`docs/architecture.md` 与 README 栈段/树注释/致谢同片更新。增量闸的 `packages ≤ 3` 一次性豁免见 [avalonia-g0-entry-switch](../../implemented/architecture/2026-10-22-avalonia-g0-entry-switch.md)。G1 首批已落地（托盘、关窗到托盘、二启唤回），见 [avalonia-g1-tray-recall](../../implemented/architecture/2026-10-22-avalonia-g1-tray-recall.md)；G1 其余片：失败面对话框已接启动失败路径（进程内模态，见 `implemented/architecture/2026-10-23-avalonia-failure-dialog.md`），无边框顶栏已接（三平台原生拖拽/缩放，Wayland 降级保留装饰，见 `implemented/architecture/2026-10-23-avalonia-caption-bar.md`），恢复页未动；首启引导按阶段表归 G3。页面桥已落地：`window.__shell`（invoke/on/_emit，nonce+顶层 origin 双判据）、PagePump 注册端口、健康探针与外链拦截，见 [avalonia-g2-shell-bridge](../../implemented/architecture/2026-10-22-avalonia-g2-shell-bridge.md)。
+- G0 已落地（首片）：`Program` 入口切到 `Hosting/AvaloniaHost`，Avalonia 窗口 + `NativeWebView` 加载壳 origin，既有 `RuntimeStarter`/`HarnessRuntimeHost`/`DshLoopbackProxy` 原样复用；实跑取得 `dsh web` URL、铸币 303、就绪探活与页面 WS 升级（本机验证见 `.plan/scratch/g0-run2.log`）。`docs/architecture.md` 与 README 栈段/树注释/致谢同片更新。增量闸的 `packages ≤ 3` 一次性豁免见 [avalonia-g0-entry-switch](../../implemented/architecture/2026-10-22-avalonia-g0-entry-switch.md)。G1 首批已落地（托盘、关窗到托盘、二启唤回），见 [avalonia-g1-tray-recall](../../implemented/architecture/2026-10-22-avalonia-g1-tray-recall.md)；G1 其余片：失败面对话框已接启动失败路径（进程内模态，见 `implemented/architecture/2026-10-23-avalonia-failure-dialog.md`），无边框顶栏已接（三平台原生拖拽/缩放，Wayland 降级保留装饰，见 `implemented/architecture/2026-10-23-avalonia-caption-bar.md`），恢复页未动；首启引导按阶段表归 G3。页面桥已落地：`window.__shell`（invoke/on/_emit，nonce+顶层 origin 双判据）、PagePump 注册端口、健康探针与外链拦截，见 [avalonia-g2-shell-bridge](../../implemented/architecture/2026-10-22-avalonia-g2-shell-bridge.md)。 G3 退出/重启已落地：`ExitPipeline` 在装配期构造（停运行时 → 释放监听器 → 关窗/拉起新实例 → 看门狗），托盘补「重启」项、`desktop.app.restart` 接回新宿主，见 [avalonia-g3-exit-restart](../../implemented/architecture/2026-10-23-avalonia-g3-exit-restart.md)；更新、首启引导与恢复页仍在后续片。
 
 ## Related
 

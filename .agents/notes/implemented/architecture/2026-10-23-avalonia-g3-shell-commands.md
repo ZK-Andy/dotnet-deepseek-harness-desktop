@@ -34,10 +34,10 @@ Avalonia 入口没有容器，也没有对应端口装配——伴生插件「�
 - **托盘就绪按调用期读**：托盘句柄存 `ShellApplication` 字段，`closeToTray` 状态帧的 `available`
   经 `Func<bool>` 读该字段、关窗判据内联读同一字段（无托盘环境客户端据此禁用开关）；路由在托盘创建后加入桥，
   `ShellBridge` 每次分发重读路由快照，晚加入不影响先期调用。
-- **范围只到这三条**：更新（`desktop.update.*`）、托盘事件（`desktop.tray.event`）、重启
-  （`desktop.app.restart`）、引导重试（`desktop.bootstrap.retry`）、恢复退出（`desktop.recovery.exit`）
-  分别依赖更新 UI、托盘菜单、退出管道、首启引导、恢复页——一律随各自片接入，本片不开它们的闸。
-  命令面因此从「4 + 窗口」变成「7 + 窗口」，剩余五条见待办。
+- **范围只到这三条**：余下更新（`desktop.update.*`，3 条）、引导重试（`desktop.bootstrap.retry`）、
+  恢复退出（`desktop.recovery.exit`）分别依赖更新 UI、首启引导、恢复页，随各自片接入；应用重启随后
+  接入（[avalonia-g3-exit-restart](2026-10-23-avalonia-g3-exit-restart.md)），`desktop.tray.event`
+  在新宿主无生产者、只留旧宿主装配面（同上 ADR）。命令面因此从「4 + 窗口」变成「7 + 窗口」。
 
 ## Alternatives considered
 
@@ -58,13 +58,15 @@ Avalonia 入口没有容器，也没有对应端口装配——伴生插件「�
 - 关窗偏好从此生效：设为「关闭即退出」后，托盘就绪也不再隐藏（平台注销/关机仍直接放行）。
 - `ShellBridgeHost` 多一个只读快照属性；诊断包的 `health` 行随观测是否启动而变（未起 = `n/a`），与旧宿主一致。
 - 关窗偏好多一层 Core 端口；旧宿主 `TrayController` 仍持具体实现（本批不动旧栈）。
-- 命令面还剩五条（更新、托盘事件、重启、引导重试、恢复退出），随各自片接入；
-  `ShellCommandRegistration` 是本批三条的家，后续同域路由不再散落进 `AvaloniaHost`。
+- 命令面余下更新（3 条）、引导重试与恢复退出，随各自片接入；`desktop.tray.event` 在新宿主无生产者
+  （[avalonia-g3-exit-restart](2026-10-23-avalonia-g3-exit-restart.md)）。应用重启已接
+  （[avalonia-g3-exit-restart](2026-10-23-avalonia-g3-exit-restart.md)）；`ShellCommandRegistration`
+  是同域路由的家，后续路由不再散落进 `AvaloniaHost`。
 - 无新增包引用、无新平台依赖；Linux 托盘可用性判据未动。
 
 ## Testing
 
-`ShellCommandRegistrationTests`：路由覆盖面（五条自有命令可路由，六条外部命令不被侵占）、
+`ShellCommandRegistrationTests`：路由覆盖面（六条自有命令可路由，五条外部命令不被侵占）、
 closeToTray 状态帧的 `available` 与偏好落盘/读回、诊断导出经端口回传路径。
 `ShellClosePolicyTests`：新增「偏好关闭即放行关窗」用例，其余五例补 `hideOnClose` 入参。
 端口与实现的一致性由 `CloseBehaviorPreferenceTests`（Infrastructure 侧）与 `CloseToTrayCommandRouterTests`

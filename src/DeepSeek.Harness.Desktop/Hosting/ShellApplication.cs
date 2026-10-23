@@ -23,23 +23,20 @@ internal sealed class ShellApplication : Application
     private readonly Func<IReadOnlyList<string>> _stderrTail;
     private readonly ICloseBehaviorPreference _closeBehavior;
     private readonly IDiagnosticsExport _diagnostics;
+    private readonly ExitPipeline _exitPipeline;
     private volatile ShellTray? _tray;
 
     /// <summary>启动失败面接线（ADR 2026-10-23-avalonia-failure-dialog）：起步体在后台线程失败，
-    /// 模态经端口自行封送 UI 线程；退出动作与托盘共用同一闸门（先批准再关窗）。</summary>
+    /// 模态经端口自行封送 UI 线程；退出动作与托盘共用同一对动作里的 quit（先批准闸门再走管道）。</summary>
     /// <param name="window">属主窗口（模态的归属）。</param>
-    /// <param name="closeGate">关窗闸门。</param>
-    private void WireStartupFailure(Window window, CloseGate closeGate)
+    /// <param name="quit">退出动作（托盘/失败面/命令面同源）。</param>
+    private void WireStartupFailure(Window window, Action quit)
     {
         var face = new StartupFailureFace(
             new InProcessFailureDialog(() => window, _uiLocale, HostLog.Write),
             _stderrTail,
             _uiLocale,
-            quit: () => Dispatcher.UIThread.Post(() =>
-            {
-                closeGate.ApproveExit();
-                window.Close();
-            }),
+            quit: quit,
             log: HostLog.Write);
         _startup.Failed += exception => _ = Task.Run(() =>
         {
@@ -60,6 +57,8 @@ internal sealed class ShellApplication : Application
     /// <param name="closeBehavior">关窗偏好：关窗判据与 desktop.closeToTray 路由共用同一实例
     /// （ADR avalonia-g3-shell-commands）。</param>
     /// <param name="diagnostics">诊断导出端口（desktop.diagnostics.export）。</param>
+    /// <param name="exitPipeline">退出管道（托盘退出/重启与 desktop.app.restart 共用；回收序在管道内，
+    /// ADR avalonia-g3-exit-restart）。</param>
     public ShellApplication(
         ShellStartup startup,
         bool devTools,
@@ -70,7 +69,8 @@ internal sealed class ShellApplication : Application
         ShellBridgeHost bridgeHost,
         Func<IReadOnlyList<string>> stderrTail,
         ICloseBehaviorPreference closeBehavior,
-        IDiagnosticsExport diagnostics)
+        IDiagnosticsExport diagnostics,
+        ExitPipeline exitPipeline)
     {
         _startup = startup;
         _devTools = devTools;
@@ -82,6 +82,7 @@ internal sealed class ShellApplication : Application
         _stderrTail = stderrTail;
         _closeBehavior = closeBehavior;
         _diagnostics = diagnostics;
+        _exitPipeline = exitPipeline;
     }
 
     /// <inheritdoc />
@@ -109,24 +110,26 @@ internal sealed class ShellApplication : Application
         var window = new ShellWindow(_startup.InitialUri, _devTools, _bridgeHost);
         desktop.MainWindow = window;
 
-        WireStartupFailure(window, closeGate);
+        // 退出/重启动作先于失败面与托盘构造（ADR avalonia-g3-exit-restart）：失败面「退出」、托盘
+        // 「退出/重启」与 desktop.app.restart 三处消费同一对动作，回收序只在退出管道里。
+        (Action quit, Action restart) = ShellCommandRegistration.CreateTrayActions(
+            closeGate, _exitPipeline, log: HostLog.Write);
+
+        WireStartupFailure(window, quit);
         bool platformShutdown = false;
         _tray = ShellTray.TryCreate(
             _trayIconPath,
             _trayIconAvailable,
             _uiLocale,
             recall: _recall.Request,
-            quit: () => Dispatcher.UIThread.Post(() =>
-            {
-                closeGate.ApproveExit();
-                window.Close();
-            }),
+            restart: restart,
+            quit: quit,
             log: HostLog.Write);
 
-        // 命令面首批（ADR avalonia-g3-shell-commands）：托盘就绪状态决定 closeToTray 状态帧的
+        // 命令面（ADR avalonia-g3-shell-commands）：托盘就绪状态决定 closeToTray 状态帧的
         // available；路由表在窗口挂载后加入即可（桥每次分发都重读路由快照）。
         foreach (ICommandRouter router in ShellCommandRegistration.CreateRouters(
-                     _closeBehavior, () => _tray is not null, _diagnostics, HostLog.Write))
+                     _closeBehavior, () => _tray is not null, _diagnostics, closeGate, restart, HostLog.Write))
         {
             _bridgeHost.AddRouter(router);
         }

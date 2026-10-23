@@ -7,7 +7,7 @@
 * 壳只管生命周期、窗口、恢复；`dsh` 的插件树即应用运行时。
 * **共享 home**：默认上游规范 `~/.dsh`（优先级 `DSH_DESKTOP_DSH_HOME` > 生态 `DSH_HOME` > `~/.dsh`），home 层数据与 CLI/TUI/Web 互通；桌面插件装配走专属 `profiles/dotnet-desktop`（ADR `2026-09-09-desktop-profile-rename`）。
 * **可观测性**：壳侧诊断经 `HostLog` 双写 stdout 与 `<home>/logs/host.log`（超限滚动）；`RunMarker` 判定非受控退出；`desktop.diagnostics.export` 导出白名单诊断 zip（ADR `2026-08-24-shell-observability-diagnostics`）。
-* **托盘与 hide-to-tray**（ADR `2026-08-24-shell-tray-hide-to-tray`、`2026-10-22-avalonia-g1-tray-recall`、`2026-10-23-avalonia-g3-shell-commands`）：旧宿主走 `Ryn.Plugins.Tray` + companion 事件中继；Avalonia 宿主用自带 `TrayIcon`（显示主窗/退出），关窗在托盘可用且偏好为开时隐藏、否则直退，托盘退出经 `CloseGate` 放行，平台注销/关机直接放行。
+* **托盘与 hide-to-tray**（ADR `2026-08-24-shell-tray-hide-to-tray`、`2026-10-22-avalonia-g1-tray-recall`、`2026-10-23-avalonia-g3-shell-commands`）：Avalonia 宿主用自带 `TrayIcon`（显示主窗/重启/退出），关窗在托盘可用且偏好为开时隐藏、否则直退；显式退出/重启经 `ExitPipeline`（ADR `2026-10-23-avalonia-g3-exit-restart`）。
 
 ## 分层与装配面
 
@@ -32,7 +32,7 @@
 
 * `Core.RuntimeSupervisor`（编排住 `Core.Bootstrap.RuntimeSupervision`）经 `IRuntimeHost` 端口监督子进程：退出 → 失败面 → `RestartAsync` → 恢复回调 `onRecovered` 只重验铸币态（重启复用记忆端口保 `origin`），**原生承载下不代发窗口导航**（回落页内恢复面覆写过 DOM 时仍补一次收口导航）——窗口恒驻代理根，回来这一步交页内自刷与客户端原地重连（ADR `2026-10-14-native-failure-surface`）。**失败面承载**：原生对话框优先（`Ryn.Plugins.Dialog`：Windows `MessageBoxW` / macOS `osascript` / Linux `zenity`|`kdialog`；动作面＝继续自动恢复；退出只挂显式「是」（插件通道故障恒回否 ⇒ 落回继续恢复）），无对话框工具或原生通道故障时回落页内恢复面（`RecoveryPageBuilder`，覆写 DOM ⇒ 恢复后补收口导航）；原生承载下诊断包自动导出并把路径写进对话框（求助路径）；新宿主改用进程内模态（`FailureDialogWindow`），不再依赖外挂工具。可用性判定是纯函数（`Core.Recovery.DialogToolAvailability`；Linux 按探针口径查 PATH 与执行位）。
 * 端口漂移判据（`Core.RuntimeLineage`，ADR `2026-09-12-runtime-handoff-adoption`）：新生续任者收养、更早血统残留收割重试、非我方血统回退 OS 分配并告警（建窗后换端口会使「页面→壳」命令通道失效，见 ADR `2026-09-12-port-drift-ipc-origin-mismatch`）。
-* `LauncherActivation` UDS 单实例仲裁（Windows 不启用）；托盘「退出」走有序编排：取消监督 → 整树回收 → marker Release → 关窗 → 8s 看门狗。
+* `LauncherActivation` UDS 单实例仲裁（Windows 不启用）；托盘/设置区退出重启走 `ExitPipeline`。
 
 ## 插件装配（spawn dsh 前就位）
 

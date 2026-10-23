@@ -3,10 +3,12 @@ using Avalonia.Controls;
 
 namespace DeepSeek.Harness.Desktop.Hosting;
 
-/// <summary>G1 系统托盘（Avalonia <see cref="TrayIcon"/>）：图标 + 菜单（显示主窗 / 退出）。
+/// <summary>G1 系统托盘（Avalonia <see cref="TrayIcon"/>）：图标 + 菜单（显示主窗 / 重启 / 退出）。
 /// 只由 <see cref="TryCreate"/> 创建：图标缺失或构造失败即返回 null，关窗随之直接退出——托盘是
-/// 增强能力，绝不挡退出。文案取自 <see cref="UiCopy"/>，语言切换重建随 G3 的 locale 命令路由。
-/// 重启与检查更新两项随 G3（退出管道与更新 UI 未接入新宿主），本片菜单不出现。</summary>
+/// 增强能力，绝不挡退出。文案取自 <see cref="UiCopy"/>；语言切换后的菜单重建尚未接（locale 命令已在
+/// G2 装配，但改语言不会重建本菜单，缺口记在 ADR avalonia-g3-exit-restart 的残项）。
+/// 检查更新一项随更新栈（菜单触发无页面反馈面，结论靠系统通知；Avalonia 托盘无通知面，缺口记 ADR）。
+/// 菜单动作都是原生回调，不经 <c>desktop.tray.event</c>（新宿主没有 Ryn 托盘插件可发该事件）。</summary>
 internal sealed class ShellTray : IDisposable
 {
     private readonly TrayIcon _icon;
@@ -28,10 +30,11 @@ internal sealed class ShellTray : IDisposable
     /// <param name="iconAvailable">图标文件是否存在（装配层探测，免本类直调文件系统）。</param>
     /// <param name="uiLocale">UI 语言单点（决定创建时的菜单文案；切换重建随 G3）。</param>
     /// <param name="recall">唤回主窗动作（经唤回单点）。</param>
+    /// <param name="restart">重启动作（退出管道：回收运行时后拉起新实例）。</param>
     /// <param name="quit">退出动作（批准关窗并结束生命周期）。</param>
     /// <param name="log">日志回调。</param>
     /// <returns>挂好的托盘；null = 不可用。</returns>
-    public static ShellTray? TryCreate(string iconPath, bool iconAvailable, UiLocale uiLocale, Action recall, Action quit, Action<string> log)
+    public static ShellTray? TryCreate(string iconPath, bool iconAvailable, UiLocale uiLocale, Action recall, Action restart, Action quit, Action<string> log)
     {
         if (!iconAvailable || Application.Current is null || !PlatformHasTrayHost())
         {
@@ -47,7 +50,7 @@ internal sealed class ShellTray : IDisposable
             {
                 Icon = new WindowIcon(iconPath),
                 ToolTipText = "DeepSeek Harness Desktop",
-                Menu = BuildMenu(uiLocale, recall, quit),
+                Menu = BuildMenu(uiLocale, recall, restart, quit),
                 IsVisible = true,
             };
             created.Clicked += (_, _) => recall();
@@ -89,11 +92,12 @@ internal sealed class ShellTray : IDisposable
         || OperatingSystem.IsMacOS()
         || (OperatingSystem.IsLinux() && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DBUS_SESSION_BUS_ADDRESS")));
 
-    private static NativeMenu BuildMenu(UiLocale uiLocale, Action recall, Action quit)
+    private static NativeMenu BuildMenu(UiLocale uiLocale, Action recall, Action restart, Action quit)
     {
         bool english = uiLocale.IsEnglish;
         var menu = new NativeMenu();
         menu.Add(Item(UiCopy.TrayShowMainWindow(english), recall));
+        menu.Add(Item(UiCopy.TrayRestart(english), restart));
         menu.Add(new NativeMenuItemSeparator());
         menu.Add(Item(UiCopy.TrayQuit(english), quit));
         return menu;
