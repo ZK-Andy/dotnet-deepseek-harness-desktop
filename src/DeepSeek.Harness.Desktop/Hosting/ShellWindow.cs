@@ -3,7 +3,7 @@ using Avalonia.Controls;
 namespace DeepSeek.Harness.Desktop.Hosting;
 
 /// <summary>G1 主窗：单页承载包自带 <see cref="NativeWebView"/>，加载壳 origin（回环代理）。
-/// 关窗拦截在 <see cref="ShellApplication"/>（托盘就绪才隐藏），本类只提供隐藏/唤回的窗口侧动作。
+/// 关窗拦截在 <see cref="ShellApplication"/>（托盘就绪且偏好允许才隐藏），本类只提供隐藏/唤回的窗口侧动作。
 /// 导航拦截与页面桥由 <see cref="ShellBridgeHost"/> 在挂载后接管（ADR avalonia-g2-shell-bridge）；
 /// 无边框顶栏与平台拖拽端口在 <c>OnOpened</c> 判定后启用（ADR 2026-10-23-avalonia-caption-bar）。</summary>
 internal sealed class ShellWindow : Window

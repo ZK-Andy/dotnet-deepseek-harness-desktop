@@ -26,6 +26,7 @@ internal sealed class ShellBridgeHost : IDisposable
     private readonly CancellationToken _token;
     private NativeWebViewSurface? _surface;
     private ShellBridge? _bridge;
+    private PageHealthMonitor? _monitor;
     private bool _disposed;
 
     /// <summary>创建装配壳（尚未挂载窗口）。</summary>
@@ -82,6 +83,10 @@ internal sealed class ShellBridgeHost : IDisposable
     /// 窗口必须保留原生装饰，否则会得到一条拖不动、也没有关闭按钮的窗。</summary>
     public bool CanHostCaptionBar => _surface is not null && !string.IsNullOrEmpty(_origin);
 
+    /// <summary>最新页面健康快照（诊断包 state.txt 的收录源）：桥未接上时 null，与旧宿主
+    /// <c>PageHealthMonitor.Snapshot</c> 同义。</summary>
+    public string? HealthSnapshot => _monitor?.Snapshot;
+
     /// <summary>开关无边框顶栏注入（Wayland/无拖拽端口时关闭：窗口保留原生装饰）。</summary>
     /// <param name="enabled">true = 注入自绘顶栏。</param>
     /// <param name="edgeResize">宿主是否提供边缘缩放（macOS 由窗口系统代劳，页面不抢边）。</param>
@@ -134,6 +139,7 @@ internal sealed class ShellBridgeHost : IDisposable
             new AvaloniaWindowScriptTarget(surface),
             _log,
             reload: ct => new ValueTask(surface.ReloadAsync(ct)));
+        _monitor = monitor;
         _ = monitor.RunAsync(_healthInterval, _cts.Token);
     }
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
+using DeepSeek.Harness.Desktop.Core.Platform;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tray;
@@ -11,12 +12,12 @@ namespace DeepSeek.Harness.Desktop.Tray;
 /// </summary>
 public sealed class CloseToTrayCommandRouter : ICommandRouter
 {
-    private readonly CloseBehaviorPreference _preference;
+    private readonly ICloseBehaviorPreference _preference;
     private readonly Func<bool> _available;
     private readonly Action<string>? _log;
 
     /// <summary>创建路由。<paramref name="available"/> 惰性求值——注册早于托盘初始化。</summary>
-    public CloseToTrayCommandRouter(CloseBehaviorPreference preference, Func<bool> available, Action<string>? log = null)
+    public CloseToTrayCommandRouter(ICloseBehaviorPreference preference, Func<bool> available, Action<string>? log = null)
     {
         _preference = preference;
         _available = available;

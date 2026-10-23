@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DeepSeek.Harness.Desktop.Core.Platform;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Platform;
 
@@ -8,7 +9,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Platform;
 /// （托盘可用即隐藏）一致，存量用户升级零感知。线程安全：IPC 写入线程与
 /// UI 线程 Closing 回调并发读写。
 /// </summary>
-public sealed class CloseBehaviorPreference
+public sealed class CloseBehaviorPreference : ICloseBehaviorPreference
 {
     /// <summary>持久化文件名（置于 DSH_HOME 根，home 层数据随生态互通）。</summary>
     public const string FileName = "desktop-preferences.json";

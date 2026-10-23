@@ -19,6 +19,7 @@ internal static class AvaloniaHost
         WebkitSandboxFallback.Apply();
 
         ShellResources resources = PreBuildRegistration.CreateShellResources();
+        string dshHome = string.Empty;
         RunMarkerResult? marker = null;
         ShellStartup? startup = null;
         ShellBridgeHost? bridgeHost = null;
@@ -43,9 +44,9 @@ internal static class AvaloniaHost
 
             resources.Attach(instanceListener);
 
-            // 崩溃 marker 晚于单实例仲裁：第二实例若先 Acquire 会覆盖主实例 marker 并在退出时删掉它，
-            // 主实例的「非受控退出」取证就被抹掉（旧入口在仲裁后才由 HostSetup 工厂 Acquire）。
-            marker = RunMarker.Acquire(HarnessRuntimeHost.ResolveDshHome());
+            // marker 晚于单实例仲裁：第二实例会覆盖并删掉它，抹掉「非受控退出」取证。
+            dshHome = HarnessRuntimeHost.ResolveDshHome();
+            marker = RunMarker.Acquire(dshHome);
 
             // 回环代理源：绑定失败 loud 后降级为空窗（G0 不实现 wwwroot 降级，见 ShellWindow 注释）。
             DshLoopbackProxy.ProxySetup proxy = DshLoopbackProxy.TryCreate(
@@ -55,7 +56,6 @@ internal static class AvaloniaHost
             IRuntimeStarter starter = PreBuildRegistration.CreateRuntimeStarter(
                 preflight, shared.Timeouts, shared.ShellForward);
 
-            // 窗口加载壳 origin（代理）：dsh 就绪前代理按铸币等待预算转引导页，dsh 起后同一 origin 直达 UI。
             startup = CreateStartup(preflight, shared, host, starter, proxy);
             // 托盘图标存在性是装配期配置探测（与旧入口 DesktopAdapter.App 同款，D005 显式豁免）
             string trayIconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
@@ -73,7 +73,7 @@ internal static class AvaloniaHost
 
             return RunUi(
                 args, startup, preflight.Launch.DevTools, recall, shared.UiLocale, trayIconPath, trayIconAvailable,
-                bridgeHost, () => host.StderrTail);
+                bridgeHost, () => host.StderrTail, dshHome);
         }
         finally
         {
@@ -86,9 +86,9 @@ internal static class AvaloniaHost
             }
             finally
             {
-                if (marker is RunMarkerResult acquired)
+                if (marker is RunMarkerResult acquired && dshHome.Length > 0)
                 {
-                    RunMarker.Release(HarnessRuntimeHost.ResolveDshHome(), acquired.Token);
+                    RunMarker.Release(dshHome, acquired.Token);
                 }
             }
         }
@@ -129,6 +129,7 @@ internal static class AvaloniaHost
     /// <param name="trayIconAvailable">托盘图标是否存在。</param>
     /// <param name="bridgeHost">页面桥装配。</param>
     /// <param name="stderrTail">子进程 stderr 尾部取法（启动失败面用）。</param>
+    /// <param name="dshHome">DSH home（关窗偏好落盘根；注册工厂在此取用）。</param>
     /// <returns>进程退出码。</returns>
     private static int RunUi(
         string[] args,
@@ -139,9 +140,12 @@ internal static class AvaloniaHost
         string trayIconPath,
         bool trayIconAvailable,
         ShellBridgeHost bridgeHost,
-        Func<IReadOnlyList<string>> stderrTail) =>
+        Func<IReadOnlyList<string>> stderrTail,
+        string dshHome) =>
         AppBuilder.Configure(() => new ShellApplication(
-                startup, devTools, recall, uiLocale, trayIconPath, trayIconAvailable, bridgeHost, stderrTail))
+                startup, devTools, recall, uiLocale, trayIconPath, trayIconAvailable, bridgeHost, stderrTail,
+                ShellCommandRegistration.CreateCloseBehavior(dshHome),
+                ShellCommandRegistration.CreateDiagnosticsExport(() => bridgeHost.HealthSnapshot, HostLog.Write)))
             .UsePlatformDetect()
             .StartWithClassicDesktopLifetime(args);
 }

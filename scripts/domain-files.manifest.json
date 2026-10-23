@@ -81,6 +81,7 @@
     "ShellApplication.cs",
     "ShellBridgeHost.cs",
     "ShellClosePolicy.cs",
+    "ShellCommandRegistration.cs",
     "ShellRecall.cs",
     "ShellStartup.cs",
     "ShellTray.cs",
