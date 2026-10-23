@@ -73,6 +73,9 @@ Avalonia 自己的原始输入事件里，页面注入脚本拿不到。
   留下零尺寸 flex 子项。
 - **macOS 端口按 OS 选**（句柄描述符在 Avalonia.Native 未公开）：若将来该后端变化需改判据；
   `BeginMoveDrag(null!)` 仅在 Avalonia.Native 安全（其实现不读参数）。
+- **本批首个 CI run 为红（`39879389592`，覆盖率 64.15% < 基线 65.45%，超 0.5pp 容差）**：随后按跟值流程
+  在同批第二提交（`1cdefcd`）把 `scripts/test-baseline.json` 与 README 双语徽章改为 64.15%/1166，CI `39880360547` 转绿；
+  那个红 run 留在历史里，不会消失。
 - **覆盖率跟值下调**：本片新增的三平台 P/Invoke、Avalonia 窗口装配与注入时序无 headless 测试面，CI 并集覆盖率
   64.15%（原 65.45%）；按 docs/testing.md「跟值」流程同批更新 `scripts/test-baseline.json` 与 README 双语徽章，
   不掩盖、不以「超容差」侥幸过关。
