@@ -19,7 +19,7 @@ Grab the installer for your platform from [GitHub Releases](https://github.com/Z
 
 - **Windows**: run the setup.exe and follow the wizard.
 - **macOS**: open the DMG and drag the app into Applications.
-- **Linux**: `sudo apt install ./....deb` or `sudo dnf install ./....rpm` (WebKitGTK dependencies resolved by the package manager).
+- **Linux**: `sudo apt install ./....deb` or `sudo dnf install ./....rpm` (GTK3 + WebKitGTK 4.1 dependencies resolved by the package manager).
 
 Unsigned builds: this project is open source and ships without paid code signing. If macOS Gatekeeper blocks the first launch → right-click → Open, or allow it in System Settings → Privacy & Security; on Windows SmartScreen → More info → Run anyway. See [README](../README.en.md).
 

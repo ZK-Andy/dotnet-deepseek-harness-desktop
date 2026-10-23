@@ -84,20 +84,21 @@ jobs:
           version: ${{ inputs.version }}
           setup-node: 'true'
 
-      # 载荷探针要真加载 libsaucer（动态链接 libwebkitgtk-6.0.so.4 与 libadwaita-1.so.0），
-      # 故运行时依赖与打包工具同一步装（不另开一步：省一次索引刷新，也免探针步的时限预算被 apt 吃掉）。
-      # 包名与 scripts/package-linux.sh 的 deb Depends 同源——该处改依赖时此处须同步；
-      # 不同步时探针会红在「原生库加载失败（缺依赖？）」，矛头指向包而非该改的元数据。
+      # 冒烟要在 Xvfb 下真起窗口（Avalonia 的 NativeWebView 在 Linux 走 WebKitGTK 4.1 / GTK3），
+      # 载荷探针要真加载 Skia/HarfBuzz；故运行时依赖与打包工具同一步装（不另开一步：省一次索引
+      # 刷新，也免探针步的时限预算被 apt 吃掉）。包名与 scripts/package-linux.sh 的 deb Depends
+      # 同源——该处改依赖时此处须同步；不同步时探针会红在「原生库加载失败（缺依赖？）」，矛头
+      # 指向包而非该改的元数据。
       - name: 安装 rpmbuild、冒烟显示栈与载荷探针运行时依赖
-        run: sudo apt-get update && sudo apt-get install -y rpm xvfb scrot dbus imagemagick libwebkitgtk-6.0-4 libadwaita-1-0
+        run: sudo apt-get update && sudo apt-get install -y rpm xvfb scrot dbus imagemagick libgtk-3-0t64 libwebkit2gtk-4.1-0
 
       - name: dotnet publish（自包含 JIT，对齐 pilot-harness 打包前 build）
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} --self-contained true -p:Version="$VERSION" -o artifacts/publish-${{ matrix.rid }}
 
       # Linux 腿的载荷冒烟探针（与 mac/win 腿同款，ADR testing/2026-09-13-payload-smoke-probe）：
-      # publish 产物的 native 面（FFI 加载/导出、图像解码、PTY）——此前只有 mac/win 腿跑，
+      # publish 产物的 native 面（FFI 加载/导出、Skia PNG 解码）——此前只有 mac/win 腿跑，
       # Linux 包缺 native 库不会被 CI 拦。运行时依赖已在上一步装好（见该步的同源注释）。
-      - name: 载荷冒烟探针（publish 产物 native 面：FFI 加载/导出、图像解码、PTY）
+      - name: 载荷冒烟探针（publish 产物 native 面：FFI 加载/导出、Skia PNG 解码）
         timeout-minutes: 5
         shell: bash
         run: |
@@ -123,7 +124,7 @@ jobs:
           # 不带管道——`| head` 下生产者收 SIGPIPE(141)，pipefail 会把留痕行变成红。
           dpkg-deb -I artifacts/${{ matrix.rid }}/*.deb > /dev/null
           rpm -qp --requires artifacts/${{ matrix.rid }}/*.rpm > /dev/null
-          # 留痕（不判门）：rpm Requires 应仅含 libwebkitgtk-6.0.so.4 与 libadwaita-1.so.0、
+          # 留痕（不判门）：rpm Requires 应仅含 libgtk-3.so.0 与 libwebkit2gtk-4.1.so.0、
           # 无 aarch64/musl/perl 假依赖——该不变量无机械断言，偏差靠这里的人眼复核。
           echo "== deb control =="; dpkg-deb -I artifacts/${{ matrix.rid }}/*.deb 2>&1 | head -40 || true
           echo "== rpm Requires =="; rpm -qp --requires artifacts/${{ matrix.rid }}/*.rpm 2>&1 | head -60 || true
@@ -209,7 +210,7 @@ jobs:
       - name: dotnet publish
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r ${{ matrix.rid }} --self-contained true -p:Version="$VERSION" -o artifacts/publish-${{ matrix.rid }}
 
-      - name: 载荷冒烟探针（publish 产物 native 面：FFI 加载/导出、图像解码、PTY）
+      - name: 载荷冒烟探针（publish 产物 native 面：FFI 加载/导出、Skia PNG 解码）
         timeout-minutes: 5
         run: |
           dotnet publish tools/DeepSeek.Harness.Desktop.PayloadSmoke -c Release -r ${{ matrix.rid }} --self-contained true -o artifacts/payload-smoke-${{ matrix.rid }}
@@ -289,7 +290,7 @@ jobs:
         shell: bash
         run: dotnet publish src/DeepSeek.Harness.Desktop -c Release -r win-x64 --self-contained true -p:Version="$VERSION" -o artifacts/publish-win-x64
 
-      - name: 载荷冒烟探针（publish 产物 native 面：FFI 加载/导出、图像解码、ConPTY）
+      - name: 载荷冒烟探针（publish 产物 native 面：FFI 加载/导出、Skia PNG 解码）
         shell: bash
         timeout-minutes: 5
         run: |

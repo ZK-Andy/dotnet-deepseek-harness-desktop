@@ -19,7 +19,7 @@
 
 - **Windows**：运行 setup.exe 按提示安装（开始菜单/桌面快捷方式）。
 - **macOS**：打开 DMG，将应用拖入「应用程序」。
-- **Linux**：`sudo apt install ./....deb` 或 `sudo dnf install ./....rpm`（WebKitGTK 等依赖由包管理器自动解决）。
+- **Linux**：`sudo apt install ./....deb` 或 `sudo dnf install ./....rpm`（GTK3 + WebKitGTK 4.1 等依赖由包管理器自动解决）。
 
 未签名说明：本项目开源且不做付费签名。macOS 首次打开若被 Gatekeeper 拦截 → 右键「打开」或在 系统设置 → 隐私与安全性 中放行；Windows 若见 SmartScreen → 「更多信息」→「仍要运行」。详见 [README](../README.md)。
 

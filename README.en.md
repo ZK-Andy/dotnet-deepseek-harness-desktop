@@ -105,7 +105,7 @@ The desktop shell (C# + OS webview) serves the Web UI of the global dsh on `PATH
 ## Development
 
 ```sh
-# prerequisites: .NET 10 SDK; on Linux: WebKitGTK
+# prerequisites: .NET 10 SDK; on Linux: GTK3 + WebKitGTK 4.1
 # run (dev environments must set DSH_DESKTOP_DEV=1 — isolated home + .dev app id;
 # without a PATH dsh the first-launch bootstrap runs, which needs network)
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop

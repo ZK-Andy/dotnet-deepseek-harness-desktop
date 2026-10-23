@@ -41,7 +41,7 @@ body:
     attributes:
       label: Environment
       description: 版本/系统/运行时
-      placeholder: "v0.1.12, Fedora 40, .NET 10, WebKitGTK 6"
+      placeholder: "v0.1.12, Fedora 40, .NET 10, WebKitGTK 4.1"
     validations:
       required: true
   - type: textarea

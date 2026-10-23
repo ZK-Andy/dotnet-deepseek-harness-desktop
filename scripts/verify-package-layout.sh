@@ -8,9 +8,12 @@
 #   ③主二进制存在且带可执行位——三平台共性（linux/mac 此前只断 Windows 主 exe，
 #     可静默发布「无主程序包」）；
 #   ④原生库 + runtimes/<rid>/native 探测源——三平台同形状检查（根或 runtimes/<rid>/native
-#     任一命中即放行；runtimes 目录本身也必须在）。Ryn 的 NativeLibraryResolver 只认这两个
-#     探测面，缺了要到首帧才炸；windows 另断壳托管程序集 + wwwroot（PayloadSmoke 跑在 publish
-#     直出目录上，Inno [Files] 漏配时探针照绿、产物照缺，ADR windows-packaging-parity）；
+#     任一命中即放行；runtimes 目录本身也必须在，它今天只由 Ryn 包供给，随 G5 摘下该断言）。
+#     清单 = 宿主实际加载的面：Skia/HarfBuzz、macOS `libAvaloniaNative`、Windows `av_libglesv2`。
+#     Ryn 的 `libsaucer*`/`libryn-pty`/`WebView2Loader` 仍在产物里（G5 摘除包引用）但无运行期
+#     加载路径（Windows WebView2 由控件的 ManagedWebView2Loader 定位已装运行时），不断言。
+#     windows 另断壳托管程序集 + wwwroot（PayloadSmoke 跑在 publish 直出目录，Inno [Files]
+#     漏配时探针照绿、产物照缺，ADR windows-packaging-parity）；
 #   macOS 追加 bundle 元数据：Info.plist 的 CFBundleIconFile 键与 Contents/Resources/icon.icns
 #   （图标放别处 Finder/Dock 不读，包「能启动但没图标」是静默缺陷）。
 #
@@ -31,9 +34,9 @@ source "$SCRIPT_DIR/lib/common.sh"
 # 平台原生库按「根 + runtimes/<rid>/native」双份放置，与 publish 直出目录同形；
 # macOS 的 bundle 元数据挂在内容根的上一层 Contents/（Info.plist 与 Resources/icon.icns）。
 _layout_fixture() { # $1=内容根 $2=平台
-  local dir="$1" plat="$2" main="DeepSeek.Harness.Desktop" native ext rid contents
+  local dir="$1" plat="$2" main="DeepSeek.Harness.Desktop" natives rid contents
   [[ "$plat" == windows ]] && main="DeepSeek.Harness.Desktop.exe"
-  mkdir -p "$dir/resources/plugins" "$dir/wwwroot" "$dir/runtimes/win-x64/native"
+  mkdir -p "$dir/resources/plugins" "$dir/wwwroot"
   printf '%s\n' '{"name":"dsh-desktop-companion"}' >"$dir/package.json"
   mkdir -p "$dir/pkg/package"
   cp "$dir/package.json" "$dir/pkg/package/package.json"
@@ -46,20 +49,17 @@ _layout_fixture() { # $1=内容根 $2=平台
   case "$plat" in
     windows)
       printf 'x\n' >"$dir/DeepSeek.Harness.Desktop.dll"
-      for native in WebView2Loader.dll saucer.dll saucer-bindings.dll saucer-bindings-desktop.dll; do
-        printf 'x\n' >"$dir/$native"
-      done
+      natives=(libSkiaSharp.dll libHarfBuzzSharp.dll av_libglesv2.dll)
+      rid=win-x64
       ;;
-    linux | macos)
-      ext=so rid=linux-x64
-      [[ "$plat" == macos ]] && ext=dylib && rid=osx-arm64
-      mkdir -p "$dir/runtimes/$rid/native"
-      for native in "libryn-pty.$ext" "libsaucer.$ext" "libsaucer-bindings.$ext" "libsaucer-bindings-desktop.$ext"; do
-        printf 'x\n' >"$dir/$native"
-        printf 'x\n' >"$dir/runtimes/$rid/native/$native"
-      done
-      ;;
+    linux) natives=(libSkiaSharp.so libHarfBuzzSharp.so); rid=linux-x64 ;;
+    macos) natives=(libSkiaSharp.dylib libHarfBuzzSharp.dylib libAvaloniaNative.dylib); rid=osx-arm64 ;;
   esac
+  mkdir -p "$dir/runtimes/$rid/native"
+  for native in "${natives[@]}"; do
+    printf 'x\n' >"$dir/$native"
+    printf 'x\n' >"$dir/runtimes/$rid/native/$native"
+  done
   if [[ "$plat" == macos ]]; then
     contents="$(dirname "$dir")"; mkdir -p "$contents/Resources"
     printf '<plist version="1.0"><dict><key>CFBundleIconFile</key><string>icon.icns</string></dict></plist>\n' >"$contents/Info.plist"
@@ -94,13 +94,13 @@ layout_self_test() {
   mkdir -p "$tmp/linux/resources/runtime"
   _lt_expect "闭包残留 resources/runtime 判红" fail linux "$tmp/linux"
   rmdir "$tmp/linux/resources/runtime"
-  rm -f "$tmp/linux/libsaucer-bindings.so" "$tmp/linux/runtimes/linux-x64/native/libsaucer-bindings.so"
+  rm -f "$tmp/linux/libSkiaSharp.so" "$tmp/linux/runtimes/linux-x64/native/libSkiaSharp.so"
   _lt_expect "linux 缺原生库判红" fail linux "$tmp/linux"
   _layout_fixture "$tmp/linux2" linux
   rm -rf "$tmp/linux2/runtimes"
   _lt_expect "linux 缺 runtimes 探测源判红" fail linux "$tmp/linux2"
   _layout_fixture "$tmp/linux3" linux
-  rm -f "$tmp/linux3"/libryn-pty.so "$tmp/linux3"/libsaucer.so "$tmp/linux3"/libsaucer-bindings.so "$tmp/linux3"/libsaucer-bindings-desktop.so
+  rm -f "$tmp/linux3"/libSkiaSharp.so "$tmp/linux3"/libHarfBuzzSharp.so
   _lt_expect "linux 仅 runtimes 探测面有原生库放行" pass linux "$tmp/linux3"
   local mac="$tmp/macos/App.app/Contents/MacOS"
   _layout_fixture "$mac" macos
@@ -114,7 +114,7 @@ layout_self_test() {
   printf '<plist version="1.0"><dict/></plist>\n' >"$tmp/macos/App.app/Contents/Info.plist"
   _lt_expect "macos Info.plist 缺 CFBundleIconFile 判红" fail macos "$mac"
   _layout_fixture "$mac" macos
-  rm -f "$mac/libsaucer.dylib" "$mac/runtimes/osx-arm64/native/libsaucer.dylib"
+  rm -f "$mac/libSkiaSharp.dylib" "$mac/runtimes/osx-arm64/native/libSkiaSharp.dylib"
   _lt_expect "macos 缺原生库判红" fail macos "$mac"
   _layout_fixture "$mac" macos
   rm -f "$tmp/macos/App.app/Contents/Info.plist"
@@ -127,7 +127,7 @@ layout_self_test() {
   _lt_expect "macos 缺 runtimes 探测源判红" fail macos "$mac"
   _layout_fixture "$tmp/win" windows
   _lt_expect "windows 合规内容根放行" pass windows "$tmp/win"
-  rm -f "$tmp/win/saucer.dll"
+  rm -f "$tmp/win/libSkiaSharp.dll" "$tmp/win/runtimes/win-x64/native/libSkiaSharp.dll"
   _lt_expect "windows 缺原生库判红" fail windows "$tmp/win"
   _layout_fixture "$tmp/win2" windows
   rm -rf "$tmp/win2/wwwroot"
@@ -209,15 +209,14 @@ else
   echo "  ok: 主程序 $main_bin"
 fi
 
-# ④原生库 + runtimes 探测源（内容源即 staging；Ryn NativeLibraryResolver 只认根与
-#   runtimes/<rid>/native 两个探测面，缺了要到首帧才炸）+ 平台追加面：Windows 壳托管
-#   程序集/wwwroot，macOS bundle 元数据
+# ④原生库 + runtimes 探测源（内容源即 staging；宿主加载 Avalonia 渲染栈与 WebView2 loader，
+#   缺了要到首帧才炸）+ 平台追加面：Windows 壳托管程序集/wwwroot，macOS bundle 元数据
 case "$PLATFORM" in
-  linux) natives=(libryn-pty.so libsaucer.so libsaucer-bindings.so libsaucer-bindings-desktop.so)
+  linux) natives=(libSkiaSharp.so libHarfBuzzSharp.so)
     rid_glob="linux-*" label="Linux" ;;
-  macos) natives=(libryn-pty.dylib libsaucer.dylib libsaucer-bindings.dylib libsaucer-bindings-desktop.dylib)
+  macos) natives=(libSkiaSharp.dylib libHarfBuzzSharp.dylib libAvaloniaNative.dylib)
     rid_glob="osx-*" label="macOS" ;;
-  windows) natives=(WebView2Loader.dll saucer.dll saucer-bindings.dll saucer-bindings-desktop.dll)
+  windows) natives=(libSkiaSharp.dll libHarfBuzzSharp.dll av_libglesv2.dll)
     rid_glob="win-*" label="Windows" ;;
 esac
 for native in "${natives[@]}"; do
@@ -226,7 +225,7 @@ for native in "${natives[@]}"; do
   fi
 done
 if ! compgen -G "$TARGET/runtimes/$rid_glob/native" >/dev/null; then
-  errors+=("$label staging 缺 runtimes/$rid_glob/native（Ryn NativeLibraryResolver 唯一探测源）")
+  errors+=("$label staging 缺 runtimes/$rid_glob/native（原生库探测面之一；Ryn 包摘除后随 G5 收口）")
 fi
 if [[ "$PLATFORM" == "windows" ]]; then
   [[ -f "$TARGET/DeepSeek.Harness.Desktop.dll" ]] || errors+=("Windows staging 缺壳托管程序集: DeepSeek.Harness.Desktop.dll")

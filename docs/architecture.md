@@ -52,7 +52,7 @@
 
 ## 打包
 
-* 安装器只带壳（publish 全量）+ 安装器自带 companion tgz（`build-companion-tgz.sh` 现打现校验）；`package-linux.sh`（deb/rpm，`Depends: libwebkitgtk-6.0-4, libadwaita-1-0`）、`package-macos.sh`（dmg）、`package-windows.sh`（Inno 唯一链，`packaging/windows/installer.iss.in`）。默认不签名，`SELF_SIGN=1` 转 `dev-sign.sh`（仅内部验证）。
+* 安装器只带壳（publish 全量）+ 安装器自带 companion tgz（`build-companion-tgz.sh` 现打现校验）；`package-linux.sh`（deb/rpm，`Depends: libgtk-3-0, libwebkit2gtk-4.1-0`）、`package-macos.sh`（dmg）、`package-windows.sh`（Inno 唯一链，`packaging/windows/installer.iss.in`）。默认不签名，`SELF_SIGN=1` 转 `dev-sign.sh`（仅内部验证）。
 * `verify-package-layout.sh --platform <…>` 断言内容布局；CI 三平台出包与发布走 `package.yml`/`release.yml`（tag 聚合三平台产物创建单个 Release）。流水线形态见 [testing.md](testing.md)。
 
 ## 配置与扩展

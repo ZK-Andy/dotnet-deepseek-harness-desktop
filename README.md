@@ -105,7 +105,7 @@
 ## 开发
 
 ```sh
-# 前置：.NET 10 SDK；Linux 需 WebKitGTK
+# 前置：.NET 10 SDK；Linux 需 GTK3 + WebKitGTK 4.1
 # 运行（开发环境必须带 DSH_DESKTOP_DEV=1——dev 隔离见 docs/development.md；无 PATH dsh 时走首启引导，需网络）
 DSH_DESKTOP_DEV=1 dotnet run --project src/DeepSeek.Harness.Desktop
 

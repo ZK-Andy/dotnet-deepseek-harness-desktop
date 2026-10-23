@@ -36,7 +36,7 @@ echo "== 组装 staging: $STAGE"
 DEST="usr/lib/$APP"
 rm -rf "$STAGE" && mkdir -p "$STAGE/$DEST"
 
-# 1) publish 全量（dotnet 自包含，含 saucer/lib* 等原生依赖）
+# 1) publish 全量（dotnet 自包含，含 Skia/HarfBuzz 等原生依赖）
 cp -r "$PUBLISH_DIR/." "$STAGE/$DEST/"
 
 # 2) 安装器自带插件资源（resources/plugins）：companion tgz 从仓库源码现打并校验（fail loud）。
@@ -99,7 +99,7 @@ Section: devel
 Priority: optional
 Architecture: $ARCH
 Maintainer: $MAINTAINER
-Depends: libwebkitgtk-6.0-4, libadwaita-1-0
+Depends: libgtk-3-0t64 | libgtk-3-0, libwebkit2gtk-4.1-0
 Description: DeepSeek Harness Desktop for .NET (native shell, online-first runtime bootstrap)
 EOF
 mkdir -p "$OUT"
@@ -120,16 +120,19 @@ BuildArch: $RPM_ARCH
 # 参照 pilot-harness asar:false 与数万文件闭包：rpm 自动依赖扫描会把 node_modules 跨平台 prebuild
 #（aarch64/musl/ld-linux/perl 等）误判为运行依赖，导致 dnf 安装失败 → 整体禁用自动依赖，显式声明真实依赖。
 AutoReqProv: no
-# saucer 动态链接 libwebkitgtk-6.0.so.4（WebKitGTK 6 / GTK4）与 libadwaita-1.so.0（壳窗口
-# 直接依赖；minimal 系统缺它会在 Run 即 DllNotFound——2026-08-29 冒烟实证）。两者必须写带
-# (()(64bit)) 限定的规范形：裸名在 aarch64 上无任何提供者（v0.3.4 arm64 冒烟实证 nothing
-# provides），在 x86_64 上则被 i686 多库包侥幸满足、拉进整套 32 位栈——限定名两架构都精确命中。
-Requires: libwebkitgtk-6.0.so.4()(64bit), libadwaita-1.so.0()(64bit)
+# 渲染面走 Avalonia `NativeWebView`：Linux 上是 WebKitGTK 4.1（GTK3 API），故基线依赖为
+# libgtk-3.so.0 与 libwebkit2gtk-4.1.so.0（WebKitGTK 4.1 自带 libsoup-3.0 依赖）。deb 侧
+# GTK3 用 `libgtk-3-0t64 | libgtk-3-0` 双名：24.04/trixie 起 t64 改名，旧名在那些发行版无提供者；
+# 顺序是新名在前，老发行版走第二候选。
+# 不再需要 GTK4 / WebKitGTK 6 / libadwaita。两者必须写带 (()(64bit)) 限定的规范形：裸名在
+# aarch64 上无任何提供者（v0.3.4 arm64 冒烟实证 nothing provides），在 x86_64 上则被 i686
+# 多库包侥幸满足、拉进整套 32 位栈——限定名两架构都精确命中。
+Requires: libgtk-3.so.0()(64bit), libwebkit2gtk-4.1.so.0()(64bit)
 # 跨平台 .node 预编译体会被 rpm 的 brp-strip 与 debuginfo 抽取误伤（如 linux-arm64/pty.node）→ 整体禁用
 %global _enable_debug_packages 0
 %define __os_install_post %{nil}
 %description
-Desktop client for DeepSeek Harness (Ryn native webview shell + bundled runtime, pilot-harness packaging model).
+Desktop client for DeepSeek Harness (Avalonia native shell + system WebView, pilot-harness packaging model).
 
 %install
 cp -r "$STAGE/usr" %{buildroot}/

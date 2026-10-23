@@ -30,7 +30,7 @@
 工具不出现即连接失败——当前版本对 MCP 连接失败没有任何提示。优先检查两点：stdio 的 `command` 必须写**绝对路径**（桌面图标启动的应用看不到终端里的 `~/.local/bin` 等用户目录）；命令在终端能跑不代表 GUI 会话可用。
 
 **Q：Linux 安装时缺依赖？**
-deb/rpm 已声明运行所需的 WebKitGTK 等依赖，用包管理器安装（`apt install ./xxx.deb`）会自动解决；避免绕过包管理器直接解压。
+deb/rpm 已声明运行所需的 GTK3 + WebKitGTK 4.1 等依赖，用包管理器安装（`apt install ./xxx.deb`）会自动解决；避免绕过包管理器直接解压。
 
 **Q：如何参与反馈或贡献？**
 Bug / 功能建议走 [Issue 模板](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues/new/choose)；代码贡献遵循仓库 CONTRIBUTING 约定与 PR checklist。

@@ -52,9 +52,9 @@ Root: HKCU; Subkey: "Software\Classes\dsh\shell\open\command"; ValueType: string
 [Run]
 Filename: "{app}\DeepSeek.Harness.Desktop.exe"; Description: "{cm:LaunchProgram,DeepSeek Harness Desktop}"; Flags: nowait postinstall skipifsilent
 
-; WebView2 缺失提示（对标 hairyf downloadBootstrapper 策略 + Ryn DoctorCommand
-; CheckWebView2 注册表探针）：不捆 212MB 离线运行时，缺时提示用户去微软拉
-; Evergreen；安装本身继续（per-user 探针先行，machine-wide 需提权则跳过）。
+; WebView2 缺失提示：宿主窗口用 Avalonia `NativeWebView`，Windows 上即 WebView2，
+; 要求与旧宿主同（Edge Evergreen 运行时）。不捆离线运行时，缺时提示用户去微软拉；
+; 安装本身继续（per-user 探针先行，machine-wide 需提权则跳过）。
 [Code]
 function IsWebView2Available(): Boolean;
 var

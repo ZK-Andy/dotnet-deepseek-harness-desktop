@@ -30,7 +30,7 @@ Packages are SHA256-verified; failed verification refuses to install (by design)
 Tools not appearing means the connection failed — the current version gives no feedback on MCP connection failures. Check two things first: a stdio `command` must be an **absolute path** (apps launched from the desktop icon cannot see user directories like `~/.local/bin` that your terminal has); a command working in your terminal does not mean it resolves in the GUI session.
 
 **Q: Missing Linux dependencies?**
-The deb/rpm declare their runtime dependencies (WebKitGTK etc.); install through your package manager rather than extracting manually.
+The deb/rpm declare their runtime dependencies (GTK3 + WebKitGTK 4.1 etc.); install through your package manager rather than extracting manually.
 
 **Q: How do I report bugs or contribute?**
 Use the [issue templates](https://github.com/ZK-Andy/dotnet-deepseek-harness-desktop/issues/new/choose); PRs follow the repository checklist.
