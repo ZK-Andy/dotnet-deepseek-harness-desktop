@@ -21,6 +21,7 @@
   "PageBridge": [
     "AppJson.cs",
     "AutostartCommandRouter.cs",
+    "AvaloniaWebViewNavigator.cs",
     "AvaloniaWindowScriptTarget.cs",
     "CaptionBar.cs",
     "CaptionBarDragScript.cs",
@@ -83,9 +84,11 @@
     "ShellClosePolicy.cs",
     "ShellCommandRegistration.cs",
     "ShellRecall.cs",
+    "ShellRecoveryRegistration.cs",
     "ShellStartup.cs",
     "ShellTray.cs",
     "ShellWindow.cs",
+    "ShellWiringRegistration.cs",
     "StartupFailureFace.cs",
     "WindowDrag.cs"
   ]

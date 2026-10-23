@@ -44,7 +44,8 @@ public sealed partial class DesktopAdapter
             Preflight preflight = PreBuildRegistration.CreatePreflight(
                 () => builtApp!.Services.GetRequiredService<HostSetup>().Host,
                 () => shared.UiLocale.IsEnglish,
-                shared);
+                shared,
+                () => shared.ScriptTarget);
             if (!AcquireSingleInstance(preflight, () => builtApp, shared.Timeouts, out PrimaryListener? instanceListener))
             {
                 return 0;

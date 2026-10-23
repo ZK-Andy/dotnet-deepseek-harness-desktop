@@ -11,7 +11,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 internal sealed class NativeWebViewSurface : IWebViewSurface, IDisposable
 {
     private readonly NativeWebView _webView;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     /// <summary>创建适配器并订阅原生事件。</summary>
     /// <param name="webView">原生网页视图（已挂进视觉树）。</param>
@@ -38,6 +38,9 @@ internal sealed class NativeWebViewSurface : IWebViewSurface, IDisposable
     public event EventHandler<PageNavigationEventArgs>? NewWindowRequested;
 
     /// <inheritdoc />
+    public bool IsAvailable => !_disposed;
+
+    /// <inheritdoc />
     public async Task<string?> InvokeScriptAsync(string script, CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -48,6 +51,24 @@ internal sealed class NativeWebViewSurface : IWebViewSurface, IDisposable
         }
 
         return await _webView.InvokeScript(script).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task NavigateAsync(Uri target, CancellationToken ct)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(target);
+        ct.ThrowIfCancellationRequested();
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Task navigation = Dispatcher.UIThread
+                .InvokeAsync(() => _webView.Source = target)
+                .GetTask();
+            await navigation.WaitAsync(ct).ConfigureAwait(false);
+            return;
+        }
+
+        _webView.Source = target;
     }
 
     /// <inheritdoc />

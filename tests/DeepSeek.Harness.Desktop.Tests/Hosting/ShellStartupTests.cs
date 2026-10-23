@@ -75,4 +75,55 @@ public class ShellStartupTests
     {
         new ShellStartup(_ => Task.CompletedTask, initialUri: null).Dispose();
     }
+
+    /// <summary>起步正常收口后接线回调被执行（引导启动与监督循环的插入点）。</summary>
+    [Fact]
+    public async Task Begin_InvokesAfterStart_WhenBodyCompletes()
+    {
+        var after = new TaskCompletionSource();
+        using var startup = new ShellStartup(_ => Task.CompletedTask, initialUri: null);
+
+        startup.Begin(() => after.TrySetResult());
+
+        await after.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    /// <summary>起步体抛异常时不执行接线回调：失败面接管，监督器不得在未就绪的宿主上再 spawn。</summary>
+    [Fact]
+    public async Task Begin_SkipsAfterStart_WhenBodyFails()
+    {
+        var boom = new InvalidOperationException("spawn boom");
+        var failed = new TaskCompletionSource();
+        int afterCalls = 0;
+        using var startup = new ShellStartup(_ => throw boom, initialUri: null);
+        startup.Failed += _ => failed.TrySetResult();
+
+        startup.Begin(() => Interlocked.Increment(ref afterCalls));
+
+        await failed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+        Assert.Equal(0, Volatile.Read(ref afterCalls));
+    }
+
+    /// <summary>关窗取消的起步体不得执行接线回调（退出路径不再拉起引导/监督）。</summary>
+    [Fact]
+    public async Task CanceledBody_DoesNotInvokeAfterStart()
+    {
+        TaskCompletionSource started = new();
+        int afterCalls = 0;
+        var startup = new ShellStartup(
+            async ct =>
+            {
+                started.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            },
+            initialUri: null);
+
+        startup.Begin(() => Interlocked.Increment(ref afterCalls));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        startup.Dispose();
+        await Task.Delay(100);
+
+        Assert.Equal(0, Volatile.Read(ref afterCalls));
+    }
 }

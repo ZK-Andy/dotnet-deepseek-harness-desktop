@@ -24,6 +24,7 @@ internal sealed class ShellBridgeHost : IDisposable
     private readonly Action<string> _log;
     private readonly CancellationTokenSource _cts = new();
     private readonly CancellationToken _token;
+    private readonly AvaloniaWindowScriptTarget _scriptTarget;
     private NativeWebViewSurface? _surface;
     private ShellBridge? _bridge;
     private PageHealthMonitor? _monitor;
@@ -57,7 +58,15 @@ internal sealed class ShellBridgeHost : IDisposable
         _captionHeightPx = captionHeightPx;
         _healthInterval = healthInterval;
         _log = log;
+        // 惰性求值目标：引导进度/恢复面可能在挂载前构造，求值时才取当面的网页视图（未挂载即抛未就绪）。
+        _scriptTarget = new AvaloniaWindowScriptTarget(() => _surface);
     }
+
+    /// <summary>页面脚本求值端口（引导进度、恢复页与探针共用；网页视图未挂载时求值抛未就绪）。</summary>
+    public IWindowScriptTarget ScriptTarget => _scriptTarget;
+
+    /// <summary>已挂载的网页视图可测面（未挂载/无壳 origin 时为 null）。</summary>
+    public IWebViewSurface? Surface => _surface;
 
     /// <summary>命令路由快照（读侧加锁：写入发生在 UI 线程，分发在池线程）。</summary>
     /// <returns>当前路由数组。</returns>
@@ -136,7 +145,7 @@ internal sealed class ShellBridgeHost : IDisposable
 
         NativeWebViewSurface surface = _surface;
         var monitor = new PageHealthMonitor(
-            new AvaloniaWindowScriptTarget(surface),
+            _scriptTarget,
             _log,
             reload: ct => new ValueTask(surface.ReloadAsync(ct)));
         _monitor = monitor;

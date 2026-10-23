@@ -1,5 +1,7 @@
 using System.Net.Sockets;
 
+using DeepSeek.Harness.Desktop.Core.Ipc;
+
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 /// <summary>回环代理的本地端点面（ADR loopback-forward-proxy）：就绪探针/指南页/未铸币 holder。
@@ -103,10 +105,19 @@ internal sealed class DshLoopbackLocal
         "<div class=\"spin\"></div>\n" +
         "<h2>" + WebAuthRecovery.HolderMarker + "…</h2>\n" +
         "<p><a href=\"/__shell_guide/\">Troubleshooting</a></p>\n" +
+        "<p id=\"bootState\" style=\"display:none\"></p>\n" +
         "<a id=\"retry\" href=\"/__shell_ready\" style=\"display:none\">Retry</a>\n" +
+        "<a id=\"bootRetry\" href=\"#\" style=\"display:none\">Retry bootstrap</a>\n" +
         "<script>\n(function () {\n" +
         "  var link = document.getElementById('retry');\n" +
+        "  var bootState = document.getElementById('bootState');\n" +
+        "  var bootRetry = document.getElementById('bootRetry');\n" +
         "  var busy = false, failed = 0;\n" +
+        "  function invoke(cmd) {\n" +
+        "    if (!window.__shell || !window.__shell.invoke) return false;\n" +
+        "    try { var p = window.__shell.invoke(cmd, {}); if (p && p.catch) p.catch(function () {}); return true; }\n" +
+        "    catch (e) { return false; }\n" +
+        "  }\n" +
         "  function showRetry() { if (link) link.style.display = ''; }\n" +
         "  function onFail() { busy = false; failed++; showRetry(); if (failed < 3) poll(); }\n" +
         "  function poll() {\n" +
@@ -120,6 +131,20 @@ internal sealed class DshLoopbackLocal
         "  if (link) link.addEventListener('click', function (e) { e.preventDefault(); failed = 0; link.style.display = 'none'; poll(); });\n" +
         "  window.addEventListener('online', function () { failed = 0; poll(); });\n" +
         "  document.addEventListener('visibilitychange', function () { if (!document.hidden) { failed = 0; poll(); } });\n" +
+        "  // 首启引导进度落在 holder 首屏（wwwroot 引导页只在指南侧可达）：宿主经 CustomEvent 推步骤，\n" +
+        "  // 失败态给原地重试；重试命令经 __shell 通道，桥未注入时按钮保持可见。\n" +
+        "  document.addEventListener('dsh-desktop-bootstrap', function (ev) {\n" +
+        "    var d = (ev && ev.detail) || {};\n" +
+        "    if (bootState) {\n" +
+        "      bootState.style.display = '';\n" +
+        "      bootState.textContent = (d.step || '') + (d.message ? (' — ' + d.message) : '');\n" +
+        "    }\n" +
+        "    if (bootRetry) bootRetry.style.display = d.failed ? '' : 'none';\n" +
+        "  });\n" +
+        "  if (bootRetry) bootRetry.addEventListener('click', function (e) {\n" +
+        "    e.preventDefault();\n" +
+        "    if (invoke('" + HostCommandIds.BootstrapRetry + "')) bootRetry.style.display = 'none';\n" +
+        "  });\n" +
         "  poll();\n" +
         "})();\n</script>\n</body>\n</html>\n";
 

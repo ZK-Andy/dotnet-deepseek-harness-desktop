@@ -24,6 +24,9 @@ internal sealed class ShellApplication : Application
     private readonly ICloseBehaviorPreference _closeBehavior;
     private readonly IDiagnosticsExport _diagnostics;
     private readonly ExitPipeline _exitPipeline;
+    private readonly ShellRecoveryContext _recoveryContext;
+    private ShellRecoveryAssembly? _recovery;
+    private bool _platformShutdown;
     private volatile ShellTray? _tray;
 
     /// <summary>启动失败面接线（ADR 2026-10-23-avalonia-failure-dialog）：起步体在后台线程失败，
@@ -59,6 +62,7 @@ internal sealed class ShellApplication : Application
     /// <param name="diagnostics">诊断导出端口（desktop.diagnostics.export）。</param>
     /// <param name="exitPipeline">退出管道（托盘退出/重启与 desktop.app.restart 共用；回收序在管道内，
     /// ADR avalonia-g3-exit-restart）。</param>
+    /// <param name="recoveryContext">恢复/引导/监督的宿主侧依赖束（ADR avalonia-g1g3-recovery-bootstrap-supervision）。</param>
     public ShellApplication(
         ShellStartup startup,
         bool devTools,
@@ -70,7 +74,8 @@ internal sealed class ShellApplication : Application
         Func<IReadOnlyList<string>> stderrTail,
         ICloseBehaviorPreference closeBehavior,
         IDiagnosticsExport diagnostics,
-        ExitPipeline exitPipeline)
+        ExitPipeline exitPipeline,
+        ShellRecoveryContext recoveryContext)
     {
         _startup = startup;
         _devTools = devTools;
@@ -83,6 +88,7 @@ internal sealed class ShellApplication : Application
         _closeBehavior = closeBehavior;
         _diagnostics = diagnostics;
         _exitPipeline = exitPipeline;
+        _recoveryContext = recoveryContext;
     }
 
     /// <inheritdoc />
@@ -102,7 +108,12 @@ internal sealed class ShellApplication : Application
     /// <summary>窗口/托盘/关窗/唤回接线（ADR avalonia-g1-tray-recall、-g3-shell-commands）：闸门先于窗口，
     /// 托盘就绪决定关窗是否可隐藏，关闭路径统一收口桥与托盘，最后按平台是否发起决定是否结束生命周期。</summary>
     /// <param name="desktop">桌面生命周期。</param>
-    private void StartShell(IClassicDesktopStyleApplicationLifetime desktop)
+    private void StartShell(IClassicDesktopStyleApplicationLifetime desktop) => WireShellSurface(desktop);
+
+    /// <summary>窗口/托盘/关窗/唤回接线（拆自 <see cref="StartShell"/> 以守 F2 方法长度）：
+    /// 闸门先于窗口，托盘就绪决定关窗是否可隐藏，关闭路径统一收口桥与托盘。</summary>
+    /// <param name="desktop">桌面生命周期。</param>
+    private void WireShellSurface(IClassicDesktopStyleApplicationLifetime desktop)
     {
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         // 闸门先于窗口：启动失败面的「退出」与托盘「退出」共用同一放行点。
@@ -116,7 +127,30 @@ internal sealed class ShellApplication : Application
             closeGate, _exitPipeline, log: HostLog.Write);
 
         WireStartupFailure(window, quit);
-        bool platformShutdown = false;
+        WireTray(quit, restart);
+        RegisterCommandRouters(closeGate, restart);
+        WireRecovery(closeGate, window);
+        WireWindowLifecycle(desktop, window, closeGate);
+
+        _recall.Attach(() => Dispatcher.UIThread.Post(() =>
+        {
+            try
+            {
+                window.RecallFromTray();
+            }
+            catch (InvalidOperationException)
+            {
+                // 窗口已关闭：Avalonia 拒绝 re-show，Detach 前的竞态窗口里丢弃这次迟到唤回
+            }
+        }));
+
+        window.Opened += (_, _) => _startup.Begin(StartRecoveryAfterStartup);
+    }
+
+    /// <summary>托盘创建（无图标/无托盘环境回落 null，关窗判据据此直退）。</summary>
+    /// <param name="quit">退出动作。</param>
+    /// <param name="restart">重启动作。</param>
+    private void WireTray(Action quit, Action restart) =>
         _tray = ShellTray.TryCreate(
             _trayIconPath,
             _trayIconAvailable,
@@ -126,18 +160,77 @@ internal sealed class ShellApplication : Application
             quit: quit,
             log: HostLog.Write);
 
-        // 命令面（ADR avalonia-g3-shell-commands）：托盘就绪状态决定 closeToTray 状态帧的
-        // available；路由表在窗口挂载后加入即可（桥每次分发都重读路由快照）。
+    /// <summary>命令面（ADR avalonia-g3-shell-commands）：托盘就绪状态决定 closeToTray 状态帧的
+    /// available；路由表在窗口挂载后加入即可（桥每次分发都重读路由快照）。</summary>
+    /// <param name="closeGate">关窗闸门（重启路由先批准再回收关窗）。</param>
+    /// <param name="restart">重启动作。</param>
+    private void RegisterCommandRouters(CloseGate closeGate, Action restart)
+    {
         foreach (ICommandRouter router in ShellCommandRegistration.CreateRouters(
                      _closeBehavior, () => _tray is not null, _diagnostics, closeGate, restart, HostLog.Write))
         {
             _bridgeHost.AddRouter(router);
         }
+    }
 
+    /// <summary>恢复/引导/监督（ADR avalonia-g1g3-recovery-bootstrap-supervision）：网页视图已随窗口构造挂上桥。
+    /// 无壳 origin 时 Surface 为 null——页面面无承载面，整组跳过；监督器在没有失败面可展示时启动
+    /// 只会空转覆写，故不启（启动失败面已由 <see cref="StartupFailureFace"/> 承担）。</summary>
+    /// <param name="closeGate">关窗闸门（恢复页退出与托盘退出同一条批准契约）。</param>
+    /// <param name="window">属主窗口（模态归属与关窗动作）。</param>
+    private void WireRecovery(CloseGate closeGate, Window window)
+    {
+        if (_bridgeHost.Surface is not { } surface)
+        {
+            HostLog.Write("[host] 无壳 origin：跳过恢复页/引导/监督接线（窗口无页面；启动失败面仍可用）");
+            return;
+        }
+
+        Action closeWindow = () => Dispatcher.UIThread.Post(() =>
+        {
+            try
+            {
+                window.Close();
+            }
+            catch (InvalidOperationException ex)
+            {
+                // 迟到调用：窗口已关闭时 Avalonia 拒绝 Close；留痕不抛到 UI 线程。
+                HostLog.Write($"[host] 恢复页退出关窗失败：{ex.Message}");
+            }
+        });
+        _recovery = ShellRecoveryRegistration.Create(
+            _recoveryContext.Host,
+            surface,
+            _bridgeHost.ScriptTarget,
+            _startup.InitialUri,
+            _recoveryContext.Bootstrap,
+            _diagnostics,
+            _uiLocale,
+            closeGate,
+            () => window,
+            closeWindow,
+            _recoveryContext.Timeouts,
+            _recoveryContext.ShellForward,
+            HostLog.Write);
+        foreach (ICommandRouter router in _recovery.Routers)
+        {
+            _bridgeHost.AddRouter(router);
+        }
+    }
+
+    /// <summary>关窗与收尾：隐藏到托盘或放行；真正关闭时先取消引导/监督再释放桥与托盘。</summary>
+    /// <param name="desktop">桌面生命周期。</param>
+    /// <param name="window">主窗。</param>
+    /// <param name="closeGate">关窗闸门。</param>
+    private void WireWindowLifecycle(
+        IClassicDesktopStyleApplicationLifetime desktop,
+        ShellWindow window,
+        CloseGate closeGate)
+    {
         window.Closing += (_, e) =>
         {
             bool platformInitiated = e.CloseReason is WindowCloseReason.OSShutdown or WindowCloseReason.ApplicationShutdown;
-            platformShutdown |= platformInitiated;
+            _platformShutdown |= platformInitiated;
             if (!ShellClosePolicy.ShouldHide(closeGate.ExitApproved, _tray is not null, _closeBehavior.HideOnClose, platformInitiated))
             {
                 return;
@@ -153,31 +246,49 @@ internal sealed class ShellApplication : Application
             _recall.Detach();
             try
             {
+                // 引导/监督先于桥收口：监督循环可能在等页面求值，桥必须先取消再释放（顺序与退出管道一致）。
+                _recoveryContext.Cancel();
                 _bridgeHost.Dispose();
                 _tray?.Dispose();
             }
             finally
             {
                 // 平台发起的关闭已在自己的收尾流程里，重复 Shutdown 会重入 DoShutdown
-                if (!platformShutdown)
+                if (!_platformShutdown)
                 {
                     desktop.Shutdown();
                 }
             }
         };
+    }
 
-        _recall.Attach(() => Dispatcher.UIThread.Post(() =>
+    /// <summary>起步收口后接引导与监督（ADR avalonia-g1g3-recovery-bootstrap-supervision）：引导服务
+    /// 只在首启需要时真正启动（否则 no-op），监督循环等引导落定后进入恢复循环。两者都在池线程上跑，
+    /// 页面面经桥端口与 UI 线程封送。</summary>
+    private void StartRecoveryAfterStartup()
+    {
+        ShellRecoveryAssembly? recovery = _recovery;
+        CancellationToken ct = _recoveryContext.SupervisorCts.Token;
+        // 关窗与起步收口的竞态：取消已发生则不再拉起引导（Start 会新建无人取消的 CTS 并 spawn）。
+        if (recovery is null || ct.IsCancellationRequested)
         {
-            try
-            {
-                window.RecallFromTray();
-            }
-            catch (InvalidOperationException)
-            {
-                // 窗口已关闭：Avalonia 拒绝 re-show，Detach 前的竞态窗口里丢弃这次迟到唤回
-            }
-        }));
+            return;
+        }
 
-        window.Opened += (_, _) => _startup.Begin();
+        _recoveryContext.Bootstrap.Start((url, entryCt) => recovery.Entry.RunAsync(url, entryCt));
+        // 复检之后的竞态窗口：关闭若落在 Start 内，上面新建的引导 CTS 无人取消——就地补取消。
+        if (ct.IsCancellationRequested)
+        {
+            _recoveryContext.Bootstrap.Cancel();
+            return;
+        }
+
+        Task supervision = recovery.Supervision.RunAsync(_recoveryContext.Host, ct);
+        _recoveryContext.SupervisionTask = supervision;
+        _ = supervision.ContinueWith(
+            t => HostLog.Write($"[host] 监督循环异常退出：{t.Exception}"),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 }

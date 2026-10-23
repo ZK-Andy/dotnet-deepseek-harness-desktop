@@ -69,8 +69,22 @@ internal sealed class FakeWebViewSurface : IWebViewSurface
         return Task.FromResult(ScriptResult);
     }
 
+    /// <summary>可用性（默认 true；置 false 可模拟已销毁的网页视图）。</summary>
+    public bool IsAvailable { get; set; } = true;
+
+    /// <summary>按调用序记录的导航靶点。</summary>
+    public List<Uri> Navigations { get; } = [];
+
     /// <inheritdoc />
     public Task ReloadAsync(CancellationToken ct) => Task.CompletedTask;
+
+    /// <inheritdoc />
+    public Task NavigateAsync(Uri target, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        Navigations.Add(target);
+        return Task.CompletedTask;
+    }
 
     /// <summary>抬升一条页面消息。</summary>
     /// <param name="body">消息原文。</param>

@@ -21,7 +21,7 @@ companion 设置区的「重启应用」落空；Web 通道失效时托盘菜单
 - **退出管道在装配期构造**：`AvaloniaHost.CreateLifetime` 以回收三步（监督器取消 → `host.Stop` →
   `RunMarker.Release`）、监听器释放与关窗动作构造 `ExitPipeline`，经 `RunUi` 传给 `ShellApplication`。
   关窗动作在调用期取 `desktop.MainWindow` 并投递 UI 线程（建窗晚于装配，托盘/命令面调用必晚于建窗）。
-  监督器取消暂为 no-op：监督片之前新宿主没有恢复分支可取消，接监督时必须回填。
+  监督器取消在恢复/监督片回填为「取消监督令牌源 + 取消引导任务」（[avalonia-g1g3-recovery-bootstrap-supervision](2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)）：管道构造参数不变。
 - **托盘退出/重启收在 `ShellCommandRegistration.CreateTrayActions`**：两个动作都先 `CloseGate.ApproveExit()`
   再走管道——未批准的关窗会被 hide-to-tray 吞成隐藏，菜单「退出」会变成「藏起来」。回收在线程池执行
   （原生菜单回调在 UI 线程，`Stop` 的门等待与进程回收不占 UI），管道自己把关窗投递回 UI 线程。菜单补
@@ -58,8 +58,8 @@ companion 设置区的「重启应用」落空；Web 通道失效时托盘菜单
 - 窗口「直退」路径（托盘不可用或偏好关闭）不经管道，靠 `Run` 尾部回收——那条路径没有 8s 看门狗。
 - 托盘菜单仍缺「检查更新」：等更新栈片。且 Avalonia 托盘没有系统通知面，菜单触发的检查结论届时只能
   进 host.log（旧宿主经托盘通知送达）——缺口随更新片定策，不在本片造半套通知。
-- `desktop.recovery.exit` 仍未注册：恢复页未接，路由随恢复页片；命令 ID 继续由旧宿主页面引用。
-- 监督器取消是 no-op：重启不取消监督（尚无监督）。接监督片时若不回填，重启会把旧监督分支留给新实例。
+- `desktop.recovery.exit` 已随恢复/监督片注册（[avalonia-g1g3-recovery-bootstrap-supervision](2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)）：恢复页承载与退出契约见该篇。
+- 监督器取消已回填为 `CancelAndJoin`（取消监督令牌源与引导任务 + 按时限 join；[avalonia-g1g3-recovery-bootstrap-supervision](2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)）：重启/退出先掐断监督分支再 spawn 或 Stop。
 - 语言切换后的托盘菜单重建仍未接（locale 命令已在 G2 装配，但改语言不重建菜单）。
 - 已知缺口（不在本片；旧宿主同形）：重启时回环代理端口由本进程持有到 `Run` 尾部才释放，继任者若先于
   那次释放绑定，会走「记忆端口被占 → OS 重分配」，本次重启丢一次会话恢复。

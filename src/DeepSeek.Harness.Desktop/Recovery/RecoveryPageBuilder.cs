@@ -8,7 +8,8 @@ namespace DeepSeek.Harness.Desktop.Recovery;
 /// <summary>
 /// 崩溃恢复页构建（纯函数可单测）：把「一行覆写」升级为内嵌静态恢复文档——失败原因、
 /// 子进程 stderr 尾部展示、导出诊断与退出两个动作。恢复页出现的时刻 dsh 必然不可用，
-/// 而按钮走的 <c>desktop.*</c> 命令是 Ryn 层 IPC，不依赖 dsh 存活（ADR diag-masking-and-recovery-page）。
+/// 而按钮走的 <c>desktop.*</c> 命令由宿主页面桥承接（迁移期两宿主并存：优先 <c>__shell</c>、
+/// 回落 <c>__ryn</c>），不依赖 dsh 存活（ADR diag-masking-and-recovery-page）。
 /// 骨架 HTML 为编译期常量（无外部依赖不漂移）；动态数据经 JSON 序列化注入后一律
 /// <c>textContent</c> 写入——stderr 是上游不可控输出，绝不走 innerHTML 拼接。
 /// </summary>
@@ -67,6 +68,13 @@ public static class RecoveryPageBuilder
         "<div class=\"row\"><button id=\"ddc-export\">" + UiCopy.RecoveryExportButton(english) + "</button><button id=\"ddc-exit\">" + UiCopy.RecoveryExitButton(english) + "</button></div>" +
         "<p style=\"font-size:12px;color:var(--dshdt-label-tertiary)\">" + UiCopy.RecoveryAutoRetryNote(english) + "</p></body></html>";
 
+    /// <summary>两宿主共用的命令调用表达式：优先 <c>window.__shell</c>（Avalonia 新宿主），缺失时回落
+    /// <c>window.__ryn</c>（Ryn 旧宿主），两者都无即拒绝。两个通道都由宿主注入，与 dsh 存活无关。</summary>
+    private const string Invoke =
+        "(function(c,a){var s=window.__shell;if(s&&s.invoke){return s.invoke(c,a||{});}" +
+        "if(window.__ryn&&window.__ryn.invoke){return window.__ryn.invoke(c,a||{});}" +
+        "return Promise.reject(new Error('no bridge'));})";
+
     private static string Wire(bool english) =>
         "document.getElementById('ddc-reason').textContent=D.reason;" +
         "var t=document.getElementById('ddc-tail');" +
@@ -74,9 +82,9 @@ public static class RecoveryPageBuilder
         "function frame(r){try{return (typeof r==='string')?JSON.parse(r):(r||{});}catch(e){return {error:String(e)};}}" +
         "document.getElementById('ddc-export').onclick=async function(){var s=document.getElementById('ddc-status');" +
         "s.textContent='" + UiCopy.RecoveryExporting(english) + "';this.disabled=true;" +
-        "try{var o=frame(await window.__ryn.invoke('" + HostCommandIds.DiagnosticsExport + "',{}));" +
+        "try{var o=frame(await " + Invoke + "('" + HostCommandIds.DiagnosticsExport + "',{}));" +
         "s.textContent=o.path?('" + UiCopy.RecoveryExportedPrefix(english) + "'+o.path):('" + UiCopy.RecoveryExportFailedPrefix(english) + "'+(o.error||'" + UiCopy.RecoveryUnknownReason(english) + "'));}catch(e){s.textContent='" + UiCopy.RecoveryExportFailedPrefix(english) + "'+e;}" +
         "this.disabled=false;};" +
         "document.getElementById('ddc-exit').onclick=async function(){this.disabled=true;" +
-        "try{await window.__ryn.invoke('" + HostCommandIds.RecoveryExit + "',{});}catch(e){}};";
+        "try{await " + Invoke + "('" + HostCommandIds.RecoveryExit + "',{});}catch(e){}};";
 }

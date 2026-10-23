@@ -20,11 +20,21 @@ internal interface IWebViewSurface
     /// <summary>页面请求新窗口。</summary>
     event EventHandler<PageNavigationEventArgs>? NewWindowRequested;
 
+    /// <summary>网页视图当前是否可用（未创建/已销毁为 false；供导航端口的窗口就绪判据）。</summary>
+    bool IsAvailable { get; }
+
     /// <summary>在当前文档求值脚本（未就绪抛 <see cref="InvalidOperationException"/>）。</summary>
     /// <param name="script">待求值脚本。</param>
     /// <param name="ct">取消令牌。</param>
     /// <returns>脚本回报原文；无回报为 null。</returns>
     Task<string?> InvokeScriptAsync(string script, CancellationToken ct);
+
+    /// <summary>发起顶层导航（未就绪抛 <see cref="InvalidOperationException"/>）；到达信号经
+    /// <see cref="NavigationCompleted"/> 回报，调用方自行等待提交。</summary>
+    /// <param name="target">导航靶点。</param>
+    /// <param name="ct">取消令牌。</param>
+    /// <returns>导航已发起即完成的任务。</returns>
+    Task NavigateAsync(Uri target, CancellationToken ct);
 
     /// <summary>重载当前文档（健康探针的有界恢复用）。</summary>
     /// <param name="ct">取消令牌。</param>

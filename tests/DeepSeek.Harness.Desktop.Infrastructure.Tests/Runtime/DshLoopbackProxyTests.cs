@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
+using DeepSeek.Harness.Desktop.Core.Ipc;
+
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
 /// <summary>回环代理源（ADR loopback-forward-proxy）：SSE 渐进到达、POST Content-Type 保真、
@@ -794,6 +796,10 @@ public class DshLoopbackProxyTests
         Assert.Contains("addEventListener('online'", heldBody, StringComparison.Ordinal);
         Assert.Contains("addEventListener('visibilitychange'", heldBody, StringComparison.Ordinal);
         Assert.Contains("getElementById('retry')", heldBody, StringComparison.Ordinal);
+        // 首启引导进度落在 holder 首屏：监听引导帧 + 失败重试经 __shell 通道（命令由桥路由承接）。
+        Assert.Contains("dsh-desktop-bootstrap", heldBody, StringComparison.Ordinal);
+        Assert.Contains("bootRetry", heldBody, StringComparison.Ordinal);
+        Assert.Contains(HostCommandIds.BootstrapRetry, heldBody, StringComparison.Ordinal);
         Assert.DoesNotContain("setTimeout", heldBody, StringComparison.Ordinal);
         Assert.DoesNotContain("setInterval", heldBody, StringComparison.Ordinal);
 

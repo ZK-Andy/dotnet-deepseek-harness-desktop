@@ -33,8 +33,12 @@ internal static class AvaloniaHost
             resources.Track(host);
 
             // 启动前置（首启探测与 dev 判定）先于代理与窗口；探测上限由 RuntimeTimeouts 约束。
+            // 引导进度经页面桥求值端口推送——桥在代理绑定后构造，提供者到推送时才取值（调用点晚于建窗）。
             Preflight preflight = PreBuildRegistration.CreatePreflight(
-                () => host, () => shared.UiLocale.IsEnglish, shared);
+                () => host,
+                () => shared.UiLocale.IsEnglish,
+                shared,
+                () => bridgeHost?.ScriptTarget ?? throw new InvalidOperationException("页面桥尚未装配"));
 
             // 单实例仲裁：只防第二实例冷启动清扫并击杀第一实例的 dsh；二启通知经唤回单点转给主窗，
             // 建窗前的请求由 ShellRecall 挂起、窗口就绪后补发。
@@ -59,24 +63,14 @@ internal static class AvaloniaHost
             IRuntimeStarter starter = PreBuildRegistration.CreateRuntimeStarter(
                 preflight, shared.Timeouts, shared.ShellForward);
 
-            startup = CreateStartup(preflight, shared, host, starter, proxy);
-            // 退出/重启管道（ADR avalonia-g3-exit-restart）：回收三步与关窗动作即构造数据；
-            // 托盘菜单、desktop.app.restart 与恢复页共用同一实例（幂等由管道内 once-guard 保证）。
-            ExitPipeline exitPipeline = CreateLifetime(host, marker, instanceListener, dshHome);
-
-            // 页面桥（ADR avalonia-g2-shell-bridge）：命令面先接 PageBridge 域四路由，其余随 G3；
-            // 代理未绑定时 origin 为 null，桥与健康观测整体降级跳过（ShellBridgeHost 自持该判据）。
-            bridgeHost = PageBridgeRegistration.CreateShellBridgeHost(
-                proxy.Proxy?.Url?.GetLeftPart(UriPartial.Authority),
-                shared.UiLocale,
-                MacNativeChrome.IsEnabled,
-                shared.CaptionBar.HeightPx,
-                TimeSpan.FromSeconds(shared.Timeouts.HealthInitialDelaySeconds),
-                HostLog.Write);
+            RunWiring wiring = ShellWiringRegistration.Create(
+                preflight, shared, host, starter, proxy, marker!, instanceListener, dshHome, resources);
+            startup = wiring.Startup;
+            bridgeHost = wiring.BridgeHost;
 
             return RunUi(
-                args, startup, preflight.Launch.DevTools, recall, shared.UiLocale,
-                bridgeHost, () => host.StderrTail, dshHome, exitPipeline);
+                args, wiring.Startup, preflight.Launch.DevTools, recall, shared.UiLocale,
+                wiring.BridgeHost, () => host.StderrTail, dshHome, wiring.Exit, wiring.Recovery);
         }
         finally
         {
@@ -104,7 +98,7 @@ internal static class AvaloniaHost
     /// <param name="starter">运行时起步用例。</param>
     /// <param name="proxy">回环代理源（窗口初始 URL 来源）。</param>
     /// <returns>起步壳。</returns>
-    private static ShellStartup CreateStartup(
+    internal static ShellStartup CreateStartup(
         Preflight preflight,
         SharedState shared,
         HarnessRuntimeHost host,
@@ -124,19 +118,22 @@ internal static class AvaloniaHost
 
     /// <summary>退出管道装配（ADR avalonia-g3-exit-restart）：回收三步（监督器取消 → 停宿主 → 释放 marker）、
     /// 监听器释放与关窗动作都是构造数据；关窗动作在调用期取主窗并投递到 UI 线程（建窗晚于本方法，
-    /// 而托盘/命令面调用必晚于建窗）。监督器取消暂为 no-op——监督片之前没有恢复分支可取消。</summary>
+    /// 而托盘/命令面调用必晚于建窗）。监督器取消同时掐断未落定的引导任务（ADR
+    /// avalonia-g1g3-recovery-bootstrap-supervision）：引导任务自己 spawn dsh，留着它会把刚回收的树再拉起来。</summary>
     /// <param name="host">运行时宿主（回收时整树击杀 dsh）。</param>
     /// <param name="marker">本轮 run-marker（释放时校验 owner token）。</param>
     /// <param name="instanceListener">单实例监听器（Windows/降级为 null）。</param>
     /// <param name="dshHome">DSH home（marker 根）。</param>
+    /// <param name="cancelSupervisor">监督器取消动作（含引导取消与 join；见 ShellRecoveryContext.CancelAndJoin）。</param>
     /// <returns>退出管道。</returns>
-    private static ExitPipeline CreateLifetime(
+    internal static ExitPipeline CreateLifetime(
         HarnessRuntimeHost host,
         RunMarkerResult marker,
         PrimaryListener? instanceListener,
-        string dshHome) =>
+        string dshHome,
+        Action cancelSupervisor) =>
         new(
-            cancelSupervisor: static () => { },
+            cancelSupervisor: cancelSupervisor,
             stopHost: host.Stop,
             releaseMarker: () => RunMarker.Release(dshHome, marker.Token),
             disposeListener: () => instanceListener?.Dispose(),
@@ -159,6 +156,7 @@ internal static class AvaloniaHost
     /// <param name="stderrTail">子进程 stderr 尾部取法（启动失败面用）。</param>
     /// <param name="dshHome">DSH home（关窗偏好落盘根；注册工厂在此取用）。</param>
     /// <param name="exitPipeline">退出管道（托盘退出/重启与 desktop.app.restart 共用）。</param>
+    /// <param name="recoveryContext">恢复/引导/监督的宿主侧依赖束。</param>
     /// <returns>进程退出码。</returns>
     private static int RunUi(
         string[] args,
@@ -169,7 +167,8 @@ internal static class AvaloniaHost
         ShellBridgeHost bridgeHost,
         Func<IReadOnlyList<string>> stderrTail,
         string dshHome,
-        ExitPipeline exitPipeline)
+        ExitPipeline exitPipeline,
+        ShellRecoveryContext recoveryContext)
     {
         // 托盘图标存在性是装配期配置探测（与旧入口 DesktopAdapter.App 同款，D005 显式豁免）
         string trayIconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
@@ -179,7 +178,8 @@ internal static class AvaloniaHost
                 startup, devTools, recall, uiLocale, trayIconPath, trayIconAvailable, bridgeHost, stderrTail,
                 ShellCommandRegistration.CreateCloseBehavior(dshHome),
                 ShellCommandRegistration.CreateDiagnosticsExport(() => bridgeHost.HealthSnapshot, HostLog.Write),
-                exitPipeline))
+                exitPipeline,
+                recoveryContext))
             .UsePlatformDetect()
             .StartWithClassicDesktopLifetime(args);
     }

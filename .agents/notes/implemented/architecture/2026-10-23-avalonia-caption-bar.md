@@ -1,6 +1,7 @@
 # Agent Note: Avalonia 无边框顶栏与三平台原生拖拽
 
 Status: implemented
+Erratum: 2026-10-23 — 增量闸豁免指针已转指 `2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision`（本篇标记不再生效）
 
 Review: FULL/2026-10-23#2/R1=ok R2=ok R3=ok
 

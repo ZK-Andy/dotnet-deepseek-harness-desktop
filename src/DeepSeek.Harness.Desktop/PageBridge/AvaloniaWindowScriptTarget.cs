@@ -8,13 +8,22 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// </summary>
 internal sealed class AvaloniaWindowScriptTarget : IWindowScriptTarget
 {
-    private readonly IWebViewSurface _surface;
+    private readonly Func<IWebViewSurface?> _resolve;
 
-    /// <summary>创建适配器。</summary>
+    /// <summary>创建适配器（网页视图已就绪的固定形态）。</summary>
     /// <param name="surface">网页视图可测面。</param>
-    public AvaloniaWindowScriptTarget(IWebViewSurface surface) => _surface = surface;
+    public AvaloniaWindowScriptTarget(IWebViewSurface surface) : this(() => surface)
+    {
+    }
+
+    /// <summary>创建惰性适配器（网页视图在装配之后才挂载：引导进度/恢复面在调用期取当面）。</summary>
+    /// <param name="resolve">网页视图可测面取法；null = 尚未挂载，求值即抛未就绪。</param>
+    public AvaloniaWindowScriptTarget(Func<IWebViewSurface?> resolve) => _resolve = resolve;
 
     /// <inheritdoc />
-    public async Task<string> EvaluateAsync(string script, CancellationToken ct) =>
-        await _surface.InvokeScriptAsync(script, ct).ConfigureAwait(false) ?? string.Empty;
+    public async Task<string> EvaluateAsync(string script, CancellationToken ct)
+    {
+        IWebViewSurface surface = _resolve() ?? throw new InvalidOperationException("网页视图尚未就绪");
+        return await surface.InvokeScriptAsync(script, ct).ConfigureAwait(false) ?? string.Empty;
+    }
 }

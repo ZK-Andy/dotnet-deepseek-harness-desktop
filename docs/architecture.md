@@ -1,6 +1,6 @@
 # Architecture
 
-> 现状。宿主层正从 `Ryn` 迁向 Avalonia 12.1.x：G0、G1 首批与 G2 页面桥已落地（Avalonia 窗口 + 包自带原生 WebView 承接 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回走 `TrayIcon` + 唤回单点；`window.__shell` 承接页面命令/事件/每页脚本，另接外链与健康观测），失败面与顶栏已接，G3 命令面首批已接，恢复页随 G1 余项。回环代理源承载全局 dsh Web UI + Core/Infrastructure/壳三层与端口适配 + 崩溃监督 + 首启引导 + 随包 companion 装配。
+> 现状。宿主层正从 `Ryn` 迁向 Avalonia 12.1.x：G0、G1 首批与 G2 页面桥已落地（Avalonia 窗口 + 原生 WebView；托盘/关窗到托盘/二启唤回走 `TrayIcon`；`window.__shell` 承接页面命令/事件/每页脚本），失败面、顶栏、G3 首批与崩溃监督/首启引导/恢复页已接（ADR `2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision`）。
 
 ## 概览
 
@@ -30,7 +30,7 @@
 
 ## 监督、单实例与退出
 
-* `Core.RuntimeSupervisor`（编排住 `Core.Bootstrap.RuntimeSupervision`）经 `IRuntimeHost` 端口监督子进程：退出 → 失败面 → `RestartAsync` → 恢复回调 `onRecovered` 只重验铸币态（重启复用记忆端口保 `origin`），**原生承载下不代发窗口导航**（回落页内恢复面覆写过 DOM 时仍补一次收口导航）——窗口恒驻代理根，回来这一步交页内自刷与客户端原地重连（ADR `2026-10-14-native-failure-surface`）。**失败面承载**：原生对话框优先（`Ryn.Plugins.Dialog`：Windows `MessageBoxW` / macOS `osascript` / Linux `zenity`|`kdialog`；动作面＝继续自动恢复；退出只挂显式「是」（插件通道故障恒回否 ⇒ 落回继续恢复）），无对话框工具或原生通道故障时回落页内恢复面（`RecoveryPageBuilder`，覆写 DOM ⇒ 恢复后补收口导航）；原生承载下诊断包自动导出并把路径写进对话框（求助路径）；新宿主改用进程内模态（`FailureDialogWindow`），不再依赖外挂工具。可用性判定是纯函数（`Core.Recovery.DialogToolAvailability`；Linux 按探针口径查 PATH 与执行位）。
+* `Core.RuntimeSupervisor`（编排住 `Core.Bootstrap.RuntimeSupervision`）经 `IRuntimeHost` 端口监督子进程：退出 → 失败面 → `RestartAsync` → 恢复回调 `onRecovered` 只重验铸币态（重启复用记忆端口保 `origin`），**原生承载下不代发窗口导航**（回落页内恢复面覆写过 DOM 时仍补一次收口导航）——窗口恒驻代理根，回来这一步交页内自刷与客户端原地重连（ADR `2026-10-14-native-failure-surface`）。**失败面承载**：原生对话框优先（`Ryn.Plugins.Dialog`：Windows `MessageBoxW` / macOS `osascript` / Linux `zenity`|`kdialog`；动作面＝继续自动恢复；退出只挂显式「是」（插件通道故障恒回否 ⇒ 落回继续恢复）），无对话框工具或原生通道故障时回落页内恢复面（`RecoveryPageBuilder`，覆写 DOM ⇒ 恢复后补收口导航）；原生承载下诊断包自动导出并把路径写进对话框（求助路径）；新宿主改用进程内模态（`FailureDialogWindow`），不再依赖外挂工具，页内恢复面经 `RecoverySurface` 保留为模态故障时的回落（ADR `2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision`）。可用性判定是纯函数（`Core.Recovery.DialogToolAvailability`；Linux 按探针口径查 PATH 与执行位）。
 * 端口漂移判据（`Core.RuntimeLineage`，ADR `2026-09-12-runtime-handoff-adoption`）：新生续任者收养、更早血统残留收割重试、非我方血统回退 OS 分配并告警（建窗后换端口会使「页面→壳」命令通道失效，见 ADR `2026-09-12-port-drift-ipc-origin-mismatch`）。
 * `LauncherActivation` UDS 单实例仲裁（Windows 不启用）；托盘/设置区退出重启走 `ExitPipeline`。
 

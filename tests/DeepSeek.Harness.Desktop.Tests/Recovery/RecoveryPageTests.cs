@@ -44,6 +44,19 @@ public class RecoveryPageBuilderTests
         Assert.Contains("D.tail&&D.tail.length", script);
     }
 
+    /// <summary>验证恢复页命令面在两宿主下都可用（迁移期双桥并存）：脚本同时带
+    /// <c>window.__shell</c> 优先与 <c>window.__ryn</c> 回落，且两个命令 ID 只出现一次。</summary>
+    [Fact]
+    public void Script_InvokesBothHostBridges()
+    {
+        string script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>(), english: false);
+
+        Assert.Contains("window.__shell", script);
+        Assert.Contains("window.__ryn", script);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(script, HostCommandIds.DiagnosticsExport));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(script, HostCommandIds.RecoveryExit));
+    }
+
     /// <summary>验证 english=true 时整页文案取英文分支（按钮/重试说明/导出状态，不留中文半面）。</summary>
     [Fact]
     public void English_BuildScript_UsesEnglishCopy()

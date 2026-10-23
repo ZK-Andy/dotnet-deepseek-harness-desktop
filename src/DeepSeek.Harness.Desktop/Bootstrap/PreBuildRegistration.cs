@@ -48,15 +48,18 @@ internal static class PreBuildRegistration
     /// <param name="hostProvider">宿主提供者（Build 后可用）。</param>
     /// <param name="isEnglishProvider">UI 语言提供者（惰性求值）。</param>
     /// <param name="shared">装配期共享态（页面注入单点、脚本求值端口与超时家）。</param>
+    /// <param name="scriptTargetProvider">页面脚本求值端口提供者（调用期取值；两宿主各自注入，
+    /// 旧宿主为共享态的 Ryn 适配器，Avalonia 宿主为页面桥的惰性适配器）。</param>
     /// <returns>启动头部产出（引导服务 + 启动配置）。</returns>
     public static Preflight CreatePreflight(
         Func<HarnessRuntimeHost> hostProvider,
         Func<bool> isEnglishProvider,
-        SharedState shared)
+        SharedState shared,
+        Func<IWindowScriptTarget> scriptTargetProvider)
     {
         IFirstBootBootstrap bootstrap = new FirstBootBootstrapService(
             hostProvider,
-            new FirstBootUi(shared.ScriptTarget, shared.Pump),
+            new FirstBootUi(scriptTargetProvider, shared.Pump),
             isEnglishProvider,
             shared.Timeouts,
             HostLog.Write);

@@ -124,10 +124,11 @@ internal static class StartupUseCaseRegistration
             sp.GetRequiredService<Core.Recovery.IDialogOrphanReaper>().Reap,
             HostLog.Write));
 
-    /// <summary>进入主界面用例的时限快照（配置模型 → Core 侧记录）。</summary>
+    /// <summary>进入主界面用例的时限快照（配置模型 → Core 侧记录）。两宿主共用同一映射，
+    /// 避免同值键两处各抄一份。</summary>
     /// <param name="timeouts">运行时超时家（容器单例）。</param>
     /// <returns>用例时限记录。</returns>
-    private static MainUiEntryOptions MainUiOptions(RuntimeTimeouts timeouts) => new(
+    internal static MainUiEntryOptions MainUiOptions(RuntimeTimeouts timeouts) => new(
         timeouts.WindowReadyTimeoutSeconds,
         timeouts.WindowReadyPollIntervalSeconds,
         timeouts.AuthProbeTimeoutSeconds,
@@ -135,10 +136,10 @@ internal static class StartupUseCaseRegistration
         timeouts.NavCallTimeoutSeconds,
         timeouts.NavCommitTimeoutSeconds);
 
-    /// <summary>监督用例的时限快照（配置模型 → Core 侧记录）。</summary>
+    /// <summary>监督用例的时限快照（配置模型 → Core 侧记录）。两宿主共用同一映射。</summary>
     /// <param name="timeouts">运行时超时家（容器单例）。</param>
     /// <returns>用例时限记录。</returns>
-    private static RuntimeSupervisionOptions SupervisionOptions(RuntimeTimeouts timeouts) => new(
+    internal static RuntimeSupervisionOptions SupervisionOptions(RuntimeTimeouts timeouts) => new(
         timeouts.SupervisorRestartTimeoutSeconds,
         timeouts.SupervisorRecoveredRetryDelaySeconds,
         timeouts.SupervisorFailedRetryDelaySeconds,

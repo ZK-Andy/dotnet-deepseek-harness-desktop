@@ -58,7 +58,7 @@ Avalonia 入口没有容器，也没有对应端口装配——伴生插件「�
 - 关窗偏好从此生效：设为「关闭即退出」后，托盘就绪也不再隐藏（平台注销/关机仍直接放行）。
 - `ShellBridgeHost` 多一个只读快照属性；诊断包的 `health` 行随观测是否启动而变（未起 = `n/a`），与旧宿主一致。
 - 关窗偏好多一层 Core 端口；旧宿主 `TrayController` 仍持具体实现（本批不动旧栈）。
-- 命令面余下更新（3 条）、引导重试与恢复退出，随各自片接入；`desktop.tray.event` 在新宿主无生产者
+- 命令面余下更新（3 条）与更新 UI；引导重试与恢复退出已随恢复/监督片接入（[avalonia-g1g3-recovery-bootstrap-supervision](2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)）。`desktop.tray.event` 在新宿主无生产者
   （[avalonia-g3-exit-restart](2026-10-23-avalonia-g3-exit-restart.md)）。应用重启已接
   （[avalonia-g3-exit-restart](2026-10-23-avalonia-g3-exit-restart.md)）；`ShellCommandRegistration`
   是同域路由的家，后续路由不再散落进 `AvaloniaHost`。
