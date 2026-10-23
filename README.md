@@ -31,7 +31,7 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端。宿主层正从 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 的原生 WebView 框架）迁向 [Avalonia](https://avaloniaui.net/) 12.1.x：G0、G1 首批与 G2 页面桥已落地（Avalonia 窗口 + 包自带原生 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回走 Avalonia 自带控件；`window.__shell` 承接页面命令/事件/每页脚本，外链拦截与页面健康观测已接），顶栏与监督随迁移片补。壳不自带运行时：node 与 dsh 都用系统全局的那一份（`npm install -g @deepseek-ai/dsh@next`），桌面与终端共享同一数据目录，会话、凭据、插件天然互通。首次启动检测 PATH 上的全局 dsh——没有就装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用（判据是兼容底线，不逐次查 npm dist-tag）。
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端。宿主层正从 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 的原生 WebView 框架）迁向 [Avalonia](https://avaloniaui.net/) 12.1.x：G0、G1 首批与 G2 页面桥已落地（Avalonia 窗口 + 包自带原生 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回走 Avalonia 自带控件；`window.__shell` 承接页面命令/事件/每页脚本，外链拦截与页面健康观测已接；顶栏已接，三平台原生拖拽/缩放、Wayland 降级保留原生装饰；自启 / 关窗到托盘 / 诊断导出三条命令已接），监督、恢复页与其余命令面随 G1 余项/G3 补。壳不自带运行时：node 与 dsh 都用系统全局的那一份（`npm install -g @deepseek-ai/dsh@next`），桌面与终端共享同一数据目录，会话、凭据、插件天然互通。首次启动检测 PATH 上的全局 dsh——没有就装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用（判据是兼容底线，不逐次查 npm dist-tag）。
 
 <p align="center">
   <a href="assets/screenshot.png"><img src="assets/screenshot.png" width="880" alt="DeepSeek Harness Desktop 窗口：插件市场"></a>
