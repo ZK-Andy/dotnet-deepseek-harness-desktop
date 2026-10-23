@@ -1,6 +1,7 @@
 # Agent Note: Avalonia 恢复页、首启引导与崩溃监督接回
 
 Status: implemented
+Erratum: 2026-10-23 — 增量闸豁免指针已转指 `2026-10-23-avalonia-g3-update-surface`（本篇标记不再生效）
 
 Review: FULL/2026-10-23#1/R1=ok R2=ok R3=ok
 
@@ -42,10 +43,12 @@ G3 的命令面与 G1 的窗口面陆续接进新宿主后，新宿主仍缺三�
 - 增量闸豁免：gross ≤ 1050，fanout ≤ 15，packages ≤ 1。本批同批接线（拆开会把同一组签名改两次），豁免只对本批生效；三处 `--exempt` 指针（`.githooks/pre-commit`、`.githooks/pre-push`、`.github/workflows/ci.yml`）从 `2026-10-23-avalonia-caption-bar` 转指本篇，旧篇标记随之失效（旧篇补 Erratum）。
 - 新宿主在 PATH 缺 dsh 的机器上会真正进入引导态：首屏是代理 holder 页（未铸币时 `/` 的过渡屏），holder 现在监听 `dsh-desktop-bootstrap` 渲染步骤/失败并给出「重试引导」（经 `window.__shell` 调 `desktop.bootstrap.retry`）；wwwroot 引导页保留为指南侧文档页。引导完成后的铸币/终页裁决复用 `MainUiEntry`。
 - dsh 崩溃后监督器按旧宿主同款策略恢复：连续崩溃达卡住阈值才弹失败面（进程内模态优先）；模态承载故障时回落页内恢复页，恢复成功后补一次回代理根的收口导航（页面 DOM 已被覆写）。恢复页「退出应用」与托盘退出同一条「先批准关窗闸门再关窗」契约。
-- 引导重试与恢复退出两条路由进桥；命令面余更新三命令（`desktop.update.getState/check/install`）与托盘「检查更新」。`desktop.tray.event` 仍随新宿主退役。
+- 引导重试与恢复退出两条路由进桥；更新三命令与托盘「检查更新」由 [avalonia-g3-update-surface](2026-10-23-avalonia-g3-update-surface.md) 承载。`desktop.tray.event` 仍随新宿主退役。
 - 无新增包引用、无新平台依赖；`IWebViewSurface` 的实现面只在 Avalonia 适配器与测试假体内，Ryn 侧不受影响。
 - 迁移期两宿主对恢复页共用同一 HTML/CSS/文案；旧宿主退役时只需删回落分支（与 g2 篇拒绝的「桥双别名」不是同一层：此处只换恢复页里的调用表达式，不新增第二座桥）。
-- 残留面（不作本片补）：更新 UI 与安装退出路径；托盘「检查更新」的反馈面（Avalonia 托盘无通知面）；恢复页/引导页的真机验收（本机与 CI 无桌面环境，见 HANDOFF 待办）；mac x64 与 Windows 真机的长期缺位口径不变。
+- 更新 UI、安装退出路径与托盘「检查更新」的反馈面由
+  [avalonia-g3-update-surface](2026-10-23-avalonia-g3-update-surface.md) 承载；恢复页/引导页的真机验收仍未做
+  （本机与 CI 无桌面环境，见 HANDOFF 待办）；mac x64 与 Windows 真机的长期缺位口径不变。
 
 ## Testing
 

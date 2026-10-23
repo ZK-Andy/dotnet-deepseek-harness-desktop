@@ -1,9 +1,15 @@
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
+
 namespace DeepSeek.Harness.Desktop.Hosting;
 
 /// <summary>
 /// 运行期接线的装配（ADR implemented/architecture/2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision）：
 /// 起步壳、监督器令牌源、退出管道、页面桥与恢复上下文一次接线，供 <see cref="AvaloniaHost.Run"/> 取用。
 /// 拆出根文件是 C2 的方向要求（根只许在册成员）；本类只按序调用注册处产物，不含启动判据。
+/// 关窗闸门与自更新面同在此构造（ADR avalonia-g3-update-surface）：两者的寿命都随本次 Run，
+/// 且都早于窗口——托盘命令、停用面与退出管道共用同一实例。
 /// </summary>
 internal static class ShellWiringRegistration
 {
@@ -17,6 +23,7 @@ internal static class ShellWiringRegistration
     /// <param name="instanceListener">单实例监听器（Windows/降级为 null）。</param>
     /// <param name="dshHome">DSH home（marker 根）。</param>
     /// <param name="resources">进程级资源拥有者（监督器令牌源在此登记）。</param>
+    /// <param name="recall">唤回单点（自更新结论的可见化落点）。</param>
     /// <returns>接线产物。</returns>
     public static RunWiring Create(
         Preflight preflight,
@@ -27,7 +34,8 @@ internal static class ShellWiringRegistration
         RunMarkerResult marker,
         PrimaryListener? instanceListener,
         string dshHome,
-        ShellResources resources)
+        ShellResources resources,
+        ShellRecall recall)
     {
         ShellStartup startup = AvaloniaHost.CreateStartup(preflight, shared, host, starter, proxy);
         // 监督器取消令牌源（寿命 = 本次 Run）：退出管道、恢复面与监督循环共用；释放归 ShellResources。
@@ -35,10 +43,14 @@ internal static class ShellWiringRegistration
         resources.Attach(supervisorCts);
         var recovery = new ShellRecoveryContext(
             preflight.Bootstrap, host, supervisorCts, shared.ShellForward, shared.Timeouts, HostLog.Write);
+        // 关窗闸门先于窗口与自更新面（ADR avalonia-g3-shell-commands）：安装路径与托盘退出共用同一放行点。
+        var closeGate = new CloseGate();
         // 退出/重启管道（ADR avalonia-g3-exit-restart）：回收三步与关窗动作即构造数据；
         // 托盘菜单、desktop.app.restart 与恢复页共用同一实例（幂等由管道内 once-guard 保证）。
+        // 关窗动作同时交给自更新面：安装器派生后要关窗放行脚本等待环，两处不得各写一份投递。
+        Action closeWindow = CloseWindowOnUiThread;
         ExitPipeline exitPipeline = AvaloniaHost.CreateLifetime(
-            host, marker, instanceListener, dshHome, recovery.CancelAndJoin);
+            host, marker, instanceListener, dshHome, recovery.CancelAndJoin, closeWindow);
 
         // 页面桥（ADR avalonia-g2-shell-bridge）：代理未绑定时 origin 为 null，
         // 桥与健康观测整体降级跳过（ShellBridgeHost 自持该判据）。
@@ -50,17 +62,56 @@ internal static class ShellWiringRegistration
             TimeSpan.FromSeconds(shared.Timeouts.HealthInitialDelaySeconds),
             HostLog.Write);
 
-        return new RunWiring(startup, bridgeHost, exitPipeline, recovery);
+        // 自更新面（ADR avalonia-g3-update-surface）：三条命令路由、启动检查与托盘反馈一次构造。
+        UpdateSurface updates = UpdateSurfaceRegistration.Create(
+            preflight.Launch.IsDev,
+            () => supervisorCts.Token,
+            bridgeHost.ScriptTarget,
+            shared.Pump,
+            shared.UiLocale,
+            recall.Request,
+            closeGate.ApproveExit,
+            closeWindow,
+            exitPipeline.ScheduleExitFallback,
+            HostLog.Write);
+
+        return new RunWiring(startup, bridgeHost, exitPipeline, recovery, closeGate, updates, closeWindow);
     }
+
+    /// <summary>主窗关窗（UI 线程）：退出管道、自更新安装与恢复页退出共用同一份投递——后台线程调用时
+    /// 投递过去；迟到调用（窗口已关）在投递内兜住并留痕，不让异常逃到 UI 线程。</summary>
+    private static void CloseWindowOnUiThread() => Dispatcher.UIThread.Post(() =>
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return;
+        }
+
+        try
+        {
+            desktop.MainWindow?.Close();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // 窗口已关闭：Avalonia 拒绝 Close；关窗链路不因迟到调用中断。
+            HostLog.Write($"[host] 关窗投递失败：{ex.Message}");
+        }
+    });
 }
 
-/// <summary>运行期接线的产物（起步壳、页面桥、退出管道与恢复上下文）。</summary>
+/// <summary>运行期接线的产物（起步壳、页面桥、退出管道、恢复上下文、关窗闸门与自更新面）。</summary>
 /// <param name="Startup">运行时起步壳。</param>
 /// <param name="BridgeHost">页面桥装配。</param>
 /// <param name="Exit">退出管道。</param>
 /// <param name="Recovery">恢复/引导/监督依赖束。</param>
+/// <param name="CloseGate">关窗闸门（失败面/托盘/恢复页与自更新安装共用的同一放行点）。</param>
+/// <param name="Updates">自更新面（命令路由、启动检查与托盘「检查更新」动作）。</param>
+/// <param name="CloseWindow">主窗关窗投递（退出管道、自更新安装与恢复页退出共用）。</param>
 internal sealed record RunWiring(
     ShellStartup Startup,
     ShellBridgeHost BridgeHost,
     ExitPipeline Exit,
-    ShellRecoveryContext Recovery);
+    ShellRecoveryContext Recovery,
+    CloseGate CloseGate,
+    UpdateSurface Updates,
+    Action CloseWindow);

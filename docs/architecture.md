@@ -1,13 +1,13 @@
 # Architecture
 
-> 现状。宿主层正从 `Ryn` 迁向 Avalonia 12.1.x：G0、G1 首批与 G2 页面桥已落地（Avalonia 窗口 + 原生 WebView；托盘/关窗到托盘/二启唤回走 `TrayIcon`；`window.__shell` 承接页面命令/事件/每页脚本），失败面、顶栏、G3 首批与崩溃监督/首启引导/恢复页已接（ADR `2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision`）。
+> 现状。宿主层正从 `Ryn` 迁向 Avalonia 12.1.x：G0、G1 首批与 G2 页面桥已落地（Avalonia 窗口 + 原生 WebView），失败面、顶栏、G3 命令面与崩溃监督/首启引导/恢复页已接（ADR `2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision`）。
 
 ## 概览
 
 * 壳只管生命周期、窗口、恢复；`dsh` 的插件树即应用运行时。
 * **共享 home**：默认上游规范 `~/.dsh`（优先级 `DSH_DESKTOP_DSH_HOME` > 生态 `DSH_HOME` > `~/.dsh`），home 层数据与 CLI/TUI/Web 互通；桌面插件装配走专属 `profiles/dotnet-desktop`（ADR `2026-09-09-desktop-profile-rename`）。
 * **可观测性**：壳侧诊断经 `HostLog` 双写 stdout 与 `<home>/logs/host.log`（超限滚动）；`RunMarker` 判定非受控退出；`desktop.diagnostics.export` 导出白名单诊断 zip（ADR `2026-08-24-shell-observability-diagnostics`）。
-* **托盘与 hide-to-tray**（ADR `2026-08-24-shell-tray-hide-to-tray`、`2026-10-22-avalonia-g1-tray-recall`、`2026-10-23-avalonia-g3-shell-commands`）：Avalonia 宿主用自带 `TrayIcon`（显示主窗/重启/退出），关窗在托盘可用且偏好为开时隐藏、否则直退；显式退出/重启经 `ExitPipeline`（ADR `2026-10-23-avalonia-g3-exit-restart`）。
+* **托盘与 hide-to-tray**（ADR `2026-08-24-shell-tray-hide-to-tray`、`2026-10-22-avalonia-g1-tray-recall`、`2026-10-23-avalonia-g3-shell-commands`）：Avalonia 宿主用自带 `TrayIcon`（显示主窗/检查更新/重启/退出），关窗在托盘可用且偏好为开时隐藏、否则直退；显式退出/重启经 `ExitPipeline`（ADR `2026-10-23-avalonia-g3-exit-restart`）。
 
 ## 分层与装配面
 
@@ -42,13 +42,13 @@
 
 ## 外部链接接管
 
-* 页面桥与站外导航（ADR `2026-10-22-avalonia-g2-shell-bridge`）：注入 `window.__shell`（`invoke`/`on`/`_emit`；上行 `invokeCSharpAction`、下行 `InvokeScript`），消息按 nonce + 顶层 origin 双判据校验，导航完成后重注入；外站 http(s) 在 `NavigationStarted` 取消并交 `SystemBrowser`，`NewWindowRequested` 标记已处理。每页脚本与探针走各自端口的适配器；Ryn 旧实现 `RynNavigationCallbacks` 保留到迁移收尾删除。
+* 页面桥与站外导航（ADR `2026-10-22-avalonia-g2-shell-bridge`）：注入 `window.__shell`（`invoke`/`on`/`_emit`；上行 `invokeCSharpAction`、下行 `InvokeScript`），消息按 nonce + 顶层 origin 双判据校验，导航完成后重注入；外站 http(s) 在 `NavigationStarted` 取消并交 `SystemBrowser`，`NewWindowRequested` 标记已处理。Ryn 旧实现 `RynNavigationCallbacks` 保留到迁移收尾删除。
 
 ## 自更新
 
 * `Core.Update.UpdateCoordinator` 四端口（feed/下载器/安装器/环境）+ `UpdateStateMachine`（`idle→checking→downloading→ready→installing` + up-to-date/error）；启动对账后自动检查一次，并发互斥。
 * Feed 走 `releases.atom` + 资产页抓取（绕 api 限流）；下载 `.part` 原子改名 + SHA256SUMS 强校验（缺校验文件或非 2xx fail loud 拒装）；安装：Linux pkexec 脚本、Windows Inno 静默重装、macOS v1 报错引导手动。
-* UI 经伴生插件 `sidebar.footer.action`（仅 ready 渲染下载钮）与「桌面设置」页推送；参数在 `appsettings.json` `Update` 节，当前版本 = csproj `<Version>`（CI `-p:Version` 覆盖，判据唯一实现 `scripts/package-version.sh`）。**dev 运行不装载自更新栈**（`DSH_DESKTOP_UPDATE_FORCE=1` 显式开启除外）。
+* UI 经伴生插件 `sidebar.footer.action`（仅 ready 渲染下载钮）与「桌面设置」页推送；托盘「检查更新」的结论落页面横幅（先唤回主窗；ADR `2026-10-23-avalonia-g3-update-surface`）。参数在 `appsettings.json` `Update` 节，当前版本 = csproj `<Version>`（CI `-p:Version` 覆盖，判据唯一实现 `scripts/package-version.sh`）。**dev 运行不装载自更新栈**（`DSH_DESKTOP_UPDATE_FORCE=1` 显式开启除外）。
 
 ## 打包
 

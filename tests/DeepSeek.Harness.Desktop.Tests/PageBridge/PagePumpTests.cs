@@ -15,6 +15,38 @@ public class PagePumpTests
     /// <summary>被测单点（默认超时配置；实例形态由 ADR 组合根寿命与配置单一来源 D4 引入）。</summary>
     private static readonly PagePump s_pump = new(new RuntimeTimeouts());
 
+    /// <summary>结论横幅的落点判据（ADR avalonia-g3-update-surface）：holder 文档上不注入，
+    /// 按节拍重试到真 UI 出现后再注入——否则横幅会随 holder 的 <c>location.reload()</c> 消失。</summary>
+    [Fact]
+    public async Task ShowBannerWhenShellReadyAsync_WaitsForHolderToLeave()
+    {
+        var target = new FakeWindowScriptTarget();
+        target.EnqueueResult("holder", "ui");
+        PagePump pump = FastPump();
+
+        await pump.ShowBannerWhenShellReadyAsync(target, "BANNER", WebAuthRecovery.HolderMarker, CancellationToken.None);
+
+        Assert.Equal(3, target.Scripts.Count);
+        Assert.Contains("holder", target.Scripts[0]);
+        Assert.Equal("BANNER", target.LastScript);
+    }
+
+    /// <summary>始终停在 holder：按次数预算放弃（留痕，不上抛）。</summary>
+    [Fact]
+    public async Task ShowBannerWhenShellReadyAsync_GivesUpWhenHolderPersists()
+    {
+        var target = new FakeWindowScriptTarget();
+        target.EnqueueResult(Enumerable.Repeat("holder", 3).ToArray());
+        PagePump pump = FastPump();
+
+        await pump.ShowBannerWhenShellReadyAsync(target, "BANNER", WebAuthRecovery.HolderMarker, CancellationToken.None);
+
+        Assert.DoesNotContain("BANNER", target.Scripts);
+    }
+
+    /// <summary>三次尝试、1s 节拍的注入单点（预算按 <c>WindowReadyTimeoutSeconds</c> 折算，节拍 0 会塌成 1 次）。</summary>
+    private static PagePump FastPump() => new(new RuntimeTimeouts { BannerRetryDelaySeconds = 1, WindowReadyTimeoutSeconds = 3 });
+
     /// <summary>webview 就绪后一次注册成功：不重试、送进去的就是给的脚本。</summary>
     [Fact]
     public async Task RegisterCaptionBarScriptWhenReadyAsync_RegistersOnceWhenReady()

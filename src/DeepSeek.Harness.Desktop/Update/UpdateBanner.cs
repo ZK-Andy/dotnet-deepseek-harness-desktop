@@ -12,7 +12,7 @@ public static class UpdateBanner
     {
         string text = UiCopy.UpdateReadyText(version, uiLocale?.IsEnglish == true);
         return DesktopBanner.Build(
-            "dsh-desktop-update-ready-banner",
+            DesktopBanner.UpdateReadyBannerId,
             text,
             DesktopBanner.BannerTone.Success,
             uiLocale?.OkLabel);

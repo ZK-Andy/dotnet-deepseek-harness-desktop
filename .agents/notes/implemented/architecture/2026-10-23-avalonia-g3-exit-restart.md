@@ -56,8 +56,8 @@ companion 设置区的「重启应用」落空；Web 通道失效时托盘菜单
   监督器取消 → 停运行时 → 释放 marker → 释放监听器 → 关窗（重启则先拉起新实例）→ 8s 看门狗。
   `Run` 尾部的资源释放仍在关窗后兜底（`Stop` / `Release` / `Listener.Dispose` 均幂等）。
 - 窗口「直退」路径（托盘不可用或偏好关闭）不经管道，靠 `Run` 尾部回收——那条路径没有 8s 看门狗。
-- 托盘菜单仍缺「检查更新」：等更新栈片。且 Avalonia 托盘没有系统通知面，菜单触发的检查结论届时只能
-  进 host.log（旧宿主经托盘通知送达）——缺口随更新片定策，不在本片造半套通知。
+- 托盘菜单含「检查更新」，且 Avalonia 托盘没有系统通知面，菜单触发的检查结论经「唤回主窗 + 页内横幅」送达
+  （[avalonia-g3-update-surface](2026-10-23-avalonia-g3-update-surface.md)）。
 - `desktop.recovery.exit` 已随恢复/监督片注册（[avalonia-g1g3-recovery-bootstrap-supervision](2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)）：恢复页承载与退出契约见该篇。
 - 监督器取消已回填为 `CancelAndJoin`（取消监督令牌源与引导任务 + 按时限 join；[avalonia-g1g3-recovery-bootstrap-supervision](2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)）：重启/退出先掐断监督分支再 spawn 或 Stop。
 - 语言切换后的托盘菜单重建仍未接（locale 命令已在 G2 装配，但改语言不重建菜单）。

@@ -10,13 +10,26 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// </remarks>
 public static class DesktopBanner
 {
+    /// <summary>版本底线横幅 id。</summary>
+    public const string VersionFloorBannerId = "dsh-desktop-version-floor-banner";
+
+    /// <summary>非受控退出横幅 id。</summary>
+    public const string RunMarkerBannerId = "dsh-desktop-run-marker-banner";
+
+    /// <summary>更新就绪横幅 id（协调器的 ready 订阅与托盘检查的 ready 结论共用，先到者胜）。</summary>
+    public const string UpdateReadyBannerId = "dsh-desktop-update-ready-banner";
+
+    /// <summary>更新检查结论横幅 id（已是最新/失败；同名替换，连续两次结论不同时刷新）。</summary>
+    public const string UpdateCheckBannerId = "dsh-desktop-update-check-banner";
+
     /// <summary>全部宿主横幅 id（堆叠计数依据；新增横幅必须登记在此）。</summary>
     public static readonly string[] KnownIds =
-    {
-        "dsh-desktop-version-floor-banner",
-        "dsh-desktop-run-marker-banner",
-        "dsh-desktop-update-ready-banner",
-    };
+    [
+        VersionFloorBannerId,
+        RunMarkerBannerId,
+        UpdateReadyBannerId,
+        UpdateCheckBannerId,
+    ];
 
     /// <summary>横幅语义色调：只决定确认按钮的语义填充色；表面（底/字/分隔线）恒中性，
     /// 随 dsh 主题自适应。横幅生于 dsh 页面之上、主题 CSS 必然在场。</summary>
@@ -32,6 +45,13 @@ public static class DesktopBanner
         Success,
     }
 
+    /// <summary>移除同名横幅的注入脚本（结论互斥：落新结论前先清掉另一张同域横幅，
+    /// 免得「检查更新失败」与「新版本就绪」两张互相矛盾的结论并存）。</summary>
+    /// <param name="id">横幅 id（本类常量；调用点不得传用户输入）。</param>
+    /// <returns>移除脚本。</returns>
+    public static string ClearScript(string id) =>
+        "(function(){var n=document.getElementById('" + id + "');if(n)n.remove();})();";
+
     /// <summary>生成横幅注入脚本（纯函数可单测）：幂等 id 守卫 + 运行时堆叠偏移。
     /// 配色单点映射：表面消费 <c>--dsw-alias-bg-overlay/label-primary/border-l2</c> 随主题，
     /// 按钮按 <paramref name="tone"/> 取语义 token；硬编码值仅为主题 CSS 不在场时的防御性回退。</summary>
@@ -40,7 +60,9 @@ public static class DesktopBanner
     /// <param name="tone">语义色调（决定按钮填充色）。</param>
     /// <param name="okLabel">确认按钮文案（宿主按注入时刻 locale 选择，ADR host-ui-locale；
     /// 缺省中文「知道了」，单一事实源在 <see cref="UiCopy"/>）。</param>
-    public static string Build(string id, string text, BannerTone tone, string? okLabel = null)
+    /// <param name="replaceExisting">同名横幅已存在时先移除再注入（缺省 false = 幂等守卫直接返回）。
+    /// 用户主动动作的结论横幅用 true：连续两次结论不同时是刷新而不是静默丢弃。</param>
+    public static string Build(string id, string text, BannerTone tone, string? okLabel = null, bool replaceExisting = false)
     {
         okLabel ??= UiCopy.OkLabel(english: false);
         string buttonBackground = tone switch
@@ -55,7 +77,9 @@ public static class DesktopBanner
         string known = string.Join(",", KnownIds.Select(k => "'" + k + "'"));
         return "(function(){" +
                "var id='" + id + "';" +
-               "if(document.getElementById(id))return;" +
+               (replaceExisting
+                   ? "var old=document.getElementById(id);if(old)old.remove();"
+                   : "if(document.getElementById(id))return;") +
                "var known=[" + known + "];" +
                "var n=0;" +
                "for(var i=0;i<known.length;i++)if(document.getElementById(known[i]))n++;" +
@@ -80,7 +104,7 @@ public static class DesktopBanner
     {
         bool english = uiLocale?.IsEnglish == true;
         return Build(
-            "dsh-desktop-version-floor-banner",
+            VersionFloorBannerId,
             UiCopy.VersionFloorBannerText(detectedVersion, RuntimeVersionGate.MinimumVersion, english),
             BannerTone.Warn,
             uiLocale?.OkLabel);
@@ -93,7 +117,7 @@ public static class DesktopBanner
     {
         bool english = uiLocale?.IsEnglish == true;
         return Build(
-            "dsh-desktop-run-marker-banner",
+            RunMarkerBannerId,
             UiCopy.UncleanExitBannerText(english),
             BannerTone.Neutral,
             uiLocale?.OkLabel);

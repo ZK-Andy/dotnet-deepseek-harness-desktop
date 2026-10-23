@@ -73,7 +73,8 @@
   "Update": [
     "DesktopUpdateCommandRouter.cs",
     "UpdateBanner.cs",
-    "UpdateRegistration.cs"
+    "UpdateRegistration.cs",
+    "UpdateSurfaceRegistration.cs"
   ],
   "Hosting": [
     "AvaloniaWindowCommands.cs",

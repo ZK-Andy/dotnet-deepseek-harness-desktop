@@ -25,6 +25,9 @@ internal sealed class ShellApplication : Application
     private readonly IDiagnosticsExport _diagnostics;
     private readonly ExitPipeline _exitPipeline;
     private readonly ShellRecoveryContext _recoveryContext;
+    private readonly CloseGate _closeGate;
+    private readonly UpdateSurface _updates;
+    private readonly Action _closeWindow;
     private ShellRecoveryAssembly? _recovery;
     private bool _platformShutdown;
     private volatile ShellTray? _tray;
@@ -63,6 +66,9 @@ internal sealed class ShellApplication : Application
     /// <param name="exitPipeline">退出管道（托盘退出/重启与 desktop.app.restart 共用；回收序在管道内，
     /// ADR avalonia-g3-exit-restart）。</param>
     /// <param name="recoveryContext">恢复/引导/监督的宿主侧依赖束（ADR avalonia-g1g3-recovery-bootstrap-supervision）。</param>
+    /// <param name="closeGate">关窗闸门（失败面/托盘/恢复页/自更新安装共用的同一放行点）。</param>
+    /// <param name="updates">自更新面（ADR avalonia-g3-update-surface：命令路由、启动检查与托盘检查动作）。</param>
+    /// <param name="closeWindow">主窗关窗投递（退出管道、自更新安装与恢复页退出共用同一份）。</param>
     public ShellApplication(
         ShellStartup startup,
         bool devTools,
@@ -75,7 +81,10 @@ internal sealed class ShellApplication : Application
         ICloseBehaviorPreference closeBehavior,
         IDiagnosticsExport diagnostics,
         ExitPipeline exitPipeline,
-        ShellRecoveryContext recoveryContext)
+        ShellRecoveryContext recoveryContext,
+        CloseGate closeGate,
+        UpdateSurface updates,
+        Action closeWindow)
     {
         _startup = startup;
         _devTools = devTools;
@@ -89,6 +98,9 @@ internal sealed class ShellApplication : Application
         _diagnostics = diagnostics;
         _exitPipeline = exitPipeline;
         _recoveryContext = recoveryContext;
+        _closeGate = closeGate;
+        _updates = updates;
+        _closeWindow = closeWindow;
     }
 
     /// <inheritdoc />
@@ -116,8 +128,8 @@ internal sealed class ShellApplication : Application
     private void WireShellSurface(IClassicDesktopStyleApplicationLifetime desktop)
     {
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        // 闸门先于窗口：启动失败面的「退出」与托盘「退出」共用同一放行点。
-        var closeGate = new CloseGate();
+        // 闸门在接线层构造（先于窗口）：启动失败面的「退出」、托盘「退出」与自更新安装共用同一放行点。
+        CloseGate closeGate = _closeGate;
         var window = new ShellWindow(_startup.InitialUri, _devTools, _bridgeHost);
         desktop.MainWindow = window;
 
@@ -156,6 +168,7 @@ internal sealed class ShellApplication : Application
             _trayIconAvailable,
             _uiLocale,
             recall: _recall.Request,
+            checkUpdate: _updates.CheckUpdate,
             restart: restart,
             quit: quit,
             log: HostLog.Write);
@@ -171,6 +184,15 @@ internal sealed class ShellApplication : Application
         {
             _bridgeHost.AddRouter(router);
         }
+
+        // 自更新三条路由（ADR avalonia-g3-update-surface）：dev 门禁下为空表（invoke 自然失败，与旧宿主同形）。
+        foreach (ICommandRouter router in _updates.Routers)
+        {
+            _bridgeHost.AddRouter(router);
+        }
+
+        // 启动对账 + 后台检查一次（旧宿主在同一位次：托盘之后、监督之前）；就绪横幅订阅随之建立。
+        _updates.Start();
     }
 
     /// <summary>恢复/引导/监督（ADR avalonia-g1g3-recovery-bootstrap-supervision）：网页视图已随窗口构造挂上桥。
@@ -186,18 +208,7 @@ internal sealed class ShellApplication : Application
             return;
         }
 
-        Action closeWindow = () => Dispatcher.UIThread.Post(() =>
-        {
-            try
-            {
-                window.Close();
-            }
-            catch (InvalidOperationException ex)
-            {
-                // 迟到调用：窗口已关闭时 Avalonia 拒绝 Close；留痕不抛到 UI 线程。
-                HostLog.Write($"[host] 恢复页退出关窗失败：{ex.Message}");
-            }
-        });
+        Action closeWindow = _closeWindow;
         _recovery = ShellRecoveryRegistration.Create(
             _recoveryContext.Host,
             surface,

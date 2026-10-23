@@ -1,6 +1,4 @@
 using Avalonia;
-using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Threading;
 
 namespace DeepSeek.Harness.Desktop.Hosting;
 
@@ -10,7 +8,9 @@ namespace DeepSeek.Harness.Desktop.Hosting;
 /// 含外链拦截与页面健康观测。退出/重启走 <see cref="ExitPipeline"/>（-g3-exit-restart）；恢复页与监督器
 /// 随 G1 余项/G3，Ryn 装配面保留可回退。
 /// 装配面成员（C2）：本文件只许 <c>Run</c>、<c>RunUi</c>、<c>CreateStartup</c>、<c>CreateLifetime</c>；新增成员须先在
-/// <c>verify-compose-root.py</c> 的 ALLOWED_METHODS 列册（本片为拆 F2 方法长度上限而拆分启动面）。</summary>
+/// <c>verify-compose-root.py</c> 的 ALLOWED_METHODS 列册（本片为拆 F2 方法长度上限而拆分启动面）。
+/// 自更新（三条命令、就绪横幅与托盘「检查更新」的反馈面）在 <see cref="ShellWiringRegistration"/> 装配，
+/// 见 ADR avalonia-g3-update-surface。</summary>
 internal static class AvaloniaHost
 {
     /// <summary>启动 Avalonia 主循环：预检与单实例仲裁后开窗，dsh spawn 与铸币在后台相完成，页面经壳 origin 加载。</summary>
@@ -64,13 +64,14 @@ internal static class AvaloniaHost
                 preflight, shared.Timeouts, shared.ShellForward);
 
             RunWiring wiring = ShellWiringRegistration.Create(
-                preflight, shared, host, starter, proxy, marker!, instanceListener, dshHome, resources);
+                preflight, shared, host, starter, proxy, marker!, instanceListener, dshHome, resources, recall);
             startup = wiring.Startup;
             bridgeHost = wiring.BridgeHost;
 
             return RunUi(
                 args, wiring.Startup, preflight.Launch.DevTools, recall, shared.UiLocale,
-                wiring.BridgeHost, () => host.StderrTail, dshHome, wiring.Exit, wiring.Recovery);
+                wiring.BridgeHost, () => host.StderrTail, dshHome, wiring.Exit, wiring.Recovery,
+                wiring.CloseGate, wiring.Updates, wiring.CloseWindow);
         }
         finally
         {
@@ -125,25 +126,21 @@ internal static class AvaloniaHost
     /// <param name="instanceListener">单实例监听器（Windows/降级为 null）。</param>
     /// <param name="dshHome">DSH home（marker 根）。</param>
     /// <param name="cancelSupervisor">监督器取消动作（含引导取消与 join；见 ShellRecoveryContext.CancelAndJoin）。</param>
+    /// <param name="closeWindow">关窗动作（接线层给出的同一份投递：退出管道与自更新安装路径共用）。</param>
     /// <returns>退出管道。</returns>
     internal static ExitPipeline CreateLifetime(
         HarnessRuntimeHost host,
         RunMarkerResult marker,
         PrimaryListener? instanceListener,
         string dshHome,
-        Action cancelSupervisor) =>
+        Action cancelSupervisor,
+        Action closeWindow) =>
         new(
             cancelSupervisor: cancelSupervisor,
             stopHost: host.Stop,
             releaseMarker: () => RunMarker.Release(dshHome, marker.Token),
             disposeListener: () => instanceListener?.Dispose(),
-            closeWindow: () => Dispatcher.UIThread.Post(() =>
-            {
-                if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-                {
-                    desktop.MainWindow?.Close();
-                }
-            }),
+            closeWindow: closeWindow,
             log: HostLog.Write);
 
     /// <summary>开 Avalonia 主循环（窗口、托盘与页面桥都在 <see cref="ShellApplication"/> 里接线）。</summary>
@@ -157,6 +154,9 @@ internal static class AvaloniaHost
     /// <param name="dshHome">DSH home（关窗偏好落盘根；注册工厂在此取用）。</param>
     /// <param name="exitPipeline">退出管道（托盘退出/重启与 desktop.app.restart 共用）。</param>
     /// <param name="recoveryContext">恢复/引导/监督的宿主侧依赖束。</param>
+    /// <param name="closeGate">关窗闸门（失败面/托盘/恢复页/自更新安装共用）。</param>
+    /// <param name="updates">自更新面（命令路由、启动检查与托盘「检查更新」动作）。</param>
+    /// <param name="closeWindow">主窗关窗投递（恢复页退出与退出管道共用同一份）。</param>
     /// <returns>进程退出码。</returns>
     private static int RunUi(
         string[] args,
@@ -168,7 +168,10 @@ internal static class AvaloniaHost
         Func<IReadOnlyList<string>> stderrTail,
         string dshHome,
         ExitPipeline exitPipeline,
-        ShellRecoveryContext recoveryContext)
+        ShellRecoveryContext recoveryContext,
+        CloseGate closeGate,
+        UpdateSurface updates,
+        Action closeWindow)
     {
         // 托盘图标存在性是装配期配置探测（与旧入口 DesktopAdapter.App 同款，D005 显式豁免）
         string trayIconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
@@ -179,7 +182,10 @@ internal static class AvaloniaHost
                 ShellCommandRegistration.CreateCloseBehavior(dshHome),
                 ShellCommandRegistration.CreateDiagnosticsExport(() => bridgeHost.HealthSnapshot, HostLog.Write),
                 exitPipeline,
-                recoveryContext))
+                recoveryContext,
+                closeGate,
+                updates,
+                closeWindow))
             .UsePlatformDetect()
             .StartWithClassicDesktopLifetime(args);
     }

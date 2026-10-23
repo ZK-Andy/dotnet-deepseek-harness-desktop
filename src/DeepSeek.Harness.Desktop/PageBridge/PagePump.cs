@@ -31,17 +31,63 @@ internal sealed class PagePump
 
     /// <summary>窗口就绪后注入横幅：Current 未就绪按节拍重试至次数用尽；其余异常记日志放弃——
     /// 横幅是增强告知，绝不拖垮启动链路。</summary>
-    internal async Task ShowBannerWhenReadyAsync(IWindowScriptTarget target, string script, CancellationToken ct)
+    internal Task ShowBannerWhenReadyAsync(IWindowScriptTarget target, string script, CancellationToken ct) =>
+        ShowBannerCoreAsync(target, script, holderMarker: null, _timeouts.BannerMaxAttempts, ct);
+
+    /// <summary>窗口就绪且当前文档已是壳真 UI（不是 holder 过渡页）时注入横幅：
+    /// holder 页在铸币后 <c>location.reload()</c> 进真 UI，注入到 holder 的横幅会随文档销毁消失
+    /// （ADR avalonia-g3-update-surface 的结论横幅落点判据）。未就绪、holder 与文档未解析三态都按同一节拍
+    /// 重试；预算按窗口就绪时限折算（<c>WindowReadyTimeoutSeconds</c>，与同一启动面的就绪预算是同一把尺）。</summary>
+    /// <param name="target">页面脚本求值端口。</param>
+    /// <param name="script">要注入的横幅脚本。</param>
+    /// <param name="holderMarker">holder 页标记（Core <c>WebAuthRecovery.HolderMarker</c>，与代理服务页同源）。</param>
+    /// <param name="ct">取消令牌（监督器/退出）。</param>
+    internal Task ShowBannerWhenShellReadyAsync(IWindowScriptTarget target, string script, string holderMarker, CancellationToken ct) =>
+        ShowBannerCoreAsync(
+            target,
+            script,
+            holderMarker,
+            AttemptsForBudget(TimeSpan.FromSeconds(_timeouts.WindowReadyTimeoutSeconds), _bannerRetryDelay),
+            ct);
+
+    /// <summary>两路横幅注入的唯一循环体（ADR pagepump-retry-helper-unification）：holder 判据可选，
+    /// 给了就先探、非 <c>ui</c> 一律按未就绪重试。</summary>
+    /// <param name="target">页面脚本求值端口。</param>
+    /// <param name="script">要注入的横幅脚本。</param>
+    /// <param name="holderMarker">holder 页标记；null = 不设落点判据。</param>
+    /// <param name="maxAttempts">尝试次数上限。</param>
+    /// <param name="ct">取消令牌。</param>
+    private async Task ShowBannerCoreAsync(
+        IWindowScriptTarget target,
+        string script,
+        string? holderMarker,
+        int maxAttempts,
+        CancellationToken ct)
     {
         RetryOutcome outcome = await RetryWhenReadyAsync(
-            _ => target.EvaluateAsync(script, ct),
-            ex => HostLog.Write($"[host] banner 注入失败：{ex.Message}"),
-            _timeouts.BannerMaxAttempts,
+            async token =>
+            {
+                if (holderMarker is not null)
+                {
+                    string raw = await target.EvaluateAsync(WebAuthProbe.HolderScript(holderMarker), token).ConfigureAwait(false);
+                    // 只有明确读到真 UI 才注入：holder、文档未解析完（unknown）与探针异常都按「未就绪」再等一拍
+                    if (!string.Equals(RynProbeValue.Decode(raw), "ui", StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException("not-shell-ui");
+                    }
+                }
+
+                await target.EvaluateAsync(script, token).ConfigureAwait(false);
+            },
+            ex => HostLog.Write($"[host] 横幅注入失败（放弃）：{ex.Message}"),
+            maxAttempts,
             _bannerRetryDelay,
             ct).ConfigureAwait(false);
         if (outcome == RetryOutcome.Exhausted)
         {
-            HostLog.Write($"[host] banner 注入重试耗尽（{_timeouts.BannerMaxAttempts} 次后窗口仍未就绪）");
+            HostLog.Write(holderMarker is null
+                ? $"[host] banner 注入重试耗尽（{maxAttempts} 次后窗口仍未就绪）"
+                : $"[host] 结论横幅重试耗尽（{maxAttempts} 次内未等到壳真 UI，结论不再弹）");
         }
     }
 
