@@ -63,7 +63,7 @@ fi
 if git rev-parse --verify origin/main >/dev/null 2>&1; then
   BASE="$(git merge-base origin/main HEAD)"
   echo "-> verify-increment-discipline.py --since $BASE --enforce"
-  python3 scripts/verify-increment-discipline.py --since "$BASE" --enforce --exempt .agents/notes/implemented/architecture/2026-10-22-avalonia-g2-shell-bridge.md
+  python3 scripts/verify-increment-discipline.py --since "$BASE" --enforce --exempt .agents/notes/implemented/architecture/2026-10-23-avalonia-caption-bar.md
 else
   echo "-> verify-increment-discipline.py 跳过（origin/main 不存在——CI 仍会全量拦截）"
 fi

@@ -1,9 +1,9 @@
 namespace DeepSeek.Harness.Desktop.Hosting;
 
-/// <summary>G0 运行时起步壳：窗口已亮后在后台跑一次启动体（profile 就绪 → 随包插件安装 →
-/// CLI shim / spawn / 铸币，由装配面组装注入），只负责单次触发、取消与关窗收口。失败只留痕，
-/// 不弹窗、不重启（监督与恢复面留 G2/G3）。首启引导（node/dsh 缺失时的自动安装）不在本片，
-/// 随 G1 接回，见 ADR avalonia-g0-entry-switch。</summary>
+/// <summary>运行时起步壳：窗口已亮后在后台跑一次启动体（profile 就绪 → 随包插件安装 →
+/// CLI shim / spawn / 铸币，由装配面组装注入），只负责单次触发、取消与关窗收口。失败留痕并
+/// 发 <see cref="Failed"/>（失败面承载在 <see cref="StartupFailureFace"/>，本类不碰 UI）；
+/// 不自动重启（监督在 G3）。首启引导（node/dsh 缺失时的自动安装）随 G3 接回。</summary>
 internal sealed class ShellStartup : IDisposable
 {
     private readonly Func<CancellationToken, Task> _run;
@@ -22,6 +22,9 @@ internal sealed class ShellStartup : IDisposable
 
     /// <summary>主窗初始 URL。</summary>
     public Uri? InitialUri { get; }
+
+    /// <summary>启动体失败（后台线程触发；订阅方自行封送 UI 线程）。</summary>
+    public event Action<Exception>? Failed;
 
     /// <summary>触发一次后台起步（重复调用为 no-op）。</summary>
     public void Begin()
@@ -73,8 +76,9 @@ internal sealed class ShellStartup : IDisposable
         }
         catch (Exception ex)
         {
-            // 失败面只留痕：G0 不装恢复 UI（G2/G3），但绝不静默吞掉启动失败。
+            // 先留痕再发事件：订阅方（失败面）可能自己再失败，日志是最后的取证面。
             HostLog.Write($"[host] 运行时起步失败：{ex}");
+            Failed?.Invoke(ex);
         }
     }
 }

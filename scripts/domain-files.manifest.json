@@ -23,6 +23,7 @@
     "AutostartCommandRouter.cs",
     "AvaloniaWindowScriptTarget.cs",
     "CaptionBar.cs",
+    "CaptionBarDragScript.cs",
     "CaptionBarInstaller.cs",
     "CompanionLocaleCommandRouter.cs",
     "CompanionReportCommandRouter.cs",
@@ -34,6 +35,7 @@
     "MacNativeChrome.cs",
     "NativeWebViewSurface.cs",
     "PageBridgeRegistration.cs",
+    "PageCaptionBar.cs",
     "PageHealthMonitor.cs",
     "PagePump.cs",
     "RynNavigationCallbacks.cs",
@@ -45,6 +47,7 @@
     "UiLocaleCommandRouter.cs",
     "WebAuthProbe.cs",
     "WebViewNavigator.cs",
+    "WindowCommands.cs",
     "WindowScriptTarget.cs"
   ],
   "Recovery": [
@@ -72,12 +75,17 @@
     "UpdateRegistration.cs"
   ],
   "Hosting": [
+    "AvaloniaWindowCommands.cs",
+    "FailureDialogWindow.cs",
+    "InProcessFailureDialog.cs",
     "ShellApplication.cs",
     "ShellBridgeHost.cs",
     "ShellClosePolicy.cs",
     "ShellRecall.cs",
     "ShellStartup.cs",
     "ShellTray.cs",
-    "ShellWindow.cs"
+    "ShellWindow.cs",
+    "StartupFailureFace.cs",
+    "WindowDrag.cs"
   ]
 }

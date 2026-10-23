@@ -55,6 +55,20 @@ public class ShellStartupTests
         await canceled.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    /// <summary>启动体抛异常：留痕后发 Failed（失败面据此接管），事件负载是原异常。</summary>
+    [Fact]
+    public async Task Failure_RaisesFailedWithOriginalException()
+    {
+        var boom = new InvalidOperationException("spawn boom");
+        var seen = new TaskCompletionSource<Exception>();
+        using var startup = new ShellStartup(_ => throw boom, initialUri: null);
+        startup.Failed += ex => seen.TrySetResult(ex);
+
+        startup.Begin();
+
+        Assert.Same(boom, await seen.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
     /// <summary>未 Begin 即 Dispose 不抛（退出路径幂等）。</summary>
     [Fact]
     public void Dispose_WithoutBegin_IsSafe()

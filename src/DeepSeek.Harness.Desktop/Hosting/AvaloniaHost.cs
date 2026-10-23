@@ -3,9 +3,9 @@ using Avalonia;
 namespace DeepSeek.Harness.Desktop.Hosting;
 
 /// <summary>宿主入口（ADR implemented/architecture/2026-10-22-avalonia-g0-entry-switch、-g1-tray-recall、-g2-shell-bridge）：
-/// Avalonia 窗口 + 包自带 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回与
-/// <c>window.__shell</c> 页面桥（含外链拦截与页面健康观测）已接入。无边框顶栏、监督器与恢复面留
-/// G1 其余片与 G3，Ryn 装配面保留可回退。
+/// Avalonia 窗口 + 包自带 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回、
+/// 无边框顶栏（三平台原生拖拽/缩放，Wayland 降级）与启动失败面已接入；<c>window.__shell</c> 页面桥
+/// 含外链拦截与页面健康观测。恢复页与监督器随 G1 余项/G3，Ryn 装配面保留可回退。
 /// 装配面成员（C2）：本文件只许 <c>Run</c>、<c>RunUi</c>、<c>CreateStartup</c>；新增成员须先在
 /// <c>verify-compose-root.py</c> 的 ALLOWED_METHODS 列册（本片为拆 F2 方法长度上限而拆分启动面）。</summary>
 internal static class AvaloniaHost
@@ -71,7 +71,9 @@ internal static class AvaloniaHost
                 TimeSpan.FromSeconds(shared.Timeouts.HealthInitialDelaySeconds),
                 HostLog.Write);
 
-            return RunUi(args, startup, preflight.Launch.DevTools, recall, shared.UiLocale, trayIconPath, trayIconAvailable, bridgeHost);
+            return RunUi(
+                args, startup, preflight.Launch.DevTools, recall, shared.UiLocale, trayIconPath, trayIconAvailable,
+                bridgeHost, () => host.StderrTail);
         }
         finally
         {
@@ -126,6 +128,7 @@ internal static class AvaloniaHost
     /// <param name="trayIconPath">托盘图标路径。</param>
     /// <param name="trayIconAvailable">托盘图标是否存在。</param>
     /// <param name="bridgeHost">页面桥装配。</param>
+    /// <param name="stderrTail">子进程 stderr 尾部取法（启动失败面用）。</param>
     /// <returns>进程退出码。</returns>
     private static int RunUi(
         string[] args,
@@ -135,9 +138,10 @@ internal static class AvaloniaHost
         UiLocale uiLocale,
         string trayIconPath,
         bool trayIconAvailable,
-        ShellBridgeHost bridgeHost) =>
+        ShellBridgeHost bridgeHost,
+        Func<IReadOnlyList<string>> stderrTail) =>
         AppBuilder.Configure(() => new ShellApplication(
-                startup, devTools, recall, uiLocale, trayIconPath, trayIconAvailable, bridgeHost))
+                startup, devTools, recall, uiLocale, trayIconPath, trayIconAvailable, bridgeHost, stderrTail))
             .UsePlatformDetect()
             .StartWithClassicDesktopLifetime(args);
 }

@@ -1,3 +1,5 @@
+using DeepSeek.Harness.Desktop.Core.Ipc;
+
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 
 /// <summary>CaptionBar 工厂契约（ADR frameless-uniform-caption-bar）：壳自绘 macOS 观感（红绿灯 +
@@ -125,7 +127,8 @@ public class CaptionBarTests
     public void Build_GuardsDoubleInjection()
     {
         string script = CaptionBar.Build(52);
-        Assert.Contains("if(document.getElementById(id))return;", script, StringComparison.Ordinal);
+        Assert.Contains("if(window.__dsh_caption_ready)return;", script, StringComparison.Ordinal);
+        Assert.Contains("if(bar&&!SHELL)return;", script, StringComparison.Ordinal);
         Assert.Contains("querySelector(\"style[data-dsh-desktop='caption-bar']\")", script, StringComparison.Ordinal);
     }
 
@@ -180,9 +183,9 @@ public class CaptionBarTests
         string mac = CaptionBar.Build(52, en, macChrome: true);
         Assert.Contains("data-dsh-fullscreen", mac, StringComparison.Ordinal);
         Assert.Contains("button[data-dsh-fullscreen]{background:#28c840}", mac, StringComparison.Ordinal);
-        Assert.Contains("window.setFullscreen", mac, StringComparison.Ordinal);
+        Assert.Contains(HostCommandIds.WindowSetFullscreen, mac, StringComparison.Ordinal);
         Assert.Contains("Full Screen", mac, StringComparison.Ordinal);
-        Assert.Contains("bar.children[2].addEventListener('click'", mac, StringComparison.Ordinal);
+        Assert.Contains("bar.children[2].onclick=function(){", mac, StringComparison.Ordinal);
         // mac 恰是全屏语义所在分支：运行时状态仍静态不发（绿灯走自有属性 + 自绑点击，不走属性分支）。
         Assert.DoesNotContain("data-fullscreen", mac, StringComparison.Ordinal);
         // 缩放语义不得出现在本壳三点的标记或样式里（注入条的交互排除表里出现属性名不算——
@@ -196,7 +199,7 @@ public class CaptionBarTests
         // 非 macOS 不得出现全屏语义（缩放面已由既有红绿灯用例钉住，此处只钉「不越界」）
         string other = CaptionBar.Build(52, en);
         Assert.DoesNotContain("data-dsh-fullscreen", other, StringComparison.Ordinal);
-        Assert.DoesNotContain("window.setFullscreen", other, StringComparison.Ordinal);
+        Assert.DoesNotContain(HostCommandIds.WindowSetFullscreen, other, StringComparison.Ordinal);
     }
 
     /// <summary>macOS 毛玻璃透明链（官方 vibrancy 观感）：窗/网页背景由 RynOptions.Backdrop 清成透明，
@@ -256,12 +259,12 @@ public class CaptionBarTests
         // 自判之后——双击路一旦命中就 return 且本轮不复位 claim，DOM 的 dblclick 因此不再二次派发。
         Assert.Contains("document.addEventListener('mousedown',function(e){bandClaim=false;", script, StringComparison.Ordinal);
         Assert.Contains(
-            "e.preventDefault();if(dbl){w.invoke('window.toggleMaximize');return;}bandClaim=true;",
+            "e.preventDefault();if(dbl){call(\"window.toggleMaximize\");return;}bandClaim=true;",
             script,
             StringComparison.Ordinal);
         Assert.Contains("document.addEventListener('dblclick',function(e){", script, StringComparison.Ordinal);
-        Assert.Contains("w.invoke('window.startDrag');", script, StringComparison.Ordinal);
-        Assert.Contains("w.invoke('window.beginNativeDrag',{x:e.clientX,y:e.clientY});", script, StringComparison.Ordinal);
+        Assert.Contains("call(\"window.startDrag\");", script, StringComparison.Ordinal);
+        Assert.Contains("call('window.beginNativeDrag',{x:e.clientX,y:e.clientY});", script, StringComparison.Ordinal);
         // 判据上界跟配置高度走（禁硬编码 52）
         Assert.Contains("if(e.clientY>48)return false;", CaptionBar.Build(48), StringComparison.Ordinal);
         Assert.Contains(
@@ -277,7 +280,7 @@ public class CaptionBarTests
         string script = CaptionBar.Build(52);
         // 取值不手抄：判据是「生产常量进了脚本」（唯一事实源在 CaptionBar）。
         Assert.Contains(
-            $"var DBL_MS={CaptionBar.DoubleClickMs},DBL_SLOP={CaptionBar.DoubleClickSlopPx};",
+            $"var DBL_MS={CaptionBar.DoubleClickMs},DBL_SLOP={CaptionBar.DoubleClickSlopPx},SHELL=false,EDGE_ON=false,EDGE={CaptionBar.ResizeEdgePx};",
             script,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -290,11 +293,49 @@ public class CaptionBarTests
         // 承重不变量（R2-S2）：双击分支的整段内容——派发后立刻 return，分支内不置 claim；claim 的置真
         // 只可能在分支之后的起拖路上。挪成「先置 claim 再判 dbl」即在此拦下（净零双派发回归）。
         Assert.Contains(
-            "e.preventDefault();if(dbl){w.invoke('window.toggleMaximize');return;}bandClaim=true;",
+            "e.preventDefault();if(dbl){call(\"window.toggleMaximize\");return;}bandClaim=true;",
             script,
             StringComparison.Ordinal);
         // 兜底路的 claim 闸门（同一不变量只在此钉一次，见 Build_OwnsTopBandDragJudgement）。
         Assert.Contains("if(!bandClaim||!bandPoint(e))return;", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>新宿主通道：脚本改走 <c>window.__shell</c>（Promise 桥），拖拽带屏幕坐标、
+    /// 边缘缩放启用（宿主按边发平台消息），且不再出现 <c>__ryn</c> 名。</summary>
+    [Fact]
+    public void Build_ShellChannel_UsesShellBridgeAndEdgeResize()
+    {
+        string script = CaptionBar.Build(52, channel: CaptionBarChannel.Shell);
+
+        Assert.Contains("window.__shell", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("window.__ryn", script, StringComparison.Ordinal);
+        Assert.Contains(
+            "call(\"window.startDrag\",{x:window.screenX+e.clientX,y:window.screenY+e.clientY});",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "call(\"window.startResize\",{edge:ed,x:window.screenX+e.clientX,y:window.screenY+e.clientY});",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(",SHELL=true,EDGE_ON=true,", script, StringComparison.Ordinal);
+        // 边缩放不得抢交互控件：与顶带拖拽同一道 NODRAG/交互闸门（贴边滚动条/按钮优先点击）。
+        Assert.Contains(
+            "if(t&&t.closest&&(t.closest(NODRAG)||t.closest('[data-webview-drag]')))return '';",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains("bar.children[0].onclick=function(){call(\"window.close\");};", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>旧宿主通道：拖拽保留 Ryn 语义（macOS 走 beginNativeDrag），缩放边判定整体关闭——
+    /// 重复加会在 Ryn 上抢走内容点击。</summary>
+    [Fact]
+    public void Build_RynChannel_KeepsNativeDragAndNoResize()
+    {
+        string script = CaptionBar.Build(52);
+
+        Assert.Contains("window.__ryn", script, StringComparison.Ordinal);
+        Assert.Contains("if(!SHELL||!EDGE_ON)return '';", script, StringComparison.Ordinal);
+        Assert.Contains(",SHELL=false,EDGE_ON=false,", script, StringComparison.Ordinal);
     }
 
     /// <summary>子串出现次数计数（唯一事实源在被测脚本字面量，不手抄生产常量）。</summary>

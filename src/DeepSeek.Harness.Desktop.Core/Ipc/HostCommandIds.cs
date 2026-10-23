@@ -60,6 +60,24 @@ public static class HostCommandIds
     /// <summary>外部链接打开失败（宿主→页面事件，companion 渲染 toast）。</summary>
     public const string ExternalLinkOpenerFailed = "desktop.externalLinkOpenerFailed";
 
+    /// <summary>窗口：开始拖拽（无边框顶栏；页面给屏幕坐标）。</summary>
+    public const string WindowStartDrag = "window.startDrag";
+
+    /// <summary>窗口：开始缩放（无边框窗口的边缘判定在页面侧；页面给边与屏幕坐标）。</summary>
+    public const string WindowStartResize = "window.startResize";
+
+    /// <summary>窗口：最大化/还原切换。</summary>
+    public const string WindowToggleMaximize = "window.toggleMaximize";
+
+    /// <summary>窗口：最小化。</summary>
+    public const string WindowMinimize = "window.minimize";
+
+    /// <summary>窗口：关闭（走关窗闸门）。</summary>
+    public const string WindowClose = "window.close";
+
+    /// <summary>窗口：进入/退出原生全屏（macOS 绿灯语义）。</summary>
+    public const string WindowSetFullscreen = "window.setFullscreen";
+
     /// <summary>外部链接打开（Ryn 注入脚本与导航层的通用入口；非 <c>desktop.</c> 前缀是上游约定）。</summary>
     public const string OpenExternal = "app.openExternal";
 }

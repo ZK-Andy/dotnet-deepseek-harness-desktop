@@ -79,7 +79,7 @@ internal static class PageBridgeRegistration
             new CompanionLocaleCommandRouter(uiLocale, log),
             new CompanionReportCommandRouter(log),
         };
-        return new Hosting.ShellBridgeHost(routers, shellOrigin, browser, macChrome, captionHeightPx, healthInterval, log);
+        return new Hosting.ShellBridgeHost(routers, uiLocale, shellOrigin, browser, macChrome, captionHeightPx, healthInterval, log);
     }
 
     /// <summary>旧宿主（Ryn）的页面桥端口适配（ADR avalonia-g2-shell-bridge）：每页脚本注册与事件推送

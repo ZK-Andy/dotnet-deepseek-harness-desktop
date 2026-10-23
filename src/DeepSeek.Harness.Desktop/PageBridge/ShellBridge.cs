@@ -22,12 +22,15 @@ internal sealed class ShellBridge : IDisposable
     private static readonly IServiceProvider s_emptyServices = new EmptyServiceProvider();
 
     private readonly IWebViewSurface _surface;
-    private readonly IReadOnlyList<ICommandRouter> _routers;
+    private readonly Func<IReadOnlyList<ICommandRouter>> _routers;
     private readonly ISystemBrowser _browser;
     private readonly string _shellOrigin;
     private readonly Action<string> _log;
     private readonly bool _macChrome;
     private readonly int _captionHeightPx;
+    private readonly Func<bool> _captionBarEnabled;
+    private readonly Func<bool> _edgeResizeEnabled;
+    private readonly UiLocale? _uiLocale;
     private readonly CancellationTokenSource _cts = new();
     // 令牌在构造期取一次：Dispose 会释放 CTS，之后再读 `_cts.Token` 会抛 ObjectDisposedException，
     // 而 fire-and-forget 的注入/分发路径没有调用方可承接该异常（静默丢失或未观测）。
@@ -48,12 +51,15 @@ internal sealed class ShellBridge : IDisposable
     /// <param name="log">日志委托。</param>
     public ShellBridge(
         IWebViewSurface surface,
-        IReadOnlyList<ICommandRouter> routers,
+        Func<IReadOnlyList<ICommandRouter>> routers,
         string shellOrigin,
         ISystemBrowser browser,
         bool macChrome,
         int captionHeightPx,
-        Action<string> log)
+        Action<string> log,
+        Func<bool>? captionBarEnabled = null,
+        UiLocale? uiLocale = null,
+        Func<bool>? edgeResizeEnabled = null)
     {
         ArgumentNullException.ThrowIfNull(surface);
         ArgumentNullException.ThrowIfNull(routers);
@@ -65,6 +71,9 @@ internal sealed class ShellBridge : IDisposable
         _browser = browser;
         _macChrome = macChrome;
         _captionHeightPx = captionHeightPx;
+        _captionBarEnabled = captionBarEnabled ?? (static () => false);
+        _edgeResizeEnabled = edgeResizeEnabled ?? (static () => true);
+        _uiLocale = uiLocale;
         _log = log;
         _token = _cts.Token;
     }
@@ -88,8 +97,7 @@ internal sealed class ShellBridge : IDisposable
         _surface.NewWindowRequested += OnNewWindowRequested;
     }
 
-    /// <summary>推一条事件脚本：已销毁/取消时静默丢弃（事件是通知面，消费者依赖后续状态补送）；
-    /// 其余失败留痕（`事件推送失败`）。</summary>
+    /// <summary>推一条事件脚本：已销毁/取消时静默丢弃；其余失败留痕（事件是通知面）。</summary>
     /// <param name="name">事件名。</param>
     /// <param name="payloadJson">载荷 JSON 原文。</param>
     public void EmitEvent(string name, string payloadJson)
@@ -176,7 +184,7 @@ internal sealed class ShellBridge : IDisposable
     {
         CancellationToken ct = _token;
         ICommandRouter? router = null;
-        foreach (ICommandRouter candidate in _routers)
+        foreach (ICommandRouter candidate in _routers())
         {
             if (candidate.CanRoute(command))
             {
@@ -296,7 +304,7 @@ internal sealed class ShellBridge : IDisposable
         _ = InjectBridgeAsync();
     }
 
-    /// <summary>注入桥（失败只留痕：桥是增强面，不拖垮页面）。</summary>
+    /// <summary>注入桥（失败只留痕）。</summary>
     /// <returns>完成的任务。</returns>
     private async Task InjectBridgeAsync()
     {
@@ -316,6 +324,13 @@ internal sealed class ShellBridge : IDisposable
         {
             await _surface.InvokeScriptAsync(
                 ShellBridgeScript.Build(nonce, _macChrome, _captionHeightPx), ct).ConfigureAwait(false);
+            // 顶栏与桥同批注入（桥先落地，脚本才能用 window.__shell）；Wayland 等无端口场景由开关关掉。
+            if (_captionBarEnabled())
+            {
+                await PageCaptionBar.InjectAsync(
+                    _surface, _captionHeightPx, _uiLocale, _macChrome, _edgeResizeEnabled(), ct, _log)
+                    .ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
         {

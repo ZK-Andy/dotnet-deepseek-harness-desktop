@@ -20,18 +20,28 @@ public static class RecoveryDialogText
     /// <summary>构建失败面正文。</summary>
     /// <param name="reason">人读失败原因（<see cref="UiCopy.RecoveryReason"/> 的域决策产出）。</param>
     /// <param name="stderrTail">子进程 stderr 尾部行（监督器已在重启前留证）。</param>
-    /// <param name="exportPath">诊断包落盘路径；空串表示导出失败（正文取失败文案）。</param>
+    /// <param name="exportPath">诊断包落盘路径；空串表示导出失败（正文取失败文案）；null 表示本次不涉及
+    /// 诊断包导出（如启动失败），整节省略——不能拿「导出失败」冒充「未尝试」。</param>
     /// <param name="english">是否取英文分支。</param>
-    /// <returns>可直接交原生模态展示的正文（尾部节按 600 字符预算装箱；原因/导出/动作恒在）。</returns>
-    public static string Build(string reason, IReadOnlyList<string> stderrTail, string exportPath, bool english)
+    /// <param name="actions">动作说明行（缺省取崩溃恢复口径）；启动失败须传
+    /// <see cref="UiCopy.StartupFailureActions"/>——「继续在后台自动恢复」对启动失败是假话。</param>
+    /// <returns>可直接交原生模态展示的正文（尾部节按 600 字符预算装箱；原因/动作恒在，导出节随入参）。</returns>
+    public static string Build(
+        string reason,
+        IReadOnlyList<string> stderrTail,
+        string? exportPath,
+        bool english,
+        string? actions = null)
     {
-        string export = exportPath.Length > 0
-            ? UiCopy.RecoveryDialogExportPrefix(english) + exportPath
-            : UiCopy.RecoveryDialogExportFailed(english);
-        string actions = UiCopy.RecoveryDialogActions(english);
+        string? export = exportPath is null
+            ? null
+            : exportPath.Length > 0
+                ? UiCopy.RecoveryDialogExportPrefix(english) + exportPath
+                : UiCopy.RecoveryDialogExportFailed(english);
+        string actionLine = actions ?? UiCopy.RecoveryDialogActions(english);
         List<string> lines = FitTail(
             CollapseRepeats(stderrTail.TakeLast(MaxTailLines).Select(Clip).ToList()),
-            reason.Length + export.Length + actions.Length,
+            reason.Length + (export?.Length ?? 0) + actionLine.Length,
             english);
 
         var text = new StringBuilder(reason);
@@ -44,8 +54,11 @@ public static class RecoveryDialogText
             }
         }
 
-        text.Append('\n').Append('\n').Append(export);
-        text.Append('\n').Append(actions);
+        if (export is not null)
+        {
+            text.Append('\n').Append('\n').Append(export);
+        }
+        text.Append('\n').Append(actionLine);
         return text.ToString();
     }
 

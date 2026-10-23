@@ -16,12 +16,36 @@ public class ShellBridgeTests
     private static readonly Uri s_shellUri = new(Origin + "/");
     private static readonly Uri s_externalUri = new("https://example.com/x");
 
+    /// <summary>顶栏注入随桥同批（隔离测试：导航完成后应有第二段含顶栏标记的脚本）。</summary>
+    [Fact]
+    public async Task Navigation_CaptionEnabled_InjectsCaptionScript()
+    {
+        var surface = new FakeWebViewSurface();
+        var bridge = new ShellBridge(
+            surface,
+            () => Array.Empty<ICommandRouter>(),
+            Origin,
+            new FakeSystemBrowser(),
+            macChrome: false,
+            captionHeightPx: 52,
+            _ => { },
+            captionBarEnabled: () => true);
+        bridge.Attach();
+
+        surface.RaiseNavigationCompleted(s_shellUri);
+
+        string? caption = await surface.WaitForScriptAfterAsync(
+            0, s => s.Contains("dsh-desktop-caption-bar", StringComparison.Ordinal));
+        Assert.NotNull(caption);
+        Assert.Contains("window.__shell", caption!, StringComparison.Ordinal);
+    }
+
     private static (ShellBridge Bridge, FakeWebViewSurface Surface, FakeSystemBrowser Browser) Create(
         params ICommandRouter[] routers)
     {
         var surface = new FakeWebViewSurface();
         var browser = new FakeSystemBrowser();
-        var bridge = new ShellBridge(surface, routers, Origin, browser, macChrome: false, captionHeightPx: 52, _ => { });
+        var bridge = new ShellBridge(surface, () => routers, Origin, browser, macChrome: false, captionHeightPx: 52, _ => { });
         return (bridge, surface, browser);
     }
 
@@ -144,7 +168,7 @@ public class ShellBridgeTests
         var surface = new FakeWebViewSurface();
         var logs = new List<string>();
         var bridge = new ShellBridge(
-            surface, Array.Empty<ICommandRouter>(), Origin, new FakeSystemBrowser(), macChrome: false, captionHeightPx: 52, logs.Add);
+            surface, () => Array.Empty<ICommandRouter>(), Origin, new FakeSystemBrowser(), macChrome: false, captionHeightPx: 52, logs.Add);
         bridge.Attach();
 
         surface.RaiseNavigationCompleted(new Uri(Origin + "/index.html"), isSuccess: false);
@@ -159,7 +183,7 @@ public class ShellBridgeTests
         var surface = new FakeWebViewSurface();
         var logs = new List<string>();
         var bridge = new ShellBridge(
-            surface, Array.Empty<ICommandRouter>(), Origin, new FakeSystemBrowser(), macChrome: false, captionHeightPx: 52, logs.Add);
+            surface, () => Array.Empty<ICommandRouter>(), Origin, new FakeSystemBrowser(), macChrome: false, captionHeightPx: 52, logs.Add);
         bridge.Attach();
 
         surface.RaiseNavigationCompleted(null, isSuccess: false);
@@ -174,7 +198,7 @@ public class ShellBridgeTests
         var surface = new FakeWebViewSurface();
         var logs = new List<string>();
         var bridge = new ShellBridge(
-            surface, Array.Empty<ICommandRouter>(), Origin, new FakeSystemBrowser(), macChrome: false, captionHeightPx: 52, logs.Add);
+            surface, () => Array.Empty<ICommandRouter>(), Origin, new FakeSystemBrowser(), macChrome: false, captionHeightPx: 52, logs.Add);
         bridge.Attach();
 
         surface.RaiseNavigationCompleted(s_externalUri, isSuccess: false);
@@ -263,7 +287,7 @@ public class ShellBridgeTests
     {
         var surface = new FakeWebViewSurface();
         var browser = new FakeSystemBrowser(result: false);
-        var bridge = new ShellBridge(surface, Array.Empty<ICommandRouter>(), Origin, browser, macChrome: false, captionHeightPx: 52, _ => { });
+        var bridge = new ShellBridge(surface, () => Array.Empty<ICommandRouter>(), Origin, browser, macChrome: false, captionHeightPx: 52, _ => { });
         bridge.Attach();
 
         _ = surface.RaiseNavigationStarted(s_externalUri);

@@ -1,4 +1,5 @@
 using System.Text;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Tests.Fakes;
 
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
@@ -12,7 +13,7 @@ public class ExternalLinkCommandRouterTests
     {
         var router = new ExternalLinkCommandRouter(new FakeSystemBrowser());
         Assert.True(router.CanRoute(ExternalLinkCommandRouter.CommandName));
-        Assert.False(router.CanRoute("window.close"));
+        Assert.False(router.CanRoute(HostCommandIds.WindowClose));
         Assert.False(router.CanRoute(""));
     }
 

@@ -23,4 +23,22 @@ public static partial class UiCopy
     public static string RecoveryDialogActions(bool english) => english
         ? "Choose Yes to quit the app; choose No to keep auto-recovering."
         : "选「是」退出应用；选「否」继续在后台自动恢复。";
+
+    /// <summary>启动失败对话框标题（dsh 运行时起不来；新宿主进程内模态）。</summary>
+    public static string StartupFailureTitle(bool english) => english
+        ? "DeepSeek Harness Desktop — startup failed"
+        : "DeepSeek Harness Desktop — 启动失败";
+
+    /// <summary>启动失败原因（正文首行）：只说可确认的事实，细节指向日志。</summary>
+    public static string StartupFailureReason(bool english) => english
+        ? "The dsh runtime could not be started (see host.log for details)."
+        : "dsh 运行时未能启动（详见 host.log）。";
+
+    /// <summary>启动失败对话框动作说明：退出结束进程，留在窗口保留现场。</summary>
+    public static string StartupFailureActions(bool english) => english
+        ? "Choose \"Quit App\" to end the process; choose \"Stay\" to keep the window open (restart the app to try again)."
+        : "选择「退出应用」结束进程；选择「留在窗口」保留窗口（重新启动应用即可再试）。";
+
+    /// <summary>失败面对话框：留在窗口按钮（非破坏性动作，也是关闭框的缺省）。</summary>
+    public static string DialogStayLabel(bool english) => english ? "Stay" : "留在窗口";
 }

@@ -1,3 +1,5 @@
+using DeepSeek.Harness.Desktop.Core.Ipc;
+
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
@@ -33,6 +35,15 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// 故本条带另挂自持判据，与 Ryn 判据互补；双击缩放同由该判据自判（本壳起拖的原生移动抓取会吞掉 DOM
 /// 的 click/dblclick 序列【推断 · 未证：机制面在合成器，本机只有「拖拽管用、双击不缩放」的现象级证据】）。</para>
 /// </remarks>
+internal sealed record CaptionBarChannel(string InvokeGlobal, string TitleBarGlobal, bool ShellBridge)
+{
+    /// <summary>旧宿主（Ryn）：<c>window.__ryn</c> 同步 IPC，拖拽按 macOS 走 <c>beginNativeDrag</c>。</summary>
+    public static CaptionBarChannel Ryn { get; } = new("window.__ryn", "window.__ryn_titlebar", ShellBridge: false);
+
+    /// <summary>新宿主（Avalonia）：<c>window.__shell</c> Promise 桥；拖拽/缩放交给宿主端口。</summary>
+    public static CaptionBarChannel Shell { get; } = new("window.__shell", "window.__shell_titlebar", ShellBridge: true);
+}
+
 internal static class CaptionBar
 {
     /// <summary>红绿灯簇元素 id：幂等守卫依据；wwwroot/index.html 静态簇使用同一 id
@@ -70,8 +81,14 @@ internal static class CaptionBar
     /// 缺失时的回落值，文档自带语言时以文档为准。</param>
     /// <param name="macChrome">是否启用原生 macOS chrome（调用点传 <see cref="MacNativeChrome.IsEnabled"/>，
     /// 理由与闸界见其类注）：true 时绿灯走<i>原生全屏</i>而非窗口缩放，并追加毛玻璃透明链。否则恒 false。</param>
-    public static string Build(int heightPx, UiLocale? uiLocale = null, bool macChrome = false)
+    public static string Build(
+        int heightPx,
+        UiLocale? uiLocale = null,
+        bool macChrome = false,
+        CaptionBarChannel? channel = null,
+        bool edgeResize = true)
     {
+        CaptionBarChannel ch = channel ?? CaptionBarChannel.Ryn;
         bool english = uiLocale?.IsEnglish == true;
         // 两套语言的按钮可达名都进脚本：脚本注册后由引擎在**每次页面加载**时执行（注入时机见类注），
         // 执行期语言只能从文档取（dsh 把语言写在 html[lang]，companion 上报同源），故不在构建期钉死；
@@ -87,18 +104,34 @@ internal static class CaptionBar
         // 恒按非全屏解；data-fullscreen 静态不发（运行时状态，静态发即对上游 CSS 说谎）。
         var insets = ChromeInsets.Resolve(heightPx, fullscreen: false);
 
+        // 命令名一律从 HostCommandIds 生成（单一事实源）：页面脚本里的 JS 字面量复写会让改名静默失配。
+        string closeCmd = AppJsonContext.JsString(HostCommandIds.WindowClose);
+        string minimizeCmd = AppJsonContext.JsString(HostCommandIds.WindowMinimize);
+        string toggleCmd = AppJsonContext.JsString(HostCommandIds.WindowToggleMaximize);
+        string fullscreenCmd = AppJsonContext.JsString(HostCommandIds.WindowSetFullscreen);
+        string dragCmd = AppJsonContext.JsString(HostCommandIds.WindowStartDrag);
+        string resizeCmd = AppJsonContext.JsString(HostCommandIds.WindowStartResize);
+
         return "(function(){" +
                // 注册式执行是全 frame 注入（Ryn 的 inject 传 no_frames=false）：只给顶层文档建壳顶栏，
                // 否则 dsh 的层级子文档会各长一条。
                "if(window.top!==window.self)return;" +
+               // 同一文档只装一次监听：引导页（wwwroot/index.html）自带同 id 的静态条，旧守卫「遇 bar 即 return」
+               // 会让该页的拖拽与描边环整段缺失——条与监听分开守卫。
+               "if(window.__dsh_caption_ready)return;" +
+               "window.__dsh_caption_ready=1;" +
                "var id='" + ElementId + "';" +
-               "if(document.getElementById(id))return;" +
+               "var bar=document.getElementById(id);" +
+               // 旧宿主遇到已有静态条仍按原行为退出（点击语义在 Ryn 的委托监听里）。
+               "if(bar&&!SHELL)return;" +
+               // 样式独立于条存在性：引导页自带静态条时仍需要三变量/描边环等规则（静态条只带条本身）。
                "if(!document.querySelector(\"style[data-dsh-desktop='caption-bar']\")){" +
                "var st=document.createElement('style');" +
                "st.setAttribute('data-dsh-desktop','caption-bar');" +
                "st.textContent=" + AppJsonContext.JsString(BuildCss(insets, heightPx, greenAttr, macChrome)) + ";" +
                "(document.head||document.documentElement).appendChild(st);}" +
-               "var bar=document.createElement('div');" +
+               "if(!bar){" +
+               "bar=document.createElement('div');" +
                "bar.id=id;" +
                "bar.innerHTML=" + AppJsonContext.JsString(BuildBarInnerHtml(greenAttr)) + ";" +
                "var L={zh:[" + AppJsonContext.JsString(closeZh) + "," + AppJsonContext.JsString(minimizeZh) + ","
@@ -110,14 +143,14 @@ internal static class CaptionBar
                "bar.children[0].setAttribute('aria-label',names[0]);" +
                "bar.children[1].setAttribute('aria-label',names[1]);" +
                "bar.children[2].setAttribute('aria-label',names[2]);" +
-               "(document.body||document.documentElement).appendChild(bar);" +
+               "(document.body||document.documentElement).appendChild(bar);}" +
                // 描边环独立守卫（id 与顶栏不同，存在性各判各的；见 EdgeRingId）。
                "if(!document.getElementById('" + EdgeRingId + "')){" +
                "var ring=document.createElement('div');ring.id='" + EdgeRingId + "';" +
                "(document.body||document.documentElement).appendChild(ring);}" +
+               BuildButtonBindings(ch, macChrome, closeCmd, minimizeCmd, toggleCmd, fullscreenCmd) +
                // 带上界取自 Core 模型（值恒等于 HeightPx，见 ChromeInsets）：渲染只消费，不重算。
-               BuildDragBinding(insets.TopClearancePx) +
-               (macChrome ? FullscreenClickBinding : "") +
+               CaptionBarDragScript.BuildDrag(insets.TopClearancePx, ch, edgeResize, dragCmd, resizeCmd, toggleCmd) +
                "})();";
     }
 
@@ -235,66 +268,8 @@ internal static class CaptionBar
     /// <summary>双击自判的位移窗（CSS 像素）：两次按下的点位漂移超过它即视为两次独立起拖。</summary>
     internal const int DoubleClickSlopPx = 4;
 
-    /// <summary>带内拖拽判定（判定权收归本壳，ADR frameless-uniform-caption-bar）：命中元素属于顶带
-    /// chrome 才接管——dsh 把整条顶带留给自顶带起算的流内 chrome（侧栏列的 padding 区、内容列的会话
-    /// 头部），Ryn 的自动拖拽条对「盖住条带却向下延伸」的命中元素一律按内容处理
-    /// （docs/custom-title-bars.md「overlays…content」），在我们这条带上不可靠。
-    /// <para>接管面：<c>clientY ≤ heightPx</c>；命中元素不是 html/body（那是 Ryn 的）；不在交互元素内
-    /// （Ryn 的 INTERACTIVE 表 + dsh 声明的 darwin no-drag 簇——顶带内的语义控件照常点击）；命中元素
-    /// <b>盒顶在带内起算</b>（<c>rect.top ≤ heightPx</c>，按盒高判「全高」会漏掉条状会话头部）；自身上溯
-    /// 无 fixed/absolute（浮层/模态/分隔手柄都是定位元素 → 仍按内容处理；本壳自绘条自身是 fixed，条内
-    /// 非按钮区域仍算壳带——本壳 chrome 由本壳负责，不依赖 Ryn 是否接管该点）。</para>
-    /// <para>与 Ryn 判据的仲裁、双击自判的机制与取值理由、以及「最大化窗不先还原再拖」的依据，单一
-    /// 事实源在 ADR（Decision「顶带拖拽判定收归本壳」条与 Alternatives）。</para>
-    /// </summary>
-    /// <param name="heightPx">chrome 高度（CSS 像素）：带内判据上界与盒顶判据上界。</param>
-    /// <returns>拖拽判定与两条 capture 监听（mousedown 起拖/自判双击、dblclick 兜底）的 JS 段。</returns>
-    private static string BuildDragBinding(int heightPx) =>
-        // 交互元素表与 Ryn 注入脚本同款（RynWebView 的 INTERACTIVE），再并上 dsh 的 no-drag 簇（会话头部
-        // 座位：官方在 darwin 下整座 no-drag，类名在所有平台都渲染）：本判据只接管「非交互」的点，
-        // 语义控件照旧走各自点击语义。
-        "var INTERACTIVE='button,a[href],input,select,textarea,summary,label," +
-        "[contenteditable]:not([contenteditable=\"false\"]),audio[controls],video[controls]," +
-        "[role=\"button\"],[role=\"link\"],[role=\"menuitem\"],[role=\"menuitemcheckbox\"]," +
-        "[role=\"menuitemradio\"],[role=\"tab\"],[role=\"checkbox\"],[role=\"radio\"],[role=\"switch\"]," +
-        "[role=\"slider\"],[role=\"combobox\"],[role=\"option\"],[role=\"textbox\"],[onclick]," +
-        "[draggable=\"true\"],[data-webview-ignore],[data-webview-minimize],[data-webview-maximize]," +
-        "[data-webview-close],[data-webview-resize]';" +
-        "var NODRAG=INTERACTIVE+',[class*=\"headerLeading\"],[class*=\"headerActions\"]," +
-        "[class*=\"headerUtilities\"],[class*=\"headerCorner\"]';" +
-        "var bandClaim=false,lastDown=0,lastX=0,lastY=0;" +
-        "var DBL_MS=" + DoubleClickMs + ",DBL_SLOP=" + DoubleClickSlopPx + ";" +
-        "function bandPoint(e){" +
-        "if(e.clientY>" + heightPx + ")return false;" +
-        "var t=e.target;" +
-        "if(!t||!t.closest)return false;" +
-        "if(t===document.documentElement||t===document.body)return false;" +
-        "if(t.closest(NODRAG)||t.closest('[data-webview-drag]'))return false;" +
-        "if(t.getBoundingClientRect().top>" + heightPx + ")return false;" +
-        "for(var n=t;n&&n!==document.documentElement;n=n.parentElement){" +
-        "var p=window.getComputedStyle(n).position;" +
-        "if(p==='fixed'||p==='absolute')return n.id===id;}" +
-        "return true;}" +
-        "document.addEventListener('mousedown',function(e){" +
-        "bandClaim=false;" +
-        "if(e.button!==0||e.defaultPrevented)return;" +
-        "if(!bandPoint(e))return;" +
-        "var w=window.__ryn;if(!w||!w.invoke)return;" +
-        "var now=Date.now();" +
-        "var dbl=now-lastDown<=DBL_MS&&Math.abs(e.clientX-lastX)<=DBL_SLOP&&" +
-        "Math.abs(e.clientY-lastY)<=DBL_SLOP;" +
-        "lastDown=dbl?0:now;lastX=e.clientX;lastY=e.clientY;" +
-        "e.preventDefault();" +
-        "if(dbl){w.invoke('window.toggleMaximize');return;}" +
-        "bandClaim=true;" +
-        "var tb=window.__ryn_titlebar||{};" +
-        "if(tb.mac)w.invoke('window.beginNativeDrag',{x:e.clientX,y:e.clientY});" +
-        "else w.invoke('window.startDrag');" +
-        "},true);" +
-        "document.addEventListener('dblclick',function(e){" +
-        "if(!bandClaim||!bandPoint(e))return;" +
-        "var w=window.__ryn;if(w&&w.invoke)w.invoke('window.toggleMaximize');" +
-        "},true);";
+    /// <summary>边缘缩放命中宽度（CSS 像素）：无边框窗口的边缘缩放由页面判定（宿主按边发平台消息）。</summary>
+    internal const int ResizeEdgePx = 6;
 
     /// <summary>红绿灯三点标记：关闭/最小化走 Ryn 属性，绿灯属性随平台给（见 <see cref="MacGreenAttr"/>）。</summary>
     /// <param name="greenAttr">绿灯按钮属性名。</param>
@@ -311,14 +286,31 @@ internal static class CaptionBar
     /// 高度差 &gt; 2），每次点击现算——导航与外部退出都不会让状态漂移。已知盲区：系统开着「自动隐藏
     /// 菜单栏」且 Dock 也自动隐藏时，缩放窗也铺满屏框 → 被读成全屏、首击退化为 no-op（⌃⌘F 仍可用）；
     /// 此面列入 ADR 的 macOS 真机验收项。</summary>
-    private const string FullscreenClickBinding =
-        "bar.children[2].addEventListener('click',function(){" +
-        "var fs=false;" +
-        "try{fs=Math.abs(window.innerHeight-window.screen.height)<=2&&" +
-        "Math.abs(window.innerWidth-window.screen.width)<=2;}" +
-        "catch(err){/* no window.screen in old engines: treat as not fullscreen */}" +
-        "if(window.__ryn&&window.__ryn.invoke)window.__ryn.invoke('window.setFullscreen',{fullscreen:!fs});" +
-        "});";
+    private static string BuildButtonBindings(
+        CaptionBarChannel channel,
+        bool macChrome,
+        string closeCmd,
+        string minimizeCmd,
+        string toggleCmd,
+        string fullscreenCmd)
+    {
+        string fullscreen = "bar.children[2].onclick=function(){var fs=false;" +
+            "try{fs=Math.abs(window.innerHeight-window.screen.height)<=2&&" +
+            "Math.abs(window.innerWidth-window.screen.width)<=2;}catch(err){/* no window.screen in old engines: treat as not fullscreen */}" +
+            "call(" + fullscreenCmd + ",{fullscreen:!fs});};";
+
+        if (!channel.ShellBridge)
+        {
+            // 旧宿主：红黄与缩放绿灯走 Ryn 的 data-webview-* 委托监听；macOS 绿灯是原生全屏语义，
+            // Ryn 没有对应属性，这条仍由本壳自绑。
+            return macChrome ? fullscreen : string.Empty;
+        }
+
+        // 新宿主没有那层委托监听：三键各自 onclick（重复注入时覆盖而非叠监听）。
+        string green = macChrome ? fullscreen : "bar.children[2].onclick=function(){call(" + toggleCmd + ");};";
+        return "bar.children[0].onclick=function(){call(" + closeCmd + ");};" +
+               "bar.children[1].onclick=function(){call(" + minimizeCmd + ");};" + green;
+    }
 
     /// <summary>关闭符号：红绿灯悬停 ×（悬停才显示，叠在圆点上）。</summary>
     private const string IconClose = "<svg viewBox='0 0 6 6'><path d='M0.5 0.5l5 5M5.5 0.5l-5 5' stroke='currentColor' stroke-width='1' fill='none'/></svg>";

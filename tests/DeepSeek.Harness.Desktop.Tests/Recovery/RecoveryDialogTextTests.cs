@@ -26,6 +26,24 @@ public class RecoveryDialogTextTests
         }
     }
 
+    /// <summary>不涉及诊断导出（exportPath=null）时整节省略——不能拿「导出失败」冒充「未尝试」；
+    /// 动作行可换（启动失败没有自动重启，崩溃恢复口径不适用）。</summary>
+    [Fact]
+    public void Build_WithoutExportAndCustomActions_OmitsExportAndUsesGivenActions()
+    {
+        string text = RecoveryDialogText.Build(
+            UiCopy.StartupFailureReason(english: false),
+            Array.Empty<string>(),
+            exportPath: null,
+            english: false,
+            actions: UiCopy.StartupFailureActions(english: false));
+
+        Assert.DoesNotContain(UiCopy.RecoveryDialogExportFailed(english: false), text);
+        Assert.DoesNotContain(UiCopy.RecoveryDialogExportPrefix(english: false), text);
+        Assert.Contains(UiCopy.StartupFailureActions(english: false), text);
+        Assert.DoesNotContain(UiCopy.RecoveryDialogActions(english: false), text);
+    }
+
     /// <summary>空尾部不出现尾部小节头、导出失败取失败文案；展示上限＝末 8 行 + 单行 160 字符裁剪
     /// + 重复行折叠 + 尾部节 600 字符预算装箱（原生模态无滚动，超长会把按钮顶出屏幕）。</summary>
     [Fact]

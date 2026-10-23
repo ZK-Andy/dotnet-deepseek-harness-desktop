@@ -18,6 +18,30 @@ internal sealed class ShellApplication : Application
     private readonly string _trayIconPath;
     private readonly bool _trayIconAvailable;
     private readonly ShellBridgeHost _bridgeHost;
+    private readonly Func<IReadOnlyList<string>> _stderrTail;
+
+    /// <summary>启动失败面接线（ADR 2026-10-23-avalonia-failure-dialog）：起步体在后台线程失败，
+    /// 模态经端口自行封送 UI 线程；退出动作与托盘共用同一闸门（先批准再关窗）。</summary>
+    /// <param name="window">属主窗口（模态的归属）。</param>
+    /// <param name="closeGate">关窗闸门。</param>
+    private void WireStartupFailure(Window window, CloseGate closeGate)
+    {
+        var face = new StartupFailureFace(
+            new InProcessFailureDialog(() => window, _uiLocale, HostLog.Write),
+            _stderrTail,
+            _uiLocale,
+            quit: () => Dispatcher.UIThread.Post(() =>
+            {
+                closeGate.ApproveExit();
+                window.Close();
+            }),
+            log: HostLog.Write);
+        _startup.Failed += exception => _ = Task.Run(() =>
+        {
+            HostLog.Write($"[host] 启动失败面接管：{exception.GetType().Name}");
+            _ = face.ShowAsync(CancellationToken.None);
+        });
+    }
 
     /// <summary>创建应用对象。</summary>
     /// <param name="startup">运行时起步（dsh spawn 与铸币）。</param>
@@ -27,6 +51,7 @@ internal sealed class ShellApplication : Application
     /// <param name="trayIconPath">托盘图标路径（装配层探测，本类不碰文件系统）。</param>
     /// <param name="trayIconAvailable">托盘图标是否存在。</param>
     /// <param name="bridgeHost">页面桥装配（窗口挂载后接上，窗口销毁时收口）。</param>
+    /// <param name="stderrTail">子进程 stderr 尾部取法（启动失败面正文的数据源）。</param>
     public ShellApplication(
         ShellStartup startup,
         bool devTools,
@@ -34,7 +59,8 @@ internal sealed class ShellApplication : Application
         UiLocale uiLocale,
         string trayIconPath,
         bool trayIconAvailable,
-        ShellBridgeHost bridgeHost)
+        ShellBridgeHost bridgeHost,
+        Func<IReadOnlyList<string>> stderrTail)
     {
         _startup = startup;
         _devTools = devTools;
@@ -43,6 +69,7 @@ internal sealed class ShellApplication : Application
         _trayIconPath = trayIconPath;
         _trayIconAvailable = trayIconAvailable;
         _bridgeHost = bridgeHost;
+        _stderrTail = stderrTail;
     }
 
     /// <inheritdoc />
@@ -54,10 +81,12 @@ internal sealed class ShellApplication : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            // 闸门先于窗口：启动失败面的「退出」与托盘「退出」共用同一放行点。
+            var closeGate = new CloseGate();
             var window = new ShellWindow(_startup.InitialUri, _devTools, _bridgeHost);
             desktop.MainWindow = window;
 
-            var closeGate = new CloseGate();
+            WireStartupFailure(window, closeGate);
             bool platformShutdown = false;
             var tray = ShellTray.TryCreate(
                 _trayIconPath,
