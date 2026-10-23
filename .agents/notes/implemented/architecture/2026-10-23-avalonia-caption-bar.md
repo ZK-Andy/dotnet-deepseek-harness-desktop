@@ -73,6 +73,9 @@ Avalonia 自己的原始输入事件里，页面注入脚本拿不到。
   留下零尺寸 flex 子项。
 - **macOS 端口按 OS 选**（句柄描述符在 Avalonia.Native 未公开）：若将来该后端变化需改判据；
   `BeginMoveDrag(null!)` 仅在 Avalonia.Native 安全（其实现不读参数）。
+- **覆盖率跟值下调**：本片新增的三平台 P/Invoke、Avalonia 窗口装配与注入时序无 headless 测试面，CI 并集覆盖率
+  64.15%（原 65.45%）；按 docs/testing.md「跟值」流程同批更新 `scripts/test-baseline.json` 与 README 双语徽章，
+  不掩盖、不以「超容差」侥幸过关。
 - **跨显示器缩放**：换算用窗口的 `RenderScaling`，混合 DPI 多屏下锚点可能偏【推断 · 未证】。
 
 ## Testing
