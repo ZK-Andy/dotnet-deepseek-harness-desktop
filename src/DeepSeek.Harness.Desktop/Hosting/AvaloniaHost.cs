@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
-using DeepSeek.Harness.Desktop.Core;
 
 namespace DeepSeek.Harness.Desktop.Hosting;
 

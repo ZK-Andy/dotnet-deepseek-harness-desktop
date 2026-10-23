@@ -1,8 +1,4 @@
-using DeepSeek.Harness.Desktop.Bootstrap;
-using DeepSeek.Harness.Desktop.Core;
 using DeepSeek.Harness.Desktop.Core.Platform;
-using DeepSeek.Harness.Desktop.Infrastructure.Platform;
-using DeepSeek.Harness.Desktop.Tray;
 using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Hosting;
@@ -84,7 +80,8 @@ internal static class ShellCommandRegistration
                 closeGate.ApproveExit();
                 _ = Task.Run(() => RunGuarded(
                     () => exitPipeline.Restart(() => SpawnGuarded(spawn, log)), log));
-            });
+            }
+        );
     }
 
     /// <summary>管道体守卫：回收/释放/关窗的异常在后台任务里无人观察；留一行日志即处置。
