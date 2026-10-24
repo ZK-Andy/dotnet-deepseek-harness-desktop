@@ -28,6 +28,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/smoke-verdict-lib.sh
 source "$SCRIPT_DIR/lib/smoke-verdict-lib.sh"
+# shellcheck source=lib/smoke-crash-lib.sh
+source "$SCRIPT_DIR/lib/smoke-crash-lib.sh"
 # shellcheck source=lib/smoke-selftest-verdict.sh
 source "$SCRIPT_DIR/lib/smoke-selftest-verdict.sh"
 
@@ -50,6 +52,9 @@ SMOKE_VERDICT_SECONDS="${SMOKE_VERDICT_SECONDS:-150}"
 # （存活门落地后启动判定不再依赖截图时序，回退 3s——禁祈祷式加时。）SMOKE_REPAINT_SECONDS 可覆写。
 SMOKE_REPAINT_SECONDS="${SMOKE_REPAINT_SECONDS:-3}"
 [[ "$SMOKE_REPAINT_SECONDS" =~ ^[0-9]+$ ]] || SMOKE_REPAINT_SECONDS=3
+# APP_EXIT：红腿时收割的应用退出码（128+N=OS 信号杀死，SIGILL=132），传给崩溃取证面
+# （smoke-crash-lib.sh）决定是否等 .ips 落盘；绿腿/进程未死恒 0。
+
 
 # 启动截图 best-effort（ADR smoke-runner-deepening）：供人眼复核，永不拦冒烟。
 # 落盘目录由调用方经 SMOKE_SHOT_DIR 注入；未设（本地跑）即跳过。
@@ -60,52 +65,8 @@ smoke_shot() { # $1=文件名
     || log "截图跳过（无 WindowServer 会话或 screencapture 不可用）"
 }
 
-# 崩溃取证（run 40109768884 mac x64 SIGILL 无证据的补课）：进程被 OS 杀死时 stdout 只有
-# shell 的信号行，真因在系统崩溃报告（.ips，DiagnosticReports）。全量拷进 SMOKE_LOG_DIR
-# 随 artifact 上传；异常类型/终止原因/故障线程帧（映像名）打进步日志供人直读。
-# 提取失败绝不连累冒烟结论（best-effort，与截图同纪律）。
-smoke_crash_report_summary() { # $1=.ips 路径
-  python3 - "$1" <<'PY' 2>/dev/null || log "崩溃报告摘要提取失败（原文已拷入日志目录）"
-import json, sys
-with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
-    lines = fh.read().splitlines()
-body = json.loads("\n".join(lines[1:])) if len(lines) > 1 else {}
-exc = body.get("exception", {})
-imgs = body.get("usedImages", [])
-ft = body.get("faultingThread", 0)
-threads = body.get("threads", [])
-frames = threads[ft].get("frames", []) if isinstance(threads, list) and ft < len(threads) else []
-print(f"== 崩溃报告摘要: {sys.argv[1].rsplit('/', 1)[-1]}")
-print(f"exception: {exc.get('type', '?')} signal={exc.get('signal', '?')} subtype={exc.get('subtype', '?')}")
-print(f"termination: {json.dumps(body.get('termination', {}), ensure_ascii=False)}")
-def image_name(frame):
-    idx = frame.get("imageIndex", -1)
-    return imgs[idx].get("name", "?") if isinstance(imgs, list) and 0 <= idx < len(imgs) else "?"
-for frame in frames[:15]:
-    print(f"  frame: {image_name(frame)} +{frame.get('imageOffset', '?')}")
-PY
-}
-
-smoke_collect_crash_reports() {
-  [[ -n "${SMOKE_LOG_DIR:-}" ]] || return 0
-  # cp 之前必须先建目录：mkdir 的唯一既有落点在 smoke_dump_logs（本函数之后才跑），
-  # CI 全新 workspace 下该目录不存在，缺此行则 .ips 拷贝全部静默失败（评审 R1/R2 Blocker）。
-  mkdir -p "$SMOKE_LOG_DIR" 2>/dev/null || return 0
-  local dir f found=0
-  for dir in "$HOME/Library/Logs/DiagnosticReports" "/Library/Logs/DiagnosticReports"; do
-    [[ -d "$dir" ]] || continue
-    # 只收本次窗口内的报告（30 分钟覆盖整个冒烟；runner 每作业全新 VM，无跨跑污染面）。
-    while IFS= read -r f; do
-      found=1
-      cp "$f" "$SMOKE_LOG_DIR/" 2>/dev/null || true
-      smoke_crash_report_summary "$f"
-    done < <(find "$dir" -name "${APP_NAME}-*.ips" -mmin -30 -print 2>/dev/null)
-  done
-  [[ $found -eq 1 ]] || log "崩溃报告：诊断目录内无本应用 .ips（进程非崩溃退出或未落报告）"
-}
-
-# mac 专属夹具：裁决静默等待的事件驱动侧（增长后稳定才返、grace 触发重置静默）
-# 与中央裁剪几何（含菜单栏/Dock 的全屏图取中央）。
+# mac 专属夹具：中央裁剪几何（含菜单栏/Dock 的全屏图取中央）；崩溃取证夹具本体在
+# smoke-crash-lib.sh（typo 回归钉 / 信号死轮询 / 无报告措辞 / 异名兜底）。
 smoke_selftest_platform() { # $1=夹具根
   local tdir="$1"
   # mac 全屏截图含菜单栏/Dock，取中央裁剪（与 Linux 默认几何不同的唯一一处）
@@ -117,6 +78,7 @@ smoke_selftest_platform() { # $1=夹具根
   else
     log "skip: 无 convert，跳过 mac 截图内容见证夹具"
   fi
+  smoke_selftest_crash "$tdir"
 }
 
 if [[ "$SELFTEST" -eq 1 ]]; then
@@ -181,6 +143,9 @@ else
 fi
 set -e
 if [[ $rc -ne 0 ]]; then
+  # 信号死感知（取证前置）：收割死进程退出码（128+N=被信号杀死，SIGILL=132），取证据此
+  # 等 .ips 落盘；进程仍活（见证红等形态）不阻塞。机制唯一家在 smoke-crash-lib.sh。
+  smoke_reap_app_exit "$SMOKE_PID"
   error "[mac] 冒烟失败（rc=${rc}：落定/见证任一环节红，见上文 error 行；非特指①缺失）"
   tail -30 "$OUT" >&2 || true
   smoke_shot "smoke-macos-fail.png"
@@ -188,6 +153,6 @@ fi
 # 日志落盘（W2）：调用方经 SMOKE_LOG_DIR 注入稳定目录（与 SMOKE_SHOT_DIR 同模式），
 # CI 传 artifact——host.log 只在文件里全，step 日志只有尾巴。
 # 崩溃报告随同落盘（smoke_collect_crash_reports 契约同 SMOKE_LOG_DIR）。
-smoke_collect_crash_reports
+smoke_collect_crash_reports "${APP_EXIT:-0}"
 smoke_dump_logs "smoke-macos" "$OUT" "${LOG:-}"
 exit $rc
