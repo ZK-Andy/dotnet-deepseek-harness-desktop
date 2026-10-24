@@ -70,7 +70,7 @@ noble/trixie 的 t64 改名。
   扫描噪音留着。
 - `runtimes/<rid>/native` 目录必在的断言今天只由 Ryn 包供给（Skia/HarfBuzz 只落根），G5 摘包后
   这条断言必然假红，须在同一批删掉（自测夹具里两处也钉着它）。
-- Windows 应用内 WebView2 缺失检测未做，现只有安装器提示；缺运行时会在 WebView 创建处失败。
+- Windows 应用内 WebView2 缺失检测由 G4-b 落地（见 [avalonia-g4-webview2-preflight](2026-10-24-avalonia-g4-webview2-preflight.md)）；安装器提示保留为安装期提示。
 - mac/win 的 publish 目录未在本机产出，两平台的原生清单只经自测夹具与 CI 腿验证。
 - Linux 依赖换底能否真起窗口由 CI 冒烟腿判定；沙箱起不了 GUI，本机无法复现。
 
@@ -87,5 +87,6 @@ noble/trixie 的 t64 改名。
 ## Related
 
 - [avalonia-host-migration](../../proposed/architecture/2026-10-22-avalonia-host-migration.md)：阶段表 G4
+- [avalonia-g4-webview2-preflight](2026-10-24-avalonia-g4-webview2-preflight.md)：G4-b 应用内运行时探测
 - [payload-smoke-probe](../testing/2026-09-13-payload-smoke-probe.md)：探针形态与子进程隔离
 - [delivery-chain-gaps](../testing/2026-10-20-delivery-chain-gaps.md)：Linux 腿载荷探针的由来

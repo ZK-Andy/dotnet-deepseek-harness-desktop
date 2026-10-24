@@ -36,8 +36,8 @@
     },
     {
       "path": "docs/architecture.md",
-      "max_words": 990,
-      "_justify_bump": "2026-10-20 提额 950→990：审计整改第 4–6 项的架构现状归本文件（新增「跨包契约」一节：命令 ID 单一事实源 Core/Ipc/HostCommandIds + 门禁 verify-host-command-ids.py、Core 不做文件/环境 IO 的机器门禁、宿主平台面端口 IAutostart/ISystemBrowser 落 Infrastructure）；同批刻意精简 8 词（用例枚举 5 + 顶栏注入/应用/页面 3；全量 token 差分口径为 13–14），按 count_words 口径净增 26 词（946 → 972）。上一轮 —— 2026-09-28 E 批登记：架构/启动模型/插件装配的单一事实源（重写后 809 词），上限给决策杠杆留余量"
+      "max_words": 1005,
+      "_justify_bump": "2026-10-24 提额 990->1005：G4-b Windows 启动前置（建窗前探测 WebView2、缺失提示后以退出码 1 退出）属启动链单一事实源；实测净增 13 词（989->1002），额度余 3 词。条目压到 6 词，ADR 内联指针按 count_words 口径占 7 词（日期分段），判据/退出细节全在 ADR 2026-10-24-avalonia-g4-webview2-preflight，不再在本文件展开。"
     },
     {
       "path": "docs/testing.md",

@@ -5,6 +5,9 @@ Quick answers for download and daily-use questions. See [user-guide.en.md](user-
 **Q: Windows SmartScreen warns about an unknown publisher?**
 Expected — the project ships without paid code signing. Choose "More info" → "Run anyway"; macOS Gatekeeper works the same way (right-click → Open, or allow in System Settings).
 
+**Q: Windows says the WebView2 runtime is missing at startup?**
+The window is rendered by Microsoft Edge WebView2, a system component the app does not bundle. Choose Yes to open Microsoft's download page, install the Evergreen Runtime, and restart the app. The same prompt appears when an installed runtime's files are missing.
+
 **Q: Why is the installer so large?**
 It ships only the shell (~30MB); first launch bootstraps Node (download or reuse) and installs dsh over the network. No Node.js installation needed, and your system PATH stays untouched.
 

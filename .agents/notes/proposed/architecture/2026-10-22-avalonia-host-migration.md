@@ -53,7 +53,7 @@ Status: proposed
 - 0.6.14（Ryn 宿主）保留为回滚产物；0.7.0 为 Avalonia 首发。
 - 0.6.14 定版：迁移期间不再出补丁版，非迁移工作排在迁移之后；迁移在 `main` 逐片落地——不设 spike 分支、不设宿主开关，每片自带文档与测试，失败用 revert 或 fix-forward。
 - 内存不承诺下降：Linux 首选 WPE、缺失时回退 WebKitGTK 4.1，dsh 进程树 636 MB 的实测（node 452 MB + codegraph 三进程 184 MB，n=1【探索性】）含 codegraph 三进程；该组件不在当前环境，184 MB 部分不可复用，node 的 452 MB 仍只有 n=1。
-- Windows 依赖 WebView2 运行时：复用现有「缺时提示自装」路径，并按 UniGetUI 的实机教训补检测（缺失时回退旧 EdgeHTML 会在 `async void` 续体里崩进程）。
+- Windows 依赖 WebView2 运行时：复用现有「缺时提示自装」路径，并按 UniGetUI 的实机教训补检测（缺失时回退旧 EdgeHTML 会在 `async void` 续体里崩进程）。G4-b 已落地：Avalonia 生命周期与 spawn 之前原生探测，缺失即提示并可打开下载页后退出，见 [avalonia-g4-webview2-preflight](../../implemented/architecture/2026-10-24-avalonia-g4-webview2-preflight.md)。
 - 打包面变化：`verify-package-layout.sh` 的 `libsaucer*` / `libryn-pty` 断言改为 Avalonia 原生库清单；Linux 包依赖换 GTK3 栈（见 Proposal），`libadwaita-1-0` 可删；更新 feed 与三平台 smoke 同步修改。
 - 文档随片同批改，不留到迁移完成：每个改变宿主行为的提交同时改对应文档——`docs/architecture.md`（技术栈与启动链）、`docs/development.md`（构建、`DSH_DEVTOOLS`、Linux 依赖清单）、`docs/testing.md`（打包校验清单、本机冒烟行）、`docs/cookbook.md`（Ryn/WebKitGTK 条目）、`docs/architecture-standards.md`（工程表、R3 例外、R1 的「Ryn 无 hosted-service」前提、`ShellResources` 补 Ryn 缺口的理由）、`docs/faq.md`/`faq.en.md` 与 `docs/user-guide.md`/`.en.md`（安装依赖）、README 技术栈与致谢段、仓库树注释。第一片（宿主装配切换）就改 `architecture.md` 与 README 栈段，其余随各自片；旧宿主 ADR `architecture/2026-08-20-ryn-shell-bundled-dsh-runtime` 的交叉链接或 Erratum 同批落。
 - 待证项（G0/G1 实跑验收，不另设能力探针）：`av-webview` 在本仓页面里的消息契约细节（含 `invoke` 的 JSON 解析语义与失败面）、Linux 托盘菜单行为、无边框拖拽/缩放体验；Linux 双后端差异——WPE 优先（离屏合成）与 WebKitGTK 回退（原生子窗）在输入法、剪贴板、拖拽与 `TryGetPlatformHandle` 上不同，两种机器都要过一遍；`EnableDevTools` 是否在无 WPE 的 GTK 路径生效需实测（官方文档 WPE 节称该事件仅在 WPE 路径触发，与 GTK 示例矛盾）；`PermissionRequested` / `DownloadStarting` 三端默认差异与接管形状（G0 未接，附件下载/通知/媒体权限会静默失败或不受控弹窗）。

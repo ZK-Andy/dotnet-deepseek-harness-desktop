@@ -22,6 +22,7 @@
 * **窗口 URL 恒为回环代理源**（ADR `loopback-forward-proxy`）：`DshLoopbackProxy`（`TcpListener` 纯 loopback）在 `BuildApp` 前启动，逐请求向 dsh authority 转发；绑定失败 loud 后降级为空窗（wwwroot 降级随 G1）。**代理端口跨冷启动记忆**（`.dsh-shell-port`，ADR `2026-09-30-shell-proxy-port-persistence`）：有记忆试绑、被占 loud 降级并重记——origin 稳定，dsh 会话 localStorage 才能跨重启命中恢复。**启动链零 host 导航**——dsh 未就绪时代理本地端点出 holder 页（自 `fetch` 就绪后自 `reload`），绕开 saucer `set_url` 同步原生挂家族；`/__shell_ready` 长轮询铸币门、`/__shell_guide/*` 磁盘指南页。
 * **铸币与转发**：`DshShellForward.MintAsync` 用 token 铸 cookie（`redirect: manual`）；代理贴壳 cookie 转发、`Set-Cookie` 永不回页面、SSE 流式直通、POST content 头保真；WS 升级走裸 TCP 隧道 + 头手术（`Host`/`Origin`/`Referer` 同源 dsh authority，页源三值零透传，ADR `2026-09-27-upgrade-tunnel-host-authority`）。日志只记状态码/头名/字节数，token/cookie 值不落盘。
 * **落定与裁决**：`Core.Ui.MainUiEntry` 探针采 `location.origin` + 可见文本，`Core.WebAuthRecovery.ClassifyDetail` 三态裁决（`PageVerdict`：healthy/auth/unknown）；holder 标记排除、探针有限重试（`RuntimeTimeouts.AuthProbeAttempts`）。窗口导航面：首载与 origin 变化随页面生命周期；宿主主动导航两处——引导期鉴权重载（`IWebViewNavigator`）、页面健康 reload（各宿主自有通道）；恢复路径**按承载面**决定——原生失败面不碰活动页 DOM 故不导航，回落页内恢复面覆写过 DOM，恢复成功后仍补一次回代理根的收口导航（ADR `2026-10-14-native-failure-surface`）。
+* **Windows 启动前置**：建窗前探测 WebView2，缺失即提示退出（ADR `2026-10-24-avalonia-g4-webview2-preflight`）。
 
 ## 运行时来源（系统全局 node + 全局 dsh）
 

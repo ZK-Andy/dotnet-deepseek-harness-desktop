@@ -13,9 +13,10 @@ namespace DeepSeek.Harness.Desktop.Hosting;
 /// 见 ADR avalonia-g3-update-surface。</summary>
 internal static class AvaloniaHost
 {
-    /// <summary>启动 Avalonia 主循环：预检与单实例仲裁后开窗，dsh spawn 与铸币在后台相完成，页面经壳 origin 加载。</summary>
+    /// <summary>启动 Avalonia 主循环：预检与单实例仲裁后开窗，dsh spawn 与铸币在后台相完成，页面经壳 origin 加载。
+    /// Windows 在 spawn/建窗前探测 WebView2 运行时，缺失即原生提示后退出。</summary>
     /// <param name="args">命令行参数。</param>
-    /// <returns>进程退出码（Avalonia lifetime 的退出码；已有主实例时为 0）。</returns>
+    /// <returns>进程退出码（Avalonia lifetime 的退出码；已有主实例时为 0；Windows 缺 WebView2 运行时为 1）。</returns>
     public static int Run(string[] args)
     {
         // WebKit 沙箱 userns 降级必须先于一切 WebView 创建（renderer 继承本进程 env）。
@@ -29,6 +30,11 @@ internal static class AvaloniaHost
         try
         {
             SharedState shared = PreBuildRegistration.CreateSharedState(static () => null);
+            // Windows 前置：WebView2 缺失时在 spawn/建窗前原生提示并退出；探测异常 fail-open（ADR avalonia-g4-webview2-preflight）。
+            if (OperatingSystem.IsWindows() && !WebView2Registration.EnsureRuntimeAvailable(shared.UiLocale))
+            {
+                return 1;
+            }
             var host = new HarnessRuntimeHost(HostLog.Write, shared.Timeouts);
             resources.Track(host);
 

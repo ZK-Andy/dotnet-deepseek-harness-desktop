@@ -235,13 +235,13 @@ internal static unsafe partial class Program
     /// 若父进程不逐个断言，「导出漂移」会以 PASS 收场（假绿）。</summary>
     private static void CheckSkiaExports(Dictionary<string, nint> payload, string library, List<string> failures)
     {
-        foreach (string export in SkiaExports)
+        foreach (string export in s_skiaExports)
         {
             CheckExport(payload, library, export, failures);
         }
     }
 
-    private static readonly string[] SkiaExports =
+    private static readonly string[] s_skiaExports =
     [
         "sk_data_new_from_file",
         "sk_data_unref",

@@ -91,6 +91,9 @@
     "ShellWindow.cs",
     "ShellWiringRegistration.cs",
     "StartupFailureFace.cs",
-    "WindowDrag.cs"
+    "WebView2Registration.cs",
+    "WebView2StartupGuard.cs",
+    "WindowDrag.cs",
+    "WindowsMessageBox.cs"
   ]
 }

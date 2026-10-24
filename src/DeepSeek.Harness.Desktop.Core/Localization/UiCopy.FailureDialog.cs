@@ -41,4 +41,14 @@ public static partial class UiCopy
 
     /// <summary>失败面对话框：留在窗口按钮（非破坏性动作，也是关闭框的缺省）。</summary>
     public static string DialogStayLabel(bool english) => english ? "Stay" : "留在窗口";
+
+    /// <summary>WebView2 缺失对话框标题（Windows 启动前置；ADR avalonia-g4-webview2-preflight）。</summary>
+    public static string WebView2MissingTitle(bool english) => english
+        ? "DeepSeek Harness Desktop — WebView2 runtime missing"
+        : "DeepSeek Harness Desktop — 缺少 WebView2 运行时";
+
+    /// <summary>WebView2 缺失正文：后果 + 安装指引 + 是/否动作（原生模态按钮固定为是／否）。</summary>
+    public static string WebView2MissingBody(bool english) => english
+        ? "Microsoft Edge WebView2 Runtime is not installed (or its files are missing), so the app window cannot be rendered.\n\nInstall the Evergreen Runtime, then start the app again.\n\nChoose Yes to open the download page; choose No to quit."
+        : "未检测到 Microsoft Edge WebView2 运行时（或其文件缺失），应用窗口无法渲染。\n\n请安装 Evergreen 运行时后重新启动应用。\n\n选择「是」打开下载页；选择「否」退出。";
 }
