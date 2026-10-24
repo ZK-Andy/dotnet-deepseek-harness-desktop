@@ -2,7 +2,7 @@
 
 Status: implemented
 
-Review: FULL/2026-10-25#2/R1=ok R2=ok R3=ok
+Review: FULL/2026-10-25#2/R1=ok R2=ok R3=ok; hotfix3 LIGHT/2026-10-25#4/R2=ok（跨平台测试形态修复，用户指令「全修」）
 
 ## Problem
 
@@ -10,7 +10,7 @@ Review: FULL/2026-10-25#2/R1=ok R2=ok R3=ok
 
 ## Decision
 
-- **装配前置 ensure-pnpm（有就用，没有就引导安装，与系统全局 node 同语义）**：`EnsureBundledPluginsBeforeSpawnAsync` 在存在待装插件时先 `pnpm --version` 探测——可用即用（记版本）；未检出则 `npm install -g pnpm` 装到与 dsh 同一全局位后复验。两条装配路径（首启引导/正常启动 spawn 前）经同一装配器自动覆盖；探测/安装经注入的进程委托（可单测）。两个环境事实的兜底（run `40136296983`/`40137230061` CI 实证）：①可执行缺失时 .NET `Process.Start` 抛 `Win32Exception` 而非返回非零——按 127 收口视为未检出；②npm 壳脚本在部分安装形态下相对解析断裂（`/root/.local/bin/npm` 报 Cannot find module '../lib/cli.js'）——系统全局 node 就位时安装命令按引导 InstallDsh 同款**显式形态**（node + npm-cli.js 全路径，`TryResolveNodeAndNpmCliForBinDir`）驱动，否则回退裸名；③引导装完 node 后幂等补一次进程 PATH 暴露（构造期早调在全新环境必然 no-op——node 未装），后续裸名 pnpm 探测/复验由此可解析。
+- **装配前置 ensure-pnpm（有就用，没有就引导安装，与系统全局 node 同语义）**：`EnsureBundledPluginsBeforeSpawnAsync` 在存在待装插件时先 `pnpm --version` 探测——可用即用（记版本）；未检出则 `npm install -g pnpm` 装到与 dsh 同一全局位后复验。两条装配路径（首启引导/正常启动 spawn 前）经同一装配器自动覆盖；探测/安装经注入的进程委托（可单测）。两个环境事实的兜底（run `40136296983`/`40137230061` CI 实证）：①可执行缺失时 .NET `Process.Start` 抛 `Win32Exception` 而非返回非零——按 127 收口视为未检出；②npm 壳脚本在部分安装形态下相对解析断裂（`/root/.local/bin/npm` 报 Cannot find module '../lib/cli.js'）——系统全局 node 就位时安装命令按引导 InstallDsh 同款**显式形态**（node + npm-cli.js 全路径，`TryResolveNodeAndNpmCliForBinDir`）驱动，否则回退裸名；③引导装完 node 后幂等补一次进程 PATH 暴露（构造期早调在全新环境必然 no-op——node 未装），后续裸名 pnpm 探测/复验由此可解析。④测试断言不得耦合平台 psi 形态（run `40139317570` windows 腿六红实证）：`BuildToolPsi` 一律经 `RelayFor`——Windows 上全部裸名/显式命令都被包成 `cmd.exe /d /s /c <cmd> <args>`，按裸名形态写的命令序列断言与探测判定在 Windows 必错位；修=测试侧 `CommandOf` 规整化（剥 cmd.exe 中转还原逻辑命令，与 `RelayFor` 互逆钉真）+ 夹具按平台布局造 node/npm-cli（`NodeBinDir`/`NpmCliRelativePath` 同款双形态）+ `TryResolveNodeAndNpmCliForBinDir`/`TryLocateNodeAtPrefix`/`NpmCliRelativePath` 加 windows 注入重载（`DshShimPath` 先例）——Windows 语义在非 Windows 本机可钉，不赌 CI 矩阵。
 - **撤 pnpm 转发 shim**：CliShimPlanner 不再生成任何 shim 文件（CliShimFile/CliShimBuilder/写入决策链整体删除）——转发脚本不是正常形态（用户判定，2026-10-25）。
 - **启动清理历史自产残留**：注册时扫描 bin 目录的 `pnpm`/`pnpm.cmd`/`pnpm.ps1`，按 GeneratedMarker 识别自产即删；悬空符号链接（目标已失效）无论出处直接清理——用户自放的有效同名文件保留。
 - **保留**：系统全局 node bin 目录的终端 PATH 暴露（桌面与终端共用 node/dsh，独立功能，与转发脚本无关）；binDir（~/.local/bin）不再进入注册的 PATH 增量。

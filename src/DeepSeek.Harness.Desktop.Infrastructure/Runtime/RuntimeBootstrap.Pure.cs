@@ -67,7 +67,10 @@ public static partial class RuntimeBootstrap
     }
 
     /// <summary>npm-cli.js 相对 Node 发行包根目录的路径（Node 发行包内布局随平台不同）。</summary>
-    internal static string NpmCliRelativePath() => OperatingSystem.IsWindows()
+    internal static string NpmCliRelativePath() => NpmCliRelativePath(OperatingSystem.IsWindows());
+
+    /// <summary>平台可注入重载（单测在非 Windows 上断言 Windows 布局）。</summary>
+    internal static string NpmCliRelativePath(bool windows) => windows
         ? Path.Combine("node_modules", "npm", "bin", "npm-cli.js")
         : Path.Combine("lib", "node_modules", "npm", "bin", "npm-cli.js");
 

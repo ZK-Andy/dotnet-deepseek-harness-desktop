@@ -303,18 +303,26 @@ public static partial class RuntimeBootstrap
     /// module '../lib/cli.js'），直接驱动 npm-cli.js 是唯一可靠形态（引导 InstallDsh 同款）；
     /// 未就位返回 null。</summary>
     internal static (string NodePath, string NpmCli)? TryResolveNodeAndNpmCliForBinDir(string nodeBinDir)
+        => TryResolveNodeAndNpmCliForBinDir(nodeBinDir, OperatingSystem.IsWindows());
+
+    /// <summary>平台可注入重载（单测在非 Windows 上断言 Windows 布局：nodeBinDir 即 prefix）。</summary>
+    internal static (string NodePath, string NpmCli)? TryResolveNodeAndNpmCliForBinDir(string nodeBinDir, bool windows)
     {
-        string prefix = OperatingSystem.IsWindows()
+        string prefix = windows
             ? nodeBinDir
             : Path.GetDirectoryName(nodeBinDir.TrimEnd('/'))!;
-        return TryLocateNodeAtPrefix(prefix);
+        return TryLocateNodeAtPrefix(prefix, windows);
     }
 
     /// <summary>判某系统全局前缀下 node 已就位，返回 (node 可执行, npm-cli)。</summary>
     private static (string NodePath, string NpmCli)? TryLocateNodeAtPrefix(string prefix)
+        => TryLocateNodeAtPrefix(prefix, OperatingSystem.IsWindows());
+
+    /// <summary>平台可注入重载（单测在非 Windows 上断言 Windows 布局）。</summary>
+    private static (string NodePath, string NpmCli)? TryLocateNodeAtPrefix(string prefix, bool windows)
     {
-        string nodePath = Path.Combine(prefix, OperatingSystem.IsWindows() ? "node.exe" : Path.Combine("bin", "node"));
-        string npmCli = Path.Combine(prefix, NpmCliRelativePath());
+        string nodePath = Path.Combine(prefix, windows ? "node.exe" : Path.Combine("bin", "node"));
+        string npmCli = Path.Combine(prefix, NpmCliRelativePath(windows));
         return File.Exists(nodePath) && File.Exists(npmCli) ? (nodePath, npmCli) : null;
     }
 

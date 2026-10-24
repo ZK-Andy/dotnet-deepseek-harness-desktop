@@ -1,4 +1,3 @@
-
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Plugins;
 
 /// <summary>MarketInstallHelper 的分支与错误路径覆盖，目标把 3.6% 拉至 40%+。</summary>
@@ -268,7 +267,7 @@ public class MarketInstallHelperTests
         var logs = new List<string>();
         async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
-            if (IsPnpmPreflight(psi))
+            if (CommandOf(psi) == "pnpm --version")
             {
                 return (0, "10.0.0", string.Empty);   // 前置：PATH 已有 pnpm
             }
@@ -396,7 +395,7 @@ public class MarketInstallHelperTests
         var logs = new List<string>();
 
         async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
-            => IsPnpmPreflight(psi) && psi.FileName == "pnpm"
+            => CommandOf(psi) == "pnpm --version"
                 ? (0, "10.0.0", string.Empty)   // 前置：PATH 已有 pnpm；plugin add 全失败
                 : (1, string.Empty, "boom");
 
@@ -415,10 +414,67 @@ public class MarketInstallHelperTests
         }
     }
 
-    /// <summary>前置命令判定：EnsurePnpm 的探测/安装（BuildToolPsi 裸名形态；测试环境 Unix 直跑
-    /// 裸名，Windows 的 cmd.exe 中转形态不在本测试矩阵内）。</summary>
-    private static bool IsPnpmPreflight(System.Diagnostics.ProcessStartInfo psi)
-        => psi.FileName is "pnpm" or "npm";
+    /// <summary>把 psi 还原为跨平台稳定的「逻辑命令」串：Windows 经 RelayFor 的 cmd.exe /d /s /c
+    /// 中转剥掉（包装形态是 RuntimeBootstrap 实现细节，命令序列断言不得耦合平台——run `40139317570`
+    /// windows 腿六红实证：断言按裸名形态写即红），其余平台 FileName + 参数表直拼。</summary>
+    private static string CommandOf(System.Diagnostics.ProcessStartInfo psi)
+    {
+        string[] argv = [psi.FileName, .. psi.ArgumentList];
+        return argv is ["cmd.exe", "/d", "/s", "/c", .. string[] relayed] ? string.Join(" ", relayed) : string.Join(" ", argv);
+    }
+
+    /// <summary>CommandOf 剥壳与 RelayFor 的 Windows 中转形态互逆钉真（非 Windows 本机可跑）：
+    /// cmd.exe /d /s /c 包装还原为逻辑命令，Unix 直跑形态原样。</summary>
+    [Fact]
+    public void CommandOf_StripsCmdExeRelayAgainstRelayFor()
+    {
+        DshCommand relayed = RuntimeBootstrap.RelayFor("pnpm", ["--version"], windows: true);
+        var relayedPsi = new System.Diagnostics.ProcessStartInfo(relayed.Exe);
+        foreach (string a in relayed.Args)
+        {
+            relayedPsi.ArgumentList.Add(a);
+        }
+        Assert.Equal("cmd.exe", relayed.Exe);
+        Assert.Equal("pnpm --version", CommandOf(relayedPsi));
+
+        var directPsi = new System.Diagnostics.ProcessStartInfo("pnpm");
+        directPsi.ArgumentList.Add("--version");
+        Assert.Equal("pnpm --version", CommandOf(directPsi));
+    }
+
+    /// <summary>TryResolveNodeAndNpmCliForBinDir 平台布局钉真（windows 注入缝，非 Windows 本机可跑）：
+    /// Windows nodeBinDir 即 prefix（node.exe/npm-cli 挂 root），Unix nodeBinDir=&lt;prefix&gt;/bin
+    /// （node 在 bin、npm-cli 在 lib）——run `40139317570` windows 腿红实证：夹具只造 Unix 布局时
+    /// Windows 解析必 miss。</summary>
+    [Fact]
+    public void TryResolveNodeAndNpmCliForBinDir_PlatformLayouts()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "nbl-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            string winNode = Path.Combine(root, "node.exe");
+            string winNpmCli = Path.Combine(root, "node_modules", "npm", "bin", "npm-cli.js");
+            Directory.CreateDirectory(Path.GetDirectoryName(winNpmCli)!);
+            File.WriteAllText(winNode, string.Empty);
+            File.WriteAllText(winNpmCli, string.Empty);
+            Assert.Equal((winNode, winNpmCli), RuntimeBootstrap.TryResolveNodeAndNpmCliForBinDir(root, windows: true));
+            Assert.Null(RuntimeBootstrap.TryResolveNodeAndNpmCliForBinDir(root, windows: false));
+
+            string unixBin = Path.Combine(root, "bin");
+            string unixNode = Path.Combine(unixBin, "node");
+            string unixNpmCli = Path.Combine(root, "lib", "node_modules", "npm", "bin", "npm-cli.js");
+            Directory.CreateDirectory(unixBin);
+            Directory.CreateDirectory(Path.GetDirectoryName(unixNpmCli)!);
+            File.WriteAllText(unixNode, string.Empty);
+            File.WriteAllText(unixNpmCli, string.Empty);
+            Assert.Equal((unixNode, unixNpmCli), RuntimeBootstrap.TryResolveNodeAndNpmCliForBinDir(unixBin, windows: false));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 
     /// <summary>构造一个「待装 companion」夹具 home（tgz 资源齐、profile 不含 companion → 前置必跑）。</summary>
     private static (string Home, string ProfilePkg, string InstallerPluginsDir) NewPendingCompanionHome()
@@ -444,10 +500,9 @@ public class MarketInstallHelperTests
         var logs = new List<string>();
         async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
-            commands.Add(IsPnpmPreflight(psi)
-                ? $"{psi.FileName} {string.Join(" ", psi.ArgumentList)}"
-                : "plugin-add");
-            return (0, IsPnpmPreflight(psi) && psi.FileName == "pnpm" ? "10.0.0" : "installed", string.Empty);
+            string command = psi.ArgumentList.Contains("--profile") ? "plugin-add" : CommandOf(psi);
+            commands.Add(command);
+            return (0, command == "pnpm --version" ? "10.0.0" : "installed", string.Empty);
         }
 
         try
@@ -473,9 +528,7 @@ public class MarketInstallHelperTests
         var logs = new List<string>();
         async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
-            string command = IsPnpmPreflight(psi)
-                ? $"{psi.FileName} {string.Join(" ", psi.ArgumentList)}"
-                : "plugin-add";
+            string command = psi.ArgumentList.Contains("--profile") ? "plugin-add" : CommandOf(psi);
             commands.Add(command);
             return command switch
             {
@@ -511,9 +564,7 @@ public class MarketInstallHelperTests
         var logs = new List<string>();
         async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
-            string command = IsPnpmPreflight(psi)
-                ? $"{psi.FileName} {string.Join(" ", psi.ArgumentList)}"
-                : "plugin-add";
+            string command = psi.ArgumentList.Contains("--profile") ? "plugin-add" : CommandOf(psi);
             commands.Add(command);
             return command switch
             {
@@ -547,20 +598,23 @@ public class MarketInstallHelperTests
     {
         (string home, string profilePkg, string installerPluginsDir) = NewPendingCompanionHome();
         string root = Path.Combine(Path.GetTempPath(), "nb-" + Guid.NewGuid().ToString("N"));
-        string nodeBin = Path.Combine(root, "bin");
-        string npmCli = Path.Combine(root, "lib", "node_modules", "npm", "bin", "npm-cli.js");
+        // 布局按平台（NodeBinDir/NpmCliRelativePath 同款）：Windows nodeBinDir 即 prefix（node.exe/
+        // npm-cli 挂 root），Unix nodeBinDir=<prefix>/bin（node 在 bin、npm-cli 在 lib）。
+        bool win = OperatingSystem.IsWindows();
+        string nodeBin = win ? root : Path.Combine(root, "bin");
+        string nodeFile = Path.Combine(nodeBin, win ? "node.exe" : "node");
+        string npmCli = Path.Combine(root, win
+            ? Path.Combine("node_modules", "npm", "bin", "npm-cli.js")
+            : Path.Combine("lib", "node_modules", "npm", "bin", "npm-cli.js"));
         Directory.CreateDirectory(nodeBin);
         Directory.CreateDirectory(Path.GetDirectoryName(npmCli)!);
-        File.WriteAllText(Path.Combine(nodeBin, "node"), "#!/bin/sh\n");
+        File.WriteAllText(nodeFile, win ? string.Empty : "#!/bin/sh\n");
         File.WriteAllText(npmCli, "// cli");
         var commands = new List<string>();
         var logs = new List<string>();
         async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
-            bool isPluginAdd = psi.ArgumentList.Contains("--profile");
-            string command = isPluginAdd
-                ? "plugin-add"
-                : $"{psi.FileName} {string.Join(" ", psi.ArgumentList)}";
+            string command = psi.ArgumentList.Contains("--profile") ? "plugin-add" : CommandOf(psi);
             commands.Add(command);
             return command switch
             {
@@ -581,7 +635,7 @@ public class MarketInstallHelperTests
             Assert.True(installed);
             Assert.Equal(4, commands.Count);
             Assert.Equal("pnpm --version", commands[0]);
-            Assert.Equal($"{Path.Combine(nodeBin, "node")} {npmCli} install -g pnpm", commands[1]);
+            Assert.Equal($"{nodeFile} {npmCli} install -g pnpm", commands[1]);
             Assert.Equal("pnpm --version", commands[2]);
             Assert.Equal("plugin-add", commands[3]);
             Assert.Contains(logs, l => l.Contains("pnpm 前置：已装到全局"));
@@ -604,9 +658,7 @@ public class MarketInstallHelperTests
         var logs = new List<string>();
         async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
-            string command = IsPnpmPreflight(psi)
-                ? $"{psi.FileName} {string.Join(" ", psi.ArgumentList)}"
-                : "plugin-add";
+            string command = psi.ArgumentList.Contains("--profile") ? "plugin-add" : CommandOf(psi);
             commands.Add(command);
             return command switch
             {
