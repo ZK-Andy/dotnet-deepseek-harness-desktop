@@ -42,6 +42,6 @@ Avalonia 宿主在 Windows 上依赖系统 Microsoft Edge WebView2 运行时。�
 
 ## Related
 
-- [avalonia-host-migration](../../proposed/architecture/2026-10-22-avalonia-host-migration.md)：阶段表 G4 与「Windows 依赖 WebView2 运行时」
+- [avalonia-host-migration](2026-10-22-avalonia-host-migration.md)：阶段表 G4 与「Windows 依赖 WebView2 运行时」
 - [avalonia-g4-packaging-surface](2026-10-24-avalonia-g4-packaging-surface.md)：把本片推迟到 G4-b 的决定与理由
 - [avalonia-g1g3-recovery-bootstrap-supervision](2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)：失败面承载

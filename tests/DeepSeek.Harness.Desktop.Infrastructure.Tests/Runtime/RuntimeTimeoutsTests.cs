@@ -35,11 +35,9 @@ public class RuntimeTimeoutsTests
         Assert.Equal(5, o.IpcServeTimeoutSeconds);
         Assert.Equal(1, o.IpcAcceptRetryDelaySeconds);
         Assert.Equal(8, o.VersionProbeTimeoutSeconds);
-        Assert.Equal(30, o.BannerMaxAttempts);
         Assert.Equal(1, o.BannerRetryDelaySeconds);
         Assert.Equal(15, o.PushMaxAttempts);
         Assert.Equal(400, o.PushRetryDelayMilliseconds);
-        Assert.Equal(60, o.CaptionBarRegisterSeconds);
     }
 
     /// <summary>验证无 RuntimeTimeouts 键或节非对象时返回全默认值。</summary>
@@ -55,7 +53,6 @@ public class RuntimeTimeoutsTests
         Assert.Equal(1, o.RelayWaitIntervalSeconds);
         Assert.Equal(500, o.PortProbeTimeoutMilliseconds);
         Assert.Equal(60, o.SpawnTimeoutSeconds);
-        Assert.Equal(30, o.BannerMaxAttempts);
         Assert.Equal(400, o.PushRetryDelayMilliseconds);
     }
 
@@ -84,8 +81,8 @@ public class RuntimeTimeoutsTests
             "HealthInitialDelaySeconds":15,"BootstrapSettleTimeoutSeconds":16,"NavCommitTimeoutSeconds":17,"NavCallTimeoutSeconds":31,
             "AuthProbeTimeoutSeconds":25,"AuthProbeAttempts":28,"WindowReadyTimeoutSeconds":26,"WindowReadyPollIntervalSeconds":27,
             "IpcServeTimeoutSeconds":18,"IpcAcceptRetryDelaySeconds":19,
-            "VersionProbeTimeoutSeconds":20,"BannerMaxAttempts":21,"BannerRetryDelaySeconds":22,
-            "PushMaxAttempts":23,"PushRetryDelayMilliseconds":24,"CaptionBarRegisterSeconds":29}}
+            "VersionProbeTimeoutSeconds":20,"BannerRetryDelaySeconds":22,
+            "PushMaxAttempts":23,"PushRetryDelayMilliseconds":24}}
             """);
 
         Assert.Equal(3, o.RelayWaitIntervalSeconds);
@@ -114,11 +111,9 @@ public class RuntimeTimeoutsTests
         Assert.Equal(18, o.IpcServeTimeoutSeconds);
         Assert.Equal(19, o.IpcAcceptRetryDelaySeconds);
         Assert.Equal(20, o.VersionProbeTimeoutSeconds);
-        Assert.Equal(21, o.BannerMaxAttempts);
         Assert.Equal(22, o.BannerRetryDelaySeconds);
         Assert.Equal(23, o.PushMaxAttempts);
         Assert.Equal(24, o.PushRetryDelayMilliseconds);
-        Assert.Equal(29, o.CaptionBarRegisterSeconds);
     }
 
     /// <summary>验证部分键覆盖时其余键保持默认；类型不符的键回退默认不影响其余键。</summary>
@@ -126,12 +121,11 @@ public class RuntimeTimeoutsTests
     public void Parse_PartialAndMismatch_KeepsDefaultsForMissingKeys()
     {
         var o = RuntimeTimeouts.Parse("""
-            {"RuntimeTimeouts":{"SpawnTimeoutSeconds":61,"PortProbeTimeoutMilliseconds":"700","BannerMaxAttempts":21}}
+            {"RuntimeTimeouts":{"SpawnTimeoutSeconds":61,"PortProbeTimeoutMilliseconds":"700","PushMaxAttempts":21}}
             """);
 
         Assert.Equal(61, o.SpawnTimeoutSeconds);
         Assert.Equal(500, o.PortProbeTimeoutMilliseconds);
-        Assert.Equal(21, o.BannerMaxAttempts);
         Assert.Equal(1, o.RelayWaitIntervalSeconds);
     }
 
@@ -158,11 +152,11 @@ public class RuntimeTimeoutsTests
     public void Parse_UnrepresentableNumber_KeepsDefaultForThatKey()
     {
         var o = RuntimeTimeouts.Parse("""
-            {"RuntimeTimeouts":{"SpawnTimeoutSeconds":1.5,"BannerMaxAttempts":99999999999,"RelayWaitIntervalSeconds":3}}
+            {"RuntimeTimeouts":{"SpawnTimeoutSeconds":1.5,"PushMaxAttempts":99999999999,"RelayWaitIntervalSeconds":3}}
             """);
 
         Assert.Equal(60, o.SpawnTimeoutSeconds);
-        Assert.Equal(30, o.BannerMaxAttempts);
+        Assert.Equal(15, o.PushMaxAttempts);
         Assert.Equal(3, o.RelayWaitIntervalSeconds);
     }
 
@@ -195,7 +189,7 @@ public class RuntimeTimeoutsTests
         {
             var options = RuntimeTimeouts.Load(dir);
             Assert.Equal(60, options.SpawnTimeoutSeconds);
-            Assert.Equal(30, options.BannerMaxAttempts);
+            Assert.Equal(15, options.PushMaxAttempts);
         }
         finally
         {

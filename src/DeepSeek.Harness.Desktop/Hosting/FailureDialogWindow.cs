@@ -7,7 +7,7 @@ namespace DeepSeek.Harness.Desktop.Hosting;
 
 /// <summary>
 /// 进程内失败面模态窗口（ADR 2026-10-23-avalonia-failure-dialog）：新宿主不再经
-/// <c>zenity</c>/<c>kdialog</c>/<c>osascript</c> 外挂工具弹窗——那套通道随 Ryn 插件退役，
+/// <c>zenity</c>/<c>kdialog</c>/<c>osascript</c> 外挂工具弹窗——壳已不走外挂对话框通道，
 /// 且「工具不在 PATH 就退回页面」的分支在进程内模态下不存在。
 /// 只负责画一屏：标题由窗口标题承担，正文是可选中滚动的只读文本（诊断正文要能被复制），
 /// 两个按钮的语义由调用方给定（退出＝true，留在窗口/false 也是关闭框的缺省）。

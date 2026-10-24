@@ -12,7 +12,7 @@ public class PageHealthMonitorTests
 {
     /// <summary>DOM 形态观测值 → 健康态表判：可见文本长度 0 判 Dead、非零判 Alive，形状读不懂
     /// （含旧观测值、带符号/空白/非十进制的乱值）判 Unknown（不计入探针计数，绝不因读不懂触发恢复）。
-    /// 入参是已解码观测值：带引号的形态（解壳前）判 Unknown——解壳只有 <c>RynProbeValue.Decode</c> 一处。</summary>
+    /// 入参是已解码观测值：带引号的形态（解壳前）判 Unknown——解壳只有 <c>ScriptProbeValue.Decode</c> 一处。</summary>
     [Theory]
     [InlineData("text:0", PageHealth.Dead)]
     [InlineData("text:1", PageHealth.Alive)]

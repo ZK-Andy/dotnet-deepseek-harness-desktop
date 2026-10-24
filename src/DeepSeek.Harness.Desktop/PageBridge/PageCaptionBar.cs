@@ -15,7 +15,7 @@ internal static class PageCaptionBar
     /// <param name="edgeResize">宿主是否提供边缘缩放通道（macOS 由窗口系统代劳，页面不得抢边）。</param>
     /// <returns>注入脚本原文。</returns>
     public static string Script(int captionHeightPx, UiLocale? uiLocale, bool macChrome, bool edgeResize) =>
-        CaptionBar.Build(captionHeightPx, uiLocale, macChrome, CaptionBarChannel.Shell, edgeResize);
+        CaptionBar.Build(captionHeightPx, uiLocale, macChrome, edgeResize);
 
     /// <summary>对当前文档注入顶栏脚本。</summary>
     /// <param name="surface">网页视图可测面。</param>

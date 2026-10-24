@@ -7,11 +7,10 @@
 #     staging」结构性保证，无独立源可比对，故不做 tar 间比对）；
 #   ③主二进制存在且带可执行位——三平台共性（linux/mac 此前只断 Windows 主 exe，
 #     可静默发布「无主程序包」）；
-#   ④原生库 + runtimes/<rid>/native 探测源——三平台同形状检查（根或 runtimes/<rid>/native
-#     任一命中即放行；runtimes 目录本身也必须在，它今天只由 Ryn 包供给，随 G5 摘下该断言）。
+#   ④原生库——三平台同形状检查（内容根顶层必须存在）。
 #     清单 = 宿主实际加载的面：Skia/HarfBuzz、macOS `libAvaloniaNative`、Windows `av_libglesv2`。
-#     Ryn 的 `libsaucer*`/`libryn-pty`/`WebView2Loader` 仍在产物里（G5 摘除包引用）但无运行期
-#     加载路径（Windows WebView2 由控件的 ManagedWebView2Loader 定位已装运行时），不断言。
+#     `runtimes/<rid>/native` 不再要求：Ryn 包摘除后无任何包向该目录供给原生库，宿主只从
+#     内容根顶层加载（Windows WebView2 由控件的 ManagedWebView2Loader 定位已装运行时）。
 #     windows 另断壳托管程序集 + wwwroot（PayloadSmoke 跑在 publish 直出目录，Inno [Files]
 #     漏配时探针照绿、产物照缺，ADR windows-packaging-parity）；
 #   macOS 追加 bundle 元数据：Info.plist 的 CFBundleIconFile 键与 Contents/Resources/icon.icns
@@ -31,10 +30,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 # 夹具：造一个合规内容根（真 tgz，含 package/package.json 与足量填充），按需破坏某一处。
-# 平台原生库按「根 + runtimes/<rid>/native」双份放置，与 publish 直出目录同形；
+# 平台原生库放内容根顶层（宿主实际加载面）；
 # macOS 的 bundle 元数据挂在内容根的上一层 Contents/（Info.plist 与 Resources/icon.icns）。
 _layout_fixture() { # $1=内容根 $2=平台
-  local dir="$1" plat="$2" main="DeepSeek.Harness.Desktop" natives rid contents
+  local dir="$1" plat="$2" main="DeepSeek.Harness.Desktop" natives contents
   [[ "$plat" == windows ]] && main="DeepSeek.Harness.Desktop.exe"
   mkdir -p "$dir/resources/plugins" "$dir/wwwroot"
   printf '%s\n' '{"name":"dsh-desktop-companion"}' >"$dir/package.json"
@@ -50,15 +49,12 @@ _layout_fixture() { # $1=内容根 $2=平台
     windows)
       printf 'x\n' >"$dir/DeepSeek.Harness.Desktop.dll"
       natives=(libSkiaSharp.dll libHarfBuzzSharp.dll av_libglesv2.dll)
-      rid=win-x64
       ;;
-    linux) natives=(libSkiaSharp.so libHarfBuzzSharp.so); rid=linux-x64 ;;
-    macos) natives=(libSkiaSharp.dylib libHarfBuzzSharp.dylib libAvaloniaNative.dylib); rid=osx-arm64 ;;
+    linux) natives=(libSkiaSharp.so libHarfBuzzSharp.so) ;;
+    macos) natives=(libSkiaSharp.dylib libHarfBuzzSharp.dylib libAvaloniaNative.dylib) ;;
   esac
-  mkdir -p "$dir/runtimes/$rid/native"
   for native in "${natives[@]}"; do
     printf 'x\n' >"$dir/$native"
-    printf 'x\n' >"$dir/runtimes/$rid/native/$native"
   done
   if [[ "$plat" == macos ]]; then
     contents="$(dirname "$dir")"; mkdir -p "$contents/Resources"
@@ -94,14 +90,8 @@ layout_self_test() {
   mkdir -p "$tmp/linux/resources/runtime"
   _lt_expect "闭包残留 resources/runtime 判红" fail linux "$tmp/linux"
   rmdir "$tmp/linux/resources/runtime"
-  rm -f "$tmp/linux/libSkiaSharp.so" "$tmp/linux/runtimes/linux-x64/native/libSkiaSharp.so"
+  rm -f "$tmp/linux/libSkiaSharp.so"
   _lt_expect "linux 缺原生库判红" fail linux "$tmp/linux"
-  _layout_fixture "$tmp/linux2" linux
-  rm -rf "$tmp/linux2/runtimes"
-  _lt_expect "linux 缺 runtimes 探测源判红" fail linux "$tmp/linux2"
-  _layout_fixture "$tmp/linux3" linux
-  rm -f "$tmp/linux3"/libSkiaSharp.so "$tmp/linux3"/libHarfBuzzSharp.so
-  _lt_expect "linux 仅 runtimes 探测面有原生库放行" pass linux "$tmp/linux3"
   local mac="$tmp/macos/App.app/Contents/MacOS"
   _layout_fixture "$mac" macos
   _lt_expect "macos 合规内容根放行" pass macos "$mac"
@@ -114,7 +104,7 @@ layout_self_test() {
   printf '<plist version="1.0"><dict/></plist>\n' >"$tmp/macos/App.app/Contents/Info.plist"
   _lt_expect "macos Info.plist 缺 CFBundleIconFile 判红" fail macos "$mac"
   _layout_fixture "$mac" macos
-  rm -f "$mac/libSkiaSharp.dylib" "$mac/runtimes/osx-arm64/native/libSkiaSharp.dylib"
+  rm -f "$mac/libSkiaSharp.dylib"
   _lt_expect "macos 缺原生库判红" fail macos "$mac"
   _layout_fixture "$mac" macos
   rm -f "$tmp/macos/App.app/Contents/Info.plist"
@@ -122,12 +112,9 @@ layout_self_test() {
   _layout_fixture "$mac" macos
   printf '<plist version="1.0"><dict><key>CFBundleIconFile</key><string>icon.icns.bak</string></dict></plist>\n' >"$tmp/macos/App.app/Contents/Info.plist"
   _lt_expect "macos CFBundleIconFile 值非精确 icon.icns 判红" fail macos "$mac"
-  _layout_fixture "$mac" macos
-  rm -rf "$mac/runtimes"
-  _lt_expect "macos 缺 runtimes 探测源判红" fail macos "$mac"
   _layout_fixture "$tmp/win" windows
   _lt_expect "windows 合规内容根放行" pass windows "$tmp/win"
-  rm -f "$tmp/win/libSkiaSharp.dll" "$tmp/win/runtimes/win-x64/native/libSkiaSharp.dll"
+  rm -f "$tmp/win/libSkiaSharp.dll"
   _lt_expect "windows 缺原生库判红" fail windows "$tmp/win"
   _layout_fixture "$tmp/win2" windows
   rm -rf "$tmp/win2/wwwroot"
@@ -209,24 +196,16 @@ else
   echo "  ok: 主程序 $main_bin"
 fi
 
-# ④原生库 + runtimes 探测源（内容源即 staging；宿主加载 Avalonia 渲染栈与 WebView2 loader，
-#   缺了要到首帧才炸）+ 平台追加面：Windows 壳托管程序集/wwwroot，macOS bundle 元数据
+# ④原生库（内容源即 staging；宿主加载 Avalonia 渲染栈与 WebView2 loader，缺了要到首帧才炸）
+#   + 平台追加面：Windows 壳托管程序集/wwwroot，macOS bundle 元数据
 case "$PLATFORM" in
-  linux) natives=(libSkiaSharp.so libHarfBuzzSharp.so)
-    rid_glob="linux-*" label="Linux" ;;
-  macos) natives=(libSkiaSharp.dylib libHarfBuzzSharp.dylib libAvaloniaNative.dylib)
-    rid_glob="osx-*" label="macOS" ;;
-  windows) natives=(libSkiaSharp.dll libHarfBuzzSharp.dll av_libglesv2.dll)
-    rid_glob="win-*" label="Windows" ;;
+  linux) natives=(libSkiaSharp.so libHarfBuzzSharp.so); label="Linux" ;;
+  macos) natives=(libSkiaSharp.dylib libHarfBuzzSharp.dylib libAvaloniaNative.dylib); label="macOS" ;;
+  windows) natives=(libSkiaSharp.dll libHarfBuzzSharp.dll av_libglesv2.dll); label="Windows" ;;
 esac
 for native in "${natives[@]}"; do
-  if [[ ! -f "$TARGET/$native" ]] && ! compgen -G "$TARGET/runtimes/$rid_glob/native/$native" >/dev/null; then
-    errors+=("$label staging 缺原生库: $native（根与 runtimes/$rid_glob/native 均无）")
-  fi
+  [[ -f "$TARGET/$native" ]] || errors+=("$label staging 缺原生库: $native（内容根顶层）")
 done
-if ! compgen -G "$TARGET/runtimes/$rid_glob/native" >/dev/null; then
-  errors+=("$label staging 缺 runtimes/$rid_glob/native（原生库探测面之一；Ryn 包摘除后随 G5 收口）")
-fi
 if [[ "$PLATFORM" == "windows" ]]; then
   [[ -f "$TARGET/DeepSeek.Harness.Desktop.dll" ]] || errors+=("Windows staging 缺壳托管程序集: DeepSeek.Harness.Desktop.dll")
   [[ -d "$TARGET/wwwroot" ]] || errors+=("Windows staging 缺 wwwroot（首屏壳页面）")
@@ -239,7 +218,7 @@ elif [[ "$PLATFORM" == "macos" ]]; then
   fi
   [[ -f "$bundle/Resources/icon.icns" ]] || errors+=("macOS 包缺应用图标: $bundle/Resources/icon.icns（CFBundleIconFile 指向它）")
 fi
-[[ ${#errors[@]} -gt 0 ]] || echo "  ok: $label 包内容（主程序/原生库/runtimes）"
+[[ ${#errors[@]} -gt 0 ]] || echo "  ok: $label 包内容（主程序/原生库）"
 
 if [[ ${#errors[@]} -gt 0 ]]; then
   error "包内容布局断言失败（${#errors[@]} 项，platform=${PLATFORM}）："

@@ -54,9 +54,6 @@ public static class HostCommandIds
     /// <summary>恢复页：退出应用（先批准关窗闸门再关窗）。</summary>
     public const string RecoveryExit = "desktop.recovery.exit";
 
-    /// <summary>托盘事件（页面→宿主：菜单点击等）。</summary>
-    public const string TrayEvent = "desktop.tray.event";
-
     /// <summary>外部链接打开失败（宿主→页面事件，companion 渲染 toast）。</summary>
     public const string ExternalLinkOpenerFailed = "desktop.externalLinkOpenerFailed";
 
@@ -78,6 +75,6 @@ public static class HostCommandIds
     /// <summary>窗口：进入/退出原生全屏（macOS 绿灯语义）。</summary>
     public const string WindowSetFullscreen = "window.setFullscreen";
 
-    /// <summary>外部链接打开（Ryn 注入脚本与导航层的通用入口；非 <c>desktop.</c> 前缀是上游约定）。</summary>
+    /// <summary>外部链接打开（导航层与页面脚本的通用入口；非 <c>desktop.</c> 前缀是上游约定）。</summary>
     public const string OpenExternal = "app.openExternal";
 }

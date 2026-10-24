@@ -11,8 +11,8 @@ public interface IFailureDialog
     bool IsAvailable { get; }
 
     /// <summary>展示失败模态并等待用户处置（实现方不阻塞调用线程：模态是同步原语）。
-    /// <b>契约要害</b>：false 同时表示「用户否定」与「通道故障」（Ryn 插件在 Linux 探不到工具、进程起不来、
-    /// 非三平台、osascript 出错时一律回 false），故调用方<b>不得</b>把 false 当破坏性动作的许可——
+    /// <b>契约要害</b>：false 同时表示「用户否定」与「通道故障」（模态建不起来/宿主窗口已关时一律回 false），
+    /// 故调用方<b>不得</b>把 false 当破坏性动作的许可——
     /// 破坏性动作只许挂在显式 true 上（壳侧据此把退出只挂「是」分支）。</summary>
     /// <param name="title">对话框标题。</param>
     /// <param name="message">对话框正文（失败原因 + 尾部 + 诊断包路径 + 动作说明）。</param>

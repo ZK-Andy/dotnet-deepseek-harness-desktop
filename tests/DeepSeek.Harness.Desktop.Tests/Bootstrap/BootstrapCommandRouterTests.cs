@@ -1,5 +1,4 @@
 using DeepSeek.Harness.Desktop.Core.Ipc;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.Bootstrap;
 
@@ -15,17 +14,17 @@ public class BootstrapCommandRouterTests
         var router = new BootstrapCommandRouter(gate);
         Assert.True(router.CanRoute(HostCommandIds.BootstrapRetry));
         Assert.False(router.CanRoute(HostCommandIds.RecoveryExit));
-        ValueTask<string> result = router.RouteAsync(HostCommandIds.BootstrapRetry, default, null!, CancellationToken.None);
+        ValueTask<string> result = router.RouteAsync(HostCommandIds.BootstrapRetry, default, CancellationToken.None);
         Assert.True(result.IsCompletedSuccessfully);
         Assert.True(gate.IsSignaled);
     }
 
-    /// <summary>验证路由未注册命令 desktop.unknown 抛 RynCommandNotFoundException。</summary>
+    /// <summary>验证路由未注册命令 desktop.unknown 抛 CommandNotFoundException。</summary>
     [Fact]
     public async Task Router_UnknownCommand_ThrowsRynCommandNotFound()
     {
         var router = new BootstrapCommandRouter(new RuntimeBootstrapGate());
-        await Assert.ThrowsAsync<RynCommandNotFoundException>(
-            () => router.RouteAsync("desktop.unknown", default, null!, CancellationToken.None).AsTask());
+        await Assert.ThrowsAsync<CommandNotFoundException>(
+            () => router.RouteAsync("desktop.unknown", default, CancellationToken.None).AsTask());
     }
 }

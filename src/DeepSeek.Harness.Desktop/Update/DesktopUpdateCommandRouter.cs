@@ -1,11 +1,10 @@
 using DeepSeek.Harness.Desktop.Core.Ipc;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Update;
 
 /// <summary>
 /// 宿主命令路由：<c>desktop.update.getState / check / install</c>。
-/// 插件客户端经 <c>window.__ryn.invoke</c> 调用；状态变化另由宿主主动推 CustomEvent 进页面。
+/// 插件客户端经 <c>window.__shell.invoke</c> 调用；状态变化另由宿主主动推 CustomEvent 进页面。
 /// </summary>
 public sealed class DesktopUpdateCommandRouter : ICommandRouter
 {
@@ -31,11 +30,11 @@ public sealed class DesktopUpdateCommandRouter : ICommandRouter
         command is HostCommandIds.UpdateGetState or HostCommandIds.UpdateCheck or HostCommandIds.UpdateInstall;
 
     /// <inheritdoc />
-    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
+    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, CancellationToken cancellationToken)
     {
         if (!CanRoute(command))
         {
-            throw new RynCommandNotFoundException(command);
+            throw new CommandNotFoundException(command);
         }
 
         switch (command)
@@ -62,7 +61,7 @@ public sealed class DesktopUpdateCommandRouter : ICommandRouter
             case HostCommandIds.UpdateInstall:
                 return RouteInstallAsync(_backgroundToken?.Invoke() ?? CancellationToken.None);
             default:
-                throw new RynCommandNotFoundException(command);
+                throw new CommandNotFoundException(command);
         }
     }
 

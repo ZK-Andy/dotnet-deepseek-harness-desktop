@@ -9,11 +9,11 @@ namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 /// </summary>
 public class ShellBridgeScriptTests
 {
-    /// <summary>注入脚本携带 nonce、桥回调与顶栏数据。</summary>
+    /// <summary>注入脚本携带 nonce 与桥回调。</summary>
     [Fact]
-    public void Build_CarriesNonceAndTitlebar()
+    public void Build_CarriesNonceAndBridge()
     {
-        string script = ShellBridgeScript.Build("abc123", macChrome: true, captionHeightPx: 52);
+        string script = ShellBridgeScript.Build("abc123");
 
         Assert.Contains("\"abc123\"", script, StringComparison.Ordinal);
         Assert.Contains("window.__shell=", script, StringComparison.Ordinal);
@@ -21,16 +21,6 @@ public class ShellBridgeScriptTests
         Assert.Contains("_emit", script, StringComparison.Ordinal);
         Assert.Contains("invokeCSharpAction", script, StringComparison.Ordinal);
         Assert.Contains("post({v:" + ShellBridgeProtocol.Version, script, StringComparison.Ordinal);
-        Assert.Contains("__shell_titlebar={mac:true,height:52}", script, StringComparison.Ordinal);
-    }
-
-    /// <summary>非 macOS 形态的顶栏数据。</summary>
-    [Fact]
-    public void Build_MarksNonMacTitlebar()
-    {
-        string script = ShellBridgeScript.Build("n", macChrome: false, captionHeightPx: 44);
-
-        Assert.Contains("__shell_titlebar={mac:false,height:44}", script, StringComparison.Ordinal);
     }
 
     /// <summary>合法 JSON 载荷原样内嵌为表达式。</summary>

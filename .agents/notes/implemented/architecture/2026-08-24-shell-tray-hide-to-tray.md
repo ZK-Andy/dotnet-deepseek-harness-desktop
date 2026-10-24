@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 失效：companion 哑中继、`desktop.tray.event` 命令与 `TrayMenuActions.TryResolve`（旧宿主托盘事件链已删；Avalonia 托盘是原生回调，菜单模型只保留 `BuildEntries`）；保留：hide-to-tray 的关窗闸门、偏好语义与退出契约。见 [avalonia-g5-ryn-host-retirement](2026-10-24-avalonia-g5-ryn-host-retirement.md)。正文不动。
+
 ## Problem
 
 批次三剩余两项：①系统托盘（图标 + 菜单：显示主窗/检查更新/退出）——常驻壳层的标配入口，共享 home 后桌面端数据价值上升，用户需要不依赖任务栏的召回与退出通道；②关闭最小化到托盘——点 X 默认隐藏、托盘可召回，托盘菜单才真正退出。前置功课已齐：`Ryn.Plugins.Tray 0.30.1` API 面实证（`IconPath`/`SetMenu`/`Show`）、`IRynWindow.Closing` 可取消关窗实证（`WindowClosingEventArgs.Cancel → SAUCER_POLICY_BLOCK`）、上游源码确认插件初始化按 DI 注册顺序执行。

@@ -9,7 +9,7 @@ public class CompanionLocaleCommandRouterTests
 {
     private static ValueTask<string> RouteAsync(CompanionLocaleCommandRouter router, string json) =>
         router.RouteAsync(CompanionLocaleCommandRouter.CommandName,
-            new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(json)), null!, CancellationToken.None);
+            new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(json)), CancellationToken.None);
 
     /// <summary>验证合法 locale 上报更新 UiLocale.Current 并恰好触发一次 Changed 事件，返回空对象帧 {}。</summary>
     [Fact]

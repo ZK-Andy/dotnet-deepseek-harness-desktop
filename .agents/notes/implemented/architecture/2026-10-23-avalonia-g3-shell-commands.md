@@ -6,7 +6,7 @@ Review: FULL/2026-10-23#3/R1=ok R2=ok R3=ok
 
 ## Problem
 
-G3 的目标状态是命令面十二条路由齐（[avalonia-host-migration](../../proposed/architecture/2026-10-22-avalonia-host-migration.md) 阶段表）。G2 只把页面桥域四条
+G3 的目标状态是命令面十二条路由齐（[avalonia-host-migration](2026-10-22-avalonia-host-migration.md) 阶段表）。G2 只把页面桥域四条
 （外链、UI 语言、伴生语言、伴生报障）接进了新宿主，窗口命令由顶栏片追加；旧宿主的
 `AutostartCommandRouter` / `CloseToTrayCommandRouter` / `DesktopDiagnosticsCommandRouter` 注册在 Ryn 容器里，
 Avalonia 入口没有容器，也没有对应端口装配——伴生插件「桌面」设置区的开机自启开关、关闭到托盘开关、

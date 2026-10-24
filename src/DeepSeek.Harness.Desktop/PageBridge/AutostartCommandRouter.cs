@@ -1,7 +1,6 @@
 using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Core.Platform;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
@@ -28,11 +27,11 @@ public sealed class AutostartCommandRouter : ICommandRouter
         command is HostCommandIds.AutostartGetState or HostCommandIds.AutostartSet;
 
     /// <inheritdoc />
-    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
+    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, CancellationToken cancellationToken)
     {
         if (!CanRoute(command))
         {
-            throw new RynCommandNotFoundException(command);
+            throw new CommandNotFoundException(command);
         }
 
         try
@@ -47,7 +46,7 @@ public sealed class AutostartCommandRouter : ICommandRouter
                     _log?.Invoke($"[host] 开机自启已{(now ? "启用" : "停用")}");
                     return ValueTask.FromResult(Frame(now));
                 default:
-                    throw new RynCommandNotFoundException(command);
+                    throw new CommandNotFoundException(command);
             }
         }
         catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException or IOException or UnauthorizedAccessException)

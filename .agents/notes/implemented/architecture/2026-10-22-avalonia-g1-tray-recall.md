@@ -46,7 +46,7 @@ G0 只把窗口点亮（[avalonia-g0-entry-switch](2026-10-22-avalonia-g0-entry-
 
 ## Related
 
-- [avalonia-host-migration](../../proposed/architecture/2026-10-22-avalonia-host-migration.md)：迁移阶段表；本片是 G1 的首批。
+- [avalonia-host-migration](2026-10-22-avalonia-host-migration.md)：迁移阶段表；本片是 G1 的首批。
 - [avalonia-g0-entry-switch](2026-10-22-avalonia-g0-entry-switch.md)：上一片。
 - [shell-tray-hide-to-tray](2026-08-24-shell-tray-hide-to-tray.md)：旧宿主托盘与 `CloseGate` 语义的出处。
 - [single-instance-launcher-activation](2026-08-26-single-instance-launcher-activation.md)：二启仲裁与唤回协议。

@@ -1,6 +1,5 @@
 using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
@@ -66,9 +65,8 @@ internal interface IWindowCommands
 }
 
 /// <summary>
-/// <c>window.*</c> 命令路由（ADR 2026-10-23-avalonia-caption-bar）：Ryn 宿主里这些是 Ryn 窗口能力
-/// （<c>ryn.json</c> 的 <c>window</c> 节）的语义；新宿主没有那层能力闸，改由本路由承接同一批命令名，
-/// 页面侧脚本因此只换通道不换语义。参数帧经源生成上下文（<see cref="AppJsonContext"/>），
+/// <c>window.*</c> 命令路由（ADR 2026-10-23-avalonia-caption-bar）：拖拽/缩放/最大化/最小化/关闭/
+/// 全屏六条命令名在此承接，页面侧脚本与命令名保持稳定。参数帧经源生成上下文（<see cref="AppJsonContext"/>），
 /// 解析失败回错误帧而不是抛 IPC 异常——页面按 error 展示。
 /// </summary>
 internal sealed class WindowCommandRouter : ICommandRouter
@@ -107,7 +105,7 @@ internal sealed class WindowCommandRouter : ICommandRouter
 
     /// <inheritdoc />
     public ValueTask<string> RouteAsync(
-        string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
+        string command, ReadOnlyMemory<byte> args, CancellationToken cancellationToken)
     {
         switch (command)
         {
@@ -156,7 +154,7 @@ internal sealed class WindowCommandRouter : ICommandRouter
                 return ValueTask.FromResult("{}");
 
             default:
-                throw new RynCommandNotFoundException(command);
+                throw new CommandNotFoundException(command);
         }
     }
 

@@ -14,7 +14,7 @@ public sealed partial class DshShellForward
     // 回环调用上限：dsh 同机响应毫秒级，30s 只防挂死（非用户可调行为，不进 RuntimeTimeouts）。
     private static readonly TimeSpan s_rpcTimeout = TimeSpan.FromSeconds(30);
 
-    // 转发体上限：与 Ryn 本地 IPC 服务同口径（32MB），超限 loud 502（不抛，页面看错误体）。
+    // 转发体上限：32MB（防御性上界），超限 loud 502（不抛，页面看错误体）。
     internal const long MaxBodyBytes = 32L * 1024 * 1024;
 
     // 转发跟 303 上限：dsh 铸币链只一跳，多跳即异常形态，loud 502。

@@ -93,9 +93,6 @@ public sealed record RuntimeTimeouts
     /// <summary>版本探测超时（秒）。版本底线本身是协议不变量，不在此列。</summary>
     public int VersionProbeTimeoutSeconds { get; init; } = 8;
 
-    /// <summary>横幅注入重试上限（次）。</summary>
-    public int BannerMaxAttempts { get; init; } = 30;
-
     /// <summary>横幅注入重试节拍（秒）。</summary>
     public int BannerRetryDelaySeconds { get; init; } = 1;
 
@@ -104,12 +101,6 @@ public sealed record RuntimeTimeouts
 
     /// <summary>进度/状态推送重试节拍（毫秒）。</summary>
     public int PushRetryDelayMilliseconds { get; init; } = 400;
-
-    /// <summary>顶栏脚本注册的到点预算（秒，节拍沿用 <see cref="PushRetryDelayMilliseconds"/>，按
-    /// <c>ceil(本值 / 节拍)</c> 折算成尝试次数）：按次数计的 6s 预算不够 mac x64（Rosetta）下的 webview
-    /// 创建（发版腿实证重试耗尽后 2s 才导航到达），故改到点（ADR frameless-uniform-caption-bar）。
-    /// 0 = 停用该注册路（不尝试）；节拍非正值时预算不可度量，按单次尝试处理。</summary>
-    public int CaptionBarRegisterSeconds { get; init; } = 60;
 
     /// <summary>从应用旁的 appsettings.json 读取 <c>RuntimeTimeouts</c> 节；文件缺失或节缺失时全默认；
     /// 文件不可读/损坏/取值不可用也回退全默认并留痕，不阻塞启动。</summary>
@@ -155,11 +146,9 @@ public sealed record RuntimeTimeouts
         options = options with { IpcServeTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(IpcServeTimeoutSeconds), options.IpcServeTimeoutSeconds) };
         options = options with { IpcAcceptRetryDelaySeconds = ConfigSectionJson.GetInt(section, nameof(IpcAcceptRetryDelaySeconds), options.IpcAcceptRetryDelaySeconds) };
         options = options with { VersionProbeTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(VersionProbeTimeoutSeconds), options.VersionProbeTimeoutSeconds) };
-        options = options with { BannerMaxAttempts = ConfigSectionJson.GetInt(section, nameof(BannerMaxAttempts), options.BannerMaxAttempts) };
         options = options with { BannerRetryDelaySeconds = ConfigSectionJson.GetInt(section, nameof(BannerRetryDelaySeconds), options.BannerRetryDelaySeconds) };
         options = options with { PushMaxAttempts = ConfigSectionJson.GetInt(section, nameof(PushMaxAttempts), options.PushMaxAttempts) };
         options = options with { PushRetryDelayMilliseconds = ConfigSectionJson.GetInt(section, nameof(PushRetryDelayMilliseconds), options.PushRetryDelayMilliseconds) };
-        options = options with { CaptionBarRegisterSeconds = ConfigSectionJson.GetInt(section, nameof(CaptionBarRegisterSeconds), options.CaptionBarRegisterSeconds) };
         return options;
     }
 }

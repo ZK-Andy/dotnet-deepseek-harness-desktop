@@ -3,8 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Core.Platform;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Hosting;
 
@@ -28,6 +28,7 @@ internal sealed class ShellApplication : Application
     private readonly CloseGate _closeGate;
     private readonly UpdateSurface _updates;
     private readonly Action _closeWindow;
+    private readonly StartupNoticeService _notices;
     private ShellRecoveryAssembly? _recovery;
     private bool _platformShutdown;
     private volatile ShellTray? _tray;
@@ -69,6 +70,7 @@ internal sealed class ShellApplication : Application
     /// <param name="closeGate">关窗闸门（失败面/托盘/恢复页/自更新安装共用的同一放行点）。</param>
     /// <param name="updates">自更新面（ADR avalonia-g3-update-surface：命令路由、启动检查与托盘检查动作）。</param>
     /// <param name="closeWindow">主窗关窗投递（退出管道、自更新安装与恢复页退出共用同一份）。</param>
+    /// <param name="notices">启动期告知（版本底线/非受控退出横幅；起步收口后触发）。</param>
     public ShellApplication(
         ShellStartup startup,
         bool devTools,
@@ -84,7 +86,8 @@ internal sealed class ShellApplication : Application
         ShellRecoveryContext recoveryContext,
         CloseGate closeGate,
         UpdateSurface updates,
-        Action closeWindow)
+        Action closeWindow,
+        StartupNoticeService notices)
     {
         _startup = startup;
         _devTools = devTools;
@@ -101,6 +104,7 @@ internal sealed class ShellApplication : Application
         _closeGate = closeGate;
         _updates = updates;
         _closeWindow = closeWindow;
+        _notices = notices;
     }
 
     /// <inheritdoc />
@@ -293,6 +297,13 @@ internal sealed class ShellApplication : Application
             _recoveryContext.Bootstrap.Cancel();
             return;
         }
+
+        // 启动期告知（版本底线/非受控退出横幅）：与监督并行；取消随监督器，异常留痕（增强面不炸启动）。
+        _ = _notices.RunAsync(ct).ContinueWith(
+            t => HostLog.Write($"[host] 启动期告知异常退出：{t.Exception}"),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 
         Task supervision = recovery.Supervision.RunAsync(_recoveryContext.Host, ct);
         _recoveryContext.SupervisionTask = supervision;

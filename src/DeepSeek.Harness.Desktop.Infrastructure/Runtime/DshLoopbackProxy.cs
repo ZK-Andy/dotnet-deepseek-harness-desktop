@@ -4,13 +4,12 @@ using System.Net.Sockets;
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
 /// <summary>回环转发代理（ADR loopback-forward-proxy）：loopback 纯监听的最小 HTTP/1.1 转发器，
-/// 把页面流量按铸币路由送往 dsh。SSE/未知长度流式直通（Ryn scheme 通道必物化，流只能走 http 源）；
-/// Ryn IPC（`/ipc/*`）不经过本代理（Ryn dev-server 分支给页面注绝对 `_ipcBase`，直连 Ryn 服）。
+/// 把页面流量按铸币路由送往 dsh。SSE/未知长度流式直通（页面只经 http 源取流）。
 /// 信任边界 = loopback 绑定本身（非回环不可达）；token/cookie 不出本机。
 /// 中继面（受理/路由/回写）在 <c>DshLoopbackProxy.Relay.cs</c>（partial，ADR 尺寸健康闸 F1）。</summary>
 public sealed partial class DshLoopbackProxy : IDisposable
 {
-    // 请求头上限：Ryn 本地 IPC 服务同口径（32KB），超限 loud 502。
+    // 请求头上限：32KB（防御性上界），超限 loud 502。
     private readonly DshShellForward _forward;
     private readonly Action<string> _log;
     private readonly HttpClient _client;
@@ -31,7 +30,7 @@ public sealed partial class DshLoopbackProxy : IDisposable
     /// <summary>代理源（窗口 URL 与探针/守卫口径家；端口记忆优先、冲突 OS 分配，构造即绑定）。</summary>
     public Uri Url { get; }
 
-    /// <summary>代理 origin（authority 形；Ryn dev-server 分支的 CORS 信任单位）。</summary>
+    /// <summary>代理 origin（authority 形；页面桥的壳 origin 判据单位）。</summary>
     public string Origin => Url.GetLeftPart(UriPartial.Authority);
 
     /// <summary>启动回环代理源并返回结果对象（装配面值流：消费段收参，不再借装配面字段回填——
@@ -106,7 +105,7 @@ public sealed partial class DshLoopbackProxy : IDisposable
         _listener = BindListener(preferredPort, persistPort);
         int port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         Url = new Uri($"http://localhost:{port}/", UriKind.Absolute);
-        log($"[shell] 代理源就绪：{Origin}（回环独占；dsh 内容经此源，Ryn IPC 走 Ryn 服）");
+        log($"[shell] 代理源就绪：{Origin}（回环独占；dsh 内容经此源）");
     }
 
     /// <summary>代理端口绑定序列（ADR shell-proxy-port-persistence）：有记忆试绑记忆端口（成功即用，

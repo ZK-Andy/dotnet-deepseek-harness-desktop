@@ -1,6 +1,6 @@
 # Architecture
 
-> 现状。宿主层正从 `Ryn` 迁向 Avalonia 12.1.x：G0、G1 首批与 G2 页面桥已落地（Avalonia 窗口 + 原生 WebView），失败面、顶栏、G3 命令面与崩溃监督/首启引导/恢复页已接（ADR `2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision`）。
+> 现状。宿主 = Avalonia 12.1.x（窗口 + `Avalonia.Controls.WebView` 原生网页视图）；旧 Ryn 宿主已随迁移收尾下线（ADR `2026-10-22-avalonia-host-migration`、`2026-10-24-avalonia-g5-ryn-host-retirement`）。
 
 ## 概览
 
@@ -11,17 +11,17 @@
 
 ## 分层与装配面
 
-* 三工程：`Core`（纯逻辑，零外层引用）/ `Infrastructure`（Ryn、dsh 进程、文件/网络、更新适配器）/ 壳工程（Presentation + 装配面）。
-* **装配面只装配**（ADR `2026-09-28-compose-root-form-separation` + `2026-10-08-composition-mechanism-container-assembly`；规范见 [architecture-standards](architecture-standards.md) R1，语义闸 `verify-compose-root.py`）：`Program.cs` 薄壳 + `DesktopAdapter.cs` 只保留容器前的启动头部 + 根集内唯一 dot 分部 `DesktopAdapter.App.cs` 按域注册；接线层另计（`Bootstrap/StartupSequence*`）同样只装配。启动编排由容器组装对象图：`Bootstrap.StartupSequence` 是**排序器**——构造参数经容器解图、入口按序触发用例（起步/导航/监督/顶栏/告知/退出编排），唯一显式供给项是 Build 后产出；入口桥一处（ADR `entry-bridge-two-phase`），阶段产出为正式类型（`Preflight` 等），排序器形状由 C6 断言。
-* **端口在 Core，实现按触面落 Infrastructure 或壳工程**：`IRuntimeHost`（监督，ADR `2026-09-28-runtime-supervisor-core-port`）、`IReleaseFeed`/`IPackageDownloader`/`IPackageInstaller`/`IUpdateEnvironment`（自更新，ADR `2026-09-28-update-coordinator-core-port`）、`IFirstBootBootstrap` 落 Infrastructure；触 Ryn/UI 的 `IWebViewNavigator`/`IRecoverySurface`/`IMintEpoch`（导航/失败面/铸币态，ADR `2026-10-15-startup-usecases-sink-to-core`）适配器落 Presentation（理由见 [architecture-standards](architecture-standards.md) R3）；各用例一律构造注入（端口 + 委托注入）。
+* 三工程：`Core`（纯逻辑，零外层引用）/ `Infrastructure`（dsh 进程、文件/网络、更新适配器）/ 壳工程（Presentation + 装配面）。
+* **装配面只装配**（规范见 [architecture-standards](architecture-standards.md) R1，语义闸 `verify-compose-root.py`）：根集 = `Program.cs`（触发）+ `Hosting/AvaloniaHost.cs`（装配头）；运行期接线在 `Hosting/ShellWiringRegistration.cs` 与 `Bootstrap/PreBuildRegistration.cs`（装配面在册，成员清单 C2 封闭）。装配头只按序调用注册处产物，构造清单由 C5/C7 封闭；域内注册/装配仍按目录即命名空间下沉。
+* **端口在 Core，实现按触面落 Infrastructure 或壳工程**：`IRuntimeHost`（监督，ADR `2026-09-28-runtime-supervisor-core-port`）、`IReleaseFeed`/`IPackageDownloader`/`IPackageInstaller`/`IUpdateEnvironment`（自更新，ADR `2026-09-28-update-coordinator-core-port`）、`IFirstBootBootstrap` 落 Infrastructure；触 UI 的 `IWebViewNavigator`/`IRecoverySurface`/`IMintEpoch`（导航/失败面/铸币态，ADR `2026-10-15-startup-usecases-sink-to-core`）适配器落 Presentation（理由见 [architecture-standards](architecture-standards.md) R3）；各用例一律构造注入（端口 + 委托注入）。
 
 * **跨包契约**：命令 ID 单一事实源 `Core/Ipc/HostCommandIds`（门禁 `verify-host-command-ids.py`：壳侧不复写、插件侧不自造）；Core 不做文件/环境 IO（IO 经端口，适配器落 Infrastructure，门禁 `verify-core-purity.py` 机器化）；宿主平台面端口 `IAutostart`/`ISystemBrowser` 落 Infrastructure。
 
 ## 启动模型：回环代理源
 
-* **窗口 URL 恒为回环代理源**（ADR `loopback-forward-proxy`）：`DshLoopbackProxy`（`TcpListener` 纯 loopback）在 `BuildApp` 前启动，逐请求向 dsh authority 转发；绑定失败 loud 后降级为空窗（wwwroot 降级随 G1）。**代理端口跨冷启动记忆**（`.dsh-shell-port`，ADR `2026-09-30-shell-proxy-port-persistence`）：有记忆试绑、被占 loud 降级并重记——origin 稳定，dsh 会话 localStorage 才能跨重启命中恢复。**启动链零 host 导航**——dsh 未就绪时代理本地端点出 holder 页（自 `fetch` 就绪后自 `reload`），绕开 saucer `set_url` 同步原生挂家族；`/__shell_ready` 长轮询铸币门、`/__shell_guide/*` 磁盘指南页。
+* **窗口 URL 恒为回环代理源**（ADR `loopback-forward-proxy`）：`DshLoopbackProxy`（`TcpListener` 纯 loopback）在建窗前启动，逐请求向 dsh authority 转发；绑定失败 loud 后降级为空窗。**代理端口跨冷启动记忆**（`.dsh-shell-port`，ADR `2026-09-30-shell-proxy-port-persistence`）：有记忆试绑、被占 loud 降级并重记——origin 稳定，dsh 会话 localStorage 才能跨重启命中恢复。**启动链零 host 导航**——dsh 未就绪时代理本地端点出 holder 页（自 `fetch` 就绪后自 `reload`），绕开原生 WebView 的同步导航；`/__shell_ready` 长轮询铸币门、`/__shell_guide/*` 磁盘指南页。
 * **铸币与转发**：`DshShellForward.MintAsync` 用 token 铸 cookie（`redirect: manual`）；代理贴壳 cookie 转发、`Set-Cookie` 永不回页面、SSE 流式直通、POST content 头保真；WS 升级走裸 TCP 隧道 + 头手术（`Host`/`Origin`/`Referer` 同源 dsh authority，页源三值零透传，ADR `2026-09-27-upgrade-tunnel-host-authority`）。日志只记状态码/头名/字节数，token/cookie 值不落盘。
-* **落定与裁决**：`Core.Ui.MainUiEntry` 探针采 `location.origin` + 可见文本，`Core.WebAuthRecovery.ClassifyDetail` 三态裁决（`PageVerdict`：healthy/auth/unknown）；holder 标记排除、探针有限重试（`RuntimeTimeouts.AuthProbeAttempts`）。窗口导航面：首载与 origin 变化随页面生命周期；宿主主动导航两处——引导期鉴权重载（`IWebViewNavigator`）、页面健康 reload（各宿主自有通道）；恢复路径**按承载面**决定——原生失败面不碰活动页 DOM 故不导航，回落页内恢复面覆写过 DOM，恢复成功后仍补一次回代理根的收口导航（ADR `2026-10-14-native-failure-surface`）。
+* **落定与裁决**：`Core.Ui.MainUiEntry` 探针采 `location.origin` + 可见文本，`Core.WebAuthRecovery.ClassifyDetail` 三态裁决（`PageVerdict`：healthy/auth/unknown）；holder 标记排除、探针有限重试（`RuntimeTimeouts.AuthProbeAttempts`）。窗口导航面：首载与 origin 变化随页面生命周期；宿主主动导航两处——引导期鉴权重载（`IWebViewNavigator`）、页面健康 reload（页面桥求值端口）；恢复路径**按承载面**决定——原生失败面不碰活动页 DOM 故不导航，回落页内恢复面覆写过 DOM，恢复成功后仍补一次回代理根的收口导航（ADR `2026-10-14-native-failure-surface`）。
 * **Windows 启动前置**：建窗前探测 WebView2，缺失即提示退出（ADR `2026-10-24-avalonia-g4-webview2-preflight`）。
 
 ## 运行时来源（系统全局 node + 全局 dsh）
@@ -31,7 +31,7 @@
 
 ## 监督、单实例与退出
 
-* `Core.RuntimeSupervisor`（编排住 `Core.Bootstrap.RuntimeSupervision`）经 `IRuntimeHost` 端口监督子进程：退出 → 失败面 → `RestartAsync` → 恢复回调 `onRecovered` 只重验铸币态（重启复用记忆端口保 `origin`），**原生承载下不代发窗口导航**（回落页内恢复面覆写过 DOM 时仍补一次收口导航）——窗口恒驻代理根，回来这一步交页内自刷与客户端原地重连（ADR `2026-10-14-native-failure-surface`）。**失败面承载**：原生对话框优先（`Ryn.Plugins.Dialog`：Windows `MessageBoxW` / macOS `osascript` / Linux `zenity`|`kdialog`；动作面＝继续自动恢复；退出只挂显式「是」（插件通道故障恒回否 ⇒ 落回继续恢复）），无对话框工具或原生通道故障时回落页内恢复面（`RecoveryPageBuilder`，覆写 DOM ⇒ 恢复后补收口导航）；原生承载下诊断包自动导出并把路径写进对话框（求助路径）；新宿主改用进程内模态（`FailureDialogWindow`），不再依赖外挂工具，页内恢复面经 `RecoverySurface` 保留为模态故障时的回落（ADR `2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision`）。可用性判定是纯函数（`Core.Recovery.DialogToolAvailability`；Linux 按探针口径查 PATH 与执行位）。
+* `Core.RuntimeSupervisor`（编排住 `Core.Bootstrap.RuntimeSupervision`）经 `IRuntimeHost` 端口监督子进程：退出 → 失败面 → `RestartAsync` → 恢复回调 `onRecovered` 只重验铸币态（重启复用记忆端口保 `origin`），**原生承载下不代发窗口导航**（回落页内恢复面覆写过 DOM 时仍补一次收口导航）——窗口恒驻代理根，回来这一步交页内自刷与客户端原地重连（ADR `2026-10-14-native-failure-surface`）。**失败面承载**：进程内模态 `FailureDialogWindow`（动作面＝继续自动恢复；退出只挂显式「是」），不依赖外挂对话框工具；页内恢复面（`RecoveryPageBuilder`，覆写 DOM ⇒ 恢复后补收口导航）保留为模态故障时的回落（ADR `2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision`）。
 * 端口漂移判据（`Core.RuntimeLineage`，ADR `2026-09-12-runtime-handoff-adoption`）：新生续任者收养、更早血统残留收割重试、非我方血统回退 OS 分配并告警（建窗后换端口会使「页面→壳」命令通道失效，见 ADR `2026-09-12-port-drift-ipc-origin-mismatch`）。
 * `LauncherActivation` UDS 单实例仲裁（Windows 不启用）；托盘/设置区退出重启走 `ExitPipeline`。
 
@@ -43,7 +43,7 @@
 
 ## 外部链接接管
 
-* 页面桥与站外导航（ADR `2026-10-22-avalonia-g2-shell-bridge`）：注入 `window.__shell`（`invoke`/`on`/`_emit`；上行 `invokeCSharpAction`、下行 `InvokeScript`），消息按 nonce + 顶层 origin 双判据校验，导航完成后重注入；外站 http(s) 在 `NavigationStarted` 取消并交 `SystemBrowser`，`NewWindowRequested` 标记已处理。Ryn 旧实现 `RynNavigationCallbacks` 保留到迁移收尾删除。
+* 页面桥与站外导航（ADR `2026-10-22-avalonia-g2-shell-bridge`）：注入 `window.__shell`（`invoke`/`on`/`_emit`；上行 `invokeCSharpAction`、下行 `InvokeScript`），消息按 nonce + 顶层 origin 双判据校验，导航完成后重注入；外站 http(s) 在 `NavigationStarted` 取消并交 `SystemBrowser`，`NewWindowRequested` 标记已处理。
 
 ## 自更新
 
@@ -58,5 +58,5 @@
 
 ## 配置与扩展
 
-* `DSH_DEVTOOLS=1` 开 WebView 调试（启动配置单点 `LaunchOptions.DevTools`）；`appsettings.json` 的 `Update` 节。`ryn.json` 无 `StartupWMClass`（顶层三键，`identifier` = `io.github.ZK-Andy.dotnet-deepseek-harness-desktop`）；同值键在 `package-linux.sh` 的 `.desktop`。
+* `DSH_DEVTOOLS=1` 开 WebView 调试（启动配置单点 `LaunchOptions.DevTools`）；`appsettings.json` 的 `Update` 节。应用标识 `io.github.ZK-Andy.dotnet-deepseek-harness-desktop` 在 `package-linux.sh`（`.desktop` `StartupWMClass`）与 `package-macos.sh`（`CFBundleIdentifier`）各自落盘。
 * dev 隔离（`DSH_DESKTOP_DEV=1` / `DSH_DESKTOP_RUNTIME_DIR`：ApplicationId 加 `.dev` 后缀、DSH_HOME 自动指向 `<仓库>/.cache/dev-home`、显式指回真实 home 时随包插件安装跳过）由 `Infrastructure/LaunchOptions.Resolve` 单点解析——运行步骤见 [development.md](development.md)。

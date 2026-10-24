@@ -10,11 +10,11 @@
 * 覆盖面（按域分组，逐类细节见各文件头 `<summary>`）：
   * **壳与运行时**：`HarnessUrlParserTests`（`dsh web:` 行解析）、`HarnessRuntimeHostTests`（端口分配/记忆/占位回退/生命周期门/取消契约）、`RuntimeVersionGateTests`（版本底线判定 + 底线横幅）、`DesktopProfileBootstrapTests`/`SharedHomeContractTests`（desktop profile 自举与共享 home 契约）、`RunMarkerTests`（非受控退出标记与横幅）、`PathLinkGuardTests`（profile/锁路径拒符号链接判定）、`DesktopBannerTests`（横幅工厂幂等/堆叠/转义）。
   * **监督与观测**：`PageHealthMonitorTests`（页面健康探针）、`HostLogAndDiagnosticsTests`（HostLog 出口脱敏集成）、`SecretMaskerTests`（凭据形状遮罩纯函数）、`DiagnosticsTests`/`RecoveryPageTests`/`RecoverySurfaceTests`/`StartupFailureFaceTests`（诊断、恢复页与失败面）。
-  * **托盘/窗口/单实例**：`TrayTests`/`CloseToTrayTests`（托盘命令记序与关到托盘偏好）、`LauncherActivationTests`（单实例仲裁/uid 回退后缀）、`CaptionBarInstallerTests`/`WindowScriptTargetTests`/`WindowCommandRouterTests`（顶栏与窗口命令）。
-  * **companion 客户端 JS 腿**：在 `plugins/dsh-desktop-companion/` 跑 `node --test`（Node 22，无第三方依赖；`testkit/harness.js` 提供 DOM 桩、可控时钟、Cordis 上下文、React 桩，按真实装载路径驱动 `client.js`，见 [ADR](../.agents/notes/implemented/testing/2026-10-21-companion-client-js-tests.md)）。覆盖设置页三块 UI、更新按钮、托盘事件中继、locale 桥与外链 toast；`test/`、`testkit/` 不进 tgz。
+  * **托盘/窗口/单实例**：`ShellTrayActionTests`/`CloseToTrayTests`（托盘菜单映射与关到托盘偏好）、`LauncherActivationTests`（单实例仲裁/uid 回退后缀）、`CaptionBarTests`/`WindowCommandRouterTests`（顶栏脚本与窗口命令）。
+  * **companion 客户端 JS 腿**：在 `plugins/dsh-desktop-companion/` 跑 `node --test`（Node 22，无第三方依赖；`testkit/harness.js` 提供 DOM 桩、可控时钟、Cordis 上下文、React 桩，按真实装载路径驱动 `client.js`，见 [ADR](../.agents/notes/implemented/testing/2026-10-21-companion-client-js-tests.md)）。覆盖设置页三块 UI、更新按钮、locale 桥、外链 toast 与桥注入延迟容错；`test/`、`testkit/` 不进 tgz。
   * **随包插件**：`MarketInstallHelperTests`（检测/迁移/workspace 修正/伴生 spec/JsonNode 写盘格式钉子）、`PluginVersionCheckTests`（版本解包/升级判定/脏版本 fail loud）、`BundledPluginCatalogTests`（清单装配判定/端到端布局）、`DesktopProfileBootstrapTests`（reconcile 不可解析引用）。
   * **自更新**：`UpdateVersionTests`、`UpdateStateMachineTests`（对账/恢复/并发去重）、`ReleaseAssetTests`（资产挑选/SUMS 解析/下载锁）、`FileReadyPersistenceTests`（ready.json 往返契约）、`InstallerDownloaderTests`（SHA256SUMS 强校验/原子改名）、`UpdateInstallerTests`（deb/rpm 命令 + Linux root 脚本内容级回归：PATH 硬化/哈希复验/symlink 守卫/降权拉起）、`DesktopUpdateCommandRouterTests`（后台 token 契约）、`UpdateOptionsTests`/`UpdateStateJsonTests`/`AppJsonTests`、`UpdateHttpClientExposureTests`（自更新链路静态客户端来源唯一）。
-  * **导航与外链**：`ExternalLinkPolicyTests`、`ExternalLinkCommandRouterTests`、`RynNavigationCallbacksTests`（旧宿主拦截/放行）、`ShellBridgeTests`/`ShellBridgeScriptTests`（信封/nonce/origin 判据/分发）。
+  * **导航与外链**：`ExternalLinkPolicyTests`、`ExternalLinkCommandRouterTests`、`ShellBridgeTests`/`ShellBridgeScriptTests`（信封/nonce/origin 判据/分发）、`AvaloniaWebViewNavigatorTests`（导航到达与探针解码）。
   * **退出与环境**：`ExitPipelineTests`（退出管道记序与幂等契约）、`DevEnvironmentTests`（dev 隔离）、`UpdateBannerTests`（更新就绪横幅）、`AutostartBuilderTests`（自启条目构造）。
   * **架构边界**：`ArchitectureTests`（依赖方向断言）；Core 纯度门（Core 源文件不得直接做文件/环境 IO，IO 经端口、
     适配器落 Infrastructure）是独立门禁 `verify-core-purity.py`（见「门禁」表）。

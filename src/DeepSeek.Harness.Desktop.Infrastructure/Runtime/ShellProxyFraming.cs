@@ -7,7 +7,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// 组装。无决策（路由/转发由 <see cref="DshLoopbackProxy"/>），纯字节形态，可直测。</summary>
 internal static class ShellProxyFraming
 {
-    // 请求头上限：Ryn 本地 IPC 服务同口径（32KB），超限 loud 502。
+    // 请求头上限：32KB（防御性上界），超限 loud 502。
     private const int MaxHeadBytes = 32 * 1024;
 
     /// <summary>页请求解析产出（方法/源形目标/头/体；target 恒 origin-form）。</summary>

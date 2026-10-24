@@ -6,7 +6,7 @@ namespace DeepSeek.Harness.Desktop.Hosting;
 /// <summary>
 /// <see cref="IFailureDialog"/> 的进程内实现（ADR 2026-10-23-avalonia-failure-dialog）：
 /// 可用性恒真（不探测外部工具），模态由 <see cref="FailureDialogWindow"/> 在 UI 线程建。
-/// 契约与旧 Ryn 适配器同一条：<b>只有显式 true 才触发破坏性动作</b>——属主缺失、窗口建不出来、
+/// 契约与 <see cref="Core.Recovery.IFailureDialog"/> 同一条：<b>只有显式 true 才触发破坏性动作</b>——属主缺失、窗口建不出来、
 /// 用户直接关闭一律回 false，调用方据此继续留在窗口。
 /// </summary>
 internal sealed class InProcessFailureDialog : IFailureDialog

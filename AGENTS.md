@@ -47,8 +47,8 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 以下**「留评审/语义」规则机器无法强制**（机械化门禁未覆盖），由三重审核代理在**仓库约定**下额外执行——上游 dsh-code-review 技能只含通用清单、不含本项目规则，须显式补审（见 [feature-flow](.agents/workflows/feature-flow.md) 步骤 5）：
 
 - **D003**：`catch` 空体须命名所吞（[coding-standards](docs/coding-standards.md) 行为契约）。D001（`Async` 尾缀 = VSTHRD200）/D002（`async void` = VSTHRD100）/D003（无类型空 `catch` = 自研 DSH0001，error 即红）已机器化进 build 门禁，评审不再兜底。
-- **R1 装配面只装配**：`DesktopAdapter`/`Program` 不得夹带业务/领域逻辑（[architecture-standards](docs/architecture-standards.md) R1）。
-- **R3 边界抽象完备**：外部交互（Ryn/native、dsh 进程、companion IPC、文件/网络、更新 feed、注册表/rc）是否都经接口、未直漏进业务层（R3）。
+- **R1 装配面只装配**：`Hosting/AvaloniaHost`/`Program` 不得夹带业务/领域逻辑（[architecture-standards](docs/architecture-standards.md) R1）。
+- **R3 边界抽象完备**：外部交互（native/WebView、dsh 进程、companion IPC、文件/网络、更新 feed、注册表/rc）是否都经接口、未直漏进业务层（R3）。
 - **IPC 强类型**：跨界/事件帧 ID 不用裸 `string` 跨包；帧形状经源生成上下文（`AppJsonContext`/`UpdateJsonContext`，R3）。
 
 评审代理按上述清单核对；发现即作 blocker 或 suggestion。
@@ -87,7 +87,7 @@ python3 scripts/verify-readme-badges.py  # README 双语 tests/coverage 徽章 =
 python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/待办文件与预算/冷归档卷；存在即校验）
 python3 scripts/verify-governance.py     # Issue/PR 模板治理字段 + 工作流/composite action 的 run: 禁插值事件载荷/env 回读
 python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（F3=装配面根集合计 ≤500；report 默认；--enforce 才 fail）
-python3 scripts/verify-compose-root.py   # 装配面语义闸（根集=Program+DesktopAdapter*；装配面另含 PreBuild/ShellResources/RynOptionsProfile；根集只装配 C1-C5：方法清单封闭/new 自有类型 ≤6/单 dot 分部/入口桥恰一处；C6 排序器形状：public `Run*` 无控制流与引号/零服务构造/零同步桥；C7 装配期构造清单：PreBuildRegistration*.cs 的构造须在册；C8 文件在册：清单 `scripts/domain-files.manifest.json` 双向，根级 .cs 只许根集或装配面，装配面声明须存在，一个文件只登记一处；--enforce 才 fail）
+python3 scripts/verify-compose-root.py   # 装配面语义闸（根集=Program+Hosting/AvaloniaHost*；装配面另含 PreBuildRegistration/ShellResources/ShellWiringRegistration；根集只装配 C1-C3/C5：方法清单封闭/new 自有类型 ≤6/单 dot 分部/构造清单；C7 装配期构造清单：PreBuildRegistration*.cs 的构造须在册；C8 文件在册：清单 `scripts/domain-files.manifest.json` 双向，根级 .cs 只许根集或装配面，装配面声明须存在，一个文件只登记一处；C4/C6 随旧编排器退役；--enforce 才 fail）
 python3 scripts/verify-registration-discipline.py # 注册点纪律闸（R1：基础设施具体类型只许出现在注册处：Presentation 注册外直接 new ≤1/静态调用 ≤11；--enforce 才 fail）
 python3 scripts/verify-increment-discipline.py # 增量纪律闸（耦合左移②：gross/既有文件净增/跨层扇出/新包引用四帽 600/150/15/1；--enforce 已接 pre-commit/pre-push/CI）
 python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）

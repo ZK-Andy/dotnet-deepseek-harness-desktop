@@ -56,7 +56,7 @@ jobs:
   build-linux:
     # 两腿是独立平台，一腿失败不连坐另一腿（fail-fast=false）：首跑 arm64 rpm 冒烟
     # 抓到 EOL F41 缺 webkitgtk6.0 时，x64 的对照证据被取消掩埋。
-    # arm64 腿的前提：Ryn.Interop 供给 runtimes/linux-arm64/native（ADR artifact-verification-chain）。
+    # 两腿各自原生 OS 构建，arm64 腿覆盖 linux-arm64 原生库布局（ADR artifact-verification-chain）。
     strategy:
       fail-fast: false
       matrix:

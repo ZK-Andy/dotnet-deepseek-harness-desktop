@@ -24,23 +24,23 @@ description: Use when reviewing a pull request or a batch of changes in this rep
 ## Workflow — Review the diff
 
 1. Confirm the scope and base ref (above), then read the diff against the project's own architecture.
-2. Apply the semantic checks below; this repo is a .NET single-project desktop shell (Ryn webview + spawned dsh Node process + bundled companion plugin). The upstream deepseek-harness concepts (`packages/*/src`, Cordis, schemastery, pnpm, `knip`, VitePress, stacked PR) **do not apply** — judge against the project's own architecture (`docs/architecture.md`) and layers (compose root / Services / subdomains / external boundaries).
+2. Apply the semantic checks below; this repo is a .NET single-project desktop shell (Avalonia webview host + spawned dsh Node process + bundled companion plugin). The upstream deepseek-harness concepts (`packages/*/src`, Cordis, schemastery, pnpm, `knip`, VitePress, stacked PR) **do not apply** — judge against the project's own architecture (`docs/architecture.md`) and layers (compose root / Services / subdomains / external boundaries).
 
 - **Intent and interface contracts:** trace both sides of every changed interface; confirm the implementation matches the PR and any Agent Note, including errors, cancellation, ownership, and disposal.
 - **Lifecycle and concurrency:** for async setup, callbacks, processes, or teardown, apply the behavior-contract section of `coding-standards.md`. Check races before publication, cancellation during awaits, independent error reporting, callback containment, ownership before reentry, complete detach cleanup, and quiescent disposal.
 - **Capability and consumer fit:** trace every current consumer; flag consumer-specific behavior leaking into the interface. Flag a new public method on a generic service whose only caller is one internal consumer.
 - **Scope, ownership, and necessity:** map each abstraction, state machine, option, defensive copy, and compatibility path to its current contract, production consumer, and owning service. Challenge unrelated features and speculative generality.
 - **Configuration and public choices:** ask what current-consumer evidence or prior art supports each default, public operation set, format, or imported external concept.
-- **Boundary integrity (R3):** external interactions (Ryn/native, the dsh process, companion IPC, file/network, update feed, registry/rc) go through interfaces; nothing leaks into the business layer.
+- **Boundary integrity (R3):** external interactions (native/WebView, the dsh process, companion IPC, file/network, update feed, registry/rc) go through interfaces; nothing leaks into the business layer.
 - **Borrowed and derived state:** determine whether each retained value is borrowed or owned under the service contract, then trace notifications and every cache, prompt, UI echo, replay, and query view to the documented success point and authoritative source (applies to config/event frames and GUI echoes here).
-- **Real entry path:** tests exercise the shipped compose root / entry (`DesktopAdapter` / `Program`) where relevant. A hand-mounted or mock-only test can bypass real startup wiring — do not let a test claim coverage of a path it never actually enters.
+- **Real entry path:** tests exercise the shipped compose root / entry (`Hosting/AvaloniaHost` / `Program`) where relevant. A hand-mounted or mock-only test can bypass real startup wiring — do not let a test claim coverage of a path it never actually enters.
 
 ## Required review (本项目留评审项)
 
 The machine gates do not cover the items below; the review must check them explicitly (root `AGENTS.md`「评审检查项（AI 兜底）」):
 
 - **D001** — `async` methods end in `Async`; **D002** — no `async void` outside event handlers; **D003** — empty `catch` names what it swallows.
-- **R1** — compose root (`DesktopAdapter` / `Program`) stays wiring-only, no business/domain logic.
+- **R1** — compose root (`Hosting/AvaloniaHost` / `Program`) stays wiring-only, no business/domain logic.
 - **R3** — external boundaries go through interfaces, not direct into the business layer.
 - **IPC strong types** — cross-boundary/event-frame IDs are not bare `string`; frames come from `AppJsonContext` source-gen.
 

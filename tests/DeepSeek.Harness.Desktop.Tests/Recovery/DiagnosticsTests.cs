@@ -176,7 +176,6 @@ public class DesktopDiagnosticsCommandRouterTests
             string frame = await router.RouteAsync(
                 HostCommandIds.DiagnosticsExport,
                 ReadOnlyMemory<byte>.Empty,
-                services: null!,
                 CancellationToken.None);
 
             Assert.Contains("\"path\":", frame);
@@ -211,7 +210,6 @@ public class DesktopDiagnosticsCommandRouterTests
             string frame = await router.RouteAsync(
                 HostCommandIds.DiagnosticsExport,
                 ReadOnlyMemory<byte>.Empty,
-                services: null!,
                 CancellationToken.None);
 
             Assert.Contains("\"error\":", frame);

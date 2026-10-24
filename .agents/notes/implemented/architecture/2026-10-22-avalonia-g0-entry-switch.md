@@ -6,7 +6,7 @@ Review: FULL/2026-10-22/R1=ok R2=ok R3=ok
 
 ## Problem
 
-宿主迁移提案（[avalonia-host-migration](../../proposed/architecture/2026-10-22-avalonia-host-migration.md)）已定稿，但默认入口仍是 Ryn：`Program.Main` 直接构造 `DesktopAdapter`，整条启动链（`RynApplication.CreateBuilder().Build()` → `StartupSequence.RunMainLoop()`）把窗口、托盘、顶栏、桥与主循环绑在 Ryn 上。迁移若停在文档，G1–G3 的每一片都无从真实运行验证；Ryn 上游主分支自 2026-09-13 停滞，等待没有止损点。
+宿主迁移提案（[avalonia-host-migration](2026-10-22-avalonia-host-migration.md)）已定稿，但默认入口仍是 Ryn：`Program.Main` 直接构造 `DesktopAdapter`，整条启动链（`RynApplication.CreateBuilder().Build()` → `StartupSequence.RunMainLoop()`）把窗口、托盘、顶栏、桥与主循环绑在 Ryn 上。迁移若停在文档，G1–G3 的每一片都无从真实运行验证；Ryn 上游主分支自 2026-09-13 停滞，等待没有止损点。
 
 首片必须回答的问题是：能否用最小宿主替换，把既有的 dsh spawn 与回环代理原样接到 Avalonia 窗口上，并真实跑到 dsh UI。
 
@@ -52,5 +52,5 @@ Review: FULL/2026-10-22/R1=ok R2=ok R3=ok
 
 ## Related
 
-- [avalonia-host-migration](../../proposed/architecture/2026-10-22-avalonia-host-migration.md)：迁移总提案（G0–G5 阶段与边界）。
+- [avalonia-host-migration](2026-10-22-avalonia-host-migration.md)：迁移总提案（G0–G5 阶段与边界）。
 - [webview-shared-memory-rendering](../../implemented/architecture/2026-10-18-webview-shared-memory-rendering.md)：被迁移的 Ryn/WebKitGTK 内存现状。

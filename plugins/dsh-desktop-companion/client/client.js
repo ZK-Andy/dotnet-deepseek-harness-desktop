@@ -20,9 +20,6 @@
  *   when the query fails it distinguishes "the host has no update stack (dev)"
  *   from "the page-to-host command channel is down" (e.g. the page origin moved
  *   to a new loopback port after the window was created) and points at the fix.
- * - Tray event relay: forwards Ryn tray plugin events (tray.clicked,
- *   tray.menuItemClicked) to the host via desktop.tray.event; show /
- *   check-update / restart / quit semantics are resolved on the host side.
  */
 ;(function () {
   if (typeof window === 'undefined' || !window.__ModuleLoader__) return
@@ -38,26 +35,22 @@
       function apply(ctx) {
         var TAG = '[dsh-desktop-companion]'
 
-        // 托盘事件中继（批次三，ADR shell-tray-hide-to-tray）：Ryn 托盘插件把点击事件发到
-        // Web 层（window.__ryn.on）；页面是常驻层（隐藏到托盘后仍存活），在此把白名单事件
-        // 原样转发回宿主命令，语义解析在宿主纯函数里。只做哑中继：不判断动作、不改载荷。
-        try {
-          if (window.__ryn && window.__ryn.on && !window.__dshDesktopCompanionTrayRelay) {
-            window.__dshDesktopCompanionTrayRelay = true
-            var rynTray = window.__ryn
-            var relayToHost = function (name) {
-              return function (data) {
-                // 中继失败静默吞：宿主路由缺失（旧壳）或窗口销毁中，托盘动作本就有菜单兜底
-                rynTray.invoke('desktop.tray.event', { event: name, data: data === undefined ? null : data })
-                  .catch(function () {})
-              }
+        // 壳桥注入晚于页面首次执行（壳在 NavigationCompleted 才注入 __shell）：装配面必须等它出现，
+        // 不能一票否决——否则更新入口/设置区/locale 桥/报障会整块跳过一次且永不重试。
+        // 有界轮询（50ms × 40 = 2s）后仍缺失才放弃并留痕。
+        var whenShellBridge = function (fn) {
+          var wait = function (remaining) {
+            if (window.__shell) { fn(); return }
+            if (remaining <= 0) {
+              console.warn(TAG, 'shell bridge never appeared; desktop surfaces disabled')
+              return
             }
-            window.__ryn.on('tray.clicked', relayToHost('tray.clicked'))
-            window.__ryn.on('tray.menuItemClicked', relayToHost('tray.menuItemClicked'))
+            setTimeout(function () { wait(remaining - 1) }, 50)
           }
-        } catch (e) { /* no __ryn bridge: nothing to relay */ }
+          wait(40)
+        }
 
-        // invoke 响应归一化：Ryn 桥接对非空响应 resolve 的是 JSON.parse 后的值（通常是对象），
+        // invoke 响应归一化：壳桥对非空响应 resolve 的是 JSON 文本（少数手工帧给对象），
         // 空响应是 undefined；字符串分支只为兼容手工构造的帧。所有命令响应一律先过这里，
         // 禁止直接 JSON.parse——v0.3.0 实机自启开关/诊断导出两缺陷的根因就是对对象二次 parse。
         var parseFrame = function (raw) {
@@ -66,7 +59,7 @@
         }
 
         var setupUpdateUI = function () {
-          if (!(window.__ryn && ctx.slots && typeof require === 'function')) {
+          if (!(window.__shell && ctx.slots && typeof require === 'function')) {
             console.warn(TAG, 'update UI skipped: guards')
             return false
           }
@@ -157,7 +150,7 @@
               var onEvt = function (e) { setState(e.detail || null) }
               document.addEventListener('dsh-desktop-update', onEvt)
               // 第二个参数必须传（空对象即可）：空参数体的 invoke 在宿主分发层会 500
-              window.__ryn.invoke('desktop.update.getState', {}).then(function (s) {
+              window.__shell.invoke('desktop.update.getState', {}).then(function (s) {
                 var parsed = parseFrame(s)
                 if (parsed && (parsed.status === 'ready' || parsed.status === 'installing')) setState(parsed)
               }).catch(function (e3) { console.warn(TAG, 'getState failed', e3 && e3.message) })
@@ -174,7 +167,7 @@
               title: state.version ? th('updateTitle') + ' ' + state.version : th('updateTitle'),
               'aria-label': state.version ? th('installPrefix') + ' ' + state.version : th('installPrefix'),
               onClick: function () {
-                window.__ryn.invoke('desktop.update.install', {}).catch(function () {})
+                window.__shell.invoke('desktop.update.install', {}).catch(function () {})
               },
             }, h('span', { className: 'ddc-ic' },
               installing
@@ -311,13 +304,13 @@
 
           // 宿主 UI 语言桥接（desktop.companion.setLocale）：dsh locale runtime 在插件激活与
           // 每次切换时把 <html lang> 指向当前 locale（zh-CN/en），监听该属性即拿到切换时刻——
-          // 宿主据此重建托盘菜单/选横幅文案。上报失败静默（旧宿主无此命令是合法形态）：
-          // locale 桥是增强能力，绝不影响安装/更新主链路。
+          // 宿主据此重建托盘菜单/选横幅文案。桥未就绪或上报失败一律静默——locale 桥是增强能力，
+          // 绝不影响安装/更新主链路。
           ctx.effect(function () {
             var report = function () {
               var lang = (document.documentElement.getAttribute('lang') || '').toLowerCase()
               if (!lang) return
-              try { window.__ryn.invoke('desktop.companion.setLocale', { locale: lang }).catch(function () {}) } catch (e) { /* __ryn 未就绪：下个 lang 变更再试 */ }
+              try { window.__shell.invoke('desktop.companion.setLocale', { locale: lang }).catch(function () {}) } catch (e) { /* __shell 未就绪：下个 lang 变更再试 */ }
             }
             report()
             var localeObserver = new MutationObserver(report)
@@ -351,7 +344,7 @@
               pendingReports.push(item)
             }
             try {
-              window.__ryn.invoke('desktop.companion.report', item).then(function () { settled = true }, requeue)
+              window.__shell.invoke('desktop.companion.report', item).then(function () { settled = true }, requeue)
             } catch (e) { requeue() }
             setTimeout(requeue, 8000)
           }
@@ -371,7 +364,7 @@
             flushReports()
           }
 
-          // 命令通道调用：invoke + 结算锁 + 4s 兜底超时。桥接的 invoke 在 __ryn 不完整时会同步抛，
+          // 命令通道调用：invoke + 结算锁 + 4s 兜底超时。桥接的 invoke 在 __shell 不完整时会同步抛，
           // 包一层 catch 转 reject——「既不成功也不失败」与同步抛都收敛到失败，不留悬挂 Promise。
           // 成功路径顺带补报积压（通道恢复即落痕）；args 缺省 {}——空参数体的 invoke 在宿主分发层会 500。
           var invokeWithTimeout = function (command, args) {
@@ -381,7 +374,7 @@
                 return function (v) { if (!settled) { settled = true; fn(v) } }
               }
               try {
-                window.__ryn.invoke(command, args || {}).then(
+                window.__shell.invoke(command, args || {}).then(
                   once(function (v) { flushReports(); resolve(v) }), once(reject))
               } catch (e) { once(reject)(e) }
               setTimeout(once(reject), 4000)
@@ -603,9 +596,9 @@
                       disabled: busy,
                       onClick: function () {
                         if (state.status === 'ready') {
-                          window.__ryn.invoke('desktop.update.install', {}).catch(function () {})
+                          window.__shell.invoke('desktop.update.install', {}).catch(function () {})
                         } else {
-                          window.__ryn.invoke('desktop.update.check', {}).catch(function () {})
+                          window.__shell.invoke('desktop.update.check', {}).catch(function () {})
                         }
                       },
                     }, actionLabel)))))
@@ -636,7 +629,7 @@
                       type: 'button',
                       disabled: !!result,
                       onClick: function () {
-                        window.__ryn.invoke('desktop.diagnostics.export', {}).then(function (res) {
+                        window.__shell.invoke('desktop.diagnostics.export', {}).then(function (res) {
                           var parsed = parseFrame(res)
                           if (parsed && parsed.path) setResult(parsed.path)
                           else setResult({ error: (parsed && parsed.error) || th('diagFail') })
@@ -797,17 +790,20 @@
           return true
         }
 
-        try {
-          setupUpdateUI()
-        } catch (e) {
-          console.warn(TAG, 'update UI setup error', e)
-        }
+        whenShellBridge(function () {
+          try {
+            setupUpdateUI()
+          } catch (e) {
+            console.warn(TAG, 'update UI setup error', e)
+          }
+        })
 
         // 外部链接打开失败 toast（R2 N2）：宿主导航层拦截站外链接、经系统浏览器打开失败时，
-        // 推 desktop.externalLinkOpenerFailed 事件（见 PageBridge/RynNavigationCallbacks）。页面侧
+        // 推 desktop.externalLinkOpenerFailed 事件（见 PageBridge/ShellBridge 的导航拦截）。页面侧
         // 用纯 DOM 渲染一个短暂 toast（不经 dsh slot 树——它是页面级浮动层；文案经 locale 随语言切换）。
-        try {
-          if (window.__ryn && window.__ryn.on && !window.__dshDesktopCompanionLinkFailToast) {
+        whenShellBridge(function () {
+          try {
+            if (!window.__dshDesktopCompanionLinkFailToast) {
             window.__dshDesktopCompanionLinkFailToast = true
             var toastT = ctx.locale.bind('desktop-companion')
             var toastTimer = null
@@ -826,7 +822,7 @@
                 '#ddc-linkfail-toast.ddc-linkfail-show{opacity:1;transform:translateX(-50%) translateY(0)}'
               document.head.appendChild(toastStyle)
             }
-            window.__ryn.on('desktop.externalLinkOpenerFailed', function (data) {
+            window.__shell.on('desktop.externalLinkOpenerFailed', function (data) {
               try {
                 var url = data && data.url ? String(data.url) : ''
                 var box = document.getElementById('ddc-linkfail-toast')
@@ -843,8 +839,9 @@
                 toastTimer = setTimeout(function () { box.classList.remove('ddc-linkfail-show') }, 5000)
               } catch (e2) { console.warn(TAG, 'link fail toast error', e2) }
             })
-          }
-        } catch (e) { /* no __ryn bridge: nothing to toast */ }
+            }
+          } catch (e) { /* no __shell bridge: nothing to toast */ }
+        })
       }
 
       // inject 声明本插件要访问的宿主服务：不声明时访问 ctx.slots / ctx.locale 会被

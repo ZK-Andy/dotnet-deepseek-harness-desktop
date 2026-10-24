@@ -1,6 +1,8 @@
 # Agent Note: Avalonia 恢复页、首启引导与崩溃监督接回
 
 Status: implemented
+
+Erratum: 2026-10-24 — 失效：恢复页「`window.__shell` 优先、`__ryn` 回落」的双通道（回落分支已删，只剩 `__shell`）；保留：恢复页双通道承载（原生模态/页内恢复）、引导与崩溃监督的接线与退出契约。见 [avalonia-g5-ryn-host-retirement](2026-10-24-avalonia-g5-ryn-host-retirement.md)。正文不动。
 Erratum: 2026-10-23 — 增量闸豁免指针已转指 `2026-10-23-avalonia-g3-update-surface`（本篇标记不再生效）
 
 Review: FULL/2026-10-23#1/R1=ok R2=ok R3=ok

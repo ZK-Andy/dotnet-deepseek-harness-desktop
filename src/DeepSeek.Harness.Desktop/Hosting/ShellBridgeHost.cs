@@ -1,6 +1,6 @@
 using Avalonia.Controls;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Core.Platform;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Hosting;
 

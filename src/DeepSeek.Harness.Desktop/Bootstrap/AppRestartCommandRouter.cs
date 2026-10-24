@@ -1,5 +1,4 @@
 using DeepSeek.Harness.Desktop.Core.Ipc;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Bootstrap;
 
@@ -48,15 +47,15 @@ public sealed class AppRestartCommandRouter : ICommandRouter
     public bool CanRoute(string command) => string.Equals(command, CommandName, StringComparison.Ordinal);
 
     /// <inheritdoc />
-    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
+    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, CancellationToken cancellationToken)
     {
         if (!CanRoute(command))
         {
-            throw new RynCommandNotFoundException(command);
+            throw new CommandNotFoundException(command);
         }
 
         _log?.Invoke($"[host] 重启应用：已受理（{_flushDelay.TotalMilliseconds:0}ms 后执行）");
-        // 受理即承诺：延迟段不接请求级取消令牌（Ryn 0.38.0 生产路径传 None；若未来传真实
+        // 受理即承诺：延迟段不接请求级取消令牌（生产路径传 None；若未来传真实
         // per-request token，响应后取消会把已承诺的重启静默掐掉——评审 R2 采纳项）
         _ = Task.Run(async () =>
         {

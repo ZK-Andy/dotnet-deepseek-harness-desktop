@@ -6,7 +6,7 @@ Review: FULL/2026-10-24#1/R1=ok R2=ok R3=ok
 
 ## Problem
 
-G3 的目标状态是命令面十二条路由齐（[avalonia-host-migration](../../proposed/architecture/2026-10-22-avalonia-host-migration.md) 阶段表）。
+G3 的目标状态是命令面十二条路由齐（[avalonia-host-migration](2026-10-22-avalonia-host-migration.md) 阶段表）。
 前几片接完自启/关窗到托盘/诊断导出/重启、页面桥四路由与恢复面后，新宿主仍缺自更新三条路由
 （`desktop.update.getState` / `check` / `install`）：伴生插件的侧栏更新钮与「桌面设置」更新块在新宿主下
 invoke 即失败，页面侧只能报「命令通道断」。

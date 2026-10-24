@@ -53,7 +53,6 @@ CS_CONSUMERS = [
     (SRC, "PageBridge/CaptionBar.cs"),
     (SRC, "PageBridge/PagePump.cs"),
     (SRC, "Tray/TrayCheckFeedback.cs"),
-    (SRC, "Tray/DesktopTrayCommandRouter.cs"),
     (SRC, "Hosting/WebView2StartupGuard.cs"),
     (INFRA, "Runtime/RuntimeBootstrap.cs"),
     (INFRA, "Runtime/RuntimeBootstrap.Pure.cs"),

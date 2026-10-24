@@ -44,15 +44,14 @@ public class RecoveryPageBuilderTests
         Assert.Contains("D.tail&&D.tail.length", script);
     }
 
-    /// <summary>验证恢复页命令面在两宿主下都可用（迁移期双桥并存）：脚本同时带
-    /// <c>window.__shell</c> 优先与 <c>window.__ryn</c> 回落，且两个命令 ID 只出现一次。</summary>
+    /// <summary>验证恢复页命令面只走页面桥 <c>window.__shell</c>，且两个命令 ID 各只出现一次。</summary>
     [Fact]
-    public void Script_InvokesBothHostBridges()
+    public void Script_InvokesShellBridge()
     {
         string script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>(), english: false);
 
         Assert.Contains("window.__shell", script);
-        Assert.Contains("window.__ryn", script);
+        Assert.DoesNotContain("window.__ryn", script);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(script, HostCommandIds.DiagnosticsExport));
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(script, HostCommandIds.RecoveryExit));
     }
@@ -107,7 +106,6 @@ public class RecoveryCommandRouterTests
         string frame = await router.RouteAsync(
             RecoveryCommandRouter.CommandName,
             System.Text.Encoding.UTF8.GetBytes("{}"),
-            null!,
             CancellationToken.None);
 
         // close 时闸门已放行 = 批准确实先于 Close 发生（托盘同款取证手法）
@@ -116,13 +114,13 @@ public class RecoveryCommandRouterTests
         Assert.Equal("{}", frame);
     }
 
-    /// <summary>验证路由未注册命令 desktop.other 抛 RynCommandNotFoundException。</summary>
+    /// <summary>验证路由未注册命令 desktop.other 抛 CommandNotFoundException。</summary>
     [Fact]
     public async Task UnknownCommand_Throws()
     {
         (RecoveryCommandRouter? router, List<string> _) = MakeRouter(new CloseGate());
 
-        await Assert.ThrowsAsync<Ryn.Ipc.RynCommandNotFoundException>(() =>
-            router.RouteAsync("desktop.other", ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None).AsTask());
+        await Assert.ThrowsAsync<DeepSeek.Harness.Desktop.Core.Ipc.CommandNotFoundException>(() =>
+            router.RouteAsync("desktop.other", ReadOnlyMemory<byte>.Empty, CancellationToken.None).AsTask());
     }
 }

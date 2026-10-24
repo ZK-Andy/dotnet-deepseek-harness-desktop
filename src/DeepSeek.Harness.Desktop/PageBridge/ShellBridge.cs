@@ -4,7 +4,6 @@ using System.Text;
 using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Core.Platform;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
@@ -19,8 +18,6 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// </summary>
 internal sealed class ShellBridge : IDisposable
 {
-    private static readonly IServiceProvider s_emptyServices = new EmptyServiceProvider();
-
     private readonly IWebViewSurface _surface;
     private readonly Func<IReadOnlyList<ICommandRouter>> _routers;
     private readonly ISystemBrowser _browser;
@@ -46,7 +43,7 @@ internal sealed class ShellBridge : IDisposable
     /// <param name="routers">命令路由表（<c>CanRoute</c> 顺序查找）。</param>
     /// <param name="shellOrigin">壳 origin（授权外壳 authority，如 <c>http://127.0.0.1:41449</c>）。</param>
     /// <param name="browser">系统浏览器端口（外链拦截）。</param>
-    /// <param name="macChrome">顶栏是否 macOS 形态（写进 <c>__shell_titlebar</c>）。</param>
+    /// <param name="macChrome">顶栏是否 macOS 形态（红绿灯左置与原生全屏语义）。</param>
     /// <param name="captionHeightPx">顶栏高度（CSS 像素）。</param>
     /// <param name="log">日志委托。</param>
     public ShellBridge(
@@ -203,7 +200,7 @@ internal sealed class ShellBridge : IDisposable
         try
         {
             byte[] args = Encoding.UTF8.GetBytes(argsJson);
-            payload = await router.RouteAsync(command, args, s_emptyServices, ct).ConfigureAwait(false);
+            payload = await router.RouteAsync(command, args, ct).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(payload))
             {
                 payload = "null";
@@ -215,6 +212,7 @@ internal sealed class ShellBridge : IDisposable
         }
         catch (Exception ex)
         {
+            _log($"[shell-bridge] 命令 {command} 失败：{ex.Message}");
             await RespondAsync(id, ok: false, AppJsonContext.Error(ex.Message), ct).ConfigureAwait(false);
             return;
         }
@@ -323,7 +321,7 @@ internal sealed class ShellBridge : IDisposable
         try
         {
             await _surface.InvokeScriptAsync(
-                ShellBridgeScript.Build(nonce, _macChrome, _captionHeightPx), ct).ConfigureAwait(false);
+                ShellBridgeScript.Build(nonce), ct).ConfigureAwait(false);
             // 顶栏与桥同批注入（桥先落地，脚本才能用 window.__shell）；Wayland 等无端口场景由开关关掉。
             if (_captionBarEnabled())
             {
@@ -390,11 +388,4 @@ internal sealed class ShellBridge : IDisposable
     /// <summary>新 nonce（128 位十六进制）。</summary>
     /// <returns>nonce 文本。</returns>
     private static string NewNonce() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
-
-    /// <summary>路由参数面的空服务提供者（本仓路由不使用该参数；不额外引入容器）。</summary>
-    private sealed class EmptyServiceProvider : IServiceProvider
-    {
-        /// <inheritdoc />
-        public object? GetService(Type serviceType) => null;
-    }
 }

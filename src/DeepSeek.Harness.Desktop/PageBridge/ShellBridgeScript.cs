@@ -14,10 +14,8 @@ internal static class ShellBridgeScript
 
     /// <summary>构建注入脚本。</summary>
     /// <param name="nonce">当前文档 nonce（JSON 字符串编码后嵌入）。</param>
-    /// <param name="macChrome">顶栏是否 macOS 形态（红绿灯左置）。</param>
-    /// <param name="captionHeightPx">顶栏高度（CSS 像素）。</param>
     /// <returns>自执行脚本。</returns>
-    public static string Build(string nonce, bool macChrome, int captionHeightPx)
+    public static string Build(string nonce)
     {
         string nonceJs = AppJsonContext.JsString(nonce);
         return "(function(){"
@@ -40,8 +38,6 @@ internal static class ShellBridgeScript
             + "if(ok){p.resolve(payload);}else{p.reject(new Error((payload&&payload.error)||'shell command failed'));}}"
             + "function emit(name,payload){var a=(handlers[name]||[]).slice();for(var i=0;i<a.length;i++){try{a[i](payload);}catch(e){}}}"
             + "window.__shell={invoke:invoke,on:on,off:off,_resolve:resolve,_emit:emit,__nonce:N};"
-            + "window.__shell_titlebar={mac:" + (macChrome ? "true" : "false") + ",height:"
-            + captionHeightPx.ToString(System.Globalization.CultureInfo.InvariantCulture) + "};"
             + "})()";
     }
 }

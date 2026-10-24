@@ -1,6 +1,8 @@
 # Agent Note: Avalonia 无边框顶栏与三平台原生拖拽
 
 Status: implemented
+
+Erratum: 2026-10-24 — 失效：`CaptionBarChannel` 双通道（`__ryn`/`__shell`）与 `window.__shell_titlebar` 发布（两者已删，脚本只走 `__shell`）；保留：顶栏几何、带内拖拽判据与双击自判的机制与取值理由。见 [avalonia-g5-ryn-host-retirement](2026-10-24-avalonia-g5-ryn-host-retirement.md)。正文不动。
 Erratum: 2026-10-23 — 增量闸豁免指针已转指 `2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision`（本篇标记不再生效）
 
 Review: FULL/2026-10-23#2/R1=ok R2=ok R3=ok

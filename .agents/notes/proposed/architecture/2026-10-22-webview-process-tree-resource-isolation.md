@@ -54,6 +54,6 @@ Status: proposed
 
 ## Related
 
-- [avalonia-host-migration](2026-10-22-avalonia-host-migration.md)：宿主迁移；本笔记的措施在其落地时实现。
+- [avalonia-host-migration](../../implemented/architecture/2026-10-22-avalonia-host-migration.md)：宿主迁移；本笔记的措施在其落地时实现。
 - [webview-shared-memory-rendering](../../implemented/architecture/2026-10-18-webview-shared-memory-rendering.md)：`LinuxRenderingMode=SharedMemory` 与 WebKitGTK 内存现状。
 - 上游触发物与实测记录：<https://github.com/dsh-market/dsh-market/issues/980>、<https://github.com/dsh-market/dsh-market/pull/981>。

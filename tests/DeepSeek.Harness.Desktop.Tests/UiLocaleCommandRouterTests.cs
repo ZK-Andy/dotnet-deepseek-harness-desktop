@@ -17,7 +17,7 @@ public class UiLocaleCommandRouterTests
         uiLocale.Set("en");
         var router = new UiLocaleCommandRouter(uiLocale);
 
-        string json = await router.RouteAsync(UiLocaleCommandRouter.CommandName, ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None);
+        string json = await router.RouteAsync(UiLocaleCommandRouter.CommandName, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         Assert.Equal("en", doc.RootElement.GetProperty("locale").GetString());
@@ -33,7 +33,7 @@ public class UiLocaleCommandRouterTests
         uiLocale.Set("en");
         uiLocale.Set("zh-CN");
 
-        string json = await router.RouteAsync(UiLocaleCommandRouter.CommandName, ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None);
+        string json = await router.RouteAsync(UiLocaleCommandRouter.CommandName, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         Assert.Equal("zh-CN", doc.RootElement.GetProperty("locale").GetString());
@@ -47,7 +47,7 @@ public class UiLocaleCommandRouterTests
 
         Assert.True(router.CanRoute(UiLocaleCommandRouter.CommandName));
         Assert.False(router.CanRoute(HostCommandIds.CompanionSetLocale));
-        Assert.Throws<Ryn.Ipc.RynCommandNotFoundException>(
-            () => router.RouteAsync("desktop.other", ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None));
+        Assert.Throws<DeepSeek.Harness.Desktop.Core.Ipc.CommandNotFoundException>(
+            () => router.RouteAsync("desktop.other", ReadOnlyMemory<byte>.Empty, CancellationToken.None));
     }
 }

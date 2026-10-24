@@ -40,7 +40,7 @@ jobs:
               - 'tests/**'
               - 'scripts/**'
               - 'tools/**'
-              # 只列参与构建/打包的图标资产（csproj 的 Content 输入与 ryn.json 的 bundle.icon）；
+              # 只列参与构建/打包的图标资产（csproj 的 Content 输入与安装器图标）；
               # 其余 assets/（README 图、hicolor 图标档）是文档面/打包腿输入，不进 build-test
               # 判据面——列进来只会让改截图也跑满三平台矩阵，却不增加任何检出。
               - 'assets/icon.png'
@@ -151,7 +151,7 @@ jobs:
             echo "::warning::增量闸无 base 可比（首推/新建分支），本次跳过" >&2
           else
             echo "increment-discipline --since $BASE"
-            python3 scripts/verify-increment-discipline.py --since "$BASE" --enforce --exempt .agents/notes/implemented/architecture/2026-10-23-avalonia-g3-update-surface.md
+            python3 scripts/verify-increment-discipline.py --since "$BASE" --enforce --exempt .agents/notes/implemented/architecture/2026-10-24-avalonia-g5-ryn-host-retirement.md
           fi
       - name: 评审档位硬闸（FULL 档变更须携 Review 证据；ADR review-tier-escape-proofing）
         env:

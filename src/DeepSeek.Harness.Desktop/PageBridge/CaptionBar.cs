@@ -4,8 +4,8 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
 /// 无边框窗口 chrome 注入脚本的薄渲染器：官方 macOS 观感由<b>壳自己</b>实现——侧栏列顶部让位
-/// （padding 属元素自身背景盒，让位带被侧栏填充色无缝覆盖）、左上角红绿灯三点（壳绘制，走 Ryn
-/// 声明式 <c>data-webview-*</c> 控制）、并发布 dsh 的三变量几何。几何语义归 Core 纯函数
+/// （padding 属元素自身背景盒，让位带被侧栏填充色无缝覆盖）、左上角红绿灯三点（壳绘制，点击走
+/// <c>window.__shell.invoke</c>）、并发布 dsh 的三变量几何。几何语义归 Core 纯函数
 /// （<see cref="Core.WindowChrome.ChromeInsets"/>，ADR window-chrome-depatch-core-ports）：
 /// <c>top-clearance</c> 承担布局让位、<c>chrome-top</c> 恒为 0
 /// 使模态遮罩画满全视口（上游该变量只为窗外原生 caption 留空）、<c>overlay-top</c> 让对话框/菜单
@@ -19,30 +19,17 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// <c>data-windows-titlebar</c>（那会切到 dsh 的 Windows 呈现，非本需求形态），也不注入任何
 /// <c>window.dshDesktop</c> 假桥——本工厂只做宿主本职：量自己的 chrome、画自己的按钮。
 /// 官方 macOS 的毛玻璃透明链同样以该属性门控，故本壳改在注入期按平台取舍（见 <see cref="BuildCss"/>）。</para>
-/// <para>按钮通常不带事件处理器——点击语义走 Ryn 注入脚本对 <c>data-webview-*</c> 属性的委托监听
-/// （<c>window.minimize/toggleMaximize/close</c> IPC，能力面见 ryn.json 的 <c>window</c> 节）；
-/// 唯一例外是 macOS 绿灯：Ryn 无「原生全屏」属性，改由本工厂自绑点击调 <c>window.setFullscreen</c>。</para>
-/// <para><b>注入时机三路互补</b>（ADR frameless-uniform-caption-bar「注入时机」条）：① 引擎侧
-/// <c>IRynWebView.InjectScriptAsync</c> 注册「每次页面加载执行」的同一份脚本——三路里<b>唯一不靠导航
-/// 事件覆盖后续每次加载</b>的一路（mac/win 的 <c>navigated</c> 挂在 URL/Source 变化上，holder 页
-/// <c>location.reload()</c> 进真 UI 这类同 URL 重载不发；Linux 用户脚本同样逐文档重放，故该端 ③ 也覆盖）；
-/// ② 接线时对当前文档立即注入一次（注册脚本只对<b>后续</b>文档生效）；③
-/// <c>SetOnNavigatedPersistent</c> 导航到达后重挂（Linux 每跳都发；三路共用同一份脚本——语言由执行期按
-/// <c>html[lang]</c> 现取，构建期 locale 只是该属性缺失时的回落，故无需按到达重建）。
-/// 幂等守卫保证三路叠加只建一条。</para>
-/// <para><b>顶带拖拽判定收归本壳</b>（见 <see cref="BuildDragBinding"/>）：Ryn 的自动拖拽条在 dsh 的
-/// 顶带 chrome（列容器与会话头部）上不可靠——全高列恒不满足其底边判据、条状头部的底边跨在该界线上，
-/// 故本条带另挂自持判据，与 Ryn 判据互补；双击缩放同由该判据自判（本壳起拖的原生移动抓取会吞掉 DOM
-/// 的 click/dblclick 序列【推断 · 未证：机制面在合成器，本机只有「拖拽管用、双击不缩放」的现象级证据】）。</para>
+/// <para>三键各自绑 <c>onclick</c>（重复注入时覆盖而非叠监听），统一走 <c>window.__shell.invoke</c>；
+/// macOS 绿灯是原生全屏语义，改调 <c>window.setFullscreen</c>。</para>
+/// <para><b>注入时机两路互补</b>（ADR frameless-uniform-caption-bar「注入时机」条、avalonia-g2-shell-bridge）：
+/// ① 导航完成（内容提交）后重挂——顶栏 DOM 随整页导航销毁，每次到达都须重挂；② 窗口确定启用顶栏时
+/// 对当前文档立即注入一次（导航钩子只对<b>后续</b>文档生效）。两路共用同一份脚本：语言由执行期按
+/// <c>html[lang]</c> 现取，构建期 locale 只是该属性缺失时的回落；脚本自带幂等守卫，叠加只建一条。</para>
+/// <para><b>顶带拖拽判定收归本壳</b>（见 <see cref="BuildDragBinding"/>）：原生 WebView 会消费顶带内的
+/// 指针按下（页面收不到事件），且 dsh 把整条顶带留给流内 chrome（列容器与会话头部），故本条带挂自持判据；
+/// 双击缩放同由该判据自判（本壳起拖的原生移动抓取会吞掉 DOM 的 click/dblclick 序列【推断 · 未证：机制面
+/// 在合成器，本机只有「拖拽管用、双击不缩放」的现象级证据】）。</para>
 /// </remarks>
-internal sealed record CaptionBarChannel(string InvokeGlobal, string TitleBarGlobal, bool ShellBridge)
-{
-    /// <summary>旧宿主（Ryn）：<c>window.__ryn</c> 同步 IPC，拖拽按 macOS 走 <c>beginNativeDrag</c>。</summary>
-    public static CaptionBarChannel Ryn { get; } = new("window.__ryn", "window.__ryn_titlebar", ShellBridge: false);
-
-    /// <summary>新宿主（Avalonia）：<c>window.__shell</c> Promise 桥；拖拽/缩放交给宿主端口。</summary>
-    public static CaptionBarChannel Shell { get; } = new("window.__shell", "window.__shell_titlebar", ShellBridge: true);
-}
 
 internal static class CaptionBar
 {
@@ -54,11 +41,11 @@ internal static class CaptionBar
     /// 顶栏守卫命中即整段返回，描边环须有自己的存在性判断，否则顶栏先建的文档永远长不出环。</summary>
     public const string EdgeRingId = "dsh-desktop-edge-ring";
 
-    /// <summary>绿灯按钮属性（macOS）：本壳自有名——Ryn 注入脚本只识 <c>data-webview-maximize</c>
-    /// （语义＝窗口缩放），原生全屏必须换名并自绑点击（语义见 <see cref="FullscreenClickBinding"/>）。</summary>
+    /// <summary>绿灯按钮属性（macOS）：本壳自有名——原生全屏与窗口缩放语义不同，故换名并自绑点击
+    /// （语义见 <see cref="FullscreenClickBinding"/>）。</summary>
     private const string MacGreenAttr = "data-dsh-fullscreen";
 
-    /// <summary>绿灯按钮属性（闸外，含非 macOS 与 Rosetta-x64）：Ryn 注入脚本识别的窗口缩放语义。</summary>
+    /// <summary>绿灯按钮属性（闸外，含非 macOS 与 Rosetta-x64）：窗口缩放语义。</summary>
     private const string ZoomGreenAttr = "data-webview-maximize";
 
     /// <summary>dsh 三变量协议名（上游公开量；语义归 <see cref="Core.WindowChrome.ChromeInsets"/>，
@@ -74,9 +61,9 @@ internal static class CaptionBar
     /// 侧栏顶部让位 + 顶层文档守卫 + 幂等守卫 + 红绿灯三按钮 + 带内拖拽判定。可达名（aria-label）双语
     /// 经 <see cref="AppJsonContext.JsString"/> 管线转义注入，执行期按 <c>html[lang]</c> 现取；
     /// innerHTML 全段同样走 JsString（SVG 单引号裸拼会炸解析——FULL 评审 B1）。
-    /// macChrome 分支另挂原生全屏点击处理与毛玻璃透明链。三条注入路径共用本函数（见类注）。</summary>
+    /// macChrome 分支另挂原生全屏点击处理与毛玻璃透明链。两条注入路径共用本函数（见类注）。</summary>
     /// <param name="heightPx">chrome 高度（CSS 像素，<see cref="Infrastructure.Runtime.CaptionBarOptions.HeightPx"/>；
-    /// 与 Ryn 自动拖拽条同源，默认 52 = 官方 macOS 侧栏顶条）。</param>
+    /// 默认 52 = 官方 macOS 侧栏顶条）。</param>
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）：仅作 <c>html[lang]</c>
     /// 缺失时的回落值，文档自带语言时以文档为准。</param>
     /// <param name="macChrome">是否启用原生 macOS chrome（调用点传 <see cref="MacNativeChrome.IsEnabled"/>，
@@ -85,10 +72,8 @@ internal static class CaptionBar
         int heightPx,
         UiLocale? uiLocale = null,
         bool macChrome = false,
-        CaptionBarChannel? channel = null,
         bool edgeResize = true)
     {
-        CaptionBarChannel ch = channel ?? CaptionBarChannel.Ryn;
         bool english = uiLocale?.IsEnglish == true;
         // 两套语言的按钮可达名都进脚本：脚本注册后由引擎在**每次页面加载**时执行（注入时机见类注），
         // 执行期语言只能从文档取（dsh 把语言写在 html[lang]，companion 上报同源），故不在构建期钉死；
@@ -113,7 +98,7 @@ internal static class CaptionBar
         string resizeCmd = AppJsonContext.JsString(HostCommandIds.WindowStartResize);
 
         return "(function(){" +
-               // 注册式执行是全 frame 注入（Ryn 的 inject 传 no_frames=false）：只给顶层文档建壳顶栏，
+               // 脚本可能被注入到子 frame（引擎侧求值不保证顶层）：只给顶层文档建壳顶栏，
                // 否则 dsh 的层级子文档会各长一条。
                "if(window.top!==window.self)return;" +
                // 同一文档只装一次监听：引导页（wwwroot/index.html）自带同 id 的静态条，旧守卫「遇 bar 即 return」
@@ -122,8 +107,6 @@ internal static class CaptionBar
                "window.__dsh_caption_ready=1;" +
                "var id='" + ElementId + "';" +
                "var bar=document.getElementById(id);" +
-               // 旧宿主遇到已有静态条仍按原行为退出（点击语义在 Ryn 的委托监听里）。
-               "if(bar&&!SHELL)return;" +
                // 样式独立于条存在性：引导页自带静态条时仍需要三变量/描边环等规则（静态条只带条本身）。
                "if(!document.querySelector(\"style[data-dsh-desktop='caption-bar']\")){" +
                "var st=document.createElement('style');" +
@@ -148,9 +131,9 @@ internal static class CaptionBar
                "if(!document.getElementById('" + EdgeRingId + "')){" +
                "var ring=document.createElement('div');ring.id='" + EdgeRingId + "';" +
                "(document.body||document.documentElement).appendChild(ring);}" +
-               BuildButtonBindings(ch, macChrome, closeCmd, minimizeCmd, toggleCmd, fullscreenCmd) +
+               BuildButtonBindings(macChrome, closeCmd, minimizeCmd, toggleCmd, fullscreenCmd) +
                // 带上界取自 Core 模型（值恒等于 HeightPx，见 ChromeInsets）：渲染只消费，不重算。
-               CaptionBarDragScript.BuildDrag(insets.TopClearancePx, ch, edgeResize, dragCmd, resizeCmd, toggleCmd) +
+               CaptionBarDragScript.BuildDrag(insets.TopClearancePx, edgeResize, dragCmd, resizeCmd, toggleCmd) +
                "})();";
     }
 
@@ -213,8 +196,8 @@ internal static class CaptionBar
     /// 不用自绘底衬：底衬在两态宽度不同会露出色块补丁，收进窄轨后灯下天然是侧栏/轨道填充色。
     /// 注入条<b>必须保持可命中</b>（不设 pointer-events:none）：三个圆点靠它承载点击。
     /// 顶带拖拽<b>不由本条的命中面积决定</b>——判定已收归本壳（见 BuildDragBinding）：dsh 把顶带
-    /// 留给自顶带起算的流内 chrome（列容器与会话头部），Ryn 的自动拖拽条对「盖住条带却向下延伸」
-    /// 的元素一律按内容处理，故那条带在 Ryn 侧不可靠；注入条只是碰巧落在带内的一个小命中体，
+    /// 留给自顶带起算的流内 chrome（列容器与会话头部），「盒底 ≤ 条带上界」式判据对「盖住条带却向下
+    /// 延伸」的元素一律按内容处理；注入条只是碰巧落在带内的一个小命中体，
     /// 不再是拖拽面的唯一来源（条内非按钮区域仍算壳带，见判据的 fixed 例外）。</summary>
     /// <param name="greenAttr">绿灯按钮属性名（绿底规则随之切换）。</param>
     /// <param name="heightPx">chrome 高度（CSS 像素）：注入条高度。</param>
@@ -249,7 +232,7 @@ internal static class CaptionBar
         "box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l3,rgba(127,127,127,.4));" +
         "z-index:2147483646}";
 
-    /// <summary>macOS 毛玻璃（官方 vibrancy 观感）：窗/网页背景已由 RynOptions.Backdrop 清成透明，页面侧补
+    /// <summary>macOS 毛玻璃（官方 vibrancy 观感）：窗口背景按平台清成透明，页面侧补
     /// 官方那条透明链——html/body 透明 + 侧栏列改半透明色调，NSVisualEffectView 经此透出。官方侧栏
     /// 色标取 --dsw-specific-sidebar-fill 的渐变叠加，且整链以 html[data-platform='darwin'] 门控，
     /// 而该属性正是本壳禁用的宿主冒充开关（见类注）；故改为注入期按平台收录本段、色标改用通用
@@ -271,7 +254,7 @@ internal static class CaptionBar
     /// <summary>边缘缩放命中宽度（CSS 像素）：无边框窗口的边缘缩放由页面判定（宿主按边发平台消息）。</summary>
     internal const int ResizeEdgePx = 6;
 
-    /// <summary>红绿灯三点标记：关闭/最小化走 Ryn 属性，绿灯属性随平台给（见 <see cref="MacGreenAttr"/>）。</summary>
+    /// <summary>红绿灯三点标记：关闭/最小化走窗口命令属性，绿灯属性随平台给（见 <see cref="MacGreenAttr"/>）。</summary>
     /// <param name="greenAttr">绿灯按钮属性名。</param>
     /// <returns>注入条 innerHTML（由调用方经 JsString 注入）。</returns>
     private static string BuildBarInnerHtml(string greenAttr) =>
@@ -281,13 +264,12 @@ internal static class CaptionBar
 
     /// <summary>macOS 绿灯的原生全屏点击绑定：直接绑在绿灯元素上（随元素创建/销毁，不引入全局标志与
     /// 选择器，也就不存在「元素被移除后重复注入叠监听」的缝；元素幂等守卫已保证每文档只建一次）。
-    /// 判据是无状态几何现算：Ryn 0.38 无 fullscreen 查询命令，故以 |innerHeight-screen.height|≤2 且
+    /// 判据是无状态几何现算：壳不提供 fullscreen 查询命令，故以 |innerHeight-screen.height|≤2 且
     /// |innerWidth-screen.width|≤2 判为已全屏（全屏铺满整屏且菜单栏自动隐藏；窗口缩放只占工作区、
     /// 高度差 &gt; 2），每次点击现算——导航与外部退出都不会让状态漂移。已知盲区：系统开着「自动隐藏
     /// 菜单栏」且 Dock 也自动隐藏时，缩放窗也铺满屏框 → 被读成全屏、首击退化为 no-op（⌃⌘F 仍可用）；
     /// 此面列入 ADR 的 macOS 真机验收项。</summary>
     private static string BuildButtonBindings(
-        CaptionBarChannel channel,
         bool macChrome,
         string closeCmd,
         string minimizeCmd,
@@ -299,14 +281,7 @@ internal static class CaptionBar
             "Math.abs(window.innerWidth-window.screen.width)<=2;}catch(err){/* no window.screen in old engines: treat as not fullscreen */}" +
             "call(" + fullscreenCmd + ",{fullscreen:!fs});};";
 
-        if (!channel.ShellBridge)
-        {
-            // 旧宿主：红黄与缩放绿灯走 Ryn 的 data-webview-* 委托监听；macOS 绿灯是原生全屏语义，
-            // Ryn 没有对应属性，这条仍由本壳自绑。
-            return macChrome ? fullscreen : string.Empty;
-        }
-
-        // 新宿主没有那层委托监听：三键各自 onclick（重复注入时覆盖而非叠监听）。
+        // 三键各自 onclick（重复注入时覆盖而非叠监听）。
         string green = macChrome ? fullscreen : "bar.children[2].onclick=function(){call(" + toggleCmd + ");};";
         return "bar.children[0].onclick=function(){call(" + closeCmd + ");};" +
                "bar.children[1].onclick=function(){call(" + minimizeCmd + ");};" + green;

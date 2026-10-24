@@ -1,6 +1,5 @@
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Tests.Fakes;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.Hosting;
 
@@ -70,7 +69,6 @@ public class ShellRecoveryRegistrationTests
         await router.RouteAsync(
             HostCommandIds.RecoveryExit,
             ReadOnlyMemory<byte>.Empty,
-            new FakeServiceProvider(),
             CancellationToken.None);
 
         Assert.True(closedWithGateReleased);
@@ -137,12 +135,5 @@ public class ShellRecoveryRegistrationTests
         context.CancelAndJoin();
         Assert.Contains(log, line => line.Contains("监督循环未在时限内收口", StringComparison.Ordinal));
         release.SetResult();
-    }
-
-    /// <summary>路由分发只取参数帧，本用例不读服务容器。</summary>
-    private sealed class FakeServiceProvider : IServiceProvider
-    {
-        /// <inheritdoc />
-        public object? GetService(Type serviceType) => null;
     }
 }

@@ -13,7 +13,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// 预算窗口（见 <see cref="PageHealthRecovery"/>）。<paramref name="reload"/> 为 null 时保持纯观测
 /// （阶段 1 行为，向后兼容）。
 /// 探针求值经 <see cref="IWindowScriptTarget"/> 端口（ADR architecture/2026-10-21-window-script-target-port）：
-/// 「怎么对当前窗口求值 JS」在仓内只有一个答案，回报解码也只有 <see cref="RynProbeValue"/> 一处。
+/// 「怎么对当前窗口求值 JS」在仓内只有一个答案，回报解码也只有 <see cref="ScriptProbeValue"/> 一处。
 /// </summary>
 internal sealed class PageHealthMonitor
 {
@@ -36,8 +36,7 @@ internal sealed class PageHealthMonitor
     public string? Snapshot { get; private set; }
 
     /// <summary>创建监视器。</summary>
-    /// <param name="scriptTarget">当前窗口脚本求值端口（探针求值经它；Ryn 适配器另居一处，
-    /// ADR window-script-target-port）。</param>
+    /// <param name="scriptTarget">当前窗口脚本求值端口（探针求值经它；ADR window-script-target-port）。</param>
     /// <param name="log">日志输出（可选）。</param>
     /// <param name="tracker">页面健康判定器（测试可注入；默认新实例）。</param>
     /// <param name="recovery">有界恢复预算（测试可注入；默认新实例）。</param>
@@ -66,7 +65,7 @@ internal sealed class PageHealthMonitor
             {
                 await Task.Delay(interval, ct);
                 string raw = await _scriptTarget.EvaluateAsync(ProbeScript, ct);
-                Record(Parse(RynProbeValue.Decode(raw)), ct);
+                Record(Parse(ScriptProbeValue.Decode(raw)), ct);
             }
             catch (OperationCanceledException)
             {
@@ -84,7 +83,7 @@ internal sealed class PageHealthMonitor
     /// 探针观测值解析（纯函数可单测）：DOM 形态 → 健康态的单一判读点。<c>text:0</c> 判 Dead、
     /// <c>text:&lt;n&gt;</c>（n&gt;0）判 Alive；空白照常容忍；空串、形状不认识或非十进制
     /// 数字一律 Unknown——记不进探针计数，绝不因读不懂观测值触发恢复。
-    /// 入参是<b>已解码</b>的观测值（桥回报的引号外壳由 <see cref="RynProbeValue.Decode"/> 剥掉，
+    /// 入参是<b>已解码</b>的观测值（桥回报的引号外壳由 <see cref="ScriptProbeValue.Decode"/> 剥掉，
     /// 解码只有那一处）；带引号的形态判 Unknown——读不懂就不猜，绝不触发恢复。
     /// </summary>
     /// <param name="decoded">已解码的探针观测值（如 <c>text:42</c>）。</param>

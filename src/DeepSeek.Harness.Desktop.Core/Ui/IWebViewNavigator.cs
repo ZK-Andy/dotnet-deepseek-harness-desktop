@@ -1,15 +1,15 @@
 namespace DeepSeek.Harness.Desktop.Core.Ui;
 
 /// <summary>
-/// 网页视图导航端口（R3：Ryn 是外部边界，端口在 Core、适配器在 Presentation；ADR 组合根机制收官 step-1）：
+/// 网页视图导航端口（R3：WebView 是外部边界，端口在 Core、适配器在 Presentation）：
 /// 导航调用、到达信号订阅与脚本求值三面，供进入主界面用例（<see cref="MainUiEntry"/>）与恢复收口导航消费。
 /// 端口只做边界搬运——调用时限、提交等待与重试决策留在用例（<c>MainUiEntry</c>），故 fake 端口即可单测整条链。
-/// 「窗口未建好」经 <see cref="IsWindowReady"/> 表达；其余异常照抛（fail loud，Ryn「无窗口/未运行」以外的问题
+/// 「窗口未建好」经 <see cref="IsWindowReady"/> 表达；其余异常照抛（fail loud，「未就绪」以外的问题
 /// 不得被吞成未就绪）。
 /// </summary>
 public interface IWebViewNavigator
 {
-    /// <summary>主窗口当前是否可用（等价 <c>CurrentWindowAccessor.Current</c> 的可用性探测；尚未建好 false）。</summary>
+    /// <summary>主窗口当前是否可用（尚未建好 false）。</summary>
     bool IsWindowReady { get; }
 
     /// <summary>绑定「导航已到达」回调（单槽可变；实现侧转换引擎的导航到达信号）。

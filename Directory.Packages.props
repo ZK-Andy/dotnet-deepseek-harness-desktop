@@ -8,11 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="Ryn" Version="0.38.0" />
-    <PackageVersion Include="Ryn.Plugins.Tray" Version="0.38.0" />
-    <PackageVersion Include="Ryn.Plugins.Dialog" Version="0.38.0" />
-    <PackageVersion Include="Ryn.Callbacks" Version="0.38.0" />
-    <PackageVersion Include="Ryn.Ipc.Generator" Version="0.38.0" />
     <PackageVersion Include="StyleCop.Analyzers" Version="1.1.118" />
     <PackageVersion Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23" />
     <!-- D003 自研分析器（DSH0001）的编译期依赖：钉 4.13.0（分析器引用版本 ≤ 编译器版本即前向兼容；
@@ -20,8 +15,8 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.13.0" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
-    <!-- Avalonia 宿主迁移（ADR proposed/architecture/2026-10-22-avalonia-host-migration）：
-         宿主层从 Ryn 换到 Avalonia 12.1.x + 包自带 WebView 桥；Ryn 条目保留到各迁移片完成。 -->
+    <!-- Avalonia 宿主（ADR implemented/architecture/2026-10-22-avalonia-host-migration）：
+         12.1.x 桌面栈 + 包自带 WebView 桥；旧 Ryn 宿主已随迁移收尾下线。 -->
     <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Controls.WebView" Version="12.1.1" />

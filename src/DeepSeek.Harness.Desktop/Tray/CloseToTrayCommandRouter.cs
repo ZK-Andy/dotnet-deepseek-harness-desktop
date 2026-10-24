@@ -1,7 +1,6 @@
 using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Core.Platform;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tray;
 
@@ -29,11 +28,11 @@ public sealed class CloseToTrayCommandRouter : ICommandRouter
         command is HostCommandIds.CloseToTrayGetState or HostCommandIds.CloseToTraySet;
 
     /// <inheritdoc />
-    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
+    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, CancellationToken cancellationToken)
     {
         if (!CanRoute(command))
         {
-            throw new RynCommandNotFoundException(command);
+            throw new CommandNotFoundException(command);
         }
 
         try
@@ -48,7 +47,7 @@ public sealed class CloseToTrayCommandRouter : ICommandRouter
                     _log?.Invoke($"[host] 关闭最小化到托盘已{(enabled ? "开启" : "关闭")}");
                     return ValueTask.FromResult(Frame());
                 default:
-                    throw new RynCommandNotFoundException(command);
+                    throw new CommandNotFoundException(command);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

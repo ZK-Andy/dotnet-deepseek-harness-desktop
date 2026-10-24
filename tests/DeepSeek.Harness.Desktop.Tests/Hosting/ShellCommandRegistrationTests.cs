@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Tests.Fakes;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.Hosting;
 
@@ -53,7 +52,7 @@ public class ShellCommandRegistrationTests
         string[] foreign =
         [
             HostCommandIds.UpdateGetState,
-            HostCommandIds.TrayEvent,
+            HostCommandIds.CompanionReport,
             HostCommandIds.BootstrapRetry,
             HostCommandIds.RecoveryExit,
             HostCommandIds.WindowClose,
@@ -88,7 +87,7 @@ public class ShellCommandRegistrationTests
         ICommandRouter router = Assert.Single(routers, r => r.CanRoute(HostCommandIds.AppRestart));
 
         string frame = await router.RouteAsync(
-            HostCommandIds.AppRestart, ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None);
+            HostCommandIds.AppRestart, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
         Assert.Equal("{}", frame);
 
         string[] seen = await WaitForStepsAsync(steps, 7, TimeSpan.FromSeconds(3));
@@ -165,13 +164,12 @@ public class ShellCommandRegistrationTests
         Assert.NotNull(router);
 
         string initial = await router.RouteAsync(
-            HostCommandIds.CloseToTrayGetState, ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None);
+            HostCommandIds.CloseToTrayGetState, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
         Assert.Equal("""{"enabled":true,"available":false}""", initial);
 
         await router.RouteAsync(
             HostCommandIds.CloseToTraySet,
             System.Text.Encoding.UTF8.GetBytes("""{"enabled":false}"""),
-            null!,
             CancellationToken.None);
 
         Assert.False(preference.HideOnClose);
@@ -187,7 +185,7 @@ public class ShellCommandRegistrationTests
             routers, r => r.CanRoute(HostCommandIds.DiagnosticsExport));
 
         string frame = await router.RouteAsync(
-            HostCommandIds.DiagnosticsExport, ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None);
+            HostCommandIds.DiagnosticsExport, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
 
         Assert.Contains("/tmp/fake-diagnostics.zip", frame, StringComparison.Ordinal);
     }

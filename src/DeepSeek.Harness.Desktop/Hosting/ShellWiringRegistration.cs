@@ -75,7 +75,27 @@ internal static class ShellWiringRegistration
             exitPipeline.ScheduleExitFallback,
             HostLog.Write);
 
-        return new RunWiring(startup, bridgeHost, exitPipeline, recovery, closeGate, updates, closeWindow);
+        // 启动期告知（ADR shared-home-desktop-profile + avalonia-g3-update-surface 的落点判据）：
+        // 版本底线与非受控退出两条横幅走「壳真 UI」判据——holder 页 location.reload() 会吞掉注入，
+        // 等待与重试语义在 PagePump；落定握手取消即放弃。
+        var notices = new StartupNoticeService(
+            preflight.Bootstrap,
+            TimeSpan.FromSeconds(shared.Timeouts.BootstrapSettleTimeoutSeconds),
+            TimeSpan.FromSeconds(shared.Timeouts.VersionProbeTimeoutSeconds),
+            marker.PreviousRunUnclean,
+            HostLog.Write,
+            (version, ct) => shared.Pump.ShowBannerWhenShellReadyAsync(
+                bridgeHost.ScriptTarget,
+                DesktopBanner.BuildVersionFloorBanner(version, shared.UiLocale),
+                WebAuthRecovery.HolderMarker,
+                ct),
+            ct => shared.Pump.ShowBannerWhenShellReadyAsync(
+                bridgeHost.ScriptTarget,
+                DesktopBanner.BuildUncleanExitBanner(shared.UiLocale),
+                WebAuthRecovery.HolderMarker,
+                ct));
+
+        return new RunWiring(startup, bridgeHost, exitPipeline, recovery, closeGate, updates, closeWindow, notices);
     }
 
     /// <summary>主窗关窗（UI 线程）：退出管道、自更新安装与恢复页退出共用同一份投递——后台线程调用时
@@ -107,6 +127,7 @@ internal static class ShellWiringRegistration
 /// <param name="CloseGate">关窗闸门（失败面/托盘/恢复页与自更新安装共用的同一放行点）。</param>
 /// <param name="Updates">自更新面（命令路由、启动检查与托盘「检查更新」动作）。</param>
 /// <param name="CloseWindow">主窗关窗投递（退出管道、自更新安装与恢复页退出共用）。</param>
+/// <param name="Notices">启动期告知（版本底线/非受控退出横幅；引导落定后由窗口起步收口触发）。</param>
 internal sealed record RunWiring(
     ShellStartup Startup,
     ShellBridgeHost BridgeHost,
@@ -114,4 +135,5 @@ internal sealed record RunWiring(
     ShellRecoveryContext Recovery,
     CloseGate CloseGate,
     UpdateSurface Updates,
-    Action CloseWindow);
+    Action CloseWindow,
+    StartupNoticeService Notices);

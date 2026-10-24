@@ -10,7 +10,7 @@ namespace DeepSeek.Harness.Desktop.Hosting;
 /// 但改语言不会重建本菜单，缺口记在 ADR avalonia-g3-exit-restart 的残项）。
 /// 「检查更新」项与自更新栈同生灭（未装载即不出现，与旧宿主同判据）；检查结论落页面横幅
 /// （ADR avalonia-g3-update-surface）——Avalonia 托盘没有系统通知面，旧宿主的通知通道随迁移下线。
-/// 菜单动作都是原生回调，不经 <c>desktop.tray.event</c>（新宿主没有 Ryn 托盘插件可发该事件）。</summary>
+/// 菜单动作都是原生回调，不经页面事件中继（托盘没有页面侧事件源）。</summary>
 internal sealed class ShellTray : IDisposable
 {
     private readonly TrayIcon _icon;

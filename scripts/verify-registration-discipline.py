@@ -33,7 +33,7 @@ one-level generic in `NEW_EXPR_RE` and are skipped; short-alias qualification
 construction shapes stay covered here.
 
 Registration files are `*Registration.cs` (per-domain `AddXxx` extensions)
-plus the root set (`Program.cs` / `DesktopAdapter*.cs`, same mouth as
+plus the root set (`Program.cs` / `AvaloniaHost*.cs`, same mouth as
 verify-compose-root.py — root construction keeps counting under C3, not
 here, so the two gates never double-count). `HostLog.*` is exempt: the
 sanctioned ambient facility (D004 mandates logging via HostLog).
@@ -85,7 +85,7 @@ def _is_registration(path: Path) -> bool:
     """Per-domain `AddXxx` extensions plus the root set (see module docstring)."""
     return (path.name.endswith("Registration.cs")
             or path.name == "Program.cs"
-            or path.name.startswith("DesktopAdapter"))
+            or path.name.startswith("AvaloniaHost"))
 
 
 def _infra_types(infra_src: Path) -> set[str]:

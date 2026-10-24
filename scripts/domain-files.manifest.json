@@ -6,14 +6,9 @@
   "Bootstrap": [
     "AppRestartCommandRouter.cs",
     "BootstrapCommandRouter.cs",
-    "BootstrapRegistration.cs",
     "BootstrapStateFrame.cs",
     "FirstBootUi.cs",
-    "RunServicesRegistration.cs",
-    "RuntimeResolutions.cs",
     "ShellMintEpochAdapter.cs",
-    "StartupSequence.cs",
-    "StartupSequence.Supervision.cs",
     "StartupStages.cs",
     "StartupUseCaseRegistration.cs",
     "WebkitSandboxFallback.cs"
@@ -25,12 +20,10 @@
     "AvaloniaWindowScriptTarget.cs",
     "CaptionBar.cs",
     "CaptionBarDragScript.cs",
-    "CaptionBarInstaller.cs",
     "CompanionLocaleCommandRouter.cs",
     "CompanionReportCommandRouter.cs",
     "DesktopBanner.cs",
     "ExternalLinkCommandRouter.cs",
-    "IPageBridgePorts.cs",
     "IWebViewSurface.cs",
     "IWindowScriptTarget.cs",
     "MacNativeChrome.cs",
@@ -39,41 +32,31 @@
     "PageCaptionBar.cs",
     "PageHealthMonitor.cs",
     "PagePump.cs",
-    "RynNavigationCallbacks.cs",
-    "RynPageBridgeAdapters.cs",
-    "RynProbeValue.cs",
+    "ScriptProbeValue.cs",
     "ShellBridge.cs",
     "ShellBridgeProtocol.cs",
     "ShellBridgeScript.cs",
     "UiLocaleCommandRouter.cs",
     "WebAuthProbe.cs",
-    "WebViewNavigator.cs",
-    "WindowCommands.cs",
-    "WindowScriptTarget.cs"
+    "WindowCommands.cs"
   ],
   "Recovery": [
     "DesktopDiagnosticsCommandRouter.cs",
     "RecoveryCommandRouter.cs",
     "RecoveryDialogText.cs",
     "RecoveryPageBuilder.cs",
-    "RecoveryRegistration.cs",
-    "RecoverySurface.cs",
-    "RynFailureDialog.cs"
+    "RecoverySurface.cs"
   ],
   "Tray": [
     "CloseGate.cs",
     "CloseToTrayCommandRouter.cs",
-    "DesktopTrayCommandRouter.cs",
     "TrayCheckFeedback.cs",
-    "TrayController.cs",
     "TrayMenuActions.cs",
-    "TrayRecallMaximize.cs",
-    "TrayRegistration.cs"
+    "TrayRecallMaximize.cs"
   ],
   "Update": [
     "DesktopUpdateCommandRouter.cs",
     "UpdateBanner.cs",
-    "UpdateRegistration.cs",
     "UpdateSurfaceRegistration.cs"
   ],
   "Hosting": [
@@ -89,7 +72,6 @@
     "ShellStartup.cs",
     "ShellTray.cs",
     "ShellWindow.cs",
-    "ShellWiringRegistration.cs",
     "StartupFailureFace.cs",
     "WebView2Registration.cs",
     "WebView2StartupGuard.cs",

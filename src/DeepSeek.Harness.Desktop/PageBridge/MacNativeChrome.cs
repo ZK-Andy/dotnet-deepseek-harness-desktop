@@ -4,8 +4,8 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
 /// macOS 原生窗口增强的单一判据（ADR frameless-uniform-caption-bar）：本进程是否启用<b>原生</b> macOS
-/// chrome——毛玻璃 <c>RynOptions.Backdrop</c> 与绿灯的原生全屏语义。窗口选项（装配面）与注入脚本
-/// （启动序列）两侧同源此判据，避免「窗口透明/页面不透」的失配。
+/// chrome——毛玻璃观感与绿灯的原生全屏语义。窗口选项（装配面）与注入脚本（页面桥）
+/// 两侧同源此判据，避免「窗口透明/页面不透」的失配。
 /// </summary>
 /// <remarks>
 /// <b>闸界</b>：macOS 且非 x64-under-Rosetta（.NET 7+ 起 Rosetta 进程的

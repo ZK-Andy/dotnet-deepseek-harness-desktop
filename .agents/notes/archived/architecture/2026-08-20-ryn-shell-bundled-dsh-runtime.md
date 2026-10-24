@@ -2,6 +2,10 @@
 
 Status: implemented
 
+Archived: 2026-10-24
+
+Erratum: 2026-10-24 — 失效：宿主 = Ryn、`ryn.json` 能力沙箱与 `Ryn.Ipc` 命令路由（随 G5 下线，见 [avalonia-g5-ryn-host-retirement](../../implemented/architecture/2026-10-24-avalonia-g5-ryn-host-retirement.md)）；保留：Problem 段的「开箱即用」产品目标与 C#/.NET 技术选型。宿主迁移见 [avalonia-host-migration](../../implemented/architecture/2026-10-22-avalonia-host-migration.md)。正文不动。
+
 ## Problem
 
 产品目标是 DeepSeek Harness 的 .NET 桌面端，且**开箱即用**：用户不应被要求预装 Node、DeepSeek Harness 运行时或任何环境。现有参照实现分别落在 Rust/Tauri（hairyf/deepseek-harness-desktop）与 TypeScript/Electron（op7418/pilot-harness），均非 .NET 栈。本仓库确定以 **C#/.NET** 构建（NuGet 命名空间 `DeepSeek.Harness.Desktop`），需要一个钉死的宿主与运行时打包架构决策。
@@ -31,10 +35,10 @@ Status: implemented
 - 原验收条件逐项闭环：真实桌面启动并加载 Web UI（Linux rpm 实机多轮验收含自更新循环）；零外部 Node/DSH 依赖运行；生命周期管理就位；命名空间与 MIT 就位。撤销条件（Ryn 在 Linux WebKitGTK 能力失败）未触发。
 - Ryn 为 Alpha 的能力边界仍在：notification/badge/global-shortcut 等未采用（桌面增强走插件路线绕开）；跨平台 WebView 渲染差异属已知取舍。
 - Node 许可与架构矩阵在 `bundle-runtime-ci.sh` 单点冻结（DSH_VERSION/NODE_VERSION 变更同点升级）；闭包体积换确定性是在案差异化（「零下载确定性」）。
-- 「嵌入上下文的 DSH_HOME 重定向」开放问题已由 [shared-home-desktop-profile](2026-08-23-shared-home-desktop-profile.md) 回答：数据 home 采用共享 `~/.dsh`（B 形态），随包闭包保留为预览期形态。
+- 「嵌入上下文的 DSH_HOME 重定向」开放问题已由 [shared-home-desktop-profile](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md) 回答：数据 home 采用共享 `~/.dsh`（B 形态），随包闭包保留为预览期形态。
 
 ## Related
 
-- [shared-home-desktop-profile](2026-08-23-shared-home-desktop-profile.md)：数据 home 形态的现行裁决；与本决定的「闭包随包」同向互补（数据共享一份 + 执行副本随包）。
-- [dev 运行时隔离](../process/2026-08-22-dev-runtime-isolation.md)：dev 判定原依赖「有无捆绑闭包」信号，已随 online-first 批次二改为 `DSH_DESKTOP_DEV=1` 显式标记（该 ADR Related 有指针）。
+- [shared-home-desktop-profile](../../implemented/architecture/2026-08-23-shared-home-desktop-profile.md)：数据 home 形态的现行裁决；与本决定的「闭包随包」同向互补（数据共享一份 + 执行副本随包）。
+- [dev 运行时隔离](../../implemented/process/2026-08-22-dev-runtime-isolation.md)：dev 判定原依赖「有无捆绑闭包」信号，已随 online-first 批次二改为 `DSH_DESKTOP_DEV=1` 显式标记（该 ADR Related 有指针）。
 - [online-first 去捆绑运行时](../../implemented/architecture/2026-08-29-online-first-unbundled-runtime.md)（implemented）：**部分取代本篇**——「完整运行时打包」决定由该 ADR 转向（安装器瘦身 + 首启引导），捆绑闭包与零下载确定性表述随 offline 约束删除而退役。

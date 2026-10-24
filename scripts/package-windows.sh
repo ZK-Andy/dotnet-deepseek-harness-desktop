@@ -135,7 +135,7 @@ mkdir -p "$STAGE/resources/plugins"
 bash "$ROOT/scripts/build-companion-tgz.sh" "$STAGE/resources/plugins/dsh-desktop-companion.tgz"
 
 # 布局断言（staging 是 Inno [Files] 的唯一内容源，断言 staging 即断言安装器）：
-# 闭包残留 / 插件 tgz 名称体积 / 主 exe + 托管程序集 + 原生库 + runtimes + wwwroot，
+# 闭包残留 / 插件 tgz 名称体积 / 主 exe + 托管程序集 + 原生库 + wwwroot，
 # 缺一 fail loud。判据唯一家在 scripts/verify-package-layout.sh。
 packaging_assert_layout windows "$STAGE"
 

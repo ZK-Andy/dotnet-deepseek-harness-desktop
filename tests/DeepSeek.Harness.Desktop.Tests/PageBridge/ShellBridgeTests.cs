@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using DeepSeek.Harness.Desktop.Core.Ipc;
 using DeepSeek.Harness.Desktop.Tests.Fakes;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 

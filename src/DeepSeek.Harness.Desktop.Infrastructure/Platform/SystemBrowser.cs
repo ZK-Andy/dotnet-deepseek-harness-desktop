@@ -8,8 +8,8 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Platform;
 /// 子进程输出，浏览器后台报错不回灌应用终端），其余平台 <c>Process.Start(UseShellExecute=true)</c>。
 /// </summary>
 /// <remarks>
-/// 单一事实源：<see cref="ExternalLinkCommandRouter"/> 与 <see cref="RynNavigationCallbacks"/>
-/// 的默认打开器都收敛到这里，避免两份复制打开逻辑漂移。
+/// 单一事实源：页面桥的外链路由（<c>app.openExternal</c>）与导航拦截共用本实现，
+/// 避免两份复制打开逻辑漂移。
 /// Linux 优先经 <c>systemd-run --user --scope</c> 承载（ADR exit-app-scope-ghost-residue）：
 /// 浏览器整棵进程树生在独立 transient scope 里，不落进本壳的 GNOME app scope。不这么做的实机后果——
 /// GLib 的 systemd-scope 启动只搬浏览器主 pid，启动瞬间 fork 的 helper 留在父进程 cgroup，

@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Recovery;
 /// <c>StartupSequence</c> 各段整体搬迁，零行为变更）：原生通道可用即弹模态（正文 = 失败原因 + stderr 尾部 +
 /// 诊断包路径，退出动作挂显式 true），不可用或承载故障时由用例回落本类的页内恢复面。
 /// 窗口面只经两个端口进来：页内注入走 <see cref="IWindowScriptTarget"/>，退出走
-/// <see cref="CloseGate"/> + 关窗动作（与 <c>RecoveryCommandRouter</c> 同构）——Ryn 类型不进本类，
+/// <see cref="CloseGate"/> + 关窗动作（与 <c>RecoveryCommandRouter</c> 同构）——窗口类型不进本类，
 /// 故本条用例可单测（ADR architecture/2026-10-21-window-script-target-port）。
 /// </summary>
 internal sealed class RecoverySurface : IRecoverySurface
@@ -28,7 +28,7 @@ internal sealed class RecoverySurface : IRecoverySurface
     /// <param name="diagnosticsExport">诊断包导出端口（正文里的求助路径）。</param>
     /// <param name="uiLocale">宿主 UI 语言单点（文案分支）。</param>
     /// <param name="closeGate">关窗闸门（退出前先批准，hide-to-tray 拦截下未批准的 Close 会吞成隐藏）。</param>
-    /// <param name="closeWindow">关窗动作（装配处绑定到 Ryn 窗口；本类不持窗口类型）。</param>
+    /// <param name="closeWindow">关窗动作（装配处绑定到主窗；本类不持窗口类型）。</param>
     /// <param name="log">日志出口。</param>
     public RecoverySurface(
         HarnessRuntimeHost host,

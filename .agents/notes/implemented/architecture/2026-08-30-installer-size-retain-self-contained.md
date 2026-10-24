@@ -44,4 +44,4 @@ Status: implemented
 ## Related
 
 - [online-first-unbundled-runtime](2026-08-29-online-first-unbundled-runtime.md)（implemented）：同轴去捆绑 DeepSeek Harness 运行时；其「首启形态」1 条「体积降至 10MB 级」预期已在本文档修正为「仅 framework-dependent 成立，self-contained 实际 ~88MB」。
-- [ryn-shell-bundled-dsh-runtime](2026-08-20-ryn-shell-bundled-dsh-runtime.md)（archived）：历史「捆绑 dsh 运行时」形态，与 online-first 转向互为对立，被后续去捆绑取代；本决策不重新捆绑运行时。
+- [ryn-shell-bundled-dsh-runtime](../../archived/architecture/2026-08-20-ryn-shell-bundled-dsh-runtime.md)（archived）：历史「捆绑 dsh 运行时」形态，与 online-first 转向互为对立，被后续去捆绑取代；本决策不重新捆绑运行时。

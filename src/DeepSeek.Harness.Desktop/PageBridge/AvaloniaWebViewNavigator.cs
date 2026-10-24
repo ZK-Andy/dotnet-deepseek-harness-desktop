@@ -6,7 +6,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// <see cref="IWebViewNavigator"/> 的 Avalonia 适配器（ADR architecture/2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision）：
 /// 导航、到达信号与脚本求值三面都落在 <see cref="IWebViewSurface"/>（与旧宿主的
 /// <see cref="WebViewNavigator"/> 同职）。到达信号取成功完成的顶层导航；求值回报按
-/// <see cref="RynProbeValue.Decode"/> 解壳（桥回报是 JSON 字符串字面量）。
+/// <see cref="ScriptProbeValue.Decode"/> 解壳（桥回报是 JSON 字符串字面量）。
 /// 不持有窗口类型，故本类可在 headless 测试里经假体跑通。
 /// </summary>
 internal sealed class AvaloniaWebViewNavigator : IWebViewNavigator, IDisposable
@@ -35,7 +35,7 @@ internal sealed class AvaloniaWebViewNavigator : IWebViewNavigator, IDisposable
 
     /// <inheritdoc />
     public async Task<string?> EvaluateScriptAsync(string script) =>
-        RynProbeValue.Decode(
+        ScriptProbeValue.Decode(
             await _surface.InvokeScriptAsync(script, CancellationToken.None).ConfigureAwait(false));
 
     /// <inheritdoc />

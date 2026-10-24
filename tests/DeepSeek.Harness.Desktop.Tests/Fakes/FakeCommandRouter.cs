@@ -1,4 +1,4 @@
-using Ryn.Ipc;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.Fakes;
 
@@ -41,12 +41,11 @@ internal sealed class FakeCommandRouter : ICommandRouter
     public ValueTask<string> RouteAsync(
         string command,
         ReadOnlyMemory<byte> args,
-        IServiceProvider services,
         CancellationToken cancellationToken)
     {
         if (!CanRoute(command))
         {
-            throw new RynCommandNotFoundException(command);
+            throw new CommandNotFoundException(command);
         }
 
         string body = System.Text.Encoding.UTF8.GetString(args.Span);

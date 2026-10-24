@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
 /// <summary>
-/// Ryn 桥返回值解码（探针共用）：<c>EvaluateJavaScriptAsync</c> 的回报是 JSON 文档，页面返回字符串时
+/// 页面桥返回值解码（探针共用）：<c>InvokeScript</c> 的回报是 JSON 文档，页面返回字符串时
 /// 到这边是**带引号与转义的 JSON 字符串字面量**——直接当文本用会把外壳算进字段。
 /// 解析方向走 <see cref="JsonDocument"/>（<c>AppJson</c> 的同一约定：桥接回包有再序列化怪癖，
 /// 不用反射式序列化通道）：字符串 → 还原转义后的文本，非字符串/不可解析 → 原样返回
@@ -11,7 +11,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// 仓内解壳只有这一处：页面健康探针（<c>PageHealthMonitor</c>）与网页视图导航端口都经
 /// <see cref="Decode"/>，消费侧不再自行剥引号。
 /// </summary>
-internal static class RynProbeValue
+internal static class ScriptProbeValue
 {
     /// <summary>解码桥回报；null/空 → null。</summary>
     /// <param name="raw">桥回报原文。</param>

@@ -128,7 +128,6 @@ public class CaptionBarTests
     {
         string script = CaptionBar.Build(52);
         Assert.Contains("if(window.__dsh_caption_ready)return;", script, StringComparison.Ordinal);
-        Assert.Contains("if(bar&&!SHELL)return;", script, StringComparison.Ordinal);
         Assert.Contains("querySelector(\"style[data-dsh-desktop='caption-bar']\")", script, StringComparison.Ordinal);
     }
 
@@ -263,8 +262,6 @@ public class CaptionBarTests
             script,
             StringComparison.Ordinal);
         Assert.Contains("document.addEventListener('dblclick',function(e){", script, StringComparison.Ordinal);
-        Assert.Contains("call(\"window.startDrag\");", script, StringComparison.Ordinal);
-        Assert.Contains("call('window.beginNativeDrag',{x:e.clientX,y:e.clientY});", script, StringComparison.Ordinal);
         // 判据上界跟配置高度走（禁硬编码 52）
         Assert.Contains("if(e.clientY>48)return false;", CaptionBar.Build(48), StringComparison.Ordinal);
         Assert.Contains(
@@ -280,7 +277,7 @@ public class CaptionBarTests
         string script = CaptionBar.Build(52);
         // 取值不手抄：判据是「生产常量进了脚本」（唯一事实源在 CaptionBar）。
         Assert.Contains(
-            $"var DBL_MS={CaptionBar.DoubleClickMs},DBL_SLOP={CaptionBar.DoubleClickSlopPx},SHELL=false,EDGE_ON=false,EDGE={CaptionBar.ResizeEdgePx};",
+            $"var DBL_MS={CaptionBar.DoubleClickMs},DBL_SLOP={CaptionBar.DoubleClickSlopPx},EDGE_ON=true,EDGE={CaptionBar.ResizeEdgePx};",
             script,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -301,11 +298,11 @@ public class CaptionBarTests
     }
 
     /// <summary>新宿主通道：脚本改走 <c>window.__shell</c>（Promise 桥），拖拽带屏幕坐标、
-    /// 边缘缩放启用（宿主按边发平台消息），且不再出现 <c>__ryn</c> 名。</summary>
+    /// 边缘缩放启用（宿主按边发平台消息），且只出现 <c>__shell</c> 通道名。</summary>
     [Fact]
     public void Build_ShellChannel_UsesShellBridgeAndEdgeResize()
     {
-        string script = CaptionBar.Build(52, channel: CaptionBarChannel.Shell);
+        string script = CaptionBar.Build(52);
 
         Assert.Contains("window.__shell", script, StringComparison.Ordinal);
         Assert.DoesNotContain("window.__ryn", script, StringComparison.Ordinal);
@@ -317,25 +314,13 @@ public class CaptionBarTests
             "call(\"window.startResize\",{edge:ed,x:window.screenX+e.clientX,y:window.screenY+e.clientY});",
             script,
             StringComparison.Ordinal);
-        Assert.Contains(",SHELL=true,EDGE_ON=true,", script, StringComparison.Ordinal);
+        Assert.Contains(",EDGE_ON=true,", script, StringComparison.Ordinal);
         // 边缩放不得抢交互控件：与顶带拖拽同一道 NODRAG/交互闸门（贴边滚动条/按钮优先点击）。
         Assert.Contains(
             "if(t&&t.closest&&(t.closest(NODRAG)||t.closest('[data-webview-drag]')))return '';",
             script,
             StringComparison.Ordinal);
         Assert.Contains("bar.children[0].onclick=function(){call(\"window.close\");};", script, StringComparison.Ordinal);
-    }
-
-    /// <summary>旧宿主通道：拖拽保留 Ryn 语义（macOS 走 beginNativeDrag），缩放边判定整体关闭——
-    /// 重复加会在 Ryn 上抢走内容点击。</summary>
-    [Fact]
-    public void Build_RynChannel_KeepsNativeDragAndNoResize()
-    {
-        string script = CaptionBar.Build(52);
-
-        Assert.Contains("window.__ryn", script, StringComparison.Ordinal);
-        Assert.Contains("if(!SHELL||!EDGE_ON)return '';", script, StringComparison.Ordinal);
-        Assert.Contains(",SHELL=false,EDGE_ON=false,", script, StringComparison.Ordinal);
     }
 
     /// <summary>子串出现次数计数（唯一事实源在被测脚本字面量，不手抄生产常量）。</summary>

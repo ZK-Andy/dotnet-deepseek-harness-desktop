@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 正文「companion 的消费随 G3 改」实际未在 G3 落地，已在 G5 完成（`client.js`/`testkit` 全部改走 `window.__shell`，`__ryn` 回退与托盘中继删除），见 [avalonia-g5-ryn-host-retirement](2026-10-24-avalonia-g5-ryn-host-retirement.md)。正文不动。
+
 Review: FULL/2026-10-22#4/R1=ok R2=ok R3=ok
 
 评审：首轮 R1 1B+5S、R2 1B+3S、R3 3B+7S；两轮验轮后 R3/R2 0B 收口，R1 第 3 轮的 1B（失败导航留痕）折叠后经用户授权第 4 轮单路复验 0B；Suggestion 逐条书面裁定（含 S5 部分采纳），折叠项不另开轮。
@@ -96,7 +98,7 @@ G0/G1 只点亮窗口、托盘与关窗语义（[avalonia-g0-entry-switch](2026-
 
 ## Related
 
-- [avalonia-host-migration](../../proposed/architecture/2026-10-22-avalonia-host-migration.md)：阶段表与本片边界。
+- [avalonia-host-migration](2026-10-22-avalonia-host-migration.md)：阶段表与本片边界。
 - [avalonia-g1-tray-recall](2026-10-22-avalonia-g1-tray-recall.md)：上一片。
 - [window-script-target-port](2026-10-21-window-script-target-port.md)：`IWindowScriptTarget` 端口出处。
 - [open-external-links-in-system-browser](../bug-fix/2026-08-21-open-external-links-in-system-browser.md)：外链策略与失败提示。

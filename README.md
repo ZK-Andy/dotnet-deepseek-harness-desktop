@@ -31,7 +31,7 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端。宿主层正从 [Ryn](https://github.com/Yupmoh/Ryn)（Tauri-for-C# 的原生 WebView 框架）迁向 [Avalonia](https://avaloniaui.net/) 12.1.x：G0、G1 首批与 G2 页面桥已落地（Avalonia 窗口 + 包自带原生 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回走 Avalonia 自带控件；`window.__shell` 承接页面命令/事件/每页脚本，外链拦截与页面健康观测已接；顶栏已接，三平台原生拖拽/缩放、Wayland 降级保留原生装饰；自启 / 关窗到托盘 / 诊断导出 / 重启四条命令已接，退出与重启走统一的退出管道；崩溃监督、首启引导与页内恢复页已接，引导失败可重试、崩溃自动重启并在卡住时弹失败面；更新三命令与托盘「检查更新」已接，检查结论先唤回主窗再落页面横幅（就绪横幅复用，失败/已最新走检查横幅；Avalonia 托盘没有系统通知面，故用夺焦换可见）），余打包面（G4）与三平台对齐（G5）。壳不自带运行时：node 与 dsh 都用系统全局的那一份（`npm install -g @deepseek-ai/dsh@next`），桌面与终端共享同一数据目录，会话、凭据、插件天然互通。首次启动检测 PATH 上的全局 dsh——没有就装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用（判据是兼容底线，不逐次查 npm dist-tag）。
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端。宿主 = [Avalonia](https://avaloniaui.net/) 12.1.x + 包自带原生 WebView（dsh spawn 与回环代理源复用既有实现）：托盘、关窗到托盘、二启唤回走 Avalonia 控件，启动失败面是进程内模态；`window.__shell` 承接页面命令/事件/每页脚本，外链拦截与页面健康观测已接；顶栏三平台原生拖拽/缩放，Wayland 降级保留原生装饰；自启、关窗到托盘、诊断导出、重启与更新三命令齐备，退出/重启走统一退出管道；崩溃监督、首启引导、页内恢复页与版本底线/脏退横幅已接，更新检查结论先唤回主窗再落页面横幅。壳不自带运行时：node 与 dsh 都用系统全局的那一份（`npm install -g @deepseek-ai/dsh@next`），桌面与终端共享同一数据目录，会话、凭据、插件天然互通。首次启动检测 PATH 上的全局 dsh——没有就装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用（判据是兼容底线，不逐次查 npm dist-tag）。
 
 <p align="center">
   <a href="assets/screenshot.png"><img src="assets/screenshot.png" width="880" alt="DeepSeek Harness Desktop 窗口：插件市场"></a>
@@ -53,7 +53,7 @@
 
 - ⚡️ **online-first 首启** — 缺则经全局 node 装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用；node 检查只在需要确保 dsh 时做一次，不重复联网。
 - ⌨️ **CLI shim** — 幂等注册内容恒定的 `pnpm` shim 进用户 PATH（从不覆盖同名命令）；dsh 本身已在 PATH 上，终端直接可用。
-- 🔒 **原生轻量** — C# 后端 + 系统 WebView（WebView2 / WKWebView / WebKitGTK），发布形态为 JIT（NativeAOT 未启用），能力沙箱 deny-by-default（`ryn.json`）。
+- 🔒 **原生轻量** — C# 后端 + 系统 WebView（WebView2 / WKWebView / WebKitGTK），发布形态为 JIT（NativeAOT 未启用），命令白名单 deny-by-default（未注册命令一律拒绝）。
 
 **窗口与系统集成**
 
@@ -121,9 +121,9 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ## 目录
 
 ```
-├── src/DeepSeek.Harness.Desktop/              # 壳（Presentation）：Avalonia 宿主（迁移中）+ Ryn 装配面
+├── src/DeepSeek.Harness.Desktop/              # 壳（Presentation）：Avalonia 宿主 + 装配面 + 页面桥
 ├── src/DeepSeek.Harness.Desktop.Core/         # 纯逻辑（零外层引用）
-├── src/DeepSeek.Harness.Desktop.Infrastructure/  # 适配器（Ryn/native、dsh 进程、文件/网络、更新）
+├── src/DeepSeek.Harness.Desktop.Infrastructure/  # 适配器（native、dsh 进程、文件/网络、更新）
 ├── tests/                                     # xunit：壳 / Core / Infrastructure / 分析器契约
 ├── tools/DeepSeek.Harness.Desktop.Analyzers/  # Roslyn 自研分析器（D003 机器化）
 ├── scripts/                                   # 门禁 + package-*.sh + release-preflight.sh + release-notes.sh
@@ -145,8 +145,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 - 本项目：MIT。
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）—— 本壳托管的运行时。
-- [Avalonia](https://avaloniaui.net/)（MIT）—— 迁移目标宿主框架。
-- [Ryn](https://github.com/Yupmoh/Ryn)（MIT）—— 原桌面壳框架（迁移中保留可回退）。
+- [Avalonia](https://avaloniaui.net/)（MIT）—— 宿主框架与原生 WebView 控件。
 - 打包思路参考 [pilot-harness](https://github.com/op7418/pilot-harness)。
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

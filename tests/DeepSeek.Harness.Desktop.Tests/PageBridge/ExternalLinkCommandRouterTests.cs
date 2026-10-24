@@ -28,7 +28,6 @@ public class ExternalLinkCommandRouterTests
         string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,
             body,
-            services: null!,
             CancellationToken.None);
 
         Assert.Equal("{}", result);
@@ -52,7 +51,6 @@ public class ExternalLinkCommandRouterTests
         string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,
             Encoding.UTF8.GetBytes(body),
-            services: null!,
             CancellationToken.None);
 
         Assert.Empty(browser.Opened);
@@ -68,7 +66,6 @@ public class ExternalLinkCommandRouterTests
         string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,
             Encoding.UTF8.GetBytes("""{"url":"https://example.com"}"""),
-            services: null!,
             CancellationToken.None);
 
         Assert.Equal("null", result);
@@ -83,7 +80,6 @@ public class ExternalLinkCommandRouterTests
         string result = await router.RouteAsync(
             ExternalLinkCommandRouter.CommandName,
             Encoding.UTF8.GetBytes("""{"url":"https://example.com"}"""),
-            services: null!,
             CancellationToken.None);
 
         Assert.Equal("null", result); // 失败写日志、不向 JS 抛 IPC 错误

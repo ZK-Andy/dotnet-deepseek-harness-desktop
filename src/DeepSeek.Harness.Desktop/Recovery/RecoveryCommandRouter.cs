@@ -1,5 +1,4 @@
 using DeepSeek.Harness.Desktop.Core.Ipc;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Recovery;
 
@@ -31,11 +30,11 @@ public sealed class RecoveryCommandRouter : ICommandRouter
     public bool CanRoute(string command) => string.Equals(command, CommandName, StringComparison.Ordinal);
 
     /// <inheritdoc />
-    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
+    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, CancellationToken cancellationToken)
     {
         if (!CanRoute(command))
         {
-            throw new RynCommandNotFoundException(command);
+            throw new CommandNotFoundException(command);
         }
 
         // 先批准再关窗：与托盘退出同一条顺序契约

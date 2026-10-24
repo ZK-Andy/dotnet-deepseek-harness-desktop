@@ -86,7 +86,7 @@ noble/trixie 的 t64 改名。
 
 ## Related
 
-- [avalonia-host-migration](../../proposed/architecture/2026-10-22-avalonia-host-migration.md)：阶段表 G4
+- [avalonia-host-migration](2026-10-22-avalonia-host-migration.md)：阶段表 G4
 - [avalonia-g4-webview2-preflight](2026-10-24-avalonia-g4-webview2-preflight.md)：G4-b 应用内运行时探测
 - [payload-smoke-probe](../testing/2026-09-13-payload-smoke-probe.md)：探针形态与子进程隔离
 - [delivery-chain-gaps](../testing/2026-10-20-delivery-chain-gaps.md)：Linux 腿载荷探针的由来

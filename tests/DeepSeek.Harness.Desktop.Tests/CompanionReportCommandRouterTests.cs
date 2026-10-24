@@ -1,6 +1,5 @@
 using System.Text;
 using DeepSeek.Harness.Desktop.Core.Ipc;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests;
 
@@ -10,7 +9,7 @@ public class CompanionReportCommandRouterTests
 {
     private static ValueTask<string> RouteAsync(CompanionReportCommandRouter router, string json) =>
         router.RouteAsync(CompanionReportCommandRouter.CommandName,
-            new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(json)), null!, CancellationToken.None);
+            new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(json)), CancellationToken.None);
 
     /// <summary>验证路由器只认自己的命令名，其余一概拒绝（注册面与派发面同源）。</summary>
     [Fact]
@@ -95,19 +94,19 @@ public class CompanionReportCommandRouterTests
         var router = new CompanionReportCommandRouter(lines.Add);
 
         string frame = await router.RouteAsync(CompanionReportCommandRouter.CommandName,
-            ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None);
+            ReadOnlyMemory<byte>.Empty, CancellationToken.None);
 
         Assert.Equal("null", frame);
         Assert.Empty(lines);
     }
 
-    /// <summary>未知命令路由抛 RynCommandNotFoundException，绝不静默吞掉。</summary>
+    /// <summary>未知命令路由抛 CommandNotFoundException，绝不静默吞掉。</summary>
     [Fact]
     public async Task UnknownCommand_ThrowsNotFound()
     {
         var router = new CompanionReportCommandRouter();
-        await Assert.ThrowsAsync<RynCommandNotFoundException>(() =>
-            router.RouteAsync("desktop.companion.reportExtra", ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None)
+        await Assert.ThrowsAsync<CommandNotFoundException>(() =>
+            router.RouteAsync("desktop.companion.reportExtra", ReadOnlyMemory<byte>.Empty, CancellationToken.None)
                 .AsTask());
     }
 }

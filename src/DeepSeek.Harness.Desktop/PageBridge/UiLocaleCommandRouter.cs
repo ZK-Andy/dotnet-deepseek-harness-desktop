@@ -1,6 +1,5 @@
 using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.PageBridge;
 
@@ -29,11 +28,11 @@ public sealed class UiLocaleCommandRouter : ICommandRouter
     public bool CanRoute(string command) => string.Equals(command, CommandName, StringComparison.Ordinal);
 
     /// <inheritdoc />
-    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
+    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, CancellationToken cancellationToken)
     {
         if (!CanRoute(command))
         {
-            throw new RynCommandNotFoundException(command);
+            throw new CommandNotFoundException(command);
         }
 
         return ValueTask.FromResult(Frame(_uiLocale.Current));

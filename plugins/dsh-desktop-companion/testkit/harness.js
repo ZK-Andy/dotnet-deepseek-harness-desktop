@@ -264,8 +264,8 @@ export function createContext(document) {
   return { ctx, injections, registrations, effects, dictionaries }
 }
 
-/** `window.__ryn` stub: records invokes, resolves per-command responders. */
-export function createRynBridge() {
+/** `window.__shell` stub: records invokes, resolves per-command responders. */
+export function createShellBridge() {
   const invokes = []
   const handlers = new Map()
   const responders = new Map()
@@ -309,17 +309,19 @@ export const settle = () => new Promise((resolve) => setImmediate(resolve))
 
 /**
  * Load client.js in a sandbox, materialize its module and run apply(ctx).
- * @param {object} [options] `withoutRyn` drops the `window.__ryn` bridge;
+ * @param {object} [options] `withoutBridge` drops the `window.__shell` bridge;
+ *   `deferBridge` installs it only when the test calls `attachBridge()` (simulates the
+ *   shell injecting the bridge after the page's first script run);
  *   `primitives` supplies the ui-primitives module (default: empty export).
  */
 export function loadClient(options = {}) {
   const clock = createClock()
   const document = createDocument()
-  const ryn = createRynBridge()
+  const shell = createShellBridge()
   const react = createReact()
   const registrations = []
   const windowObject = { __ModuleLoader__: { load: (record) => registrations.push(record) } }
-  if (!options.withoutRyn) windowObject.__ryn = ryn.bridge
+  if (!options.withoutBridge && !options.deferBridge) windowObject.__shell = shell.bridge
 
   const sandbox = {
     window: windowObject,
@@ -356,7 +358,10 @@ export function loadClient(options = {}) {
     window: windowObject,
     clock,
     react,
-    ryn,
+    shell,
+    attachBridge() {
+      windowObject.__shell = shell.bridge
+    },
     cordis,
     render,
     /**

@@ -6,7 +6,7 @@ Implements the size health gate from the architecture-mechanization ADR
 
   F1  any file > `--file-limit` physical lines (default 400)
   F2  any method > `--method-limit` lines (default 80)
-  F3  assembly-surface ROOT set (DesktopAdapter*.cs + Program.cs), total
+  F3  assembly-surface ROOT set (AvaloniaHost*.cs + Program.cs), total
       > `--compose-total-limit` lines (default 500) — the root is gated by
       what it holds in aggregate, not by per-file budgets that fragment
       orchestration into new partials (ADR compose-root-form-separation)
@@ -221,7 +221,7 @@ def _scan(src: Path, file_limit: int, method_limit: int,
     if compose_total > compose_total_limit:
         rows.append(
             f"  F3 assembly-surface root set {compose_total} lines > {compose_total_limit} "
-            f"(Program.cs + DesktopAdapter*.cs; orchestration belongs in domain services, not new partials)")
+            f"(Program.cs + AvaloniaHost*.cs; orchestration belongs in domain services, not new partials)")
     return rows
 
 
@@ -292,13 +292,13 @@ def _self_test() -> int:
             print(f"  ✗ F2 not flagged: {rows}")
             failed = 1
 
-        # compose-root method: a DesktopAdapter file whose method exceeds
+        # compose-root method: an AvaloniaHost file whose method exceeds
         # the tighter compose limit even though it is under the general one.
         compose_body = ["    public void Big() {"] + [
             f"        var i{n} = {n};" for n in range(70)
         ] + ["    }"]
         compose = ["namespace Foo;", "public class C {"] + compose_body + ["}"]
-        (root / "DesktopAdapter.cs").write_text("\n".join(compose) + "\n",
+        (root / "AvaloniaHost.cs").write_text("\n".join(compose) + "\n",
                                                   encoding="utf-8")
         rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                      DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
@@ -315,7 +315,7 @@ def _self_test() -> int:
             return ["namespace Foo;", "public partial class C {"] + [
                 f"    // line {i}" for i in range(n)] + ["}"]
         # 两文件自足超帽（303+253=556 > 500），不依赖前序夹具残留行数。
-        (root / "DesktopAdapter.App.cs").write_text("\n".join(padded(300)) + "\n", encoding="utf-8")
+        (root / "AvaloniaHost.App.cs").write_text("\n".join(padded(300)) + "\n", encoding="utf-8")
         (root / "Program.cs").write_text("\n".join(padded(250)) + "\n", encoding="utf-8")
         rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                      DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)

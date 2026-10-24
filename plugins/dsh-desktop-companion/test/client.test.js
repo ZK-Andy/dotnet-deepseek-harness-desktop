@@ -3,7 +3,7 @@
  * footer action + tray relay + locale bridge + external-link toast).
  *
  * The plugin is a dsh web-shell client bundle: its UI is built from
- * `createElement` calls and its host interaction is the `window.__ryn.invoke`
+ * `createElement` calls and its host interaction is the `window.__shell.invoke`
  * command channel. The harness renders components eagerly and fakes that
  * channel, so assertions are about observable output and command traffic, not
  * about React internals.
@@ -59,33 +59,32 @@ test('both UI surfaces are registered with stable ids, order and localized label
 })
 
 test('without the host bridge the UI setup is skipped without throwing', () => {
-  // Every surface needs window.__ryn (state queries + install actions); the
+  // Every surface needs window.__shell (state queries + install actions); the
   // client half must degrade to a no-op instead of failing the web boot.
-  const harness = loadClient({ withoutRyn: true })
+  const harness = loadClient({ withoutBridge: true })
 
   assert.deepEqual(harness.cordis.injections.map((i) => i.name), [])
   assert.equal(harness.cordis.effects.length, 0)
 })
 
-test('tray relay forwards whitelisted events verbatim', () => {
-  const harness = loadClient()
+test('waits for the shell bridge injected after the first script run', () => {
+  // The host injects window.__shell on NavigationCompleted; a plugin module that
+  // runs before that must poll defensively instead of disabling every surface.
+  const harness = loadClient({ deferBridge: true })
+  assert.deepEqual(harness.cordis.injections.map((i) => i.name), [])
 
-  harness.ryn.emit('tray.clicked', { button: 'left' })
-  harness.ryn.emit('tray.menuItemClicked', { id: 'restart' })
+  harness.attachBridge()
+  harness.clock.tick(50)
 
-  const relayed = harness.ryn.invokes.filter((i) => i.command === 'desktop.tray.event')
-  assert.equal(relayed.length, 2)
-  assert.equal(relayed[0].args.event, 'tray.clicked')
-  assert.equal(relayed[0].args.data.button, 'left')
-  assert.equal(relayed[1].args.event, 'tray.menuItemClicked')
-  assert.equal(relayed[1].args.data.id, 'restart')
+  assert.deepEqual(harness.cordis.injections.map((i) => i.name).sort(),
+    ['settings.section', 'sidebar.footer.action'])
 })
 
 test('locale bridge reports the current html[lang] and follows changes', () => {
   const harness = loadClient()
   harness.setLanguage('zh-CN')
 
-  const reports = () => harness.ryn.invokesOf('desktop.companion.setLocale')
+  const reports = () => harness.shell.invokesOf('desktop.companion.setLocale')
   assert.equal(reports().at(-1).args.locale, 'zh-cn')
 
   harness.setLanguage('en')
@@ -94,7 +93,7 @@ test('locale bridge reports the current html[lang] and follows changes', () => {
 
 test('sidebar update button stays hidden unless the host reports ready/installing', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
+  harness.shell.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
 
   const slot = await openSidebar(harness)
   assert.equal(findAll(slot.render(), 'button').length, 0)
@@ -102,7 +101,7 @@ test('sidebar update button stays hidden unless the host reports ready/installin
 
 test('sidebar update button surfaces the ready version and installs on click', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => ({ status: 'ready', version: '1.2.3' }))
+  harness.shell.onCommand('desktop.update.getState', () => ({ status: 'ready', version: '1.2.3' }))
 
   const slot = await openSidebar(harness)
   const button = find(slot.render(), (el) => el.type === 'button')
@@ -112,12 +111,12 @@ test('sidebar update button surfaces the ready version and installs on click', a
   assert.equal(button.props.disabled, false)
 
   button.props.onClick()
-  assert.equal(harness.ryn.invokesOf('desktop.update.install').length, 1)
+  assert.equal(harness.shell.invokesOf('desktop.update.install').length, 1)
 })
 
 test('sidebar update button turns busy while installing', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => ({ status: 'installing', version: '1.2.3' }))
+  harness.shell.onCommand('desktop.update.getState', () => ({ status: 'installing', version: '1.2.3' }))
 
   const slot = await openSidebar(harness)
   const button = find(slot.render(), (el) => el.type === 'button')
@@ -128,7 +127,7 @@ test('sidebar update button turns busy while installing', async () => {
 
 test('sidebar update button reacts to pushed update events', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
+  harness.shell.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
   const slot = await openSidebar(harness)
 
   harness.document.dispatchEvent({ type: 'dsh-desktop-update', detail: { status: 'ready', version: '9.9.9' } })
@@ -140,7 +139,7 @@ test('sidebar update button reacts to pushed update events', async () => {
 
 test('settings update section maps host status to copy and action', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => ({ status: 'ready', version: '1.2.3', current: '1.0.0' }))
+  harness.shell.onCommand('desktop.update.getState', () => ({ status: 'ready', version: '1.2.3', current: '1.0.0' }))
   const slot = await openSettings(harness)
 
   const tree = slot.render()
@@ -150,12 +149,12 @@ test('settings update section maps host status to copy and action', async () => 
   const install = find(tree, (el) => el.type === 'button' && textOf(el) === '安装并重启')
   assert.ok(install, 'ready state exposes the install action')
   install.props.onClick()
-  assert.equal(harness.ryn.invokesOf('desktop.update.install').length, 1)
+  assert.equal(harness.shell.invokesOf('desktop.update.install').length, 1)
 })
 
 test('settings update section shows the host error reason', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => ({ status: 'error', message: 'HTTP 503' }))
+  harness.shell.onCommand('desktop.update.getState', () => ({ status: 'error', message: 'HTTP 503' }))
   const slot = await openSettings(harness)
 
   assert.match(textOf(slot.render()), /检查失败：HTTP 503/)
@@ -163,32 +162,32 @@ test('settings update section shows the host error reason', async () => {
 
 test('settings update section distinguishes "no update stack" from "channel down"', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => Promise.reject(new Error('no route')))
-  harness.ryn.onCommand('desktop.autostart.getState', () => ({ enabled: false }))
+  harness.shell.onCommand('desktop.update.getState', () => Promise.reject(new Error('no route')))
+  harness.shell.onCommand('desktop.autostart.getState', () => ({ enabled: false }))
   const slot = await openSettings(harness)
 
   assert.match(textOf(slot.render()), /桌面自更新在当前运行时不可用/)
-  assert.equal(harness.ryn.invokesOf('desktop.update.check').length, 0)
+  assert.equal(harness.shell.invokesOf('desktop.update.check').length, 0)
 })
 
 test('settings update section reports the channel failure and offers retry', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => Promise.reject(new Error('no route')))
-  harness.ryn.onCommand('desktop.autostart.getState', () => Promise.reject(new Error('no route')))
+  harness.shell.onCommand('desktop.update.getState', () => Promise.reject(new Error('no route')))
+  harness.shell.onCommand('desktop.autostart.getState', () => Promise.reject(new Error('no route')))
   const slot = await openSettings(harness)
   await harness.advance(800)
   await harness.advance(800)
 
   const tree = slot.render()
   assert.match(textOf(tree), /无法连接桌面宿主/)
-  const reports = harness.ryn.invokesOf('desktop.companion.report')
+  const reports = harness.shell.invokesOf('desktop.companion.report')
   assert.ok(reports.some((r) => String(r.args.message).includes('command channel down')), 'degradation reported')
 })
 
 test('diagnostics section renders the exported path and export failures', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.diagnostics.export', () => ({ path: '/tmp/diag.zip' }))
-  harness.ryn.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
+  harness.shell.onCommand('desktop.diagnostics.export', () => ({ path: '/tmp/diag.zip' }))
+  harness.shell.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
   const slot = await openSettings(harness)
 
   const exportButton = find(slot.render(), (el) => el.type === 'button' && textOf(el) === '导出')
@@ -199,8 +198,8 @@ test('diagnostics section renders the exported path and export failures', async 
 
 test('close-to-tray row disables the switch when the host has no tray', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
-  harness.ryn.onCommand('desktop.closeToTray.getState', () => ({ enabled: true, available: false }))
+  harness.shell.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
+  harness.shell.onCommand('desktop.closeToTray.getState', () => ({ enabled: true, available: false }))
   const slot = await openSettings(harness)
 
   const tree = slot.render()
@@ -215,9 +214,9 @@ test('close-to-tray row disables the switch when the host has no tray', async ()
 
 test('autostart toggle sends the inverse state and reverts when the host fails', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
-  harness.ryn.onCommand('desktop.autostart.getState', () => ({ enabled: true }))
-  harness.ryn.onCommand('desktop.autostart.set', () => Promise.reject(new Error('denied')))
+  harness.shell.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
+  harness.shell.onCommand('desktop.autostart.getState', () => ({ enabled: true }))
+  harness.shell.onCommand('desktop.autostart.set', () => Promise.reject(new Error('denied')))
   const slot = await openSettings(harness)
 
   const sw = find(
@@ -233,13 +232,13 @@ test('autostart toggle sends the inverse state and reverts when the host fails',
     (el) => el.props && el.props.role === 'switch' && el.props['aria-label'] === '开机自启',
   )
   assert.equal(reverted.props['aria-checked'], 'true')
-  assert.equal(harness.ryn.invokesOf('desktop.autostart.set').length, 1)
+  assert.equal(harness.shell.invokesOf('desktop.autostart.set').length, 1)
 })
 
 test('restart row surfaces a failure inline and reports it', async () => {
   const harness = loadClient()
-  harness.ryn.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
-  harness.ryn.onCommand('desktop.app.restart', () => Promise.reject(new Error('spawn failed')))
+  harness.shell.onCommand('desktop.update.getState', () => ({ status: 'idle' }))
+  harness.shell.onCommand('desktop.app.restart', () => Promise.reject(new Error('spawn failed')))
   const slot = await openSettings(harness)
 
   const restart = find(slot.render(), (el) => el.type === 'button' && textOf(el) === '重启')
@@ -247,13 +246,13 @@ test('restart row surfaces a failure inline and reports it', async () => {
   await settle()
 
   assert.match(textOf(slot.render()), /重启失败：spawn failed/)
-  assert.equal(harness.ryn.invokesOf('desktop.app.restart').length, 1)
+  assert.equal(harness.shell.invokesOf('desktop.app.restart').length, 1)
 })
 
 test('external-link failure pushes a toast that dismisses itself after 5s', async () => {
   const harness = loadClient()
 
-  harness.ryn.emit('desktop.externalLinkOpenerFailed', { url: 'https://example.test/x' })
+  harness.shell.emit('desktop.externalLinkOpenerFailed', { url: 'https://example.test/x' })
   const toast = harness.document.getElementById('ddc-linkfail-toast')
   assert.ok(toast, 'toast element created')
   assert.match(toast.textContent, /https:\/\/example\.test\/x/)

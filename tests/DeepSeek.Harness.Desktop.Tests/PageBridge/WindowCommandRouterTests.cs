@@ -1,12 +1,11 @@
 using DeepSeek.Harness.Desktop.Core.Ipc;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 
 /// <summary>
 /// <c>window.*</c> 命令路由（ADR 2026-10-23-avalonia-caption-bar）：页面侧顶栏脚本与宿主之间的
 /// 六个窗口命令——参数帧解析（屏幕坐标/边/全屏）、非法参数回错误帧而不是 IPC 异常、
-/// 未知命令走 <see cref="RynCommandNotFoundException"/>。平台互操作不在本层，故全部可 headless 钉住。
+/// 未知命令走 <see cref="CommandNotFoundException"/>。平台互操作不在本层，故全部可 headless 钉住。
 /// </summary>
 public class WindowCommandRouterTests
 {
@@ -20,7 +19,7 @@ public class WindowCommandRouterTests
         var commands = new RecordingWindowCommands();
         var router = new WindowCommandRouter(commands);
 
-        string result = await router.RouteAsync(command, ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None);
+        string result = await router.RouteAsync(command, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
 
         Assert.Equal("{}", result);
         Assert.Equal(command, Assert.Single(commands.Calls));
@@ -36,7 +35,6 @@ public class WindowCommandRouterTests
         await router.RouteAsync(
             HostCommandIds.WindowStartDrag,
             Json("""{"x":120,"y":34}"""),
-            null!,
             CancellationToken.None);
 
         Assert.Equal("drag:120,34", Assert.Single(commands.Calls));
@@ -55,7 +53,6 @@ public class WindowCommandRouterTests
         await router.RouteAsync(
             HostCommandIds.WindowStartResize,
             Json($$"""{"edge":"{{edge}}","x":5,"y":7}"""),
-            null!,
             CancellationToken.None);
 
         Assert.Equal($"resize:{expected}:5,7", Assert.Single(commands.Calls));
@@ -73,7 +70,7 @@ public class WindowCommandRouterTests
         var commands = new RecordingWindowCommands();
         var router = new WindowCommandRouter(commands);
 
-        string result = await router.RouteAsync(command, Json(args), null!, CancellationToken.None);
+        string result = await router.RouteAsync(command, Json(args), CancellationToken.None);
 
         Assert.Contains("\"error\"", result, StringComparison.Ordinal);
         Assert.Empty(commands.Calls);
@@ -89,7 +86,6 @@ public class WindowCommandRouterTests
         string result = await router.RouteAsync(
             HostCommandIds.WindowStartDrag,
             Json("""{"x":120.6,"y":34.4}"""),
-            null!,
             CancellationToken.None);
 
         Assert.Equal("{}", result);
@@ -104,9 +100,9 @@ public class WindowCommandRouterTests
         var router = new WindowCommandRouter(commands);
 
         await router.RouteAsync(
-            HostCommandIds.WindowSetFullscreen, Json("""{"fullscreen":true}"""), null!, CancellationToken.None);
+            HostCommandIds.WindowSetFullscreen, Json("""{"fullscreen":true}"""), CancellationToken.None);
         await router.RouteAsync(
-            HostCommandIds.WindowSetFullscreen, Json("""{"fullscreen":false}"""), null!, CancellationToken.None);
+            HostCommandIds.WindowSetFullscreen, Json("""{"fullscreen":false}"""), CancellationToken.None);
 
         Assert.Equal(["fullscreen:true", "fullscreen:false"], commands.Calls);
     }
@@ -129,8 +125,8 @@ public class WindowCommandRouterTests
     {
         var router = new WindowCommandRouter(new RecordingWindowCommands());
 
-        await Assert.ThrowsAsync<RynCommandNotFoundException>(
-            async () => await router.RouteAsync(HostCommandIds.DiagnosticsExport, ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None));
+        await Assert.ThrowsAsync<CommandNotFoundException>(
+            async () => await router.RouteAsync(HostCommandIds.DiagnosticsExport, ReadOnlyMemory<byte>.Empty, CancellationToken.None));
     }
 
     /// <summary>UTF-8 参数帧。</summary>

@@ -1,5 +1,4 @@
 using DeepSeek.Harness.Desktop.Core.Ipc;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Tests.Tray;
 
@@ -26,7 +25,7 @@ public class CloseToTrayCommandRouterTests
             CloseBehaviorPreference.FileName);
         var router = new CloseToTrayCommandRouter(new CloseBehaviorPreference(path), () => false);
         string frame = await router.RouteAsync(HostCommandIds.CloseToTrayGetState, ReadOnlyMemory<byte>.Empty,
-            null!, CancellationToken.None);
+            CancellationToken.None);
         // 缺省 true；available=false 时客户端禁用开关
         Assert.Equal("""{"enabled":true,"available":false}""", frame);
     }
@@ -39,22 +38,22 @@ public class CloseToTrayCommandRouterTests
             CloseBehaviorPreference.FileName);
         var router = new CloseToTrayCommandRouter(new CloseBehaviorPreference(path), () => true);
         await router.RouteAsync(HostCommandIds.CloseToTraySet,
-            System.Text.Encoding.UTF8.GetBytes("{\"enabled\":false}"), null!, CancellationToken.None);
+            System.Text.Encoding.UTF8.GetBytes("{\"enabled\":false}"), CancellationToken.None);
         Assert.False(new CloseBehaviorPreference(path).HideOnClose);
 
         string frame = await router.RouteAsync(HostCommandIds.CloseToTrayGetState, ReadOnlyMemory<byte>.Empty,
-            null!, CancellationToken.None);
+            CancellationToken.None);
         Assert.Equal("""{"enabled":false,"available":true}""", frame);
     }
 
-    /// <summary>验证未知命令路由抛 RynCommandNotFoundException，未知命令绝不静默吞掉。</summary>
+    /// <summary>验证未知命令路由抛 CommandNotFoundException，未知命令绝不静默吞掉。</summary>
     [Fact]
     public async Task UnknownCommand_ThrowsNotFound()
     {
         var router = new CloseToTrayCommandRouter(
             new CloseBehaviorPreference(Path.Combine(Path.GetTempPath(), "ddc-unused.json")), () => true);
-        await Assert.ThrowsAsync<RynCommandNotFoundException>(() =>
-            router.RouteAsync("desktop.closeToTray.reset", ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None)
+        await Assert.ThrowsAsync<CommandNotFoundException>(() =>
+            router.RouteAsync("desktop.closeToTray.reset", ReadOnlyMemory<byte>.Empty, CancellationToken.None)
                 .AsTask());
     }
 }

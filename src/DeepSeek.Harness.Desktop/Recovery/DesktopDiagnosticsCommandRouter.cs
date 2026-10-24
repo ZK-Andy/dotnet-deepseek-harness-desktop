@@ -1,6 +1,5 @@
 using System.Text.Json;
 using DeepSeek.Harness.Desktop.Core.Ipc;
-using Ryn.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Recovery;
 
@@ -34,11 +33,11 @@ public sealed class DesktopDiagnosticsCommandRouter : ICommandRouter
     public bool CanRoute(string command) => string.Equals(command, CommandName, StringComparison.Ordinal);
 
     /// <inheritdoc />
-    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, IServiceProvider services, CancellationToken cancellationToken)
+    public ValueTask<string> RouteAsync(string command, ReadOnlyMemory<byte> args, CancellationToken cancellationToken)
     {
         if (!CanRoute(command))
         {
-            throw new RynCommandNotFoundException(command);
+            throw new CommandNotFoundException(command);
         }
 
         // 导出失败不抛 IPC 异常：页面按 error 展示原因，与更新路由同款帧形态。

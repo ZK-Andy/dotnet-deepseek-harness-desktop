@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// <summary>
 /// 无边框窗口 chrome 的可调参数（appsettings.json 的 <c>CaptionBar</c> 节，禁止硬编码进逻辑）。
 /// 默认 52 = 官方 macOS 侧栏顶条高度（红绿灯让位带；上游 darwin 呈现同值）——该值同时驱动
-/// 侧栏顶部让位、宿主 chrome 高度变量与 Ryn 自动拖拽条。配色不在此列：让位带由侧栏自身填充色
+/// 侧栏顶部让位与宿主 chrome 高度变量。配色不在此列：让位带由侧栏自身填充色
 /// 覆盖（无缝），红绿灯点色是 macOS 系统色（设计常量）。
 /// </summary>
 public sealed record CaptionBarOptions

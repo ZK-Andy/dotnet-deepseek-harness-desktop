@@ -1,6 +1,6 @@
 # Agent Note: Avalonia 宿主迁移（Ryn → Avalonia 12.1.x）
 
-Status: proposed
+Status: implemented
 
 ## Problem
 
@@ -10,7 +10,7 @@ Status: proposed
 
 本仓与 Ryn 的耦合面：主工程 44 个文件、Core 7 个、Infrastructure 6 个、测试 23 个文件；页面侧命令通道写死 `window.__ryn.invoke`（companion `client.js`、`CaptionBar.cs`、`wwwroot/index.html`）。
 
-## Proposal
+## Decision
 
 **决定：宿主层从 Ryn 迁到 Avalonia 12.1.x + `Avalonia.Controls.WebView` 12.1.1（MIT）。**
 
@@ -26,7 +26,7 @@ Status: proposed
 
 **证据（不再逐能力自测）**：`NativeWebView` 已在生产项目中使用——YoutubeDownloader（NativeWebView + cookie 管理 + `NavigationStarted` + devtools + 每引擎环境参数）、UniGetUI（WebView2 运行时检测与降级）、Libation / Pixeval / Everywhere（桌面发行）；`TrayIcon` 与 `ExtendClientAreaToDecorationsHint` 是 Avalonia 核心控件。控件 API 面包含 `NavigationStarted` / `NavigationCompleted` / `NewWindowRequested` / `WebMessageReceived` / `WebResourceRequested` / `EnvironmentRequested` / `TryGetCookieManager` / `InvokeScript` / `TryGetPlatformHandle`。
 
-**阶段（按目标状态，约 7–8 人周）**
+**阶段（已逐片落地；当时估算 7–8 人周）**
 
 | 阶段 | 目标状态 | 估算 |
 |---|---|---|
@@ -35,7 +35,7 @@ Status: proposed
 | G2 | 桥通：`av-webview` 替换 `__ryn`，PagePump、健康探针、外链拦截 | 1.5 周 |
 | G3 | 面齐：11 个命令路由（`desktop.tray.event` 随新宿主退役）、引导/首启、locale、更新 UI、诊断、companion | 2 周 |
 | G4 | 能发：三平台打包/更新/CI/smoke，WebView2 运行时缺失检测 | 1.5–2 周 |
-| G5 | 对齐回滚：0.6.14 parity、浸泡基线、0.7.0 | 1 周 |
+| G5 | 对齐回滚：0.6.14 parity、浸泡基线、0.7.0（已落地：旧宿主与 Ryn 包下线，见 [avalonia-g5-ryn-host-retirement](2026-10-24-avalonia-g5-ryn-host-retirement.md)） | 1 周 |
 
 **执行序：G0 → G1 首批 → G2 → G1 余项 → G3 → G4 → G5。** 顶栏与恢复页的页面侧脚本依赖 `window.__shell`，桥必须先于消费方落地，故 G2 先于 G1 余项；阶段编号不改名（ADR、待办与 journal 已按编号引用）。G2 已落地（[avalonia-g2-shell-bridge](../../implemented/architecture/2026-10-22-avalonia-g2-shell-bridge.md)）；G1 余项中页面侧（顶栏/恢复页）是桥的纯消费方，失败面对话框走原生窗口、不涉桥。
 
@@ -58,11 +58,12 @@ Status: proposed
 - 文档随片同批改，不留到迁移完成：每个改变宿主行为的提交同时改对应文档——`docs/architecture.md`（技术栈与启动链）、`docs/development.md`（构建、`DSH_DEVTOOLS`、Linux 依赖清单）、`docs/testing.md`（打包校验清单、本机冒烟行）、`docs/cookbook.md`（Ryn/WebKitGTK 条目）、`docs/architecture-standards.md`（工程表、R3 例外、R1 的「Ryn 无 hosted-service」前提、`ShellResources` 补 Ryn 缺口的理由）、`docs/faq.md`/`faq.en.md` 与 `docs/user-guide.md`/`.en.md`（安装依赖）、README 技术栈与致谢段、仓库树注释。第一片（宿主装配切换）就改 `architecture.md` 与 README 栈段，其余随各自片；旧宿主 ADR `architecture/2026-08-20-ryn-shell-bundled-dsh-runtime` 的交叉链接或 Erratum 同批落。
 - 待证项（G0/G1 实跑验收，不另设能力探针）：`av-webview` 在本仓页面里的消息契约细节（含 `invoke` 的 JSON 解析语义与失败面）、Linux 托盘菜单行为、无边框拖拽/缩放体验；Linux 双后端差异——WPE 优先（离屏合成）与 WebKitGTK 回退（原生子窗）在输入法、剪贴板、拖拽与 `TryGetPlatformHandle` 上不同，两种机器都要过一遍；`EnableDevTools` 是否在无 WPE 的 GTK 路径生效需实测（官方文档 WPE 节称该事件仅在 WPE 路径触发，与 GTK 示例矛盾）；`PermissionRequested` / `DownloadStarting` 三端默认差异与接管形状（G0 未接，附件下载/通知/媒体权限会静默失败或不受控弹窗）。
 - **无边框顶栏不是桥的纯消费方**（2026-10-23 核实）：`Avalonia.Controls.Window.BeginMoveDrag` 只接受 `PointerPressedEventArgs`，且三后端都真正消费它（Win32 `e.Pointer.Capture/IsPrimary`、X11 从指针坐标发 `_NET_WM_MOVERESIZE`、Wayland 取 `e.PlatformInputEventCookie` 作 `xdg_toplevel.move` 的 serial）；页面区域的指针被原生 WebView 子窗消费，Avalonia 收不到按下事件。故自绘顶栏的拖拽/缩放必须补平台原生互操作（Win32 `WM_SYSCOMMAND`+`WM_LBUTTONUP` 或 `WM_NCLBUTTONDOWN`、X11 `_NET_WM_MOVERESIZE`），Wayland 无公开路径；macOS 可复用 `Avalonia.Native` 的分支（其 `BeginMoveDrag()` 显式回退到 `[NSApp currentEvent]`，正为 WebView 消费按下的场景而写）。顶栏片的估时因此不含「仅接线」。
-- 迁移期与 0.6.14 并行存在两套宿主代码，评审与测试面按阶段切换，不长期双轨。
+- 迁移期与 0.6.14 并行存在两套宿主代码的阶段已结束（G5）：旧宿主、Ryn 包与 `ryn.json` 已删除，运行面只剩 Avalonia 一条路径，见 [avalonia-g5-ryn-host-retirement](2026-10-24-avalonia-g5-ryn-host-retirement.md)。
 - G0 已落地（首片）：`Program` 入口切到 `Hosting/AvaloniaHost`，Avalonia 窗口 + `NativeWebView` 加载壳 origin，既有 `RuntimeStarter`/`HarnessRuntimeHost`/`DshLoopbackProxy` 原样复用；实跑取得 `dsh web` URL、铸币 303、就绪探活与页面 WS 升级（本机验证见 `.plan/scratch/g0-run2.log`）。`docs/architecture.md` 与 README 栈段/树注释/致谢同片更新。增量闸的 `packages ≤ 3` 一次性豁免见 [avalonia-g0-entry-switch](../../implemented/architecture/2026-10-22-avalonia-g0-entry-switch.md)。G1 首批已落地（托盘、关窗到托盘、二启唤回），见 [avalonia-g1-tray-recall](../../implemented/architecture/2026-10-22-avalonia-g1-tray-recall.md)；G1 其余片：失败面对话框已接启动失败路径（进程内模态，见 `implemented/architecture/2026-10-23-avalonia-failure-dialog.md`），无边框顶栏已接（三平台原生拖拽/缩放，Wayland 降级保留装饰，见 `implemented/architecture/2026-10-23-avalonia-caption-bar.md`），G1 其余片中的恢复页、以及 G3 的首启引导与崩溃监督已接（见 [avalonia-g1g3-recovery-bootstrap-supervision](../../implemented/architecture/2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)；阶段表里引导/首启归 G3，本句按该归属记录）。页面桥已落地：`window.__shell`（invoke/on/_emit，nonce+顶层 origin 双判据）、PagePump 注册端口、健康探针与外链拦截，见 [avalonia-g2-shell-bridge](../../implemented/architecture/2026-10-22-avalonia-g2-shell-bridge.md)。 G3 退出/重启已落地：`ExitPipeline` 在装配期构造（停运行时 → 释放监听器 → 关窗/拉起新实例 → 看门狗），托盘补「重启」项、`desktop.app.restart` 接回新宿主，见 [avalonia-g3-exit-restart](../../implemented/architecture/2026-10-23-avalonia-g3-exit-restart.md)；更新三命令、就绪横幅与托盘「检查更新」已落（[avalonia-g3-update-surface](../../implemented/architecture/2026-10-23-avalonia-g3-update-surface.md)）。
 
 ## Related
 
 - [webview-shared-memory-rendering](../../implemented/architecture/2026-10-18-webview-shared-memory-rendering.md)：WebKitGTK 内存现状与 `LinuxRenderingMode` 的出处。
-- [ryn-shell-bundled-dsh-runtime](../../implemented/architecture/2026-08-20-ryn-shell-bundled-dsh-runtime.md)：旧宿主选型；本笔记提出替换。
+- [ryn-shell-bundled-dsh-runtime](../../archived/architecture/2026-08-20-ryn-shell-bundled-dsh-runtime.md)：旧宿主选型；本笔记提出替换。
+- [avalonia-g5-ryn-host-retirement](2026-10-24-avalonia-g5-ryn-host-retirement.md)：收尾片（旧宿主/包/协议下线与门禁重绑）。
 - [nativeaot-probe-after-composition-refactor](../../implemented/architecture/2026-09-03-nativeaot-probe-after-composition-refactor.md)：发运形态维持 JIT 的依据。

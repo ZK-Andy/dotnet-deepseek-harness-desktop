@@ -17,7 +17,7 @@ public sealed class MainUiEntry
     private readonly Action<string>? _log;
 
     /// <summary>创建进入主界面用例（构造数据注入；铸币经方法组接线到壳转发器，见组合点注册）。</summary>
-    /// <param name="navigator">网页视图导航端口（Ryn 边界适配器）。</param>
+    /// <param name="navigator">网页视图导航端口（Presentation 的 WebView 适配器）。</param>
     /// <param name="mintAsync">壳铸币（失败 loud 不抛，生产实现见 <c>DshShellForward.MintAsync</c>）。</param>
     /// <param name="proxyUrl">回环代理源根；null = 绑定失败（本次不导航，降级 wwwroot）。</param>
     /// <param name="options">时限与重试参数（配置模型的 Core 侧投影）。</param>
@@ -155,7 +155,7 @@ public sealed class MainUiEntry
     }
 
     /// <summary>等主窗口可用：1s 轮询有界等；应用退出取消照常上抛，超时回 false（调用方 loud 跳过导航）。
-    /// Ryn 原生建窗可能慢于 dsh 就位（CI 无 D-Bus 会话实证 30s+），首个 <c>Current</c> 即抛不再直接失败收口
+    /// 原生 WebView 建窗可能慢于 dsh 就位（CI 无 D-Bus 会话实证 30s+），未就绪不再直接失败收口
     /// （ADR bootstrap-window-ready-wait）；时限在配置模型。</summary>
     /// <param name="ct">引导任务取消令牌。</param>
     /// <returns>窗口就绪 true；超时 false。</returns>

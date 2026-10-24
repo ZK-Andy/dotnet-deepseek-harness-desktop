@@ -10,7 +10,6 @@ public class AppRestartCommandRouterTests
         router.RouteAsync(
             AppRestartCommandRouter.CommandName,
             System.Text.Encoding.UTF8.GetBytes("{}"),
-            null!,
             CancellationToken.None);
 
     /// <summary>验证受理即回成功帧 {}，重启动作延迟到帧返回之后执行，且执行瞬间闸门已放行。</summary>
@@ -56,14 +55,14 @@ public class AppRestartCommandRouterTests
         Assert.Equal(2, count);
     }
 
-    /// <summary>验证非本命令名路由抛 RynCommandNotFoundException（fail loud，走宿主统一错误面）。</summary>
+    /// <summary>验证非本命令名路由抛 CommandNotFoundException（fail loud，走宿主统一错误面）。</summary>
     [Fact]
     public void UnknownCommand_Throws()
     {
         var router = new AppRestartCommandRouter(closeGate: new CloseGate(), restart: () => { });
 
-        Assert.Throws<Ryn.Ipc.RynCommandNotFoundException>(
-            () => router.RouteAsync("desktop.other.command", ReadOnlyMemory<byte>.Empty, null!, CancellationToken.None));
+        Assert.Throws<DeepSeek.Harness.Desktop.Core.Ipc.CommandNotFoundException>(
+            () => router.RouteAsync("desktop.other.command", ReadOnlyMemory<byte>.Empty, CancellationToken.None));
         Assert.False(router.CanRoute("desktop.other.command"));
         Assert.True(router.CanRoute(AppRestartCommandRouter.CommandName));
     }

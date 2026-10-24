@@ -57,7 +57,7 @@ public class DesktopUpdateCommandRouterTests
         });
         var router = new DesktopUpdateCommandRouter(machine, backgroundToken: () => backgroundCts.Token);
 
-        await router.RouteAsync(HostCommandIds.UpdateCheck, ReadOnlyMemory<byte>.Empty, null!, requestCts.Token);
+        await router.RouteAsync(HostCommandIds.UpdateCheck, ReadOnlyMemory<byte>.Empty, requestCts.Token);
 
         // check 是 Task.Run 后台任务：确定性等待其实际执行，避免固定 Delay 的竞态 flaky
         await seenSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -82,7 +82,7 @@ public class DesktopUpdateCommandRouterTests
         });
         var router = new DesktopUpdateCommandRouter(machine);
 
-        await router.RouteAsync(HostCommandIds.UpdateCheck, ReadOnlyMemory<byte>.Empty, null!, requestCts.Token);
+        await router.RouteAsync(HostCommandIds.UpdateCheck, ReadOnlyMemory<byte>.Empty, requestCts.Token);
 
         await seenSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.NotNull(seen);
@@ -116,7 +116,7 @@ public class DesktopUpdateCommandRouterTests
         Assert.Equal(UpdateStatus.Ready, machine.State.Status);
 
         var router = new DesktopUpdateCommandRouter(machine, backgroundToken: () => backgroundCts.Token);
-        await router.RouteAsync(HostCommandIds.UpdateInstall, ReadOnlyMemory<byte>.Empty, null!, requestCts.Token);
+        await router.RouteAsync(HostCommandIds.UpdateInstall, ReadOnlyMemory<byte>.Empty, requestCts.Token);
 
         Assert.NotNull(seen);
         Assert.Equal(backgroundCts.Token, seen.Value);

@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 失效：`Ryn.Callbacks` 源生成与 `AddRynNavigationCallbacks`（`RynNavigationCallbacks` 类已删；导航拦截现住 `PageBridge/ShellBridge`）；保留：外链判定策略（`ExternalLinkPolicy`）与「用户发起才拦」的判据。见 [avalonia-g5-ryn-host-retirement](../architecture/2026-10-24-avalonia-g5-ryn-host-retirement.md)。正文不动。
+
 Erratum: 2026-10-20 — 本篇「经共享 `SystemBrowser` 打开」「`ExternalLinkCommandRouter` 与 `RynNavigationCallbacks` 的
 默认打开器收敛到它」的机制断言已被取代：打开动作改经 Core 端口 `ISystemBrowser`（实现落 Infrastructure，ADR
 `architecture/2026-10-20-host-boundary-ports`）。正文不动。

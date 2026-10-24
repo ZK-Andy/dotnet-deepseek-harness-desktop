@@ -31,7 +31,7 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT). The host layer is migrating from [Ryn](https://github.com/Yupmoh/Ryn) (a Tauri-for-C# native-webview framework) to [Avalonia](https://avaloniaui.net/) 12.1.x: G0, the first G1 slice and the G2 page bridge have landed (an Avalonia window plus the package's native WebView, reusing the existing dsh spawn and loopback proxy; tray, close-to-tray and second-launch recall use Avalonia's own controls; `window.__shell` carries page commands, events and per-load scripts, with external-link interception and page-health observation wired; the title bar has landed too — native drag/resize on all three platforms, Wayland keeps native decorations; autostart, close-to-tray, diagnostics export and app restart are wired as commands, and quit/restart share one exit pipeline; crash supervision, first-run bootstrap and the in-page recovery page are wired too — failed bootstrap steps can be retried, crashed dsh is restarted automatically, and a stuck recovery shows the failure surface; the three update commands and the tray "check for updates" item are wired, with check results recalling the main window first and then landing in an in-page banner (the ready banner is reused; up-to-date/error use the check banner — the Avalonia tray has no system-notification surface, so focus-stealing buys visibility)), with packaging (G4) and three-platform alignment (G5) remaining. The shell ships no runtime: node and dsh are the system-global ones (`npm install -g @deepseek-ai/dsh@next`), and the desktop shares one data directory with the terminal, so sessions, credentials and plugins interoperate. On first launch it probes the global dsh on `PATH` — installs it when missing; when the probed version is below the compatibility floor it bootstraps an update to `@next`; otherwise it uses it directly (the criterion is the compatibility floor, not a per-run npm dist-tag lookup).
+A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT). The host is [Avalonia](https://avaloniaui.net/) 12.1.x plus the package's native WebView (reusing the existing dsh spawn and loopback proxy): tray, close-to-tray and second-launch recall use Avalonia controls, and startup failures surface as an in-process modal; `window.__shell` carries page commands, events and per-load scripts, with external-link interception and page-health observation wired; the title bar supports native drag/resize on all three platforms (Wayland keeps native decorations); autostart, close-to-tray, diagnostics export, restart and the three update commands are wired, with quit/restart sharing one exit pipeline; crash supervision, first-run bootstrap, the in-page recovery page and the version-floor/unclean-exit banners are wired, and check results recall the main window before landing in an in-page banner. The shell ships no runtime: node and dsh are the system-global ones (`npm install -g @deepseek-ai/dsh@next`), and the desktop shares one data directory with the terminal, so sessions, credentials and plugins interoperate. On first launch it probes the global dsh on `PATH` — installs it when missing; when the probed version is below the compatibility floor it bootstraps an update to `@next`; otherwise it uses it directly (the criterion is the compatibility floor, not a per-run npm dist-tag lookup).
 
 <p align="center">
   <a href="assets/screenshot.png"><img src="assets/screenshot.png" width="880" alt="DeepSeek Harness Desktop window showing the plugin market"></a>
@@ -53,7 +53,7 @@ A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deep
 
 - ⚡️ **Online-first first launch** — installs when missing through the global node, bootstraps an update to `@next` when the probed version is below the compatibility floor, uses it directly otherwise; the node check runs once, only when dsh must be ensured.
 - ⌨️ **CLI shim** — idempotently registers a content-constant `pnpm` shim on the user `PATH` (never overwriting a same-named command); dsh itself is already on `PATH` and usable from the terminal.
-- 🔒 **Native and lightweight** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), shipped as JIT (NativeAOT is not enabled), deny-by-default capability sandbox (`ryn.json`).
+- 🔒 **Native and lightweight** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), shipped as JIT (NativeAOT is not enabled), deny-by-default command allow-list (unregistered commands are rejected).
 
 **Window and system integration**
 
@@ -122,9 +122,9 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 ## Layout
 
 ```
-├── src/DeepSeek.Harness.Desktop/              # shell (Presentation): Avalonia host (migrating) + Ryn composition root
+├── src/DeepSeek.Harness.Desktop/              # shell (Presentation): Avalonia host + assembly surface + page bridge
 ├── src/DeepSeek.Harness.Desktop.Core/         # pure logic, zero outer references
-├── src/DeepSeek.Harness.Desktop.Infrastructure/  # adapters (Ryn/native, dsh process, file/network, updates)
+├── src/DeepSeek.Harness.Desktop.Infrastructure/  # adapters (native, dsh process, file/network, updates)
 ├── tests/                                     # xunit: shell / Core / Infrastructure / analyzer contract
 ├── tools/DeepSeek.Harness.Desktop.Analyzers/  # Roslyn custom analyzer (D003 machine enforcement)
 ├── scripts/                                   # gates + package-*.sh + release-preflight.sh + release-notes.sh
@@ -146,8 +146,7 @@ DSH_DEVTOOLS=1 dotnet run --project src/DeepSeek.Harness.Desktop
 
 - This project: MIT.
 - [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) — the runtime this shell hosts.
-- [Avalonia](https://avaloniaui.net/) (MIT) — the migration-target host framework.
-- [Ryn](https://github.com/Yupmoh/Ryn) (MIT) — the original desktop-shell framework (kept for rollback during migration).
+- [Avalonia](https://avaloniaui.net/) (MIT) — the host framework and native WebView control.
 - Packaging approach references [pilot-harness](https://github.com/op7418/pilot-harness).
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)

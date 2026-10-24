@@ -5,9 +5,9 @@ namespace DeepSeek.Harness.Desktop.Hosting;
 /// <summary>宿主入口（ADR implemented/architecture/2026-10-22-avalonia-g0-entry-switch、-g1-tray-recall、-g2-shell-bridge）：
 /// Avalonia 窗口 + 包自带 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回、
 /// 无边框顶栏（三平台原生拖拽/缩放，Wayland 降级）与启动失败面已接入；<c>window.__shell</c> 页面桥
-/// 含外链拦截与页面健康观测。退出/重启走 <see cref="ExitPipeline"/>（-g3-exit-restart）；恢复页与监督器
-/// 随 G1 余项/G3，Ryn 装配面保留可回退。
-/// 装配面成员（C2）：本文件只许 <c>Run</c>、<c>RunUi</c>、<c>CreateStartup</c>、<c>CreateLifetime</c>；新增成员须先在
+/// 含外链拦截与页面健康观测。退出/重启走 <see cref="ExitPipeline"/>（-g3-exit-restart）；恢复页、监督器与
+/// 启动期告知均已接入（ADR avalonia-g1g3-recovery-bootstrap-supervision、avalonia-g5-ryn-host-retirement）。
+/// 装配面成员（C2）：逐成员清单见 <c>verify-compose-root.py</c> 的 ALLOWED_METHODS；新增成员须先在
 /// <c>verify-compose-root.py</c> 的 ALLOWED_METHODS 列册（本片为拆 F2 方法长度上限而拆分启动面）。
 /// 自更新（三条命令、就绪横幅与托盘「检查更新」的反馈面）在 <see cref="ShellWiringRegistration"/> 装配，
 /// 见 ADR avalonia-g3-update-surface。</summary>
@@ -29,9 +29,8 @@ internal static class AvaloniaHost
         ShellBridgeHost? bridgeHost = null;
         try
         {
-            SharedState shared = PreBuildRegistration.CreateSharedState(static () => null);
-            // Windows 前置：WebView2 缺失时在 spawn/建窗前原生提示并退出；探测异常 fail-open（ADR avalonia-g4-webview2-preflight）。
-            if (OperatingSystem.IsWindows() && !WebView2Registration.EnsureRuntimeAvailable(shared.UiLocale))
+            SharedState shared = PreBuildRegistration.CreateSharedState();
+            if (!EnsureWebView2Runtime(shared))
             {
                 return 1;
             }
@@ -46,20 +45,13 @@ internal static class AvaloniaHost
                 shared,
                 () => bridgeHost?.ScriptTarget ?? throw new InvalidOperationException("页面桥尚未装配"));
 
-            // 单实例仲裁：只防第二实例冷启动清扫并击杀第一实例的 dsh；二启通知经唤回单点转给主窗，
-            // 建窗前的请求由 ShellRecall 挂起、窗口就绪后补发。
             var recall = new ShellRecall();
-            if (!PreBuildRegistration.TryBecomePrimary(
-                    preflight, shared.Timeouts, () => { recall.Request(); return Task.CompletedTask; }, out PrimaryListener? instanceListener))
+            if (!AcquireSingleInstance(preflight, shared, recall, resources, out PrimaryListener? instanceListener))
             {
                 return 0;
             }
 
-            resources.Attach(instanceListener);
-
-            // marker 晚于单实例仲裁：第二实例会覆盖并删掉它，抹掉「非受控退出」取证。
-            dshHome = HarnessRuntimeHost.ResolveDshHome();
-            marker = RunMarker.Acquire(dshHome);
+            marker = AcquireRunMarker(out dshHome);
 
             // 回环代理源：绑定失败 loud 后降级为空窗（G0 不实现 wwwroot 降级，见 ShellWindow 注释）。
             DshLoopbackProxy.ProxySetup proxy = DshLoopbackProxy.TryCreate(
@@ -77,23 +69,83 @@ internal static class AvaloniaHost
             return RunUi(
                 args, wiring.Startup, preflight.Launch.DevTools, recall, shared.UiLocale,
                 wiring.BridgeHost, () => host.StderrTail, dshHome, wiring.Exit, wiring.Recovery,
-                wiring.CloseGate, wiring.Updates, wiring.CloseWindow);
+                wiring.CloseGate, wiring.Updates, wiring.CloseWindow, wiring.Notices);
         }
         finally
         {
-            // 先停后台起步（取消 + 有限 join），再按序释放进程级资源（host → proxy → cts），最后清崩溃 marker。
-            try
+            DisposeShell(resources, startup, bridgeHost, marker, dshHome);
+        }
+    }
+
+    /// <summary>崩溃取证 marker：晚于单实例仲裁取得（第二实例会覆盖并删掉它，抹掉「非受控退出」取证）。</summary>
+    /// <param name="dshHome">DSH home（marker 根；同时供退出释放与关窗偏好）。</param>
+    /// <returns>本轮 marker（owner token 供释放校验）。</returns>
+    private static RunMarkerResult AcquireRunMarker(out string dshHome)
+    {
+        dshHome = HarnessRuntimeHost.ResolveDshHome();
+        return RunMarker.Acquire(dshHome);
+    }
+
+    /// <summary>Windows 前置：WebView2 缺失时在 spawn/建窗前原生提示并退出；探测异常 fail-open
+    /// （ADR avalonia-g4-webview2-preflight）。非 Windows 恒真。</summary>
+    /// <param name="shared">装配期共享态（语言单点供原生提示）。</param>
+    /// <returns>true = 运行时可用（或非 Windows）。</returns>
+    private static bool EnsureWebView2Runtime(SharedState shared) =>
+        !OperatingSystem.IsWindows() || WebView2Registration.EnsureRuntimeAvailable(shared.UiLocale);
+
+    /// <summary>单实例仲裁：只防第二实例冷启动清扫并击杀第一实例的 dsh；二启通知经唤回单点转给主窗，
+    /// 建窗前的请求由 <see cref="ShellRecall"/> 挂起、窗口就绪后补发。</summary>
+    /// <param name="preflight">启动头部产出（dev 判定）。</param>
+    /// <param name="shared">装配期共享态（超时家）。</param>
+    /// <param name="recall">唤回单点（二启通知的挂起/补发）。</param>
+    /// <param name="resources">进程级资源拥有者（监听器在此登记）。</param>
+    /// <param name="instanceListener">仲裁成功时持有的监听器。</param>
+    /// <returns>true = 本进程是主实例。</returns>
+    private static bool AcquireSingleInstance(
+        Preflight preflight,
+        SharedState shared,
+        ShellRecall recall,
+        ShellResources resources,
+        out PrimaryListener? instanceListener)
+    {
+        if (!PreBuildRegistration.TryBecomePrimary(
+                preflight,
+                shared.Timeouts,
+                () => { recall.Request(); return Task.CompletedTask; },
+                out instanceListener))
+        {
+            return false;
+        }
+
+        resources.Attach(instanceListener);
+        return true;
+    }
+
+    /// <summary>进程收尾：先停后台起步（取消 + 有限 join），再按序释放进程级资源（host → proxy → cts），
+    /// 最后清崩溃 marker（marker 已取得才释放；第二实例路径未取得）。</summary>
+    /// <param name="resources">进程级资源拥有者。</param>
+    /// <param name="startup">起步壳（可能尚未构造）。</param>
+    /// <param name="bridgeHost">页面桥（可能尚未构造）。</param>
+    /// <param name="marker">本轮 run-marker（第二实例路径为 null）。</param>
+    /// <param name="dshHome">DSH home（marker 根；空串 = 未解析）。</param>
+    private static void DisposeShell(
+        ShellResources resources,
+        ShellStartup? startup,
+        ShellBridgeHost? bridgeHost,
+        RunMarkerResult? marker,
+        string dshHome)
+    {
+        try
+        {
+            startup?.Dispose();
+            bridgeHost?.Dispose();
+            resources.Dispose();
+        }
+        finally
+        {
+            if (marker is RunMarkerResult acquired && dshHome.Length > 0)
             {
-                startup?.Dispose();
-                bridgeHost?.Dispose();
-                resources.Dispose();
-            }
-            finally
-            {
-                if (marker is RunMarkerResult acquired && dshHome.Length > 0)
-                {
-                    RunMarker.Release(dshHome, acquired.Token);
-                }
+                RunMarker.Release(dshHome, acquired.Token);
             }
         }
     }
@@ -163,6 +215,7 @@ internal static class AvaloniaHost
     /// <param name="closeGate">关窗闸门（失败面/托盘/恢复页/自更新安装共用）。</param>
     /// <param name="updates">自更新面（命令路由、启动检查与托盘「检查更新」动作）。</param>
     /// <param name="closeWindow">主窗关窗投递（恢复页退出与退出管道共用同一份）。</param>
+    /// <param name="notices">启动期告知（版本底线/非受控退出横幅）。</param>
     /// <returns>进程退出码。</returns>
     private static int RunUi(
         string[] args,
@@ -177,9 +230,10 @@ internal static class AvaloniaHost
         ShellRecoveryContext recoveryContext,
         CloseGate closeGate,
         UpdateSurface updates,
-        Action closeWindow)
+        Action closeWindow,
+        StartupNoticeService notices)
     {
-        // 托盘图标存在性是装配期配置探测（与旧入口 DesktopAdapter.App 同款，D005 显式豁免）
+        // 托盘图标存在性是装配期配置探测（D005 显式豁免）
         string trayIconPath = Path.Combine(AppContext.BaseDirectory, "icon.png");
         bool trayIconAvailable = File.Exists(trayIconPath); // verify-code-conventions: ignore 装配面：托盘图标存在性是配置探测，非业务直调
 
@@ -191,7 +245,8 @@ internal static class AvaloniaHost
                 recoveryContext,
                 closeGate,
                 updates,
-                closeWindow))
+                closeWindow,
+                notices))
             .UsePlatformDetect()
             .StartWithClassicDesktopLifetime(args);
     }

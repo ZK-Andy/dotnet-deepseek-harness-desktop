@@ -1,4 +1,4 @@
-using Ryn.Ipc;
+using DeepSeek.Harness.Desktop.Core.Ipc;
 
 namespace DeepSeek.Harness.Desktop.Update;
 
