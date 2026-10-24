@@ -122,13 +122,28 @@ public static partial class MarketInstallHelper
     /// 装配前置 ensure-pnpm（ADR companion-pnpm-prerequisite）：PATH 有真 pnpm 即用（记版本）；
     /// 未检出则 <c>npm install -g pnpm</c> 装到与 dsh 同一全局位后复验。探测/安装经注入的进程委托
     /// （与 plugin add 同一 runner）。失败返回 false——装配放弃由调用方收口（best-effort）。
+    /// 可执行缺失时 .NET Process.Start 抛 Win32Exception 而非返回非零（run `40136296983` CI 实证：
+    /// 无 pnpm 环境探测即抛）——按 127（command-not-found 惯用码）收口继续走安装，不上抛。
     /// </summary>
     private static async Task<bool> EnsurePnpmAsync(
         Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> run,
         Action<string> log,
         CancellationToken ct)
     {
-        (int exit, string outText, _) = await run(BuildToolPsi("pnpm", "--version"), ct).ConfigureAwait(false);
+        async Task<(int Exit, string Out, string Err)> TryRunAsync(System.Diagnostics.ProcessStartInfo psi)
+        {
+            try
+            {
+                return await run(psi, ct).ConfigureAwait(false);
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                // Win32Exception 也覆盖非缺失形态（ERROR_ACCESS_DENIED=5、坏映像=193）——保真 ex.Message
+                return (127, string.Empty, $"start failed: {ex.Message}");
+            }
+        }
+
+        (int exit, string outText, _) = await TryRunAsync(BuildToolPsi("pnpm", "--version")).ConfigureAwait(false);
         if (exit == 0)
         {
             log($"[host] pnpm 前置：PATH 已有（{outText.Trim()}）");
@@ -136,14 +151,14 @@ public static partial class MarketInstallHelper
         }
 
         log("[host] pnpm 前置：未检出，npm install -g pnpm（与 dsh 同装到全局）");
-        (exit, _, string errText) = await run(BuildToolPsi("npm", "install", "-g", "pnpm"), ct).ConfigureAwait(false);
+        (exit, _, string errText) = await TryRunAsync(BuildToolPsi("npm", "install", "-g", "pnpm")).ConfigureAwait(false);
         if (exit != 0)
         {
             log($"[host] pnpm 前置安装失败（npm install -g pnpm exit={exit}）：{errText.Trim()}");
             return false;
         }
 
-        (exit, outText, _) = await run(BuildToolPsi("pnpm", "--version"), ct).ConfigureAwait(false);
+        (exit, outText, _) = await TryRunAsync(BuildToolPsi("pnpm", "--version")).ConfigureAwait(false);
         if (exit != 0)
         {
             log($"[host] pnpm 前置复验失败（安装后 pnpm --version exit={exit}）");

@@ -501,6 +501,44 @@ public class MarketInstallHelperTests
         }
     }
 
+    /// <summary>验证探测可执行缺失（Process.Start 抛 Win32Exception）按未检出收口继续装——
+    /// run `40136296983` CI 实证形态：无 pnpm 环境探测即抛，修复前异常穿透到装配 catch。</summary>
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_PnpmPreflight_ProbeThrowMeansMissing()
+    {
+        (string home, string profilePkg, string installerPluginsDir) = NewPendingCompanionHome();
+        var commands = new List<string>();
+        var logs = new List<string>();
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            string command = IsPnpmPreflight(psi)
+                ? $"{psi.FileName} {string.Join(" ", psi.ArgumentList)}"
+                : "plugin-add";
+            commands.Add(command);
+            return command switch
+            {
+                "plugin-add" => (0, "installed", string.Empty),
+                "npm install -g pnpm" => (0, string.Empty, string.Empty),
+                "pnpm --version" when commands.Count(c => c == "pnpm --version") == 1
+                    => throw new System.ComponentModel.Win32Exception(2, "No such file or directory"),
+                _ => (0, "10.1.0", string.Empty),
+            };
+        }
+
+        try
+        {
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
+            Assert.True(installed);
+            Assert.Equal(["pnpm --version", "npm install -g pnpm", "pnpm --version", "plugin-add"], commands);
+            Assert.Contains(logs, l => l.Contains("pnpm 前置：已装到全局"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
     /// <summary>验证 pnpm 前置安装失败时装配放弃：无 plugin add 调用、不进事务（无 staging 残留）、
     /// active 原样，日志含前置失败与放弃语义。</summary>
     [Fact]
