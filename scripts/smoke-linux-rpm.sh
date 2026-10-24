@@ -2,8 +2,9 @@
 # smoke-linux-rpm.sh — Linux rpm 冒烟容器腿（fedora 内 dnf 装包 → 启动 → 等判定信号）。
 # 由 smoke-install-linux.sh 在产物目录含 *.rpm 时转调；宿主只起容器与挂载，容器内脚本
 # 是 scripts/smoke-linux-rpm-inner.sh（单独文件→可 lint / 可评审，非 heredoc 字面块）。
-# 容器内 root + 无 display：判定走双信号 + 行为落定（见 smoke-install-linux.sh 文件头），
-# 引导启动行先于窗口创建输出，恒为②安装链收工（无 X 出不了截图，见证门不适用）。
+# 容器内 root + 无 display：inner 自装 Xvfb 提供虚拟显示（Avalonia 启动即初始化 X11、
+# 无显示 fail loud——run 40109768884 三红腿之一），判定走双信号 + 行为落定；
+# 无截图面（见证门不适用）。
 #
 # 自测旋钮：STUB_DOCKER_RC（--self-test 里桩 docker 的退出码，缺省 0）。
 # 用法: SMOKE_PKG_DIR=<产物目录> smoke-linux-rpm.sh <rpm 路径>

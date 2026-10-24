@@ -60,6 +60,50 @@ smoke_shot() { # $1=文件名
     || log "截图跳过（无 WindowServer 会话或 screencapture 不可用）"
 }
 
+# 崩溃取证（run 40109768884 mac x64 SIGILL 无证据的补课）：进程被 OS 杀死时 stdout 只有
+# shell 的信号行，真因在系统崩溃报告（.ips，DiagnosticReports）。全量拷进 SMOKE_LOG_DIR
+# 随 artifact 上传；异常类型/终止原因/故障线程帧（映像名）打进步日志供人直读。
+# 提取失败绝不连累冒烟结论（best-effort，与截图同纪律）。
+smoke_crash_report_summary() { # $1=.ips 路径
+  python3 - "$1" <<'PY' 2>/dev/null || log "崩溃报告摘要提取失败（原文已拷入日志目录）"
+import json, sys
+with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
+    lines = fh.read().splitlines()
+body = json.loads("\n".join(lines[1:])) if len(lines) > 1 else {}
+exc = body.get("exception", {})
+imgs = body.get("usedImages", [])
+ft = body.get("faultingThread", 0)
+threads = body.get("threads", [])
+frames = threads[ft].get("frames", []) if isinstance(threads, list) and ft < len(threads) else []
+print(f"== 崩溃报告摘要: {sys.argv[1].rsplit('/', 1)[-1]}")
+print(f"exception: {exc.get('type', '?')} signal={exc.get('signal', '?')} subtype={exc.get('subtype', '?')}")
+print(f"termination: {json.dumps(body.get('termination', {}), ensure_ascii=False)}")
+def image_name(frame):
+    idx = frame.get("imageIndex", -1)
+    return imgs[idx].get("name", "?") if isinstance(imgs, list) and 0 <= idx < len(imgs) else "?"
+for frame in frames[:15]:
+    print(f"  frame: {image_name(frame)} +{frame.get('imageOffset', '?')}")
+PY
+}
+
+smoke_collect_crash_reports() {
+  [[ -n "${SMOKE_LOG_DIR:-}" ]] || return 0
+  # cp 之前必须先建目录：mkdir 的唯一既有落点在 smoke_dump_logs（本函数之后才跑），
+  # CI 全新 workspace 下该目录不存在，缺此行则 .ips 拷贝全部静默失败（评审 R1/R2 Blocker）。
+  mkdir -p "$SMOKE_LOG_DIR" 2>/dev/null || return 0
+  local dir f found=0
+  for dir in "$HOME/Library/Logs/DiagnosticReports" "/Library/Logs/DiagnosticReports"; do
+    [[ -d "$dir" ]] || continue
+    # 只收本次窗口内的报告（30 分钟覆盖整个冒烟；runner 每作业全新 VM，无跨跑污染面）。
+    while IFS= read -r f; do
+      found=1
+      cp "$f" "$SMOKE_LOG_DIR/" 2>/dev/null || true
+      smoke_crash_report_summary "$f"
+    done < <(find "$dir" -name "${APP_NAME}-*.ips" -mmin -30 -print 2>/dev/null)
+  done
+  [[ $found -eq 1 ]] || log "崩溃报告：诊断目录内无本应用 .ips（进程非崩溃退出或未落报告）"
+}
+
 # mac 专属夹具：裁决静默等待的事件驱动侧（增长后稳定才返、grace 触发重置静默）
 # 与中央裁剪几何（含菜单栏/Dock 的全屏图取中央）。
 smoke_selftest_platform() { # $1=夹具根
@@ -143,6 +187,7 @@ if [[ $rc -ne 0 ]]; then
 fi
 # 日志落盘（W2）：调用方经 SMOKE_LOG_DIR 注入稳定目录（与 SMOKE_SHOT_DIR 同模式），
 # CI 传 artifact——host.log 只在文件里全，step 日志只有尾巴。
-# 日志落盘（W2）：SMOKE_LOG_DIR 由调用方注入稳定目录，CI 传 artifact。
+# 崩溃报告随同落盘（smoke_collect_crash_reports 契约同 SMOKE_LOG_DIR）。
+smoke_collect_crash_reports
 smoke_dump_logs "smoke-macos" "$OUT" "${LOG:-}"
 exit $rc

@@ -4,7 +4,8 @@
 # ②免掉「宿主变量在引号界定符下保持字面」的坑位。
 #
 # 判定语义与宿主腿同一实现（scripts/lib/smoke-wait-lib.sh + smoke-verdict-lib.sh）：
-# 容器无 X，落定/裁决门照跑（行为三信号与显示无关），无截图（见证门不适用）。
+# 容器经 Xvfb 提供虚拟显示（Avalonia 启动即初始化 X11、无显示 fail loud——run 40109768884），
+# 落定/裁决门照跑；无截图（见证门不适用）。
 # 刻意不带 `set -e`：dnf 失败要走显式分支打印包安装诊断，而非无声退出。
 # verify-shell-standards: no-errexit dnf 失败走显式分支打印诊断，-e 会让失败无声退出
 #
@@ -44,9 +45,23 @@ smoke_rpm_leg() {
       tail -30 "$log_path" >&2
       return 1
     fi
+    # 应用本体与虚拟显示分开装：Xvfb 缺包时不掩埋应用安装结果，显式留痕后按无显示启动
+    # （Avalonia 必红，但证据行指明「缺虚拟显示」而非 XOpenDisplay 谜团）。
+    if ! dnf install -y --setopt=install_weak_deps=False xorg-x11-server-Xvfb >>"$log_path" 2>&1; then
+      error "[rpm] Xvfb 安装失败（将按无显示启动，预期启动即红）："
+      tail -15 "$log_path" >&2
+      # 诊断随 artifact 留存：启动行会截断 log_path 文件面，dnf 根因行另落一份（评审 R2）。
+      [[ -d /smokelogs ]] && cp "$log_path" /smokelogs/smoke-linux-rpm-xvfb-dnf.log 2>/dev/null || true
+    fi
   fi
   home="$(mktemp -d)"
-  DSH_DESKTOP_DSH_HOME="$home" timeout "$APP_TIMEOUT" "$SMOKE_APP_BIN" >"$log_path" 2>&1 &
+  # 无 DISPLAY 时经 xvfb-run 提供虚拟显示；有 DISPLAY（或无 xvfb-run）按原样启动。
+  local -a xvfb=()
+  if [[ -z "${DISPLAY:-}" ]] && command -v xvfb-run >/dev/null 2>&1; then
+    xvfb=(xvfb-run -a)
+    log "[rpm] 无 DISPLAY：经 xvfb-run 提供虚拟显示"
+  fi
+  DSH_DESKTOP_DSH_HOME="$home" timeout "$APP_TIMEOUT" "${xvfb[@]}" "$SMOKE_APP_BIN" >"$log_path" 2>&1 &
   pid=$!
   smoke_wait_ready "$log_path" "$log_path" "$pid" "$home" && rc=0
   if [[ $rc -eq 0 ]]; then
@@ -55,6 +70,9 @@ smoke_rpm_leg() {
     smoke_evidence_fail "$log_path" "$log_path" full
   fi
   kill "$pid" 2>/dev/null
+  # host.log 随 artifact 留存：须在 rm 前拷（trap 在脚本退出才跑，够不着已删目录——评审 R2 验轮）。
+  [[ -d /smokelogs && -f "$home/logs/host.log" ]] \
+    && cp "$home/logs/host.log" /smokelogs/smoke-linux-rpm-host.log 2>/dev/null || true
   rm -rf "$home"
   return $rc
 }
@@ -79,8 +97,10 @@ smoke_rpm_selftest() {
     printf 'sleep 30\n'
   } >"$fake"
   chmod +x "$fake"
+  # DISPLAY=:99 钉死「有显示」分支：夹具须离线确定——宿主无 DISPLAY 且装有 xvfb-run 时
+  # （GitHub runner 即此形态）夹具会真拉 Xvfb，随环境漂移（评审 R2）。
   out="$(SMOKE_LIB_DIR="$lib" SMOKE_SKIP_INSTALL=1 SMOKE_APP_BIN="$fake" APP_TIMEOUT=20 \
-    SMOKE_WAIT_SECONDS=10 SMOKE_SETTLE_SECONDS=5 bash "${BASH_SOURCE[0]}" 2>&1)" || rc=$?
+    SMOKE_WAIT_SECONDS=10 SMOKE_SETTLE_SECONDS=5 DISPLAY=:99 bash "${BASH_SOURCE[0]}" 2>&1)" || rc=$?
   if [[ $rc -eq 0 ]]; then
     echo "ok: 容器腿端到端（落定 → 退出码 0）"
   else
@@ -116,10 +136,9 @@ if [[ "${1:-}" == "--self-test" ]]; then
   exit $?
 fi
 
-# 真实容器腿：日志落盘走 EXIT trap（$log_path 先定义；$home 可能未建，用 :- 守 set -u）
+# 真实容器腿：日志落盘走 EXIT trap（$log_path 先定义；host.log 由 leg 内 rm 前拷贝，不经 trap）
 smoke_rpm_init
 log_path=/tmp/smoke.log
-home=""
-trap '[[ -d /smokelogs ]] && { cp "$log_path" /smokelogs/smoke-linux-rpm.log 2>/dev/null || true; [[ -f "${home:-}/logs/host.log" ]] && cp "${home:-}/logs/host.log" /smokelogs/smoke-linux-rpm-host.log 2>/dev/null || true; } || true' EXIT
+trap '[[ -d /smokelogs ]] && cp "$log_path" /smokelogs/smoke-linux-rpm.log 2>/dev/null || true' EXIT
 smoke_rpm_leg "$log_path"
 exit $?

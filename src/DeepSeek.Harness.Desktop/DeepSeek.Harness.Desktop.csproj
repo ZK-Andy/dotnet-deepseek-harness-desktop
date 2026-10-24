@@ -2,6 +2,10 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- supportedOS 清单：Avalonia Win32 NativeControlHost 建 WebView 子窗的硬性前提
+         （缺它即 InvalidOperationException，见 app.manifest 注；仅 Windows PE 消费，
+         非 Windows 构建静默忽略）。 -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- IDE0005（移除无谓 using）：已由根 .editorconfig 开启为 warning，经 `dotnet format` 门禁强制
          （见 ci.yml，无需 GenerateDocumentationFile）。 -->
