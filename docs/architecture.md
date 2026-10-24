@@ -39,7 +39,7 @@
 
 * 随包 `dsh-desktop-companion`（internal）spawn 前静默自愈：`EnsureBundledPluginsBeforeSpawnAsync` 按 `Core/Plugins/BundledPluginCatalog` 清单未装即装（安装器资源 tgz）、已装则版本感知升级。
 * `DesktopProfileBootstrap.ReconcileProfile` 移除不可解析的引用；市场安装侧 `EnsureWorkspaceAllowBuilds` 放行 `pnpm-workspace.yaml` 的 `allowBuilds` 6 项。
-* **CLI shim**：`CliShimRegistrar.TryRegister` 只注册内容恒定的 `pnpm` shim（Windows `%LOCALAPPDATA%\deepseek-harness\bin` + HKCU Path；Unix `~/.local/bin` + rc 幂等块），优先转发用户自装 pnpm，best-effort 不阻启动。
+* **CLI shim**：`CliShimRegistrar.TryRegister` 清理历史自产 pnpm 转发 shim 残留（仅删自产标记与悬空链接，用户自放文件不触碰）并把系统全局 node 的 bin 目录暴露进终端 PATH（Windows HKCU Path + 广播；Unix rc 幂等块），best-effort 不阻启动；pnpm 真身由随包装配前置经 npm 装到全局（有则用）。
 
 ## 外部链接接管
 

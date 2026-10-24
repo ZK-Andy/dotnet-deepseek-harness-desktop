@@ -163,9 +163,17 @@ public static partial class RuntimeBootstrap
         DshCommandFor(binDir, args, OperatingSystem.IsWindows());
 
     /// <summary>启动命令构造的平台可注入重载（单测覆盖 Windows 引号形态）。</summary>
-    internal static DshCommand DshCommandFor(string? binDir, IReadOnlyList<string> args, bool windows) => windows
-        ? new DshCommand("cmd.exe", ["/d", "/s", "/c", DshShimPath(binDir, windows), .. args])
-        : new DshCommand(DshShimPath(binDir, windows), args);
+    internal static DshCommand DshCommandFor(string? binDir, IReadOnlyList<string> args, bool windows) =>
+        RelayFor(DshShimPath(binDir, windows), args, windows);
+
+    /// <summary>任意命令的跨平台中转命令（裸名 spawn 的唯一家；ADR windows-dsh-spawn-unified 的
+    /// 通用面，DshCommandFor 与装配前置的 pnpm/npm 探测共用）：Windows 经 <c>cmd.exe /d /s /c</c>
+    /// 中转——<c>UseShellExecute=false</c> 的 CreateProcess 对裸名只试本名 + <c>.exe</c>（不走
+    /// PATHEXT），cmd 自身做 PATH/PATHEXT 解析；Unix 直跑。调用方把 <see cref="DshCommand.Args"/>
+    /// 原样喂参数表，不再二次解释/拼串。</summary>
+    internal static DshCommand RelayFor(string command, IReadOnlyList<string> args, bool windows) => windows
+        ? new DshCommand("cmd.exe", ["/d", "/s", "/c", command, .. args])
+        : new DshCommand(command, args);
 
     /// <summary>系统全局 node 默认安装前缀（用户可写，避免需 sudo）：Windows <c>%LOCALAPPDATA%\nodejs</c>；
     /// Unix 用户主目录 <c>~/.local</c>（<c>~/.local/bin</c> 经宿主 spawn PATH 增补与 CLI shim rc 块已在 PATH）。</summary>

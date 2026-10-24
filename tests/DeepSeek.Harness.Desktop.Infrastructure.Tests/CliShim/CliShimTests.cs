@@ -5,46 +5,9 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.CliShim;
 [CollectionDefinition("cli-shim-env", DisableParallelization = true)]
 public class CliShimEnvCollectionDefinition;
 
-/// <summary>CLI shim 内容生成契约：dsh 已全局在 PATH（ADR simple-shell-single-global-dsh），只保留 pnpm shim 的转发语义。</summary>
-[Collection("cli-shim-env")]
-public class CliShimBuilderTests
-{
-    // pnpm shim 内容（不烘焙 home/runtime；只转发用户 pnpm）
-
-    /// <summary>验证 pnpm 三类 shim 只转发用户 pnpm：不烘焙 home/runtime，缺失时输出「pnpm not found」。</summary>
-    [Fact]
-    public void PnpmShims_Do_Not_Bake_Home_Or_Runtime()
-    {
-        Assert.DoesNotContain("/home/test/.dsh", CliShimBuilder.BuildPnpmSh());
-        Assert.DoesNotContain("runtime", CliShimBuilder.BuildPnpmSh());
-        Assert.Contains("pnpm command shim (generated)", CliShimBuilder.BuildPnpmSh());
-        Assert.Contains("pnpm not found", CliShimBuilder.BuildPnpmSh());
-        Assert.Contains("pnpm not found", CliShimBuilder.BuildPnpmCmd());
-        Assert.Contains("pnpm not found", CliShimBuilder.BuildPnpmPs1());
-        Assert.Contains(CliShimBuilder.GeneratedMarker, CliShimBuilder.BuildPnpmSh());
-        Assert.Contains(CliShimBuilder.GeneratedMarker, CliShimBuilder.BuildPnpmCmd());
-    }
-
-    /// <summary>验证 pnpm shim 不含 dsh 相关烘焙（dsh 全局在 PATH，无需 shim）。</summary>
-    [Fact]
-    public void PnpmShims_Do_Not_Bake_Dsh()
-    {
-        Assert.DoesNotContain("dsh", CliShimBuilder.BuildPnpmSh(), StringComparison.Ordinal);
-        Assert.DoesNotContain("DSH_HOME", CliShimBuilder.BuildPnpmSh());
-        Assert.DoesNotContain("bin.js", CliShimBuilder.BuildPnpmSh());
-    }
-
-    /// <summary>验证三类 pnpm shim 在前两行内带生成标记（可被 IsGeneratedShim 识别为"本应用生成"）。</summary>
-    [Fact]
-    public void PnpmShims_All_Carry_GeneratedMarker()
-    {
-        Assert.True(CliShimPath.IsGeneratedShim(CliShimBuilder.BuildPnpmCmd()));
-        Assert.True(CliShimPath.IsGeneratedShim(CliShimBuilder.BuildPnpmPs1()));
-        Assert.True(CliShimPath.IsGeneratedShim(CliShimBuilder.BuildPnpmSh()));
-    }
-}
-
-/// <summary>shim 路径工具函数契约：PATH token 的大小写不敏感合并与判含、shell rc 块的幂等插入与生成标记识别。</summary>
+/// <summary>shim 路径工具函数契约：PATH token 的大小写不敏感合并与判含、shell rc 块的幂等插入、
+/// 生成标记识别（清理历史自产残留的判定面——ADR companion-pnpm-prerequisite；原 Builder 契约类
+/// 随 CliShimBuilder 撤除后并入此处，R1 S3）。</summary>
 [Collection("cli-shim-env")]
 public class CliShimPathTests
 {
@@ -89,7 +52,7 @@ public class CliShimPathTests
     [Fact]
     public void EnsureShellRcBlock_Is_Idempotent()
     {
-        string block = CliShimPath.BuildShellExportBlock("/home/x/.local/bin", ":");
+        string block = CliShimPath.BuildShellExportBlocks(new[] { "/home/x/.local/bin" }, ":");
         string once = CliShimPath.EnsureShellRcBlock("", block);
         Assert.Contains(CliShimPath.RcBeginMarker, once);
         Assert.Contains(CliShimPath.RcEndMarker, once);
@@ -102,7 +65,7 @@ public class CliShimPathTests
     [Fact]
     public void EnsureShellRcBlock_Appends_After_Existing_Content()
     {
-        string block = CliShimPath.BuildShellExportBlock("/home/x/.local/bin", ":");
+        string block = CliShimPath.BuildShellExportBlocks(new[] { "/home/x/.local/bin" }, ":");
         string result = CliShimPath.EnsureShellRcBlock("# existing\n", block);
         Assert.StartsWith("# existing", result);
         Assert.Contains(CliShimPath.RcBeginMarker, result);
@@ -112,74 +75,52 @@ public class CliShimPathTests
     [Fact]
     public void IsGeneratedShim_Only_Marks_Marker_In_Header()
     {
-        // 前两行含生成标记 → 本应用 shim
-        Assert.True(CliShimPath.IsGeneratedShim("#!/bin/sh\n# DeepSeek Harness Desktop - pnpm command shim\n"));
-        // 正文（第三行）才提到标记 → 用户文件
+        // 前两行含生成标记 → 本应用 shim（常量耦合断言：标记与实现同源，改字面即红）
+        Assert.True(CliShimPath.IsGeneratedShim($"#!/bin/sh\n# {CliShimPath.GeneratedMarker} pnpm command shim\n"));
+        // 正文（第三行起）才提到标记 → 用户文件——清理是 File.Delete 破坏性动作，该分支必须钉住
         Assert.False(CliShimPath.IsGeneratedShim("#!/bin/sh\necho user\necho DeepSeek Harness Desktop - note\n"));
         Assert.False(CliShimPath.IsGeneratedShim(null));
     }
 }
 
-/// <summary>安装计划契约：按平台产出 pnpm 文件集、PATH 分隔符与 shell rc 块（dsh 已全局，不产出 dsh shim），以及写入决策矩阵。</summary>
+/// <summary>安装计划契约（ADR companion-pnpm-prerequisite）：pnpm 转发 shim 已停写——规划只含
+/// 历史残留清理清单与系统全局 node bin 的 PATH 暴露（不再产出任何 shim 文件、binDir 不进 PATH）。</summary>
 [Collection("cli-shim-env")]
 public class CliShimPlannerTests
 {
     private const string Bin = "/home/test/.local/bin";
 
-    /// <summary>验证 Windows 安装计划仅产出 pnpm 的 cmd+ps1 两文件、分号 PATH 分隔且无 shell rc 块。</summary>
+    /// <summary>验证规划不再产出任何 shim 文件面：只有历史残留清理清单，含三平台 pnpm 全名域。</summary>
     [Fact]
-    public void Windows_Setup_Emits_Only_Pnpm_Cmd_Ps1_And_Semicolon_Sep()
+    public void Setup_Plans_Legacy_Cleanup_Only_No_New_Shims()
     {
-        CliShimSetup setup = CliShimPlanner.BuildSetup(Bin, isWindows: true);
-        Assert.Equal(2, setup.Files.Count);
-        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm.cmd"));
-        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm.ps1"));
-        Assert.DoesNotContain(setup.Files, f => f.TargetPath.Contains("dsh", StringComparison.Ordinal));
-        Assert.Equal(";", setup.PathSeparator);
+        CliShimSetup setup = CliShimPlanner.BuildSetup(Bin, isWindows: false, runtimeNodeBinDir: null);
+        Assert.Equal(3, setup.LegacyShimPaths.Count);
+        foreach (string name in CliShimPlanner.LegacyPnpmShimNames)
+        {
+            Assert.Contains(Path.Combine(Bin, name), setup.LegacyShimPaths);
+        }
+    }
+
+    /// <summary>验证 Unix 无系统全局 node 可暴露时无 rc 块（binDir 不再进 PATH——shim 已撤，
+    /// ~/.local/bin 由用户自管）。</summary>
+    [Fact]
+    public void Unix_Setup_NoNodeBin_NoRcBlock()
+    {
+        CliShimSetup setup = CliShimPlanner.BuildSetup(Bin, isWindows: false, runtimeNodeBinDir: null);
         Assert.Null(setup.ShellRcBlock);
     }
 
-    /// <summary>验证 Unix 安装计划仅产出可执行 pnpm、冒号 PATH 分隔并带包含 bin 目录的 shell rc 块。</summary>
+    /// <summary>验证 Unix 规划在提供系统全局 node 时 rc 块只含 node bin（binDir 不进 PATH）。</summary>
     [Fact]
-    public void Unix_Setup_Emits_Only_Pnpm_And_Sh_Block()
-    {
-        CliShimSetup setup = CliShimPlanner.BuildSetup(Bin, isWindows: false);
-        Assert.Single(setup.Files);
-        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith("pnpm") && f.Executable);
-        Assert.DoesNotContain(setup.Files, f => f.TargetPath.Contains("dsh", StringComparison.Ordinal));
-        Assert.Equal(":", setup.PathSeparator);
-        Assert.NotNull(setup.ShellRcBlock);
-        Assert.Contains(Bin, setup.ShellRcBlock);
-    }
-
-    /// <summary>验证 Windows 计划使用 pnpm 常量文件名（cmd/ps1）。</summary>
-    [Fact]
-    public void Windows_Files_Match_Pnpm_Constants()
-    {
-        CliShimSetup setup = CliShimPlanner.BuildSetup(Bin, isWindows: true);
-        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith(CliShimPlanner.PnpmCmdName));
-        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith(CliShimPlanner.PnpmPs1Name));
-    }
-
-    /// <summary>验证 Unix 计划使用 pnpm 常量文件名（无扩展名、可执行）。</summary>
-    [Fact]
-    public void Unix_File_Matches_Pnpm_Constant()
-    {
-        CliShimSetup setup = CliShimPlanner.BuildSetup(Bin, isWindows: false);
-        Assert.Contains(setup.Files, f => f.TargetPath.EndsWith(CliShimPlanner.PnpmShName) && f.Executable);
-    }
-
-    /// <summary>验证 Unix 计划在提供系统全局 node 时（无系统 node 场景）把其 global bin 目录一并暴露进 shell rc 块。</summary>
-    [Fact]
-    public void Unix_Setup_ExposesSystemGlobalNodeBinDir()
+    public void Unix_Setup_ExposesSystemGlobalNodeBinDir_Only()
     {
         const string nodeBin = "/usr/local/bin";
         CliShimSetup setup = CliShimPlanner.BuildSetup(Bin, isWindows: false, runtimeNodeBinDir: nodeBin);
         Assert.Equal(nodeBin, setup.RuntimeNodeBinDir);
+        Assert.NotNull(setup.ShellRcBlock);
         Assert.Contains(nodeBin, setup.ShellRcBlock);
-        Assert.Contains(Bin, setup.ShellRcBlock);
-        Assert.True(setup.ShellRcBlock!.IndexOf(nodeBin, StringComparison.Ordinal) < setup.ShellRcBlock.IndexOf(Bin, StringComparison.Ordinal),
-            "系统全局 node 目录应排在 PATH 前面（终端优先用桌面与终端共用那份 node/dsh）");
+        Assert.DoesNotContain(Bin, setup.ShellRcBlock!);
     }
 
     /// <summary>验证 Windows 计划在提供系统全局 node 时记录 RuntimeNodeBinDir（供 HKCU Path 合并）。</summary>
@@ -191,33 +132,9 @@ public class CliShimPlannerTests
         Assert.Equal(nodeBin, setup.RuntimeNodeBinDir);
         Assert.Null(setup.ShellRcBlock);
     }
-
-    /// <summary>验证目标已存在且非本应用 shim 时写入决策为保留用户文件。</summary>
-    [Fact]
-    public void DecideShimWrite_Preserves_User_File()
-    {
-        ShimWriteAction action = CliShimPlanner.DecideShimWrite(exists: true, isGeneratedShim: false, isSymlink: false);
-        Assert.Equal(ShimWriteAction.PreserveUserFile, action);
-    }
-
-    /// <summary>验证目标缺失或已是本应用生成 shim 时写入决策为覆盖。</summary>
-    [Fact]
-    public void DecideShimWrite_Writes_Generated_Or_Missing()
-    {
-        Assert.Equal(ShimWriteAction.Write, CliShimPlanner.DecideShimWrite(exists: false, isGeneratedShim: false, isSymlink: false));
-        Assert.Equal(ShimWriteAction.Write, CliShimPlanner.DecideShimWrite(exists: true, isGeneratedShim: true, isSymlink: false));
-    }
-
-    /// <summary>验证目标为悬空符号链接时写入决策为先移除链接再写入。</summary>
-    [Fact]
-    public void DecideShimWrite_Removes_Dangling_Symlink()
-    {
-        ShimWriteAction action = CliShimPlanner.DecideShimWrite(exists: false, isGeneratedShim: false, isSymlink: true);
-        Assert.Equal(ShimWriteAction.RemoveDanglingSymlinkThenWrite, action);
-    }
 }
 
-/// <summary>端到端注册契约：TryRegister 落盘 pnpm shim 与 rc 块、重复注册幂等、保留用户既有文件（dsh 已全局，不写 dsh shim）；
+/// <summary>端到端注册契约：TryRegister 清理历史自产 pnpm shim 残留（不写新 shim）、node bin 暴露 rc 块幂等、保留用户自有文件；
 /// 夹具接管并还原进程级 DSH_DESKTOP_CLI_* 环境变量。</summary>
 [Collection("cli-shim-env")]
 public class CliShimRegistrarTests : IDisposable
@@ -259,46 +176,46 @@ public class CliShimRegistrarTests : IDisposable
 
     private bool IsWindows() => OperatingSystem.IsWindows();
 
-    /// <summary>验证 TryRegister 落盘 pnpm shim（含生成标记）且不落盘 dsh shim，注册返回成功。</summary>
+    /// <summary>验证 TryRegister 不再写任何新 shim，且历史自产 pnpm 转发 shim（带生成标记）被清理。</summary>
     [UnixFact("Unix-only 语义：Windows 的 RegisterPath 直写 HKCU 环境变量且无测试注入 seam，跑用例会永久污染用户 PATH")]
-    public void TryRegister_Writes_Pnpm_Shim_Not_Dsh()
+    public void TryRegister_Removes_Legacy_Generated_Shim_No_New_Writes()
     {
+        Directory.CreateDirectory(_binDir);
+        string pnpmShim = Path.Combine(_binDir, IsWindows() ? "pnpm.cmd" : "pnpm");
+        File.WriteAllText(pnpmShim, $"#!/bin/sh\n# {CliShimPath.GeneratedMarker} pnpm command shim (generated)\nexit 1\n");
+
         var reg = new CliShimRegistrar(_ => { });
         bool ok = reg.TryRegister();
 
         Assert.True(ok);
-        string pnpmShim = Path.Combine(_binDir, IsWindows() ? "pnpm.cmd" : "pnpm");
-        Assert.True(File.Exists(pnpmShim), "pnpm shim written");
-        Assert.Contains(CliShimBuilder.GeneratedMarker, File.ReadAllText(pnpmShim));
-        // dsh 已全局在 PATH：不产出 dsh shim
-        string dshShim = Path.Combine(_binDir, IsWindows() ? "dsh.cmd" : "dsh");
-        Assert.False(File.Exists(dshShim), "dsh shim must not be written (global dsh)");
+        Assert.False(File.Exists(pnpmShim), "legacy generated pnpm shim must be removed");
+        Assert.Empty(Directory.GetFiles(_binDir));
     }
 
-    /// <summary>验证重复注册两次不会在 shell rc 中重复插入 rc 块标记。</summary>
+    /// <summary>验证重复注册两次不会在 shell rc 中重复插入 rc 块标记（node bin 暴露形态）。</summary>
     [UnixFact("Unix-only 语义：Windows 的 RegisterPath 直写 HKCU 环境变量，无测试注入 seam")]
     public void TryRegister_Is_Idempotent_For_Rc()
     {
         var reg = new CliShimRegistrar(_ => { });
-        reg.TryRegister();
-        reg.TryRegister();
+        reg.TryRegister("/home/user/.local/bin");
+        reg.TryRegister("/home/user/.local/bin");
 
         string rc = File.ReadAllText(Path.Combine(_rcHome, ".bashrc"));
         Assert.Equal(1, Count(rc, CliShimPath.RcBeginMarker));
     }
 
-    /// <summary>验证目标 shim 已被用户文件占据时注册不改写其内容。</summary>
+    /// <summary>验证用户自放的 pnpm（真 pnpm，无生成标记）不被清理——只删自产残留。</summary>
     [UnixFact("Unix-only 语义：Windows 的 RegisterPath 直写 HKCU 环境变量且无测试注入 seam")]
-    public void TryRegister_Preserves_User_Shim_File()
+    public void TryRegister_Preserves_User_Pnpm_File()
     {
-        string pnpmShim = Path.Combine(_binDir, IsWindows() ? "pnpm.cmd" : "pnpm");
         Directory.CreateDirectory(_binDir);
-        File.WriteAllText(pnpmShim, "#!/bin/sh\necho my real pnpm\n");
+        string userPnpm = Path.Combine(_binDir, IsWindows() ? "pnpm.cmd" : "pnpm");
+        File.WriteAllText(userPnpm, "#!/bin/sh\necho my real pnpm\n");
 
         var reg = new CliShimRegistrar(_ => { });
         reg.TryRegister();
 
-        Assert.Equal("#!/bin/sh\necho my real pnpm\n", File.ReadAllText(pnpmShim));
+        Assert.Equal("#!/bin/sh\necho my real pnpm\n", File.ReadAllText(userPnpm));
     }
 
     /// <summary>验证提供系统全局 node（无系统 node 场景）时 TryRegister 把其 global bin 目录写入 shell rc，终端可解析同一份 node/dsh。</summary>

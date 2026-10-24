@@ -268,6 +268,11 @@ public class MarketInstallHelperTests
         var logs = new List<string>();
         async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
         {
+            if (IsPnpmPreflight(psi))
+            {
+                return (0, "10.0.0", string.Empty);   // 前置：PATH 已有 pnpm
+            }
+
             runs++;
             if (runs == 1)
             {
@@ -391,7 +396,9 @@ public class MarketInstallHelperTests
         var logs = new List<string>();
 
         async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
-            => (1, string.Empty, "boom");
+            => IsPnpmPreflight(psi) && psi.FileName == "pnpm"
+                ? (0, "10.0.0", string.Empty)   // 前置：PATH 已有 pnpm；plugin add 全失败
+                : (1, string.Empty, "boom");
 
         try
         {
@@ -401,6 +408,132 @@ public class MarketInstallHelperTests
             Assert.Equal(original, File.ReadAllText(profilePkg));
             Assert.Empty(Directory.GetDirectories(home, ".tx-*"));
             Assert.False(File.Exists(Path.Combine(home, "profiles", ".pending.json")));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    /// <summary>前置命令判定：EnsurePnpm 的探测/安装（BuildToolPsi 裸名形态；测试环境 Unix 直跑
+    /// 裸名，Windows 的 cmd.exe 中转形态不在本测试矩阵内）。</summary>
+    private static bool IsPnpmPreflight(System.Diagnostics.ProcessStartInfo psi)
+        => psi.FileName is "pnpm" or "npm";
+
+    /// <summary>构造一个「待装 companion」夹具 home（tgz 资源齐、profile 不含 companion → 前置必跑）。</summary>
+    private static (string Home, string ProfilePkg, string InstallerPluginsDir) NewPendingCompanionHome()
+    {
+        string home = Path.Combine(Path.GetTempPath(), "mh-" + Guid.NewGuid().ToString("N"));
+        string profileDir = Path.Combine(home, "profiles", HarnessRuntimeHost.DesktopProfileName);
+        Directory.CreateDirectory(profileDir);
+        string profilePkg = Path.Combine(profileDir, "package.json");
+        string installerPluginsDir = Path.Combine(home, "plugins");
+        Directory.CreateDirectory(installerPluginsDir);
+        File.WriteAllBytes(Path.Combine(installerPluginsDir, "dsh-desktop-companion.tgz"), new byte[2048]);
+        File.WriteAllText(profilePkg, """{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base"]}}}""");
+        return (home, profilePkg, installerPluginsDir);
+    }
+
+    /// <summary>验证 pnpm 前置「有就用」（ADR companion-pnpm-prerequisite）：PATH 探测成功即用并记版本，
+    /// 不触发 npm 安装，装配继续走 plugin add。</summary>
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_PnpmPreflight_UsesExistingPnpm()
+    {
+        (string home, string profilePkg, string installerPluginsDir) = NewPendingCompanionHome();
+        var commands = new List<string>();
+        var logs = new List<string>();
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            commands.Add(IsPnpmPreflight(psi)
+                ? $"{psi.FileName} {string.Join(" ", psi.ArgumentList)}"
+                : "plugin-add");
+            return (0, IsPnpmPreflight(psi) && psi.FileName == "pnpm" ? "10.0.0" : "installed", string.Empty);
+        }
+
+        try
+        {
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
+            Assert.True(installed);
+            Assert.Equal(["pnpm --version", "plugin-add"], commands);
+            Assert.Contains(logs, l => l.Contains("pnpm 前置：PATH 已有"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    /// <summary>验证 pnpm 前置「没有就装」：探测失败 → npm install -g pnpm → 复验成功 → 装配继续成功。</summary>
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_PnpmPreflight_InstallsWhenMissing()
+    {
+        (string home, string profilePkg, string installerPluginsDir) = NewPendingCompanionHome();
+        var commands = new List<string>();
+        var logs = new List<string>();
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            string command = IsPnpmPreflight(psi)
+                ? $"{psi.FileName} {string.Join(" ", psi.ArgumentList)}"
+                : "plugin-add";
+            commands.Add(command);
+            return command switch
+            {
+                "plugin-add" => (0, "installed", string.Empty),
+                "npm install -g pnpm" => (0, string.Empty, string.Empty),
+                _ => commands.Count(c => c == "pnpm --version") == 1
+                    ? (1, string.Empty, "not found")   // 首次探测：未检出
+                    : (0, "10.1.0", string.Empty),      // 装后复验
+            };
+        }
+
+        try
+        {
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
+            Assert.True(installed);
+            Assert.Equal(["pnpm --version", "npm install -g pnpm", "pnpm --version", "plugin-add"], commands);
+            Assert.Contains(logs, l => l.Contains("pnpm 前置：已装到全局"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    /// <summary>验证 pnpm 前置安装失败时装配放弃：无 plugin add 调用、不进事务（无 staging 残留）、
+    /// active 原样，日志含前置失败与放弃语义。</summary>
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_PnpmPreflight_AbortsWhenInstallFails()
+    {
+        (string home, string profilePkg, string installerPluginsDir) = NewPendingCompanionHome();
+        string original = File.ReadAllText(profilePkg);
+        var commands = new List<string>();
+        var logs = new List<string>();
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            string command = IsPnpmPreflight(psi)
+                ? $"{psi.FileName} {string.Join(" ", psi.ArgumentList)}"
+                : "plugin-add";
+            commands.Add(command);
+            return command switch
+            {
+                "pnpm --version" => (1, string.Empty, "not found"),
+                "npm install -g pnpm" => (1, string.Empty, "EACCES: permission denied"),
+                _ => (0, "installed", string.Empty),
+            };
+        }
+
+        try
+        {
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFakeAsync, ProbeOkAsync, CancellationToken.None);
+            Assert.False(installed);
+            Assert.Equal(["pnpm --version", "npm install -g pnpm"], commands);
+            Assert.Equal(original, File.ReadAllText(profilePkg));
+            Assert.Empty(Directory.GetDirectories(home, ".tx-*"));
+            Assert.Contains(logs, l => l.Contains("pnpm 前置安装失败"));
+            Assert.Contains(logs, l => l.Contains("装配前置失败"));
         }
         finally
         {

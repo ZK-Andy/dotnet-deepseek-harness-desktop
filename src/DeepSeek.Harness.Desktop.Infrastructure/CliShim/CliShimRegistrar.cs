@@ -3,92 +3,12 @@ using Microsoft.Win32;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.CliShim;
 
-/// <summary>一个待落盘的 shim 文件。</summary>
-internal sealed record CliShimFile(string TargetPath, string Content, bool Executable);
-
 /// <summary>
-/// CLI shim 注册的纯规划结果：要落盘的 shim 文件、bin 目录与 PATH 增量（Windows 为 HKCU 追加、
-/// Unix 为 rc key 块）。<paramref name="RuntimeNodeBinDir"/> 为系统全局 node 的 global bin 目录
-/// （无系统 node 时由桌面装到系统全局；把它一并暴露进终端 PATH，让桌面与终端共用同一份 node/dsh）。
-/// </summary>
-internal sealed record CliShimSetup(
-    IReadOnlyList<CliShimFile> Files,
-    string BinDir,
-    string PathSeparator,
-    string? ShellRcBlock,
-    string? RuntimeNodeBinDir = null);
-
-/// <summary>写入 shim 目标的决策。</summary>
-internal enum ShimWriteAction
-{
-    /// <summary>目标不存在，或为本应用生成的 shim：直接写入。</summary>
-    Write,
-
-    /// <summary>目标为用户自行放置的同名文件：保留。</summary>
-    PreserveUserFile,
-
-    /// <summary>目标为悬空符号链接（目标已失效）：先移除链接再写入。</summary>
-    RemoveDanglingSymlinkThenWrite,
-}
-
-/// <summary>
-/// CLI shim 注册纯逻辑（可单测）：规划 <c>pnpm</c> shim 落盘文件与 PATH 增量，
-/// 并判定写入动作（幂等合并、绝不覆盖用户配置）。dsh 已全局在 PATH（ADR simple-shell-single-global-dsh），
-/// 不再生成 dsh shim。平台 IO（注册表 / rc 落盘 / 广播）与编排见 <see cref="CliShimRegistrar"/>。
-/// </summary>
-internal static class CliShimPlanner
-{
-    /// <summary>Windows shim 文件名（pnpm 命令）。</summary>
-    public const string PnpmCmdName = "pnpm.cmd";
-    /// <summary>Windows PowerShell shim 文件名（pnpm 命令）。</summary>
-    public const string PnpmPs1Name = "pnpm.ps1";
-
-    /// <summary>Unix shim 文件名（pnpm 命令）。</summary>
-    public const string PnpmShName = "pnpm";
-
-    /// <summary>按平台构造 shim 规划（仅 pnpm；dsh 已全局在 PATH，内容恒定，不烘焙运行时/DSH_HOME）。
-    /// <paramref name="runtimeNodeBinDir"/> 非空时（系统全局 node 由桌面装好）一并把它暴露进终端 PATH。</summary>
-    public static CliShimSetup BuildSetup(string binDir, bool isWindows, string? runtimeNodeBinDir = null)
-    {
-        var files = new List<CliShimFile>();
-        // 系统全局 node 的 bin 目录前置：终端优先用桌面与终端共用那份 node/dsh（无系统 node 场景）。
-        string[] pathDirs = string.IsNullOrWhiteSpace(runtimeNodeBinDir)
-            ? new[] { binDir }
-            : new[] { runtimeNodeBinDir, binDir };
-        if (isWindows)
-        {
-            files.Add(new CliShimFile(Path.Combine(binDir, PnpmCmdName), CliShimBuilder.BuildPnpmCmd(), Executable: false));
-            files.Add(new CliShimFile(Path.Combine(binDir, PnpmPs1Name), CliShimBuilder.BuildPnpmPs1(), Executable: false));
-            return new CliShimSetup(files, binDir, ";", ShellRcBlock: null, RuntimeNodeBinDir: runtimeNodeBinDir);
-        }
-
-        files.Add(new CliShimFile(Path.Combine(binDir, PnpmShName), CliShimBuilder.BuildPnpmSh(), Executable: true));
-        return new CliShimSetup(files, binDir, ":", CliShimPath.BuildShellExportBlocks(pathDirs, ":"), RuntimeNodeBinDir: runtimeNodeBinDir);
-    }
-
-    /// <summary>判定写入动作：悬空符号链接先移除；本应用生成/不存在则写；用户文件保留。
-    /// 悬空 = 链接本身存在但目标已被移动/删除（<c>File.Exists</c> 跟随链接故为 false）。</summary>
-    public static ShimWriteAction DecideShimWrite(bool exists, bool isGeneratedShim, bool isSymlink)
-    {
-        if (isSymlink && !exists)
-        {
-            return ShimWriteAction.RemoveDanglingSymlinkThenWrite;
-        }
-
-        if (exists && !isGeneratedShim)
-        {
-            return ShimWriteAction.PreserveUserFile;
-        }
-
-        return ShimWriteAction.Write;
-    }
-}
-
-/// <summary>
-/// CLI shim 注册编排：运行时就位后把 <c>dsh</c>/<c>pnpm</c> shim 落盘到用户 bin 目录并注册进
-/// PATH（Windows HKCU\Environment\Path + WM_SETTINGCHANGE 广播；Unix ~/.local/bin + shell rc
-/// 幂等块）。全部 best-effort：任一步失败仅记日志告警，绝不阻断启动（ADR reference-alignment
-/// 批次四）。dev 隔离（<see cref="DevEnvironment.IsDevRuntime"/>）时跳过 dsh shim 注册。
+/// CLI shim 注册编排：运行时就位后清理历史自产 <c>pnpm</c> 转发 shim 残留（ADR companion-pnpm-prerequisite
+/// ——pnpm 由装配前置装真身，转发脚本已停写；残留会遮蔽真 pnpm），并把系统全局 node 的 bin 目录暴露进
+/// 终端 PATH（Windows HKCU\Environment\Path + WM_SETTINGCHANGE 广播；Unix shell rc 幂等块）。
+/// 全部 best-effort：任一步失败仅记日志告警，绝不阻断启动。dev 隔离（<see cref="DevEnvironment.IsDevRuntime"/>）
+/// 时跳过注册。
 /// </summary>
 public sealed class CliShimRegistrar
 {
@@ -114,25 +34,31 @@ public sealed class CliShimRegistrar
     }
 
     /// <summary>
-    /// 执行一次 shim 注册（仅 pnpm；dsh 已全局在 PATH，无需生成 dsh shim）。<paramref name="runtimeNodeBinDir"/>
-    /// 非空时（系统全局 node 由桌面装好）一并把它暴露进终端 PATH，让终端与桌面共用同一份 node/dsh。
-    /// best-effort——吞掉预期内的异常并返回 false（调用方不因注册失败阻断启动）；绝不抛给上层。
-    /// 调用方（<c>FirstBootBootstrapService.RegisterCliShim</c>）在启动时调用。
+    /// 执行一次注册：清理历史自产 pnpm shim 残留 + 把系统全局 node bin 暴露进终端 PATH（仅当桌面装了
+    /// 系统全局 node——用户自有 node 时终端本就能解析）。best-effort——吞掉预期内的异常并返回 false
+    /// （调用方不因注册失败阻断启动）；绝不抛给上层。调用方（<c>FirstBootBootstrapService.RegisterCliShim</c>）
+    /// 在启动时调用。
     /// </summary>
     public bool TryRegister(string? runtimeNodeBinDir = null)
     {
         try
         {
             string binDir = ResolveBinDir();
-            Directory.CreateDirectory(binDir);
+            // 不再建目录：撤写 shim 后 binDir 只用于残留扫描（对不存在路径 File.Exists/
+            // LinkTarget 均安全返回），凭空创建空 ~/.local/bin 与「用户自管」相悖（R1 S1）。
             CliShimSetup setup = CliShimPlanner.BuildSetup(binDir, OperatingSystem.IsWindows(), runtimeNodeBinDir);
-            foreach (CliShimFile file in setup.Files)
+            int removed = RemoveLegacyPnpmShims(setup);
+            RegisterPath(setup);
+            string cleanup = removed > 0 ? $"；已清理历史 pnpm 转发 shim {removed} 个" : string.Empty;
+            if (setup.RuntimeNodeBinDir is { } nodeBin)
             {
-                WriteShimFile(file);
+                _log($"[cli-shim] 终端 PATH 已暴露系统全局 node bin：{nodeBin}{cleanup}");
+            }
+            else
+            {
+                _log($"[cli-shim] 系统全局 node 为用户自有，无需 PATH 暴露{cleanup}");
             }
 
-            RegisterPath(setup);
-            _log($"[cli-shim] 已注册终端命令到 {binDir}（pnpm{(setup.RuntimeNodeBinDir is null ? "" : $"；系统全局 node = {setup.RuntimeNodeBinDir}")}）");
             return true;
         }
         catch (Exception ex) when (ex is IOException
@@ -149,34 +75,35 @@ public sealed class CliShimRegistrar
         }
     }
 
-    /// <summary>写单个 shim 文件：悬空符号链接先移除；本应用生成/不存在则写；用户文件保留。</summary>
-    private static void WriteShimFile(CliShimFile file)
+    /// <summary>清理历史自产 pnpm 转发 shim：仅删「内容带生成标记」或「悬空符号链接」的——
+    /// 用户自放的同名文件（真 pnpm）永不触碰。</summary>
+    private static int RemoveLegacyPnpmShims(CliShimSetup setup)
     {
-        string target = file.TargetPath;
-        bool exists = File.Exists(target);
-        bool isSymlink = SymlinkTarget(target) is not null;
-        string? existing = exists ? SafeRead(target) : null;
-        bool isGenerated = CliShimPath.IsGeneratedShim(existing);
-
-        switch (CliShimPlanner.DecideShimWrite(exists, isGenerated, isSymlink))
+        int removed = 0;
+        foreach (string path in setup.LegacyShimPaths)
         {
-            case ShimWriteAction.PreserveUserFile:
-                // 用户手动放置的同名 dsh/pnpm：保留，绝不覆盖
-                return;
-            case ShimWriteAction.RemoveDanglingSymlinkThenWrite:
-                File.Delete(target);
-                break;
+            bool exists = File.Exists(path);
+            bool isSymlink = SymlinkTarget(path) is not null;
+            if (isSymlink && !exists)
+            {
+                // 悬空链接：目标已失效的无效物，无论出处直接清理
+                File.Delete(path);
+                removed++;
+                continue;
+            }
+
+            if (CliShimPath.IsGeneratedShim(SafeRead(path)))
+            {
+                File.Delete(path);
+                removed++;
+            }
         }
 
-        File.WriteAllText(target, file.Content);
-        if (file.Executable)
-        {
-            MakeExecutable(target);
-        }
+        return removed;
     }
 
     /// <summary>注册 PATH：Windows HKCU\Environment\Path 幂等追加 + WM_SETTINGCHANGE 广播；
-    /// Unix ~/.local/bin + shell rc 幂等块（已由 <paramref name="setup"/> 规划）。</summary>
+    /// Unix shell rc 幂等块（已由 <paramref name="setup"/> 规划；无 node bin 可暴露时无块）。</summary>
     private static void RegisterPath(CliShimSetup setup)
     {
         if (OperatingSystem.IsWindows())
@@ -192,13 +119,13 @@ public sealed class CliShimRegistrar
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void RegisterWindowsPath(CliShimSetup setup)
     {
-        (string? current, bool expand) = ReadUserEnvPath();
-        string merged = CliShimPath.MergePathToken(current, setup.BinDir, ";", caseInsensitive: true);
-        if (setup.RuntimeNodeBinDir is not null)
+        if (setup.RuntimeNodeBinDir is not { } nodeBin)
         {
-            merged = CliShimPath.MergePathToken(merged, setup.RuntimeNodeBinDir, ";", caseInsensitive: true);
+            return;
         }
 
+        (string? current, bool expand) = ReadUserEnvPath();
+        string merged = CliShimPath.MergePathToken(current, nodeBin, ";", caseInsensitive: true);
         if (string.Equals(current, merged, StringComparison.Ordinal))
         {
             return;
@@ -331,7 +258,7 @@ public sealed class CliShimRegistrar
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
         {
-            // 探不出的链上目标按「非符号链接」处理（写入决策退化为普通文件存在性判断）
+            // 探不出的链上目标按「非符号链接」处理（清理决策退化为内容识别）
             return null;
         }
     }
@@ -346,16 +273,5 @@ public sealed class CliShimRegistrar
         {
             return null;
         }
-    }
-
-    private static void MakeExecutable(string path)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        UnixFileMode mode = File.GetUnixFileMode(path);
-        File.SetUnixFileMode(path, mode | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
     }
 }

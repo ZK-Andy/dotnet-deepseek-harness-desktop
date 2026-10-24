@@ -10,26 +10,30 @@ _SMOKE_WAIT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./common.sh
 source "$_SMOKE_WAIT_LIB_DIR/common.sh"
 
-# 判定信号（双信号，唯一家）：①`[host] dsh web =`（注意是等号——`dsh web:` 冒号格式是 dsh
-# 子进程自检输出，壳打印的是等号格式；两串曾因错位致冒烟恒败，CI 实证）= dsh 就绪（传输层）；
-# ②`[bootstrap] 引导开始：` = 安装链保底（装包→依赖齐→运行时检测→首启引导已启动）。
-# 与 NAV/MINT 正则同置库内：各腿不再各写一份、容器腿经挂载共享库同样拿到（无需 `-e` 注入）。
-FULL_RE='\[host\] dsh web ='
-BOOT_RE='\[bootstrap\] 引导开始：'
+# 判定信号正则的唯一家已拆至 smoke-signals-lib.sh（尺寸闸）：本库 source 后各常量照旧可见，
+# verdict-lib 与三平台脚本/容器腿经本库传递拿到。
+# shellcheck source=./smoke-signals-lib.sh
+source "$_SMOKE_WAIT_LIB_DIR/smoke-signals-lib.sh"
 
-# 导航到达行：只作诊断回显（FAIL 证据打印），不判门——新链路零 host 导航，
-# holder 自 reload 不产生到达回调（dispatch 36300876224 双腿实证：代理流量
-# 证明 reload 发生，到达计数 0 新增）。token 第二跳已随转发模型退役
-# （token 永不进导航靶点；页面命令通道按顶层 origin 判据校验），此处不再检查。
-NAV_RE='\[nav\] 导航已到达'
-# 铸币行（ADR loopback-forward-proxy）：`MintAsync` 成功即打印，
-# `token 跳 → 303` 是转发路由存在的唯一机器可读信号。
-MINT_RE='\[shell\] 铸币：token 跳 → 303'
-# 终页裁决（ADR page-verdict-gate）：应用在落定期写下唯一的裁决行；显示腿的"绿"必须由 healthy 背书。
-PAGE_LINE_RE='\[nav\] 页面裁决=(healthy|auth|unknown)'
+# companion 装配判门（唯一家；smoke_wait_ready 每轮调用，fail-fast）：已就位（无需安装）或
+# 换入 active → 过；失败/异常跳过/待装未完成 → 1（红，不等①——装配状态与探活无关）。
+smoke_companion_gate() {
+  if log_has "$COMPANION_FAIL_RE"; then
+    error "companion 装配失败（见随包插件安装失败行；stderr 详情在 host.log 的 dsh plugin add 输出）"
+    return 1
+  fi
+  if log_has "$COMPANION_SKIP_BAD_RE"; then
+    error "companion 装配被静默跳过（spec 解析失败或安装器资源未携带）"
+    return 1
+  fi
+  if log_has "$COMPANION_PENDING_RE" && ! log_has "$COMPANION_ACTIVE_RE"; then
+    error "companion 待装未完成（未就位后未见换入 active——装配中断或放弃）"
+    return 1
+  fi
+}
 
 # 等待窗/落定窗的唯一家。等待窗 = 单轮尝试预算：RuntimeBootstrapOptions.StepTimeoutMinutes
-# （默认 10 分钟）单步上限 + 120s 余量 = 720s；重试轮不计入——冒烟只等首轮落定，超时按②收工。
+# （默认 10 分钟）单步上限 + 120s 余量 = 720s；重试轮不计入——冒烟只等首轮落定，超时未见①即红（②回退门已砍，ADR smoke-gate-tightening）。
 # 引导步数或 StepTimeoutMinutes 变化时必须同批重算。落定窗 = ①出现后等铸币 + 客户端存活
 # （auth 裁决即拦）。SMOKE_WAIT_SECONDS / SMOKE_SETTLE_SECONDS 是覆写旋钮，SMOKE_WAIT /
 # SETTLE_WAIT 是库读的全局：调用方 source 后**必须先调本函数**——漏调会让
@@ -178,18 +182,17 @@ progress_markers() { # $1=文件：标记行数（缺失即 0）
   [[ -f "${1:-}" ]] || { echo 0; return 0; }
   grep -cE "$MARKER_RE" "$1" 2>/dev/null || true
 }
-# 超时回退门（R2 B1 回归锁）：未见①但见② → 0（按安装链收工）；①已见（落定失败）
-# 或双无 → 1。读调用方 rc/FULL_RE/BOOT_RE 全局与 log_has。
-timeout_fallback() {
-  [[ ${rc:-1} -ne 0 ]] && ! log_has "$FULL_RE" && log_has "$BOOT_RE"
-}
+# ②回退门已砍（ADR smoke-gate-tightening）：原 timeout_fallback（未见①但见② → 收绿）
+# 整体移除——安装链活着不是绿，②仅作观测信号。
 
 # 一等等待循环（唯一家；宿主三平台与 rpm 容器腿共用）——语义固定为 ADR
-# smoke-wait-full-after-boot + shell-settle-behavior-gate：
+# smoke-wait-full-after-boot + shell-settle-behavior-gate + smoke-gate-tightening：
 #   ① 命中即进落定等待，落定结果即返回值（失败即 FAIL，不翻回安装链）；
-#   ② 命中后不收工，继续等①至超时/退出；超时仍只有②按安装链 PASS（回退门）；
-#   ③ 进程退出补扫一次（信号可能落在退出前），按最佳信号收工；
-#   ④ 无进展满窗即提前收工 FAIL（零进展的②不是"慢"，是死）。
+#   ② 命中后不收工，继续等①至超时/退出；超时/退出仍未见① = FAIL（②回退门已砍——
+#     安装链活着不是绿，②仅作观测信号）；
+#   ③ companion 装配判门每轮查（装配在 spawn 前收口，fail-fast，与①无关）；
+#   ④ 进程退出补扫一次（信号可能落在退出前），按最佳信号收工；
+#   ⑤ 无进展满窗即提前收工 FAIL（零进展的②不是"慢"，是死）。
 # 每次循环打心跳并跑看门狗。
 # $1=stdout 路径（Linux 腿与容器腿即与 $2 同一文件） $2=host.log 路径
 # $3=pid $4=dsh-home；0=落定或安装链收工，1=失败。读调用方 SMOKE_WAIT 全局。
@@ -199,6 +202,7 @@ smoke_wait_ready() {
   OUT="$out"; LOG="$log"
   progress_watchdog_reset
   for _ in $(seq 1 "$SMOKE_WAIT"); do
+    if ! smoke_companion_gate; then return 1; fi
     if log_has "$FULL_RE"; then
       grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
       wait_settled "$pid"
@@ -215,7 +219,9 @@ smoke_wait_ready() {
         wait_settled ""
         return $?
       fi
-      if log_has "$BOOT_RE"; then log "进程已退出，未见①，按②安装链收工"; return 0; fi
+      if log_has "$BOOT_RE"; then
+        log "进程已退出，未见①（②仅证安装链活过）——如实红（②回退门已砍）"
+      fi
       return 1
     fi
     heartbeat "$((SECONDS - start))" "$home"
@@ -232,8 +238,7 @@ smoke_wait_ready() {
     return $?
   fi
   if log_has "$BOOT_RE"; then
-    log "${SMOKE_WAIT}s 内未见①，按②安装链收工"
-    return 0
+    log "${SMOKE_WAIT}s 内未见①（②仅证安装链活过）——如实红（②回退门已砍）"
   fi
   return 1
 }

@@ -143,14 +143,12 @@ smoke_selftest_common() { # $1=夹具根目录
   OUT="$tdir/out"; LOG="$tdir/host.log"
   heartbeat "60" "$tdir/home" 2>&1 | grep -q "等待中（60s）" && tpass "heartbeat" || tfail "heartbeat"
 
-  # 回退门（R2 B1 回归锁）：①已见不得翻回；纯②才翻回；双无亦不翻
+  # ②回退门已砍（ADR smoke-gate-tightening）：只剩②（①未出）不再收绿——回归锁从
+  # 「纯②翻回」反转为「纯②必红」；回退门函数本体已删除（函数缺失即防复活的天然锁）。
+  # companion 判门夹具在 smoke-selftest-verdict.sh（判定面夹具，尺寸闸归位）。
   rc=1
   printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n' >"$tdir/out"
-  timeout_fallback >/dev/null 2>&1 && tfail "fallback-full-should-not-flip" || tpass "fallback-full-noflip"
-  printf '[bootstrap] 引导开始：x\n' >"$tdir/out"
-  timeout_fallback >/dev/null 2>&1 && tpass "fallback-boot-flips" || tfail "fallback-boot-flips"
-  : >"$tdir/out"
-  timeout_fallback >/dev/null 2>&1 && tfail "fallback-empty-should-not-flip" || tpass "fallback-empty-noflip"
+  command -v timeout_fallback >/dev/null && tfail "fallback-fn-should-be-removed" || tpass "fallback-fn-removed"
 
   # 看门狗（无进展提前收工）：首 tick 活；窗内静止活；满窗静止判死；任一增长复位
   OUT="$tdir/wd-out"; LOG="$tdir/wd-log"; : >"$OUT"; : >"$LOG"; mkdir -p "$tdir/wd-home"
@@ -172,7 +170,8 @@ smoke_selftest_common() { # $1=夹具根目录
   _st_kill_live
   log="$tdir/w2"; printf '[bootstrap] 引导开始：x\n' >"$log"
   live="$(_st_live)"
-  SMOKE_WAIT=2 smoke_wait_ready "$log" "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait-bootonly" || tfail "wait-bootonly"
+  # ②回退门已砍（ADR smoke-gate-tightening）：只有②（①未出）必红——安装链活着不是绿。
+  SMOKE_WAIT=2 smoke_wait_ready "$log" "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait-bootonly-should-fail" || tpass "wait-bootonly-fails"
   _st_kill_live
   log="$tdir/w3"; : >"$log"
   SMOKE_WAIT=2 smoke_wait_ready "$log" "$log" "99999999" "$tdir/home" >/dev/null 2>&1 && tfail "wait-nosignal-should-fail" || tpass "wait-nosignal-fails"

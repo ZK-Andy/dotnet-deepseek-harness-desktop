@@ -18,7 +18,8 @@ public static partial class MarketInstallHelper
     /// <param name="dshHome">共享 DSH_HOME。</param>
     /// <param name="installerPluginsDir">安装器自带插件资源目录（resources/plugins）；开发/引导形态可 null。</param>
     /// <param name="log">诊断日志出口。</param>
-    /// <param name="runPluginAdd">执行一次 <c>dsh plugin add</c> 的注入委托。</param>
+    /// <param name="runPluginAdd">进程执行注入委托（执行一次子命令并回传退出码与 stdout/stderr；
+    /// 除 dsh plugin add 外也承载 pnpm 前置的 <c>pnpm --version</c> / <c>npm install -g pnpm</c>）。</param>
     /// <param name="runProbe">staged 体检探针委托（生产用 <see cref="PluginProcessRunner.RunProbeAsync"/>；
     /// 返回 null = 探针未出 URL → 放弃激活）。</param>
     /// <param name="ct">取消令牌。</param>
@@ -40,6 +41,13 @@ public static partial class MarketInstallHelper
         if (pending.Count == 0)
         {
             log("[host] 随包插件无需安装（companion 已就位），跳过");
+            return false;
+        }
+
+        // pnpm 前置（ADR companion-pnpm-prerequisite）：失败即装配放弃（best-effort 不变）。
+        if (!await EnsurePnpmAsync(runPluginAdd, log, ct).ConfigureAwait(false))
+        {
+            log("[host] 随包插件装配前置失败（pnpm 不可用且自动安装未成）——本次放弃，下次启动重试");
             return false;
         }
 
@@ -76,14 +84,7 @@ public static partial class MarketInstallHelper
                 return false;
             }
 
-            // 桌面核心不变量：staging 的 bundles 无论怎么补写，web-app 层绝不能丢（丢了换入后就没有 Web UI）
-            foreach (string builtin in DesktopProfileBootstrap.InitialBundles)
-            {
-                if (await EnsureBundlesContainsAsync(stagingPkg, builtin).ConfigureAwait(false))
-                {
-                    log($"[host] 已补回桌面必需 bundle {builtin}（staging）");
-                }
-            }
+            await BackfillDesktopBundlesAsync(stagingPkg, log, ct).ConfigureAwait(false);
 
             // staged 体检：换入前先证明 staging 能活；不过 = 放弃激活
             if (await runProbe(PluginInstallProbe.BuildProbePsi(tx.StagingHome), ct).ConfigureAwait(false) is null)
@@ -102,6 +103,78 @@ public static partial class MarketInstallHelper
             tx.Discard();
             throw;
         }
+    }
+
+    /// <summary>staging 的桌面核心 bundles 补回（换入前不变量：无论怎么补写，web-app 层绝不能丢——
+    /// 丢了换入后就没有 Web UI）。</summary>
+    private static async Task BackfillDesktopBundlesAsync(string stagingPkg, Action<string> log, CancellationToken ct)
+    {
+        foreach (string builtin in DesktopProfileBootstrap.InitialBundles)
+        {
+            if (await EnsureBundlesContainsAsync(stagingPkg, builtin).ConfigureAwait(false))
+            {
+                log($"[host] 已补回桌面必需 bundle {builtin}（staging）");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 装配前置 ensure-pnpm（ADR companion-pnpm-prerequisite）：PATH 有真 pnpm 即用（记版本）；
+    /// 未检出则 <c>npm install -g pnpm</c> 装到与 dsh 同一全局位后复验。探测/安装经注入的进程委托
+    /// （与 plugin add 同一 runner）。失败返回 false——装配放弃由调用方收口（best-effort）。
+    /// </summary>
+    private static async Task<bool> EnsurePnpmAsync(
+        Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> run,
+        Action<string> log,
+        CancellationToken ct)
+    {
+        (int exit, string outText, _) = await run(BuildToolPsi("pnpm", "--version"), ct).ConfigureAwait(false);
+        if (exit == 0)
+        {
+            log($"[host] pnpm 前置：PATH 已有（{outText.Trim()}）");
+            return true;
+        }
+
+        log("[host] pnpm 前置：未检出，npm install -g pnpm（与 dsh 同装到全局）");
+        (exit, _, string errText) = await run(BuildToolPsi("npm", "install", "-g", "pnpm"), ct).ConfigureAwait(false);
+        if (exit != 0)
+        {
+            log($"[host] pnpm 前置安装失败（npm install -g pnpm exit={exit}）：{errText.Trim()}");
+            return false;
+        }
+
+        (exit, outText, _) = await run(BuildToolPsi("pnpm", "--version"), ct).ConfigureAwait(false);
+        if (exit != 0)
+        {
+            log($"[host] pnpm 前置复验失败（安装后 pnpm --version exit={exit}）");
+            return false;
+        }
+
+        log($"[host] pnpm 前置：已装到全局（{outText.Trim()}）");
+        return true;
+    }
+
+    /// <summary>裸名工具命令的跨平台 psi（经 <see cref="Runtime.RuntimeBootstrap.RelayFor"/> 唯一家
+    /// 中转：Windows 上 CreateProcess 不走 PATHEXT，裸 <c>pnpm</c>/<c>npm</c>（.cmd）起不来，经
+    /// <c>cmd.exe</c> 让 cmd 做 PATH/PATHEXT 解析；Unix 直跑裸名）。</summary>
+    private static System.Diagnostics.ProcessStartInfo BuildToolPsi(string fileName, params string[] args)
+    {
+        Runtime.DshCommand cmd = Runtime.RuntimeBootstrap.RelayFor(fileName, args, OperatingSystem.IsWindows());
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = cmd.Exe,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        EnvironmentHygiene.StripInherited(psi);
+        foreach (string a in cmd.Args)
+        {
+            psi.ArgumentList.Add(a);
+        }
+
+        HarnessRuntimeHost.UseUtf8TextStreams(psi);
+        return psi;
     }
 
     /// <summary>

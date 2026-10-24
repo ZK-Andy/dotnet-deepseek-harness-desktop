@@ -7,8 +7,9 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.CliShim;
 /// </summary>
 public static class CliShimPath
 {
-    /// <summary>生成的 shim 首行 <see cref="CliShimBuilder.GeneratedMarker"/>（区分本应用 shim 与用户文件）。</summary>
-    private const string GeneratedMarker = CliShimBuilder.GeneratedMarker;
+    /// <summary>本应用生成物的识别标记（区分自产 shim 与用户文件）。pnpm 转发 shim 的生成已随
+    /// ADR companion-pnpm-prerequisite 撤除，此标记现用于启动清理历史自产残留的识别。</summary>
+    public const string GeneratedMarker = "DeepSeek Harness Desktop - ";
 
     // ------------------------------------------------------------------
     // PATH 值幂等合并（分隔符注入，OS 无关）
@@ -70,12 +71,8 @@ public static class CliShimPath
     /// <summary>rc 块结束标记。</summary>
     public const string RcEndMarker = "# <<< deepseek-harness-desktop <<<";
 
-    /// <summary>构造把 <paramref name="binDir"/> 加入 PATH 的 export 块（POSIX shell；幂等标记包裹）。</summary>
-    public static string BuildShellExportBlock(string binDir, string separator) =>
-        BuildShellExportBlocks(new[] { binDir }, separator);
-
-    /// <summary>构造把一组目录加入 PATH 的 export 块（POSIX shell；幂等标记包裹）——同时暴露 pnpm shim 目录
-    /// 与系统全局 node 的 global bin 目录（无系统 node 时由桌面装到系统全局，终端与桌面共用同一份 node/dsh）。</summary>
+    /// <summary>构造把一组目录加入 PATH 的 export 块（POSIX shell；幂等标记包裹）——暴露系统全局
+    /// node 的 global bin 目录（无系统 node 时由桌面装到系统全局，终端与桌面共用同一份 node/dsh）。</summary>
     public static string BuildShellExportBlocks(IEnumerable<string> dirs, string separator)
     {
         string pathLine = $"export PATH=\"{string.Join(separator, dirs)}{separator}$PATH\"";

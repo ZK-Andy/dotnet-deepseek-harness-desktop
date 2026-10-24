@@ -34,7 +34,8 @@ public sealed class RuntimeStarter : IRuntimeStarter
     /// <inheritdoc />
     public async Task<DshWebUrl?> StartAsync(IRuntimeHost host, CancellationToken ct)
     {
-        // CLI shim 注册（ADR simple-shell-single-global-dsh）：dsh 已全局在 PATH，仅注册 pnpm shim。
+        // CLI shim 注册（ADR companion-pnpm-prerequisite）：清理历史 pnpm 转发 shim 残留 +
+        // 暴露系统全局 node bin 到终端 PATH（pnpm 真身由装配前置经 npm 装到全局）。
         // best-effort——注册内部吞预期异常（见 CliShimRegistrar），此处再兜底意外异常。
         _bootstrap.RegisterCliShim();
 

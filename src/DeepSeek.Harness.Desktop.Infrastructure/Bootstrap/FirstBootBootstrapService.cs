@@ -138,7 +138,8 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
             // 全局 dsh 就位：宿主以 PATH dsh 形态运行（ADR simple-shell-single-global-dsh）。
             _log.Invoke($"[bootstrap] 全局 dsh 就位：v{version}");
 
-            // CLI shim 注册（dsh 已全局在 PATH；仅注册内容恒定的 pnpm shim）。
+            // CLI shim 注册（ADR companion-pnpm-prerequisite）：清理历史 pnpm 转发 shim 残留 +
+            // 暴露系统全局 node bin 到终端 PATH（pnpm 真身由装配前置经 npm 装到全局）。
             RegisterCliShim();
 
             bool pluginsInstalled = await InstallBootstrapPluginsAsync(bootCt);
