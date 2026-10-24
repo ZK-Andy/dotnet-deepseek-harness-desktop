@@ -52,7 +52,7 @@ A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deep
 **Shell and runtime**
 
 - ⚡️ **Online-first first launch** — installs when missing through the global node, bootstraps an update to `@next` when the probed version is below the compatibility floor, uses it directly otherwise; the node check runs once, only when dsh must be ensured.
-- ⌨️ **CLI shim** — idempotently registers a content-constant `pnpm` shim on the user `PATH` (never overwriting a same-named command); dsh itself is already on `PATH` and usable from the terminal.
+- ⌨️ **CLI shim** — cleans up legacy self-generated pnpm shim leftovers on startup (only marked or dangling ones; user files untouched) and exposes the system-global node bin dir to the terminal `PATH`; pnpm itself is installed on demand by the bundled-plugin preflight (used if present), and dsh works from the terminal.
 - 🔒 **Native and lightweight** — C# backend in the OS webview (WebView2 / WKWebView / WebKitGTK), shipped as JIT (NativeAOT is not enabled), deny-by-default command allow-list (unregistered commands are rejected).
 
 **Window and system integration**

@@ -52,7 +52,7 @@
 **外壳与运行时**
 
 - ⚡️ **online-first 首启** — 缺则经全局 node 装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用；node 检查只在需要确保 dsh 时做一次，不重复联网。
-- ⌨️ **CLI shim** — 幂等注册内容恒定的 `pnpm` shim 进用户 PATH（从不覆盖同名命令）；dsh 本身已在 PATH 上，终端直接可用。
+- ⌨️ **CLI shim** — 启动清理历史 pnpm 转发 shim 残留（仅自产标记与悬空链接，用户文件不触碰）并把系统全局 node 的 bin 暴露进终端 PATH；pnpm 由随包装配前置按需装到全局（有则用），dsh 终端直接可用。
 - 🔒 **原生轻量** — C# 后端 + 系统 WebView（WebView2 / WKWebView / WebKitGTK），发布形态为 JIT（NativeAOT 未启用），命令白名单 deny-by-default（未注册命令一律拒绝）。
 
 **窗口与系统集成**

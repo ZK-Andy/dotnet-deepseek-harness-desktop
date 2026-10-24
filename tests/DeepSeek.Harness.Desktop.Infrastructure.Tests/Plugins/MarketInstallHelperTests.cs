@@ -539,6 +539,60 @@ public class MarketInstallHelperTests
         }
     }
 
+    /// <summary>验证系统全局 node 就位时安装命令用显式 node + npm-cli.js 形态（引导 InstallDsh 同款）——
+    /// npm 壳在部分安装形态下相对解析断裂（run `40137230061`：/root/.local/bin/npm 报
+    /// Cannot find module '../lib/cli.js'），裸名 npm 不可靠。</summary>
+    [Fact]
+    public async Task EnsureBundledPluginsBeforeSpawn_PnpmPreflight_NpmCliExplicitForm()
+    {
+        (string home, string profilePkg, string installerPluginsDir) = NewPendingCompanionHome();
+        string root = Path.Combine(Path.GetTempPath(), "nb-" + Guid.NewGuid().ToString("N"));
+        string nodeBin = Path.Combine(root, "bin");
+        string npmCli = Path.Combine(root, "lib", "node_modules", "npm", "bin", "npm-cli.js");
+        Directory.CreateDirectory(nodeBin);
+        Directory.CreateDirectory(Path.GetDirectoryName(npmCli)!);
+        File.WriteAllText(Path.Combine(nodeBin, "node"), "#!/bin/sh\n");
+        File.WriteAllText(npmCli, "// cli");
+        var commands = new List<string>();
+        var logs = new List<string>();
+        async Task<(int Exit, string Out, string Err)> RunFakeAsync(System.Diagnostics.ProcessStartInfo psi, CancellationToken ct)
+        {
+            bool isPluginAdd = psi.ArgumentList.Contains("--profile");
+            string command = isPluginAdd
+                ? "plugin-add"
+                : $"{psi.FileName} {string.Join(" ", psi.ArgumentList)}";
+            commands.Add(command);
+            return command switch
+            {
+                "plugin-add" => (0, "installed", string.Empty),
+                "pnpm --version" when commands.Count(c => c == "pnpm --version") == 1
+                    => (127, string.Empty, "start failed: No such file or directory"),
+                "pnpm --version" => (0, "10.2.0", string.Empty),
+                _ when command.Contains("npm-cli.js install -g pnpm") => (0, string.Empty, string.Empty),
+                _ => (1, string.Empty, "unexpected"),
+            };
+        }
+
+        try
+        {
+            bool installed = await MarketInstallHelper.EnsureBundledPluginsBeforeSpawnAsync(
+                "node", "/dsh/bin.js", home, installerPluginsDir, logs.Add, RunFakeAsync, ProbeOkAsync,
+                CancellationToken.None, nodeBin);
+            Assert.True(installed);
+            Assert.Equal(4, commands.Count);
+            Assert.Equal("pnpm --version", commands[0]);
+            Assert.Equal($"{Path.Combine(nodeBin, "node")} {npmCli} install -g pnpm", commands[1]);
+            Assert.Equal("pnpm --version", commands[2]);
+            Assert.Equal("plugin-add", commands[3]);
+            Assert.Contains(logs, l => l.Contains("pnpm 前置：已装到全局"));
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     /// <summary>验证 pnpm 前置安装失败时装配放弃：无 plugin add 调用、不进事务（无 staging 残留）、
     /// active 原样，日志含前置失败与放弃语义。</summary>
     [Fact]

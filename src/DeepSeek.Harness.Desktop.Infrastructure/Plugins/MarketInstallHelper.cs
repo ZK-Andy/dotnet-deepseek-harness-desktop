@@ -32,7 +32,8 @@ public static partial class MarketInstallHelper
         Action<string> log,
         Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> runPluginAdd,
         Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<Uri?>> runProbe,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? runtimeNodeBinDir = null)
     {
         string profileDir = Path.Combine(dshHome, "profiles", HarnessRuntimeHost.DesktopProfileName);
         string profilePkg = Path.Combine(profileDir, "package.json");
@@ -45,7 +46,7 @@ public static partial class MarketInstallHelper
         }
 
         // pnpm 前置（ADR companion-pnpm-prerequisite）：失败即装配放弃（best-effort 不变）。
-        if (!await EnsurePnpmAsync(runPluginAdd, log, ct).ConfigureAwait(false))
+        if (!await EnsurePnpmAsync(runPluginAdd, runtimeNodeBinDir, log, ct).ConfigureAwait(false))
         {
             log("[host] 随包插件装配前置失败（pnpm 不可用且自动安装未成）——本次放弃，下次启动重试");
             return false;
@@ -55,8 +56,7 @@ public static partial class MarketInstallHelper
         try
         {
             string stagingPkg = Path.Combine(tx.StagingProfileDir, "package.json");
-            await CleanupBogusAppDependencyAsync(stagingPkg).ConfigureAwait(false);
-            EnsureWorkspaceAllowBuilds(Path.Combine(tx.StagingProfileDir, "pnpm-workspace.yaml"));
+            await PrepareStagingWorkspaceAsync(tx, stagingPkg).ConfigureAwait(false);
 
             bool anyInstalled = false;
             foreach ((string? pkg, string? spec) in pending)
@@ -105,6 +105,13 @@ public static partial class MarketInstallHelper
         }
     }
 
+    /// <summary>staging 工作区准备：清假 app 依赖 + workspace allowBuilds 放行（ERR_PNPM_IGNORED_BUILDS 修复面）。</summary>
+    private static async Task PrepareStagingWorkspaceAsync(PluginProfileTransaction tx, string stagingPkg)
+    {
+        await CleanupBogusAppDependencyAsync(stagingPkg).ConfigureAwait(false);
+        EnsureWorkspaceAllowBuilds(Path.Combine(tx.StagingProfileDir, "pnpm-workspace.yaml"));
+    }
+
     /// <summary>staging 的桌面核心 bundles 补回（换入前不变量：无论怎么补写，web-app 层绝不能丢——
     /// 丢了换入后就没有 Web UI）。</summary>
     private static async Task BackfillDesktopBundlesAsync(string stagingPkg, Action<string> log, CancellationToken ct)
@@ -127,6 +134,7 @@ public static partial class MarketInstallHelper
     /// </summary>
     private static async Task<bool> EnsurePnpmAsync(
         Func<System.Diagnostics.ProcessStartInfo, CancellationToken, Task<(int Exit, string Out, string Err)>> run,
+        string? runtimeNodeBinDir,
         Action<string> log,
         CancellationToken ct)
     {
@@ -151,7 +159,7 @@ public static partial class MarketInstallHelper
         }
 
         log("[host] pnpm 前置：未检出，npm install -g pnpm（与 dsh 同装到全局）");
-        (exit, _, string errText) = await TryRunAsync(BuildToolPsi("npm", "install", "-g", "pnpm")).ConfigureAwait(false);
+        (exit, _, string errText) = await TryRunAsync(BuildPnpmInstallPsi(runtimeNodeBinDir)).ConfigureAwait(false);
         if (exit != 0)
         {
             log($"[host] pnpm 前置安装失败（npm install -g pnpm exit={exit}）：{errText.Trim()}");
@@ -167,6 +175,19 @@ public static partial class MarketInstallHelper
 
         log($"[host] pnpm 前置：已装到全局（{outText.Trim()}）");
         return true;
+    }
+
+    /// <summary>pnpm 安装命令：npm 壳在部分安装形态下相对解析断裂（run `40137230061`：
+    /// /root/.local/bin/npm 报 Cannot find module '../lib/cli.js'），系统全局 node 就位时按引导
+    /// InstallDsh 同款显式形态驱动 npm-cli.js；否则回退 PATH 裸名（用户自有 node 生态自洽）。</summary>
+    private static System.Diagnostics.ProcessStartInfo BuildPnpmInstallPsi(string? runtimeNodeBinDir)
+    {
+        (string NodePath, string NpmCli)? located = runtimeNodeBinDir is { } nb
+            ? Runtime.RuntimeBootstrap.TryResolveNodeAndNpmCliForBinDir(nb)
+            : null;
+        return located is { } exe
+            ? BuildToolPsi(exe.NodePath, exe.NpmCli, "install", "-g", "pnpm")
+            : BuildToolPsi("npm", "install", "-g", "pnpm");
     }
 
     /// <summary>裸名工具命令的跨平台 psi（经 <see cref="Runtime.RuntimeBootstrap.RelayFor"/> 唯一家

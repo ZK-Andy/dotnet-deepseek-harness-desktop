@@ -112,7 +112,9 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
             : BootstrapSettleGate.WaitSettledAsync(_settled, timeout, ct);
 
     /// <summary>把"系统全局 node 的 global bin"暴露到进程 PATH（ADR simple-shell-single-global-dsh：无系统 node
-    /// 时由桌面把 node 装到系统全局前缀，桌面与终端共用同一份）。node 已装到全局前缀时生效，否则 no-op。</summary>
+    /// 时由桌面把 node 装到系统全局前缀，桌面与终端共用同一份）。node 已装到全局前缀时生效，否则 no-op。
+    /// 两个调用点：构造期（node 已存在的复用场景）与引导装完 node 后（幂等补调——全新环境构造期
+    /// 必然 no-op，就位后必须再调，后续装配探测/spawn 的裸名 pnpm 由此可解析，run `40137230061` 实证）。</summary>
     private void EnsureRuntimeNodeOnPath()
     {
         if (RuntimeBootstrap.TryResolveActiveNodeBinDir(_options) is { } nodeBin)
@@ -138,11 +140,16 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
             // 全局 dsh 就位：宿主以 PATH dsh 形态运行（ADR simple-shell-single-global-dsh）。
             _log.Invoke($"[bootstrap] 全局 dsh 就位：v{version}");
 
+            // 引导装完 node 后补一次进程 PATH 暴露（幂等）：构造期的早调用在全新环境必然
+            // no-op（node 未装），此刻就位才生效——后续装配探测/spawn 的裸名 pnpm 由此可解析。
+            EnsureRuntimeNodeOnPath();
+
             // CLI shim 注册（ADR companion-pnpm-prerequisite）：清理历史 pnpm 转发 shim 残留 +
             // 暴露系统全局 node bin 到终端 PATH（pnpm 真身由装配前置经 npm 装到全局）。
             RegisterCliShim();
 
-            bool pluginsInstalled = await InstallBootstrapPluginsAsync(bootCt);
+            bool pluginsInstalled = await InstallBootstrapPluginsAsync(
+                RuntimeBootstrap.TryResolveActiveNodeBinDir(_options), bootCt);
             if (pluginsInstalled)
             {
                 _log.Invoke("[host] 本轮有插件经事务管线换入 active（staged 体检已过，无需再探）");
@@ -242,7 +249,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     /// <summary>引导刚落定后的随包插件装配（ADR reference-alignment 批次一）：companion（internal）spawn 前
     /// 静默自愈。dsh 已在全局 PATH，nodeExe/dshEntry 双 null → 走 PATH dsh 命令。best-effort：失败只告警
     /// 不阻断启动。返回本次是否确有插件装成功（引导日志据此留痕）。</summary>
-    private async Task<bool> InstallBootstrapPluginsAsync(CancellationToken bootCt)
+    private async Task<bool> InstallBootstrapPluginsAsync(string? runtimeNodeBinDir, CancellationToken bootCt)
     {
         // 对齐参照：companion（internal）在 spawn dsh 前静默自愈（batch-1）；best-effort：失败只告警
         // 不阻断（缺 companion 不阻塞 dsh 起动，下次启动自愈）。
@@ -257,7 +264,8 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
                 PluginProcessRunner.RunAsync,
                 (psi, ct) => PluginProcessRunner.RunProbeAsync(
                     psi, TimeSpan.FromSeconds(_timeouts.SpawnTimeoutSeconds), ct),
-                bootCt);
+                bootCt,
+                runtimeNodeBinDir).ConfigureAwait(false);
             // 随包驱动自带 staged 探针 + journal 换入（ADR transactional-plugin-pipeline）：换入前已证明
             // 能活，启动前的 active 事后探针随其 reconcile 分支退役。
             return installed;

@@ -298,6 +298,18 @@ public static partial class RuntimeBootstrap
         return nodePresent ? binDir : null;
     }
 
+    /// <summary>按系统全局 node bin 目录解析可直接驱动的 (node 可执行, npm-cli.js)。npm 壳脚本
+    /// 在部分安装形态下相对解析断裂（run 40137230061：/root/.local/bin/npm 报 Cannot find
+    /// module '../lib/cli.js'），直接驱动 npm-cli.js 是唯一可靠形态（引导 InstallDsh 同款）；
+    /// 未就位返回 null。</summary>
+    internal static (string NodePath, string NpmCli)? TryResolveNodeAndNpmCliForBinDir(string nodeBinDir)
+    {
+        string prefix = OperatingSystem.IsWindows()
+            ? nodeBinDir
+            : Path.GetDirectoryName(nodeBinDir.TrimEnd('/'))!;
+        return TryLocateNodeAtPrefix(prefix);
+    }
+
     /// <summary>判某系统全局前缀下 node 已就位，返回 (node 可执行, npm-cli)。</summary>
     private static (string NodePath, string NpmCli)? TryLocateNodeAtPrefix(string prefix)
     {
