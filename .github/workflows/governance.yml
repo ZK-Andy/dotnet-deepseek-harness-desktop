@@ -13,7 +13,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
       # 真门：模板治理字段与「workflow run: 禁插值事件载荷」由脚本判定，退出码即结论；

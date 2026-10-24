@@ -47,8 +47,10 @@ smoke_rpm_leg() {
     fi
     # 应用本体与虚拟显示分开装：Xvfb 缺包时不掩埋应用安装结果，显式留痕后按无显示启动
     # （Avalonia 必红，但证据行指明「缺虚拟显示」而非 XOpenDisplay 谜团）。
-    if ! dnf install -y --setopt=install_weak_deps=False xorg-x11-server-Xvfb >>"$log_path" 2>&1; then
-      error "[rpm] Xvfb 安装失败（将按无显示启动，预期启动即红）："
+    # libatomic：bootstrap 下载的 Node 官方 arm64 包动态链它，fedora 最小镜像没有
+    # （run 40113917704 arm64 腿：npm install exit=127；x64 包不依赖故 amd64 腿无恙）。
+    if ! dnf install -y --setopt=install_weak_deps=False xorg-x11-server-Xvfb libatomic >>"$log_path" 2>&1; then
+      error "[rpm] Xvfb/libatomic 安装失败（将按无显示启动，预期启动即红）："
       tail -15 "$log_path" >&2
       # 诊断随 artifact 留存：启动行会截断 log_path 文件面，dnf 根因行另落一份（评审 R2）。
       [[ -d /smokelogs ]] && cp "$log_path" /smokelogs/smoke-linux-rpm-xvfb-dnf.log 2>/dev/null || true

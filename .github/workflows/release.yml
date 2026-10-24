@@ -40,13 +40,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0   # 全量历史 + tags，供 release-notes.sh 生成 compare 与分类
           persist-credentials: false
 
       - name: 下载三平台产物（同 run，经 download-artifact）
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: '*-packages'
           # 三个 artifact 压平进同一目录：资产名矩阵由 release-preflight.sh 断言，不进子目录
@@ -96,7 +96,7 @@ jobs:
           fi
 
       - name: 创建 Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
