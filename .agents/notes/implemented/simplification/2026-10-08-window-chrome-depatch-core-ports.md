@@ -4,6 +4,8 @@ Status: implemented
 
 Erratum: 2026-10-21 — 端口部分撤回：正文 Decision 1 的 `IWindowChromePolicy` 端口与 `WindowChromePolicy.Default` 共享默认实例**已从仓库移除**（见 [rejected/2026-10-21-window-chrome-policy-injection](../../rejected/architecture/2026-10-21-window-chrome-policy-injection.md)）：该端口零替身、无具体变更被它挡住，连「消费方从容器取」也未被判据钉住。三变量几何、值对象与 `Resolve` 纯函数保留（本篇的实质收益不变），渲染器直调 Core 纯函数取几何值。正文其余部分不动。
 
+Erratum: 2026-10-25 — Decision 2 的「`BuildCss` 拆成…五个命名单元」中 `BuildVibrancyChain` 已随毛玻璃死半边摘除删除（见 [caption-bar-vibrancy-chain-removal](2026-10-24-caption-bar-vibrancy-chain-removal.md)），现为四个命名单元；Problem 段「毛玻璃链」为当时现状的历史叙述。
+
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
 
 ## Problem

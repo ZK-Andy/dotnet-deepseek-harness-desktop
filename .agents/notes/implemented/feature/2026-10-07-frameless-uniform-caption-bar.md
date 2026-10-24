@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-25 — 页侧毛玻璃透明链已摘除：窗口侧 backdrop 随 Ryn 宿主 G5 下线后，Avalonia 宿主窗口不透明且 `NativeWebView` 包无背景透明旋钮，页侧单边透明只把侧栏洗白（见 [caption-bar-vibrancy-chain-removal](../simplification/2026-10-24-caption-bar-vibrancy-chain-removal.md)）；本篇 Decision/Testing 段的透明链表述、Consequences 段「macOS 面（原生全屏切换、毛玻璃）的证据状态」条与实机验收项里的「毛玻璃观感」「透明链色调对比度」叙事均留作当时决定的历史记录，现行态以新 ADR 为准——按验收清单追毛玻璃面已无对象。绿灯原生全屏语义不受影响。
+
 Review: FULL/2026-10-07#5/R1=ok R2=ok R3=ok
 
 三审结论：R1 注入脚本四件拆分与 `macChrome` 单布尔承载为最小形态、`greenAttr` 单源；R2 能力面「恰好集」七项同源、注入仍全走 `JsString`、直绑 `bar.children[2]` 与 Ryn capture 委托无冲突、几何判据失败默认方向安全、平台闸两处同谓词；R3 ADR 骨架/Related/上游参照路径经核实（`--dsw-specific-sidebar-fill`、上游 note 在 `implemented/`）、Deferred 只留未做项。三轮评审：首轮 0 Blocker（4+5+3 条建议）、验轮 2 与验轮 3 各收敛至「改名残留 + 措辞失实」类，末轮 2 条 Blocker（悬空 cref、ADR 测试段仍写已删的一次性标志）当场修复并 grep 自证（旧符号全仓零命中），未再开第 4 轮（轮次到顶）。macOS 观感与「不崩」仍需真机/发版冒烟腿验收。

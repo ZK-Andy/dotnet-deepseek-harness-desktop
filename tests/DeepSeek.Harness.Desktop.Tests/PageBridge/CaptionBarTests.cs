@@ -191,7 +191,7 @@ public class CaptionBarTests
         // 那是拖拽排除的语义表，不是本壳按钮的声明）
         Assert.DoesNotContain("button[data-webview-maximize]", mac, StringComparison.Ordinal);
         Assert.DoesNotContain("\\u003Cbutton data-webview-maximize\\u003E", mac, StringComparison.Ordinal);
-        // 透明链只此一支：mac 脚本同样不得关掉注入条的命中（拖拽面回归钉，见红绿灯用例；
+        // mac 脚本同样不得关掉注入条的命中（拖拽面回归钉，见红绿灯用例；
         // pointer-events:none 的唯一合法出处是描边环）。
         Assert.Equal(1, CountOccurrences(mac, "pointer-events:none"));
 
@@ -201,17 +201,16 @@ public class CaptionBarTests
         Assert.DoesNotContain(HostCommandIds.WindowSetFullscreen, other, StringComparison.Ordinal);
     }
 
-    /// <summary>macOS 毛玻璃透明链（官方 vibrancy 观感）：页面侧补官方那条透明链——html/body 透明、
-    /// 侧栏列改半透明色调，材质才透得出来；官方用 html[data-platform='darwin']
-    /// 门控，而该属性正是本壳禁用的宿主冒充开关（插件崩），故按平台在注入期取舍——非 macOS 恒不含
-    /// 透明链（无 backdrop 后端时会直接露底）。</summary>
+    /// <summary>毛玻璃透明链防回潮钉（ADR caption-bar-vibrancy-chain-removal）：透明链的窗口侧
+    /// backdrop 半边已随旧 Ryn 宿主下线，Avalonia 宿主窗口不透明、<c>NativeWebView</c> 包无背景透明
+    /// 旋钮——页侧单边透明只会把侧栏洗成白底近似色。两分支（含 mac 闸内）都不得再产出透明链；
+    /// 若窗口侧机制将来在 Avalonia 宿主落地，须连同本钉一起换成两半同源断言。</summary>
     [Fact]
-    public void Build_MacChrome_AddsVibrancyTransparencyChain()
+    public void Build_MacChrome_OmitsVibrancyTransparencyChain()
     {
         string mac = CaptionBar.Build(52, macChrome: true);
-        Assert.Contains("html,body{background:transparent!important}", mac, StringComparison.Ordinal);
-        Assert.Contains(
-            "color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 80%,transparent)!important", mac, StringComparison.Ordinal);
+        Assert.DoesNotContain("background:transparent", mac, StringComparison.Ordinal);
+        Assert.DoesNotContain("color-mix(", mac, StringComparison.Ordinal);
 
         string other = CaptionBar.Build(52);
         Assert.DoesNotContain("background:transparent", other, StringComparison.Ordinal);

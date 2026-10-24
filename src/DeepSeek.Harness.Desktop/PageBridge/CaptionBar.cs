@@ -18,7 +18,8 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// 并 <c>throw</c>，级联 25 个 UI 插件 pending → 启动即插件加载失败屏。同理不设
 /// <c>data-windows-titlebar</c>（那会切到 dsh 的 Windows 呈现，非本需求形态），也不注入任何
 /// <c>window.dshDesktop</c> 假桥——本工厂只做宿主本职：量自己的 chrome、画自己的按钮。
-/// 官方 macOS 的毛玻璃透明链同样以该属性门控，故本壳改在注入期按平台取舍（见 <see cref="BuildCss"/>）。</para>
+/// 官方 macOS 的毛玻璃透明链同样以该属性门控；本壳不注入透明链（窗口侧 backdrop 半边不存在，
+/// 见 <see cref="BuildCss"/> 注），macOS 平台差异只剩绿灯语义，在注入期按 <c>macChrome</c> 取舍。</para>
 /// <para>三键各自绑 <c>onclick</c>（重复注入时覆盖而非叠监听），统一走 <c>window.__shell.invoke</c>；
 /// macOS 绿灯是原生全屏语义，改调 <c>window.setFullscreen</c>。</para>
 /// <para><b>注入时机两路互补</b>（ADR frameless-uniform-caption-bar「注入时机」条、avalonia-g2-shell-bridge）：
@@ -57,17 +58,17 @@ internal static class CaptionBar
     /// <summary>本壳自有变量（供下方 calc 复用；非上游协议）。</summary>
     private const string DeskCaptionHVar = "--dsh-desk-caption-h";
 
-    /// <summary>生成注入脚本（除 macOS 两项差异外三端同款，纯函数可单测）：三变量几何（由 Core <c>ChromeInsets.Resolve</c> 解出） +
+    /// <summary>生成注入脚本（除 macOS 绿灯语义一项差异外三端同款，纯函数可单测）：三变量几何（由 Core <c>ChromeInsets.Resolve</c> 解出） +
     /// 侧栏顶部让位 + 顶层文档守卫 + 幂等守卫 + 红绿灯三按钮 + 带内拖拽判定。可达名（aria-label）双语
     /// 经 <see cref="AppJsonContext.JsString"/> 管线转义注入，执行期按 <c>html[lang]</c> 现取；
     /// innerHTML 全段同样走 JsString（SVG 单引号裸拼会炸解析——FULL 评审 B1）。
-    /// macChrome 分支另挂原生全屏点击处理与毛玻璃透明链。两条注入路径共用本函数（见类注）。</summary>
+    /// macChrome 分支另挂原生全屏点击处理。两条注入路径共用本函数（见类注）。</summary>
     /// <param name="heightPx">chrome 高度（CSS 像素，<see cref="Infrastructure.Runtime.CaptionBarOptions.HeightPx"/>；
     /// 默认 52 = 官方 macOS 侧栏顶条）。</param>
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）：仅作 <c>html[lang]</c>
     /// 缺失时的回落值，文档自带语言时以文档为准。</param>
     /// <param name="macChrome">是否启用原生 macOS chrome（调用点传 <see cref="MacNativeChrome.IsEnabled"/>，
-    /// 理由与闸界见其类注）：true 时绿灯走<i>原生全屏</i>而非窗口缩放，并追加毛玻璃透明链。否则恒 false。</param>
+    /// 理由与闸界见其类注）：true 时绿灯走<i>原生全屏</i>而非窗口缩放。否则恒 false。</param>
     public static string Build(
         int heightPx,
         UiLocale? uiLocale = null,
@@ -111,7 +112,7 @@ internal static class CaptionBar
                "if(!document.querySelector(\"style[data-dsh-desktop='caption-bar']\")){" +
                "var st=document.createElement('style');" +
                "st.setAttribute('data-dsh-desktop','caption-bar');" +
-               "st.textContent=" + AppJsonContext.JsString(BuildCss(insets, heightPx, greenAttr, macChrome)) + ";" +
+               "st.textContent=" + AppJsonContext.JsString(BuildCss(insets, heightPx, greenAttr)) + ";" +
                "(document.head||document.documentElement).appendChild(st);}" +
                "if(!bar){" +
                "bar=document.createElement('div');" +
@@ -138,20 +139,20 @@ internal static class CaptionBar
     }
 
     /// <summary>注入样式的总装（只拼装不计算）：三变量发布 + 侧栏让位 + 折叠按钮归位 + 红绿灯几何
-    /// + 窗口边缘描边环（macChrome 追加透明链）。拖拽判定另见 <see cref="BuildDragBinding"/>（行为保持——删除主张已
-    /// 在订正中落败，见 ADR）。</summary>
+    /// + 窗口边缘描边环。不含 macOS 毛玻璃透明链：旧 Ryn 宿主的窗口侧 backdrop（<c>RynOptions.Backdrop</c>）
+    /// 已随 G5 迁移下线，Avalonia 宿主窗口不透明、<c>NativeWebView</c> 包无背景透明旋钮——页侧单边
+    /// 透明只会把侧栏洗成白底近似色（摘除见 ADR caption-bar-vibrancy-chain-removal）。拖拽判定另见
+    /// <see cref="BuildDragBinding"/>（行为保持——删除主张已在订正中落败，见 ADR）。</summary>
     /// <param name="insets">三变量几何（由 Core <c>ChromeInsets.Resolve</c> 解出，本方法只渲染）。</param>
     /// <param name="heightPx">chrome 高度（CSS 像素）。</param>
     /// <param name="greenAttr">绿灯按钮属性名（绿底规则随之切换）。</param>
-    /// <param name="macChrome">是否追加 macOS 毛玻璃透明链。</param>
     /// <returns>整段 CSS 文本（由调用方经 JsString 注入）。</returns>
-    private static string BuildCss(ChromeInsets insets, int heightPx, string greenAttr, bool macChrome) =>
+    private static string BuildCss(ChromeInsets insets, int heightPx, string greenAttr) =>
         BuildChromeVariables(insets) +
         BuildSidebarClearance(heightPx) +
         BuildToggleReturn() +
         BuildTrafficLights(greenAttr, heightPx) +
-        BuildEdgeRing() +
-        (macChrome ? BuildVibrancyChain() : "");
+        BuildEdgeRing();
 
     /// <summary>三变量发布（语义归 <see cref="Core.WindowChrome.ChromeInsets"/>，本方法只渲染模型值、
     /// 不重算）：top-clearance 供客户端 JS 读数让布局/浮层定位避开；chrome-top 恒为 0（上游该变量
@@ -231,16 +232,6 @@ internal static class CaptionBar
         "#" + EdgeRingId + "{position:fixed;inset:0;pointer-events:none;" +
         "box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l3,rgba(127,127,127,.4));" +
         "z-index:2147483646}";
-
-    /// <summary>macOS 毛玻璃（官方 vibrancy 观感）：窗口背景按平台清成透明，页面侧补
-    /// 官方那条透明链——html/body 透明 + 侧栏列改半透明色调，NSVisualEffectView 经此透出。官方侧栏
-    /// 色标取 --dsw-specific-sidebar-fill 的渐变叠加，且整链以 html[data-platform='darwin'] 门控，
-    /// 而该属性正是本壳禁用的宿主冒充开关（见类注）；故改为注入期按平台收录本段、色标改用通用
-    /// --dsw-alias-bg-base 的 80% 不透明 color-mix 近似（非 macOS 恒不含）。</summary>
-    /// <returns>毛玻璃透明链段 CSS 文本。</returns>
-    private static string BuildVibrancyChain() =>
-        "html,body{background:transparent!important}[class*=\"sidebarCol\"]{" +
-        "background:color-mix(in srgb,var(--dsw-alias-bg-base,#fff) 80%,transparent)!important}";
 
     /// <summary>双击自判的时间窗（毫秒）：本壳起拖的原生移动抓取使 DOM 的 <c>dblclick</c> 在顶带上不可达
     /// （见 <see cref="BuildDragBinding"/>），故按两次带内左键按下的间隔自判。取各平台双击窗的<b>上界</b>
