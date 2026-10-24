@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 页面健康探针（PageHealthMonitor/Tracker/Recovery）与诊断 `health` 行已删除（ADR [drop-page-health-polling](../simplification/2026-10-24-drop-page-health-polling.md)）；本文相关提及为历史记录。
+
 Erratum: 2026-10-21 — 落点换家：决策表行「壳根孤件路由（Autostart/CompanionLocale）｜留项目根（单文件不成域）」与目标树行「根留 …Autostart/CompanionLocale 两孤件路由」的实际落点已变——两件随域迁入 `PageBridge/`（命名空间 `…Desktop.PageBridge`），见 [shell-router-rehoming](2026-10-21-shell-router-rehoming.md)；同篇 Alternatives 中「集中 `CommandRouting/` 目录……孤件路由因单文件不成域例外留根」与 Consequences 中「孤件留根无单文件目录」两处同述「孤件留根」的字句，一并落在本行覆盖面内；本篇「单文件不成域——孤件留在项目根，不为单文件开目录」的决定保留不变（该次迁移未新开目录），其适用面限于「无对应域目录的孤件」；正文与决定不动。
 
 Review: FULL/2026-09-15/R1=ok R2=ok R3=ok

@@ -35,11 +35,6 @@ internal interface IWebViewSurface
     /// <param name="ct">取消令牌。</param>
     /// <returns>导航已发起即完成的任务。</returns>
     Task NavigateAsync(Uri target, CancellationToken ct);
-
-    /// <summary>重载当前文档（健康探针的有界恢复用）。</summary>
-    /// <param name="ct">取消令牌。</param>
-    /// <returns>完成的任务。</returns>
-    Task ReloadAsync(CancellationToken ct);
 }
 
 /// <summary>页面消息事件参数。</summary>

@@ -12,7 +12,6 @@ internal static class PageBridgeRegistration
     /// <param name="uiLocale">宿主 UI 语言单点。</param>
     /// <param name="macChrome">顶栏是否 macOS 形态。</param>
     /// <param name="captionHeightPx">顶栏高度（CSS 像素）。</param>
-    /// <param name="healthInterval">健康探针首拍延迟/间隔。</param>
     /// <param name="log">日志委托。</param>
     /// <returns>页面桥装配壳（窗口挂载后接上）。</returns>
     public static Hosting.ShellBridgeHost CreateShellBridgeHost(
@@ -20,7 +19,6 @@ internal static class PageBridgeRegistration
         UiLocale uiLocale,
         bool macChrome,
         int captionHeightPx,
-        TimeSpan healthInterval,
         Action<string> log)
     {
         var browser = new SystemBrowserService();
@@ -31,6 +29,6 @@ internal static class PageBridgeRegistration
             new CompanionLocaleCommandRouter(uiLocale, log),
             new CompanionReportCommandRouter(log),
         };
-        return new Hosting.ShellBridgeHost(routers, uiLocale, shellOrigin, browser, macChrome, captionHeightPx, healthInterval, log);
+        return new Hosting.ShellBridgeHost(routers, uiLocale, shellOrigin, browser, macChrome, captionHeightPx, log);
     }
 }

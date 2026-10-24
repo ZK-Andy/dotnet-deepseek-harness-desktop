@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 页面健康探针（PageHealthMonitor/Tracker/Recovery）与诊断 `health` 行已删除（ADR [drop-page-health-polling](../simplification/2026-10-24-drop-page-health-polling.md)）；本文相关提及为历史记录。
+
 Review: FULL/2026-09-14/R1=ok R2=ok R3=ok
 Review notes: 三路 0 Blocker；10 Suggestion（死依赖/注释口径/死参数/锚定对齐/CPM 措辞/复认记录/supersession 标注/Related 收口指针）全部当场收口
 

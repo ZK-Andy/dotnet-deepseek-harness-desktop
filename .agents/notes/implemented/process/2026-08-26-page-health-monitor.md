@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 页面健康探针（PageHealthMonitor/Tracker/Recovery）与诊断 `health` 行已删除（ADR [drop-page-health-polling](../simplification/2026-10-24-drop-page-health-polling.md)）；本文相关提及为历史记录。
+
 ## Problem
 
 「进程活着、页面死了」类事故（companion 缺 `apply` 致整页白屏、更新区块 ReferenceError 永久降级等历史三起）全部靠用户实机人肉发现——`RuntimeSupervisor` 只订阅子进程退出事件，dsh 存活但页面空白完全不可见。对照 anywhere-labs/dsh-desktop（2026-08-26）确认其有渲染进程健康监控面。

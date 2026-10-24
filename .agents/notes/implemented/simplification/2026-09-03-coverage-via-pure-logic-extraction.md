@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 页面健康探针（PageHealthMonitor/Tracker/Recovery）与诊断 `health` 行已删除（ADR [drop-page-health-polling](../simplification/2026-10-24-drop-page-health-polling.md)）；本文相关提及为历史记录。
+
 ## Problem
 
 测试总覆盖率停在 52.2%（line-rate 0.5216）。UI/平台分支无真机环境写了也验不了，硬补 UI 测试不是出路。盘点覆盖率缺口后发现：**真正的零/极低覆盖集中在平台 IO 胶水与配置解析侧**，而非待办（2026-09-03 代码质量评估拍板）与既有 ADR（[shell-tray-hide-to-tray](../architecture/2026-08-24-shell-tray-hide-to-tray.md)、[shell-convenience-autostart-ready-notify](../architecture/2026-08-24-shell-convenience-autostart-ready-notify.md) 声称可单测的纯逻辑面）里设想的托盘/自启/UDS 面——后者（`TrayMenuActions` 93%、`CloseBehaviorPreference` 100%、`LauncherActivation.SocketPath`、`Autostart.BuildLinuxDesktopEntry/MacOSPlist`、`UpdatePlatform.DetectPackageKind`）大多已被既有测试覆盖。四类真实缺口的共同点：**逻辑与 IO 混在一个方法里**，IO 面 CI 不可达（真弹浏览器/真写注册表/真跑 pkexec），判定面无测试钉住。

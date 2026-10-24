@@ -72,20 +72,6 @@ internal sealed class NativeWebViewSurface : IWebViewSurface, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task ReloadAsync(CancellationToken ct)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!Dispatcher.UIThread.CheckAccess())
-        {
-            Task<bool> marshalled = Dispatcher.UIThread.InvokeAsync(() => _webView.Refresh()).GetTask();
-            _ = await marshalled.WaitAsync(ct).ConfigureAwait(false);
-            return;
-        }
-
-        _ = _webView.Refresh();
-    }
-
-    /// <inheritdoc />
     public void Dispose()
     {
         if (_disposed)

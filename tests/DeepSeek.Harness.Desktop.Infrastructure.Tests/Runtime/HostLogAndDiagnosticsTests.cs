@@ -1,6 +1,3 @@
-using System.IO.Compression;
-using System.Text;
-
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
 /// <summary>HostLog 出口脱敏集成（ADR diag-masking-and-recovery-page）：落盘内容不得含凭据形状。</summary>
@@ -37,54 +34,5 @@ public class HostLogMaskingTests
         string dir = Path.Combine(Path.GetTempPath(), "ddc-mask-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
-    }
-}
-
-/// <summary>state.txt 健康行（ADR page-health-monitor）：快照收录与 n/a 缺省。</summary>
-public class DiagnosticsHealthSnapshotTests
-{
-    /// <summary>验证传入健康快照时，state.txt 文本包含 "health" 行及其完整快照内容。</summary>
-    [Fact]
-    public void BuildStateText_WithHealth_IncludesSnapshot()
-    {
-        string state = DiagnosticsExporter.BuildStateText("1.2.3-test", "/home/x", health: "alive @ 2026-08-26T01:00:00+08:00 (probes 42)");
-
-        Assert.Contains("health     : alive @ 2026-08-26T01:00:00+08:00 (probes 42)", state);
-    }
-
-    /// <summary>验证未提供健康快照时，state.txt 中 health 行记为 n/a 缺省文案。</summary>
-    [Fact]
-    public void BuildStateText_WithoutHealth_RecordsNa()
-    {
-        string state = DiagnosticsExporter.BuildStateText("1.2.3-test", "/home/x");
-
-        Assert.Contains("health     : n/a（未启用或尚无有效探针）", state);
-    }
-
-    /// <summary>验证健康快照惰性求值：仅在 Export 执行时才调用快照函数，其结果落入 zip 内 state/state.txt 的 health 行。</summary>
-    [Fact]
-    public void Export_EvaluatesSnapshotAtExportTime()
-    {
-        string home = Path.Combine(Path.GetTempPath(), "ddc-hs-" + Guid.NewGuid().ToString("N"));
-        string outDir = Path.Combine(home, "out");
-        Directory.CreateDirectory(home);
-        Directory.CreateDirectory(outDir);
-        try
-        {
-            string? snapshot = null;
-            DiagnosticsExportResult result = DiagnosticsExporter.Export(
-                home, outDir, appVersion: "9.9.9-test", healthSnapshot: () => snapshot ??= $"alive @ T-{Guid.NewGuid():N}"[..40]);
-
-            using ZipArchive zip = ZipFile.OpenRead(result.ZipPath);
-            string state = new StreamReader(zip.GetEntry("state/state.txt")!.Open(), Encoding.UTF8).ReadToEnd();
-            Assert.Matches("health     : alive @ T-", state);
-        }
-        finally
-        {
-            if (Directory.Exists(home))
-            {
-                Directory.Delete(home, recursive: true);
-            }
-        }
     }
 }

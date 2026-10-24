@@ -8,26 +8,22 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Platform;
 public sealed class DiagnosticsExportService : IDiagnosticsExport
 {
     private readonly Action<string>? _log;
-    private readonly Func<string?>? _healthSnapshot;
     private readonly string? _home;
     private readonly string? _outputDirectory;
     private readonly string? _appVersion;
 
     /// <summary>创建适配器。</summary>
     /// <param name="log">日志输出（可选）。</param>
-    /// <param name="healthSnapshot">页面健康快照求值（调用期解析；观测未起时可为 null）。</param>
     /// <param name="home">诊断 home（缺省按产品默认在调用期解析）。</param>
     /// <param name="outputDirectory">导出目录（缺省走回落路径）。</param>
     /// <param name="appVersion">写入包内的版本号（缺省取应用当前版本）。</param>
     public DiagnosticsExportService(
         Action<string>? log = null,
-        Func<string?>? healthSnapshot = null,
         string? home = null,
         string? outputDirectory = null,
         string? appVersion = null)
     {
         _log = log;
-        _healthSnapshot = healthSnapshot;
         _home = home;
         _outputDirectory = outputDirectory;
         _appVersion = appVersion;
@@ -41,8 +37,8 @@ public sealed class DiagnosticsExportService : IDiagnosticsExport
             string home = _home ?? HarnessRuntimeHost.ResolveDshHome();
             string version = _appVersion ?? AppVersion.Current();
             DiagnosticsExportResult result = _outputDirectory is null
-                ? DiagnosticsExporter.ExportWithFallback(home, version, _log, _healthSnapshot)
-                : DiagnosticsExporter.Export(home, _outputDirectory, version, _healthSnapshot);
+                ? DiagnosticsExporter.ExportWithFallback(home, version, _log)
+                : DiagnosticsExporter.Export(home, _outputDirectory, version);
             _log?.Invoke($"[host] 诊断包已导出：{result.ZipPath}（{result.Included.Count} 项）");
             return DiagnosticsExportOutcome.Success(result.ZipPath);
         }

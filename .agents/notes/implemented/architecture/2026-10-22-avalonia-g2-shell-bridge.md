@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 页面健康探针（PageHealthMonitor/Tracker/Recovery）与诊断 `health` 行已删除（ADR [drop-page-health-polling](../simplification/2026-10-24-drop-page-health-polling.md)）；本文相关提及为历史记录。
+
 Erratum: 2026-10-24 — 正文「companion 的消费随 G3 改」实际未在 G3 落地，已在 G5 完成（`client.js`/`testkit` 全部改走 `window.__shell`，`__ryn` 回退与托盘中继删除），见 [avalonia-g5-ryn-host-retirement](2026-10-24-avalonia-g5-ryn-host-retirement.md)。正文不动。
 
 Review: FULL/2026-10-22#4/R1=ok R2=ok R3=ok

@@ -142,7 +142,7 @@ public sealed partial class DshShellForward
 
             if (_timeProvider.GetElapsedTime(started) >= settings.Budget)
             {
-                log($"[shell] 就绪稳定化预算耗尽（实际等待{_timeProvider.GetElapsedTime(started).TotalSeconds:F1}s，探活{samples}次）——fail-open 放行，页面健康交探针/恢复面");
+                log($"[shell] 就绪稳定化预算耗尽（实际等待{_timeProvider.GetElapsedTime(started).TotalSeconds:F1}s，探活{samples}次）——fail-open 放行（无第二道防线）");
                 return;
             }
 

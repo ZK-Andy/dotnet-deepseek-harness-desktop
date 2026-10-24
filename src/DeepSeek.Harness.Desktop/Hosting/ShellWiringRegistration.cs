@@ -53,13 +53,12 @@ internal static class ShellWiringRegistration
             host, marker, resources.ReleaseLocalPorts, dshHome, recovery.CancelAndJoin, closeWindow);
 
         // 页面桥（ADR avalonia-g2-shell-bridge）：代理未绑定时 origin 为 null，
-        // 桥与健康观测整体降级跳过（ShellBridgeHost 自持该判据）。
+        // 桥整体降级跳过（ShellBridgeHost 自持该判据）。
         ShellBridgeHost bridgeHost = PageBridgeRegistration.CreateShellBridgeHost(
             proxy.Proxy?.Url?.GetLeftPart(UriPartial.Authority),
             shared.UiLocale,
             MacNativeChrome.IsEnabled,
             shared.CaptionBar.HeightPx,
-            TimeSpan.FromSeconds(shared.Timeouts.HealthInitialDelaySeconds),
             HostLog.Write);
 
         // 自更新面（ADR avalonia-g3-update-surface）：三条命令路由、启动检查与托盘反馈一次构造。

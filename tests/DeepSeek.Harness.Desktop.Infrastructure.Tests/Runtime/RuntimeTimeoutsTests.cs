@@ -24,7 +24,6 @@ public class RuntimeTimeoutsTests
         Assert.Equal(60, o.SupervisorRestartTimeoutSeconds);
         Assert.Equal(2, o.SupervisorRecoveredRetryDelaySeconds);
         Assert.Equal(1, o.SupervisorFailedRetryDelaySeconds);
-        Assert.Equal(10, o.HealthInitialDelaySeconds);
         Assert.Equal(120, o.BootstrapSettleTimeoutSeconds);
         Assert.Equal(5, o.NavCommitTimeoutSeconds);
         Assert.Equal(30, o.NavCallTimeoutSeconds);
@@ -78,7 +77,7 @@ public class RuntimeTimeoutsTests
             "SupervisorJoinTimeoutSeconds":12,"SupervisorRestartTimeoutSeconds":62,
             "SupervisorRecoveredRetryDelaySeconds":13,"SupervisorFailedRetryDelaySeconds":14,
             "SupervisorBlockedLogEveryRounds":33,"SupervisorFailureSurfaceStuckThreshold":34,
-            "HealthInitialDelaySeconds":15,"BootstrapSettleTimeoutSeconds":16,"NavCommitTimeoutSeconds":17,"NavCallTimeoutSeconds":31,
+            "BootstrapSettleTimeoutSeconds":16,"NavCommitTimeoutSeconds":17,"NavCallTimeoutSeconds":31,
             "AuthProbeTimeoutSeconds":25,"AuthProbeAttempts":28,"WindowReadyTimeoutSeconds":26,"WindowReadyPollIntervalSeconds":27,
             "IpcServeTimeoutSeconds":18,"IpcAcceptRetryDelaySeconds":19,
             "VersionProbeTimeoutSeconds":20,"BannerRetryDelaySeconds":22,
@@ -100,7 +99,6 @@ public class RuntimeTimeoutsTests
         Assert.Equal(14, o.SupervisorFailedRetryDelaySeconds);
         Assert.Equal(33, o.SupervisorBlockedLogEveryRounds);
         Assert.Equal(34, o.SupervisorFailureSurfaceStuckThreshold);
-        Assert.Equal(15, o.HealthInitialDelaySeconds);
         Assert.Equal(16, o.BootstrapSettleTimeoutSeconds);
         Assert.Equal(17, o.NavCommitTimeoutSeconds);
         Assert.Equal(31, o.NavCallTimeoutSeconds);

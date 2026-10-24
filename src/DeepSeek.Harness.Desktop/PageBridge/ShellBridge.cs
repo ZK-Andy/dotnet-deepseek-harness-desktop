@@ -283,7 +283,7 @@ internal sealed class ShellBridge : IDisposable
         {
             // 失败/取消的导航保留当前文档的 nonce 与 origin：显示的仍是旧文档，换 nonce 会让它所有
             // invoke 被拒且无恢复路径。外链失败属 NavigationStarted 取消的预期路径（不逐次留痕）；
-            // 壳 origin 自身加载失败要带 URL 留痕，否则只剩健康探针的迁移日志。
+            // 壳 origin 自身加载失败要带 URL 留痕，否则只剩桥自身的迁移日志。
             string? failed = e.Url?.ToString();
             if (failed is null || !ExternalLinkPolicy.IsExternalHttpLink(failed, _shellOrigin, out _))
             {

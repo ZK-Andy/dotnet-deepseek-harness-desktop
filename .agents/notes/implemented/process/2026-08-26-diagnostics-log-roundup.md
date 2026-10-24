@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 页面健康探针（PageHealthMonitor/Tracker/Recovery）与诊断 `health` 行已删除（ADR [drop-page-health-polling](../simplification/2026-10-24-drop-page-health-polling.md)）；本文相关提及为历史记录。
+
 ## Problem
 
 v0.3.10 实机（Fedora Wayland）出现一次性偶发卡死：23:03 起实例对一切外来事件（托盘菜单、唤起、launcher 激活）无响应，重启后才恢复，且 restart 后复现试验阴性（最大化→隐藏→唤回循环无卡死）。排查时 host.log 出现三类盲区，导致无法判定根因：

@@ -8,7 +8,7 @@ namespace DeepSeek.Harness.Desktop.PageBridge;
 /// 解析方向走 <see cref="JsonDocument"/>（<c>AppJson</c> 的同一约定：桥接回包有再序列化怪癖，
 /// 不用反射式序列化通道）：字符串 → 还原转义后的文本，非字符串/不可解析 → 原样返回
 /// （不认识的形态交上层判未知，绝不猜）。
-/// 仓内解壳只有这一处：页面健康探针（<c>PageHealthMonitor</c>）与网页视图导航端口都经
+/// 仓内解壳只有这一处：网页视图导航端口（<c>AvaloniaWebViewNavigator</c>）与页面泵（<c>PagePump</c>）的求值回报都经
 /// <see cref="Decode"/>，消费侧不再自行剥引号。
 /// </summary>
 internal static class ScriptProbeValue

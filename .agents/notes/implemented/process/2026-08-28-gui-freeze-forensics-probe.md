@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 页面健康探针（PageHealthMonitor/Tracker/Recovery）与诊断 `health` 行已删除（ADR [drop-page-health-polling](../simplification/2026-10-24-drop-page-health-polling.md)）；本文相关提及为历史记录。
+
 Erratum: 2026-09-28 — 落点换家：正文所述 `scripts/probe-gui-freeze.sh` 已退役（210 行、零调用点、7 个 `FREEZE_*` 旋钮在 CI 与文档里都无设置点）；判别知识留在 [cookbook](../../../../docs/cookbook.md) 的「高强度负载下 GUI 冻结的判别」条目，退役决定见 [script-layer-consolidation](2026-09-28-script-layer-consolidation.md)。正文不动。
 
 ## Problem

@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 页面健康探针已整体删除（ADR [drop-page-health-polling](../simplification/2026-10-24-drop-page-health-polling.md)），本文的探针契约与测试行不再存在；现象与判据保留。
+
 Review: FULL/2026-09-19/R1=ok R2=ok R3=ok
 
 中文（双语暂不启用；启用时恢复 .md + .zh.md 配对 + .i18n.yaml）
@@ -26,7 +28,7 @@ Review: FULL/2026-09-19/R1=ok R2=ok R3=ok
 **壳侧放大与观测盲区**：
 
 - 接力就绪判据是「HTTP 有非空应答或 3xx」（[RuntimeLineageProbes.cs](../../../../src/DeepSeek.Harness.Desktop.Infrastructure/Runtime/RuntimeLineageProbes.cs)）；实测市场自重启窗口内**将死的前驱进程仍应答 `401` + 68 字节正文**，按该判据即 Ready，壳随即收养并导航，页面落进「连上随即断线」的窗口。实机那次 Ready 由将死前驱还是未挂全的续任者应答未取证【推断 · 未证】——两者同属「判据过早」类。
-- 页面健康探针只查 `body.childElementCount`（[PageHealthMonitor.cs](../../../../src/DeepSeek.Harness.Desktop/PageBridge/PageHealthMonitor.cs)）；塌陷页面仍有 3 个子节点 → 判 alive，既有 3×10s 阈值与有界 reload 永不触发，页面对用户永久不可用。
+- 页面健康探针只查 `body.childElementCount`（`PageHealthMonitor.cs`（已删除，见上方 Erratum））；塌陷页面仍有 3 个子节点 → 判 alive，既有 3×10s 阈值与有界 reload 永不触发，页面对用户永久不可用。
 
 ## Decision
 

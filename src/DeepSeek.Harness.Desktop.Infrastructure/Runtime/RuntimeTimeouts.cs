@@ -57,9 +57,6 @@ public sealed record RuntimeTimeouts
     /// 偶发崩溃只记 host.log（默认 3；≤1 回到每次崩溃都弹）。</summary>
     public int SupervisorFailureSurfaceStuckThreshold { get; init; } = 3;
 
-    /// <summary>页面健康监视首拍延迟（秒）：避开启动空窗。</summary>
-    public int HealthInitialDelaySeconds { get; init; } = 10;
-
     /// <summary>引导落定等待的降级时限（秒）：超时按已定继续。</summary>
     public int BootstrapSettleTimeoutSeconds { get; init; } = 120;
 
@@ -135,7 +132,6 @@ public sealed record RuntimeTimeouts
         options = options with { SupervisorFailedRetryDelaySeconds = ConfigSectionJson.GetInt(section, nameof(SupervisorFailedRetryDelaySeconds), options.SupervisorFailedRetryDelaySeconds) };
         options = options with { SupervisorBlockedLogEveryRounds = ConfigSectionJson.GetInt(section, nameof(SupervisorBlockedLogEveryRounds), options.SupervisorBlockedLogEveryRounds) };
         options = options with { SupervisorFailureSurfaceStuckThreshold = ConfigSectionJson.GetInt(section, nameof(SupervisorFailureSurfaceStuckThreshold), options.SupervisorFailureSurfaceStuckThreshold) };
-        options = options with { HealthInitialDelaySeconds = ConfigSectionJson.GetInt(section, nameof(HealthInitialDelaySeconds), options.HealthInitialDelaySeconds) };
         options = options with { BootstrapSettleTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(BootstrapSettleTimeoutSeconds), options.BootstrapSettleTimeoutSeconds) };
         options = options with { NavCommitTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(NavCommitTimeoutSeconds), options.NavCommitTimeoutSeconds) };
         options = options with { NavCallTimeoutSeconds = ConfigSectionJson.GetInt(section, nameof(NavCallTimeoutSeconds), options.NavCallTimeoutSeconds) };

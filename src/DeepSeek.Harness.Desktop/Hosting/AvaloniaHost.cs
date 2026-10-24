@@ -5,7 +5,7 @@ namespace DeepSeek.Harness.Desktop.Hosting;
 /// <summary>宿主入口（ADR implemented/architecture/2026-10-22-avalonia-g0-entry-switch、-g1-tray-recall、-g2-shell-bridge）：
 /// Avalonia 窗口 + 包自带 WebView 承接既有 dsh spawn 与回环代理源；托盘、关窗到托盘、二启唤回、
 /// 无边框顶栏（三平台原生拖拽/缩放，Wayland 降级）与启动失败面已接入；<c>window.__shell</c> 页面桥
-/// 含外链拦截与页面健康观测。退出/重启走 <see cref="ExitPipeline"/>（-g3-exit-restart）；恢复页、监督器与
+/// 含外链拦截。退出/重启走 <see cref="ExitPipeline"/>（-g3-exit-restart）；恢复页、监督器与
 /// 启动期告知均已接入（ADR avalonia-g1g3-recovery-bootstrap-supervision、avalonia-g5-ryn-host-retirement）。
 /// 装配面成员（C2）：逐成员清单见 <c>verify-compose-root.py</c> 的 ALLOWED_METHODS；新增成员须先在
 /// <c>verify-compose-root.py</c> 的 ALLOWED_METHODS 列册（本片为拆 F2 方法长度上限而拆分启动面）。
@@ -243,7 +243,7 @@ internal static class AvaloniaHost
         return AppBuilder.Configure(() => new ShellApplication(
                 startup, devTools, recall, uiLocale, trayIconPath, trayIconAvailable, bridgeHost, stderrTail,
                 ShellCommandRegistration.CreateCloseBehavior(dshHome),
-                ShellCommandRegistration.CreateDiagnosticsExport(() => bridgeHost.HealthSnapshot, HostLog.Write),
+                ShellCommandRegistration.CreateDiagnosticsExport(HostLog.Write),
                 exitPipeline,
                 recoveryContext,
                 closeGate,

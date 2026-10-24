@@ -31,7 +31,7 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img src="https://img.shields.io/badge/.NET-net10.0-512bd4" alt=".NET"></a>
 </p>
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端。宿主 = [Avalonia](https://avaloniaui.net/) 12.1.x + 包自带原生 WebView（dsh spawn 与回环代理源复用既有实现）：托盘、关窗到托盘、二启唤回走 Avalonia 控件，启动失败面是进程内模态；`window.__shell` 承接页面命令/事件/每页脚本，外链拦截与页面健康观测已接；顶栏三平台原生拖拽/缩放，Wayland 降级保留原生装饰；自启、关窗到托盘、诊断导出、重启与更新三命令齐备，退出/重启走统一退出管道；崩溃监督、首启引导、页内恢复页与版本底线/脏退横幅已接，更新检查结论先唤回主窗再落页面横幅。壳不自带运行时：node 与 dsh 都用系统全局的那一份（`npm install -g @deepseek-ai/dsh@next`），桌面与终端共享同一数据目录，会话、凭据、插件天然互通。首次启动检测 PATH 上的全局 dsh——没有就装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用（判据是兼容底线，不逐次查 npm dist-tag）。
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 .NET 桌面客户端。宿主 = [Avalonia](https://avaloniaui.net/) 12.1.x + 包自带原生 WebView（dsh spawn 与回环代理源复用既有实现）：托盘、关窗到托盘、二启唤回走 Avalonia 控件，启动失败面是进程内模态；`window.__shell` 承接页面命令/事件/每页脚本，外链拦截已接；顶栏三平台原生拖拽/缩放，Wayland 降级保留原生装饰；自启、关窗到托盘、诊断导出、重启与更新三命令齐备，退出/重启走统一退出管道；崩溃监督、首启引导、页内恢复页与版本底线/脏退横幅已接，更新检查结论先唤回主窗再落页面横幅。壳不自带运行时：node 与 dsh 都用系统全局的那一份（`npm install -g @deepseek-ai/dsh@next`），桌面与终端共享同一数据目录，会话、凭据、插件天然互通。首次启动检测 PATH 上的全局 dsh——没有就装；探测到的版本低于兼容底线就走引导更新到 `@next`；达标直接用（判据是兼容底线，不逐次查 npm dist-tag）。
 
 <p align="center">
   <a href="assets/screenshot.png"><img src="assets/screenshot.png" width="880" alt="DeepSeek Harness Desktop 窗口：插件市场"></a>
@@ -68,7 +68,6 @@
 
 - 🔄 **崩溃自愈、回到原会话** — 崩溃 → 失败面（连续崩溃达阈值（默认 3 次）才弹；原生对话框优先：原因、stderr 尾部、自动导出诊断、继续或退出）→ 自动重启 → 同一窗口回到新 URL；**端口保持稳定**，Web UI origin 与页面级会话记忆存活。
 - 🧩 **续任者收养** — 插件更新后的自重启由壳直接收养续任者：单进程、单导航，没有注定失败的竞争启动与数十秒恢复屏。
-- 💓 **页面健康监护** — 只读探针识别「进程在跑但页面空白」，预算内触发一次有界 reload 自愈，耗尽转观测、恢复即复位——不注入脚本，不依赖伴生插件存活。
 - ⬆️ **自更新** — 启动后台检查一次 + 设置页手动检查，一键安装并自动重启（安装包 `SHA256` 强校验；`macOS` 引导手动更新），见[保持最新](#保持最新)。
 
 > 首选端口被本应用认不出归属的程序占用时会漂移到新端口，origin 随之改变——后果与恢复方式见[常见问题](docs/faq.md)。端口漂移判据、收养血统、探针预算等机理细节以 [docs/architecture.md](docs/architecture.md) 为准。

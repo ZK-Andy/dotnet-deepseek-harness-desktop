@@ -76,9 +76,6 @@ internal sealed class FakeWebViewSurface : IWebViewSurface
     public List<Uri> Navigations { get; } = [];
 
     /// <inheritdoc />
-    public Task ReloadAsync(CancellationToken ct) => Task.CompletedTask;
-
-    /// <inheritdoc />
     public Task NavigateAsync(Uri target, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();

@@ -21,12 +21,11 @@ internal static class ShellCommandRegistration
         new CloseBehaviorPreference(Path.Combine(dshHome, CloseBehaviorPreference.FileName));
 
     /// <summary>诊断包导出器：当前唯一消费方是 <c>desktop.diagnostics.export</c>；失败面自动导出
-    /// 尚未接（记在 ADR 的残留面）。健康快照在调用期求值，观测未起时为 null。</summary>
-    /// <param name="healthSnapshot">页面健康快照取法（<see cref="ShellBridgeHost.HealthSnapshot"/>）。</param>
+    /// 尚未接（记在 ADR 的残留面）。</summary>
     /// <param name="log">日志回调。</param>
     /// <returns>导出端口实现。</returns>
-    public static IDiagnosticsExport CreateDiagnosticsExport(Func<string?> healthSnapshot, Action<string> log) =>
-        new DiagnosticsExportService(log, healthSnapshot);
+    public static IDiagnosticsExport CreateDiagnosticsExport(Action<string> log) =>
+        new DiagnosticsExportService(log);
 
     /// <summary>本批四条路由：开机自启（companion 桌面设置区）、关闭到托盘开关（状态帧携带
     /// <c>available</c>）、诊断导出（设置页按钮）、应用重启（companion 重启行）。</summary>

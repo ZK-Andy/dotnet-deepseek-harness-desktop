@@ -30,7 +30,6 @@
     "NativeWebViewSurface.cs",
     "PageBridgeRegistration.cs",
     "PageCaptionBar.cs",
-    "PageHealthMonitor.cs",
     "PagePump.cs",
     "ScriptProbeValue.cs",
     "ShellBridge.cs",

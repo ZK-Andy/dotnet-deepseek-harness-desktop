@@ -7,7 +7,7 @@ namespace DeepSeek.Harness.Desktop.Hosting;
 /// <summary>
 /// 新宿主页面桥的装配与寿命（ADR architecture/2026-10-22-avalonia-g2-shell-bridge）：窗口出现后把
 /// <see cref="NativeWebView"/> 交给 <see cref="NativeWebViewSurface"/>，建 <see cref="ShellBridge"/>、
-/// 脚本求值端口与页面健康观测，并在窗口销毁时一并收口。
+/// 脚本求值端口，并在窗口销毁时一并收口。
 /// 代理未绑定（无壳 origin）时整体跳过：没有可信 origin 就没有可校验的桥，页面按静态降级页运行。
 /// </summary>
 internal sealed class ShellBridgeHost : IDisposable
@@ -20,14 +20,12 @@ internal sealed class ShellBridgeHost : IDisposable
     private readonly ISystemBrowser _browser;
     private readonly bool _macChrome;
     private readonly int _captionHeightPx;
-    private readonly TimeSpan _healthInterval;
     private readonly Action<string> _log;
     private readonly CancellationTokenSource _cts = new();
     private readonly CancellationToken _token;
     private readonly AvaloniaWindowScriptTarget _scriptTarget;
     private NativeWebViewSurface? _surface;
     private ShellBridge? _bridge;
-    private PageHealthMonitor? _monitor;
     private bool _disposed;
 
     /// <summary>创建装配壳（尚未挂载窗口）。</summary>
@@ -37,7 +35,6 @@ internal sealed class ShellBridgeHost : IDisposable
     /// <param name="browser">系统浏览器端口（外链拦截）。</param>
     /// <param name="macChrome">顶栏是否 macOS 形态。</param>
     /// <param name="captionHeightPx">顶栏高度（CSS 像素）。</param>
-    /// <param name="healthInterval">健康探针首拍延迟/间隔。</param>
     /// <param name="log">日志委托。</param>
     public ShellBridgeHost(
         IReadOnlyList<ICommandRouter> routers,
@@ -46,7 +43,6 @@ internal sealed class ShellBridgeHost : IDisposable
         ISystemBrowser browser,
         bool macChrome,
         int captionHeightPx,
-        TimeSpan healthInterval,
         Action<string> log)
     {
         _routers = [.. routers];
@@ -56,7 +52,6 @@ internal sealed class ShellBridgeHost : IDisposable
         _browser = browser;
         _macChrome = macChrome;
         _captionHeightPx = captionHeightPx;
-        _healthInterval = healthInterval;
         _log = log;
         // 惰性求值目标：引导进度/恢复面可能在挂载前构造，求值时才取当面的网页视图（未挂载即抛未就绪）。
         _scriptTarget = new AvaloniaWindowScriptTarget(() => _surface);
@@ -92,10 +87,6 @@ internal sealed class ShellBridgeHost : IDisposable
     /// 窗口必须保留原生装饰，否则会得到一条拖不动、也没有关闭按钮的窗。</summary>
     public bool CanHostCaptionBar => _surface is not null && !string.IsNullOrEmpty(_origin);
 
-    /// <summary>最新页面健康快照（诊断包 state.txt 的收录源）：桥未接上时 null，与旧宿主
-    /// <c>PageHealthMonitor.Snapshot</c> 同义。</summary>
-    public string? HealthSnapshot => _monitor?.Snapshot;
-
     /// <summary>开关无边框顶栏注入（Wayland/无拖拽端口时关闭：窗口保留原生装饰）。</summary>
     /// <param name="enabled">true = 注入自绘顶栏。</param>
     /// <param name="edgeResize">宿主是否提供边缘缩放（macOS 由窗口系统代劳，页面不抢边）。</param>
@@ -114,7 +105,7 @@ internal sealed class ShellBridgeHost : IDisposable
         }
     }
 
-    /// <summary>把已挂进视觉树的网页视图接上桥与健康观测（重复调用为 no-op）。</summary>
+    /// <summary>把已挂进视觉树的网页视图接上页面桥（重复调用为 no-op）。</summary>
     /// <param name="webView">原生网页视图。</param>
     public void Attach(NativeWebView webView)
     {
@@ -125,7 +116,7 @@ internal sealed class ShellBridgeHost : IDisposable
 
         if (string.IsNullOrEmpty(_origin))
         {
-            _log("[shell-bridge] 代理未绑定（无壳 origin）：跳过页面桥与健康观测");
+            _log("[shell-bridge] 代理未绑定（无壳 origin）：跳过页面桥");
             return;
         }
 
@@ -142,14 +133,6 @@ internal sealed class ShellBridgeHost : IDisposable
             uiLocale: _uiLocale,
             edgeResizeEnabled: () => _edgeResize);
         _bridge.Attach();
-
-        NativeWebViewSurface surface = _surface;
-        var monitor = new PageHealthMonitor(
-            _scriptTarget,
-            _log,
-            reload: ct => new ValueTask(surface.ReloadAsync(ct)));
-        _monitor = monitor;
-        _ = monitor.RunAsync(_healthInterval, _cts.Token);
     }
 
     /// <inheritdoc />
