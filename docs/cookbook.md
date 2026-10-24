@@ -34,6 +34,10 @@
 
 ## 调试
 
+- **[调试] xunit.v3 的 MTP 自含 runner 被 dotnet test 静默跳过（2026-10-24 headless 验收实跑实证）**：xunit.v3 测试工程缺省为 Exe + Microsoft.Testing.Platform 形态，`dotnet test`（项目级与 slnx 级）对它 **exit 0 且零输出**——既不跑也不报，CI 绿是假绿。MTP 模式须 global.json 全仓选入（会波及既有 VSTest 覆盖收集管道）。与 VSTest 管道共存的正解：工程保持 Library + `Microsoft.NET.Test.Sdk` + `xunit.runner.visualstudio` 3.x（v3 适配），CPM 同 id 双主版本用 `EnableVersionOverride` + `VersionOverride` 落版本（v2 侧 4.0.0 不受影响）。判别：测试总数比预期少 = 有工程被静默跳过，先数工程再信绿。
+
+- **[调试] headless 测试应用不加载控件主题，鼠标点击静默失效（2026-10-24 实跑实证）**：Avalonia headless 用空 Application 时 Button/TextBox 无模板——控件没有可命中的视觉子树，`MouseDown/MouseUp` 落在按钮坐标上无效果（Click 不触发、无任何报错）；键盘语义（IsDefault/IsCancel）不受影响。正解：测试应用 `Initialize()` 里 `Styles.Add(new FluentTheme())`（与生产宿主同源）；不要用 `StyleInclude` 指 NuGet 包内主题 axaml——「No precompiled XAML found」，用类型类（`new FluentTheme()`）不用 axaml URI。
+
 - **[调试] Avalonia WebView 消息通道的两个空面：`WebMessageReceived` 无 origin、无 document-start 注入（2026-10-22 包 API 核对）**：`WebMessageReceivedEventArgs` 只有 `Body`，不能拿来源 origin 做授权——判据改为「每次成功导航轮换的 nonce + 最近一次成功导航的顶层 URL 同壳 origin（注入对任何成功完成的文档都执行，nonce 不证明来源）」；API 无 document-start 钩子，脚本只能在 `NavigationCompleted` 注入，首屏内联脚本执行时 `window.__shell` 尚未定义（页面侧须轮询或退化）。判别：`invokeCSharpAction is not defined` 或首屏拿不到 `__shell` 即这两处语义，不是引擎故障。见 [ADR](../.agents/notes/implemented/architecture/2026-10-22-avalonia-g2-shell-bridge.md)。
 
 - **[调试] 恢复页静默失效（2026-10-23 迁移核对，2026-10-24 复核）**：脚本只认 `window.__shell.invoke`；按钮无反应即桥未注入或页面不是壳文档（旧宿主的 `__ryn` 通道已删，不存在回落）。

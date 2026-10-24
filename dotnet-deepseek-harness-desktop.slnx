@@ -8,6 +8,7 @@
     <Project Path="tests/DeepSeek.Harness.Desktop.Tests/DeepSeek.Harness.Desktop.Tests.csproj" />
     <Project Path="tests/DeepSeek.Harness.Desktop.Core.Tests/DeepSeek.Harness.Desktop.Core.Tests.csproj" />
     <Project Path="tests/DeepSeek.Harness.Desktop.Infrastructure.Tests/DeepSeek.Harness.Desktop.Infrastructure.Tests.csproj" />
+    <Project Path="tests/DeepSeek.Harness.Desktop.Headless.Tests/DeepSeek.Harness.Desktop.Headless.Tests.csproj" />
     <Project Path="tests/DeepSeek.Harness.Desktop.Analyzers.Tests/DeepSeek.Harness.Desktop.Analyzers.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

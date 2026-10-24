@@ -64,6 +64,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="DeepSeek.Harness.Desktop.Tests" />
+    <InternalsVisibleTo Include="DeepSeek.Harness.Desktop.Headless.Tests" />
   </ItemGroup>
 
 </Project>

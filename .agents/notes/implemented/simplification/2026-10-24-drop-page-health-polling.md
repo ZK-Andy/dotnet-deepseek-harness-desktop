@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 增量闸豁免指针已转指 `testing/2026-10-24-ci-desktop-acceptance-via-headless`（本篇标记不再生效；旧豁免随批次进入基线失效，指针由三处接线位跟随更新）
+
 Review: FULL/2026-10-24/R1=ok R2=ok R3=ok
 
 增量闸豁免：gross ≤ 1100，fanout ≤ 15，packages ≤ 1（纯删除批次：origin/main..HEAD 实测 1010 行，其中 800+ 为移除实现与测试、其余为 16 篇 Erratum 与注释收口；拆分会留下不可编译的中间提交）。

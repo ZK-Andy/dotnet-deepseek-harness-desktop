@@ -20,6 +20,10 @@
     <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Controls.WebView" Version="12.1.1" />
+    <!-- headless 测试平台（ADR testing/2026-10-24-ci-desktop-acceptance-via-headless）：
+         xunit.v3 锁 3.2.2 = Avalonia.Headless.XUnit 12.1.4 nuspec 依赖上限，4.x 发现期 MissingMethodException。 -->
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.4" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
   </ItemGroup>

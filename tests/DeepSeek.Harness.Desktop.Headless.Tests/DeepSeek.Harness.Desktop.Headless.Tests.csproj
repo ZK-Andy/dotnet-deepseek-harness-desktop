@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- xunit.v3 走 VSTest：与仓内 xunit 2.9.3 工程同一 dotnet test 管道（slnx 级发现 + cobertura 收集）。
+         xunit.v3 锁 3.2.2 = Avalonia.Headless.XUnit 12.1.4 nuspec 依赖上限（4.x 发现期
+         MissingMethodException）；xunit.runner.visualstudio 须 3.x（v3 适配），与 v2 侧 4.0.0 同 id
+         双主版本，CPM 单版本约束下经 EnableVersionOverride 落版本（ADR
+         testing/2026-10-24-ci-desktop-acceptance-via-headless）。 -->
+    <EnableVersionOverride>true</EnableVersionOverride>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Headless.XUnit" />
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
+    <PackageReference Include="StyleCop.Analyzers" PrivateAssets="all" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" VersionOverride="3.1.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Avalonia 运行时面（Avalonia/Avalonia.Skia 等）经主工程传递，headless 只显式依赖测试平台包。 -->
+    <ProjectReference Include="..\..\src\DeepSeek.Harness.Desktop\DeepSeek.Harness.Desktop.csproj" />
+    <!-- D003 机器化（DSH0001，自研分析器）：纯编译期工具引用，不产生程序集引用。 -->
+    <ProjectReference Include="..\..\tools\DeepSeek.Harness.Desktop.Analyzers\DeepSeek.Harness.Desktop.Analyzers.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
