@@ -121,7 +121,8 @@ smoke_deb() {
   echo "== [deb] 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s；DISPLAY=${DISPLAY:-<无>}）"
   set +e
   smoke_unattended_env "$home"
-  timeout "$APP_TIMEOUT" "$APP_BIN" >"$log" 2>&1 &
+  # tee 双写：应用输出实时进 step 日志 + 全量落 $log（冒烟过程可见性，与 mac/win 同款）
+  timeout "$APP_TIMEOUT" "$APP_BIN" > >(tee -a "$log") 2>&1 &
   pid=$!
   smoke_wait_ready "$log" "$log" "$pid" "$home"; rc=$?
   # 裁决已过再等有界重绘窗：提交回调早于新页出像素，立刻拍会拍到上一跳（401）旧帧；无显示不睡。

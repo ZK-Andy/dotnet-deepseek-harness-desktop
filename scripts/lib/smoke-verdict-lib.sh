@@ -105,7 +105,8 @@ wait_verdict() {
 }
 
 # 日志落盘（W2）：调用方经 SMOKE_LOG_DIR 注入稳定目录（与 SMOKE_SHOT_DIR 同模式），CI 传
-# artifact——host.log 只在文件里全，step 日志只有尾巴。缺目录（本地跑）即静默跳过。
+# artifact——四腿启动行均 tee 双写后 step 日志已含应用输出全量，artifact 供离线尸检与长期
+# 留存。缺目录（本地跑）即静默跳过。
 # $1=文件名前缀（如 smoke-linux-deb） $2=stdout 文件 $3=host.log 文件
 smoke_dump_logs() {
   local prefix="$1" out="$2" hostlog="$3"

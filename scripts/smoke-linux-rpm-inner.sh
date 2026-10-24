@@ -52,8 +52,7 @@ smoke_rpm_leg() {
     if ! dnf install -y --setopt=install_weak_deps=False xorg-x11-server-Xvfb libatomic >>"$log_path" 2>&1; then
       error "[rpm] Xvfb/libatomic 安装失败（将按无显示启动，预期启动即红）："
       tail -15 "$log_path" >&2
-      # 诊断随 artifact 留存：启动行会截断 log_path 文件面，dnf 根因行另落一份（评审 R2）。
-      [[ -d /smokelogs ]] && cp "$log_path" /smokelogs/smoke-linux-rpm-xvfb-dnf.log 2>/dev/null || true
+      # 启动行 tee -a 追加不截断：dnf 根因行随 log_path 全量进腿 artifact，无需另落副本。
     fi
   fi
   home="$(mktemp -d)"
@@ -63,7 +62,8 @@ smoke_rpm_leg() {
     xvfb=(xvfb-run -a)
     log "[rpm] 无 DISPLAY：经 xvfb-run 提供虚拟显示"
   fi
-  DSH_DESKTOP_DSH_HOME="$home" timeout "$APP_TIMEOUT" "${xvfb[@]}" "$SMOKE_APP_BIN" >"$log_path" 2>&1 &
+  # tee 双写：应用输出实时进 step 日志 + 全量落 $log_path（冒烟过程可见性，三平台同款）
+  DSH_DESKTOP_DSH_HOME="$home" timeout "$APP_TIMEOUT" "${xvfb[@]}" "$SMOKE_APP_BIN" > >(tee -a "$log_path") 2>&1 &
   pid=$!
   smoke_wait_ready "$log_path" "$log_path" "$pid" "$home" && rc=0
   if [[ $rc -eq 0 ]]; then

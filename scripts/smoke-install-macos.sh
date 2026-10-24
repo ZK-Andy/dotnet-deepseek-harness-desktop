@@ -65,6 +65,18 @@ smoke_shot() { # $1=文件名
     || log "截图跳过（无 WindowServer 会话或 screencapture 不可用）"
 }
 
+# x64-on-Rosetta 形态判定（ADR mac-x64-rosetta-execution-skip）：主机 arm64 且主二进制
+# x86_64（file 魔数实测，非 env 依赖——本地/CI 同判）→ 执行层跳过。产物层验证
+# （PayloadSmoke 探针/dmg 布局断言/挂载/安装/主二进制在位）不受影响。universal 二进制
+# 在 arm64 主机走原生 slice 不经 Rosetta，不跳过。$2 注入主机架构（uname -m）是自测注入面。
+smoke_launch_skipped_on_rosetta() { # $1=主二进制路径 $2=主机架构
+  if [[ "$2" != "arm64" ]]; then return 1; fi
+  local desc
+  desc="$(file "$1" 2>/dev/null)" || return 1
+  if [[ "$desc" == *universal* ]]; then return 1; fi
+  [[ "$desc" == *x86_64* ]]
+}
+
 # mac 专属夹具：中央裁剪几何（含菜单栏/Dock 的全屏图取中央）；崩溃取证夹具本体在
 # smoke-crash-lib.sh（typo 回归钉 / 信号死轮询 / 无报告措辞 / 异名兜底）。
 smoke_selftest_platform() { # $1=夹具根
@@ -78,6 +90,18 @@ smoke_selftest_platform() { # $1=夹具根
   else
     log "skip: 无 convert，跳过 mac 截图内容见证夹具"
   fi
+  # x64-on-Rosetta 判定（ADR mac-x64-rosetta-execution-skip）：arm64 主机 + x86_64 主二进制
+  # → 跳过；arm64 二进制 / x86_64 主机不跳过。魔数文件 = Mach-O 64 头（magic+cputype+subtype+filetype）。
+  printf '\xcf\xfa\xed\xfe\x07\x00\x00\x01\x03\x00\x00\x00\x02\x00\x00\x00' >"$tdir/fake-x64-macho"
+  printf '\xcf\xfa\xed\xfe\x0c\x00\x00\x01\x00\x00\x00\x00\x02\x00\x00\x00' >"$tdir/fake-arm64-macho"
+  smoke_launch_skipped_on_rosetta "$tdir/fake-x64-macho" "arm64" && tpass "rosetta-skip-arm64-host-x64-binary" || tfail "rosetta-skip-arm64-host-x64-binary"
+  smoke_launch_skipped_on_rosetta "$tdir/fake-arm64-macho" "arm64" && tfail "rosetta-skip-arm64-binary-should-not-skip" || tpass "rosetta-skip-arm64-binary-should-not-skip"
+  smoke_launch_skipped_on_rosetta "$tdir/fake-x64-macho" "x86_64" && tfail "rosetta-skip-x64-host-should-not-skip" || tpass "rosetta-skip-x64-host-should-not-skip"
+  # universal（fat 头 + x86_64/arm64 双 slice，file 输出含 x86_64 字样）：arm64 主机走原生
+  # slice 不经 Rosetta，不跳过——防误跳分支回归钉（夹具名不含 universal 字样，钉的是
+  # file 对 fat 魔数的措辞输出而非路径回显）。
+  printf '\xca\xfe\xba\xbe\x00\x00\x00\x02\x01\x00\x00\x07\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x00\x00\x00\x0c\x01\x00\x00\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x00\x00\x00\x0c' >"$tdir/fake-fat"
+  smoke_launch_skipped_on_rosetta "$tdir/fake-fat" "arm64" && tfail "rosetta-skip-universal-should-not-skip" || tpass "rosetta-skip-universal-should-not-skip"
   smoke_selftest_crash "$tdir"
 }
 
@@ -109,11 +133,25 @@ sudo cp -R "$MNT/$APP_BUNDLE" /Applications/
 hdiutil detach "$MNT"
 [[ -f "$INSTALLED/Contents/MacOS/$APP_NAME" ]] || die "安装后缺主二进制"
 
+# x64-on-Rosetta 形态：执行层跳过（ADR mac-x64-rosetta-execution-skip）。Rosetta 转译层
+# 与 Avalonia 原生栈交互缺陷域（AvaloniaUI#10622→dotnet/runtime#89272；三次 CI SIGILL 实证，
+# Ryn 宿主同环境对照全绿 run 40124270810）；产物层（探针/布局/挂载/安装/主二进制在位）
+# 已验证。截图 artifact 预期为空（上传步 outcome 门：成功+空=warn）。真 x64 硬件不经此分支。
+if smoke_launch_skipped_on_rosetta "$INSTALLED/Contents/MacOS/$APP_NAME" "$(uname -m)"; then
+  log "x64-on-Rosetta：执行层跳过（产物层已验证；决策与证据见 ADR mac-x64-rosetta-execution-skip）"
+  if [[ -n "${SMOKE_LOG_DIR:-}" ]] && mkdir -p "$SMOKE_LOG_DIR" 2>/dev/null; then
+    echo "[smoke] x64-on-Rosetta：执行层跳过（主机 arm64 + 主二进制 x86_64；产物层已验证）" \
+      > "$SMOKE_LOG_DIR/skip-rosetta.txt" 2>/dev/null || true
+  fi
+  exit 0
+fi
+
 echo "== 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE_WAIT}s/落定${SETTLE_WAIT}s）"
 LOG="$HOME_DIR/logs/host.log"
 set +e
 smoke_unattended_env "$HOME_DIR"
-"$INSTALLED/Contents/MacOS/$APP_NAME" >"$OUT" 2>&1 &
+# tee 双写：应用输出实时进 step 日志 + 全量落 OUT 文件（冒烟过程可见性——等待期不再只有心跳行）
+"$INSTALLED/Contents/MacOS/$APP_NAME" > >(tee -a "$OUT") 2>&1 &
 SMOKE_PID=$!
 rc=1
 if smoke_wait_ready "$OUT" "$LOG" "$SMOKE_PID" "$HOME_DIR"; then
@@ -151,7 +189,7 @@ if [[ $rc -ne 0 ]]; then
   smoke_shot "smoke-macos-fail.png"
 fi
 # 日志落盘（W2）：调用方经 SMOKE_LOG_DIR 注入稳定目录（与 SMOKE_SHOT_DIR 同模式），
-# CI 传 artifact——host.log 只在文件里全，step 日志只有尾巴。
+# CI 传 artifact——tee 双写后 step 日志已含应用输出全量，artifact 供离线尸检与长期留存。
 # 崩溃报告随同落盘（smoke_collect_crash_reports 契约同 SMOKE_LOG_DIR）。
 smoke_collect_crash_reports "${APP_EXIT:-0}"
 smoke_dump_logs "smoke-macos" "$OUT" "${LOG:-}"

@@ -133,7 +133,8 @@ echo "== 启动冒烟（等①就绪后等导航落定，②保底；窗=${SMOKE
 LOG="$HOME_DIR/logs/host.log"
 set +e
 smoke_unattended_env "$HOME_DIR"
-"$APP_EXE" >"$OUT" 2>&1 &
+# tee 双写：应用输出实时进 step 日志 + 全量落 OUT（冒烟过程可见性，与 mac/linux 同款）
+"$APP_EXE" > >(tee -a "$OUT") 2>&1 &
 pid=$!
 rc=1
 if smoke_wait_ready "$OUT" "$LOG" "$pid" "$HOME_DIR"; then
@@ -153,8 +154,7 @@ if [[ $rc -ne 0 ]]; then
 fi
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true
-# 日志落盘（W2）：调用方经 SMOKE_LOG_DIR 注入稳定目录（与 SMOKE_SHOT_DIR 同模式），
-# CI 传 artifact——host.log 只在文件里全，step 日志只有尾巴。
-# 日志落盘（W2）：SMOKE_LOG_DIR 由调用方注入稳定目录，CI 传 artifact。
+# 日志落盘（W2）：SMOKE_LOG_DIR 由调用方注入稳定目录，CI 传 artifact——tee 双写后
+# step 日志已含应用输出全量，artifact 供离线尸检与长期留存。
 smoke_dump_logs "smoke-windows" "$OUT" "${LOG:-}"
 exit $rc
