@@ -64,28 +64,31 @@ smoke_selftest_verdict() { # $1=夹具根目录
   [[ "$(grep -cE '页面裁决=' "$OUT")" -eq 2 ]] && tpass "verdict-quiescent-grace-reset" || tfail "verdict-quiescent-grace-reset"
   wait "$bg" 2>/dev/null || true
 
-  # companion 装配判门（ADR smoke-gate-tightening，四态矩阵；尺寸闸自 smoke-selftest 迁入——
-  # 判定面夹具归判定面文件）：失败行红（含 spawn 前变体）/异常跳过红（静默形态，空格与中文
-  # 冒号两种行内分隔）/待装未见换入 active 红；已就位或换入 active 过；全无（已就位无日志形态）过。
+  # companion 装配判门（ADR smoke-gate-tightening + run `40140846103` 竞速修复，两层）：
+  # failfast 层——失败行红（含 spawn 前变体）/异常跳过红（静默形态，空格与中文冒号两种行内
+  # 分隔）/装配在途（待装已宣告、active 未至）**过**（npm install 在途不竞速判红——竞速回归锁）；
+  # terminal 层——终态待装未见换入 active 红；已就位或换入 active 过；全无（已就位无日志形态）过。
   printf '[host] 随包插件安装失败（dsh-desktop-companion）exit=1\n' >"$OUT"; : >"$LOG"
-  smoke_companion_gate >/dev/null 2>&1 && tfail "companion-fail-should-red" || tpass "companion-fail-reds"
+  smoke_companion_failfast_gate >/dev/null 2>&1 && tfail "companion-fail-should-red" || tpass "companion-fail-reds"
   printf '[host] 随包插件 spawn 前安装失败（跳过，不阻断启动）：boom\n' >"$OUT"
-  smoke_companion_gate >/dev/null 2>&1 && tfail "companion-prespawn-fail-should-red" || tpass "companion-prespawn-fail-reds"
+  smoke_companion_failfast_gate >/dev/null 2>&1 && tfail "companion-prespawn-fail-should-red" || tpass "companion-prespawn-fail-reds"
   printf '[host] 随包插件 dsh-desktop-companion spec 解析失败，跳过\n' >"$OUT"
-  smoke_companion_gate >/dev/null 2>&1 && tfail "companion-skip-bad-should-red" || tpass "companion-skip-bad-reds"
+  smoke_companion_failfast_gate >/dev/null 2>&1 && tfail "companion-skip-bad-should-red" || tpass "companion-skip-bad-reds"
   printf '[host] 随包插件 dsh-desktop-companion：无可用来源（安装器资源未携带），跳过\n' >"$OUT"
-  smoke_companion_gate >/dev/null 2>&1 && tfail "companion-no-source-should-red" || tpass "companion-no-source-reds"
+  smoke_companion_failfast_gate >/dev/null 2>&1 && tfail "companion-no-source-should-red" || tpass "companion-no-source-reds"
   printf '[host] 随包插件 dsh-desktop-companion 未就位，加入待装清单\n' >"$OUT"
-  smoke_companion_gate >/dev/null 2>&1 && tfail "companion-pending-no-active-should-red" || tpass "companion-pending-no-active-reds"
+  smoke_companion_failfast_gate >/dev/null 2>&1 && tpass "companion-inflight-failfast-passes" || tfail "companion-inflight-failfast-passes"
+  printf '[host] 随包插件 dsh-desktop-companion 未就位，加入待装清单\n' >"$OUT"
+  smoke_companion_terminal_gate >/dev/null 2>&1 && tfail "companion-pending-no-active-should-red" || tpass "companion-pending-no-active-reds"
   printf '[host] 随包插件 dsh-desktop-companion 未就位，加入待装清单\n[host] 随包插件经事务管线换入 active（staged 体检已过）\n' >"$OUT"
-  smoke_companion_gate >/dev/null 2>&1 && tpass "companion-pending-then-active-passes" || tfail "companion-pending-then-active-passes"
+  smoke_companion_terminal_gate >/dev/null 2>&1 && tpass "companion-pending-then-active-passes" || tfail "companion-pending-then-active-passes"
   # 引导路径成功措辞（R1/R2 B1 回归钉）：CI 腿全新环境走引导，成功行是「本轮有插件…」——
   # 前缀不含「随包插件」，ACTIVE_RE 必须锚公共子串。
   printf '[host] 随包插件 dsh-desktop-companion 未就位，加入待装清单\n[host] 本轮有插件经事务管线换入 active（staged 体检已过，无需再探）\n' >"$OUT"
-  smoke_companion_gate >/dev/null 2>&1 && tpass "companion-bootstrap-active-variant-passes" || tfail "companion-bootstrap-active-variant-passes"
+  smoke_companion_terminal_gate >/dev/null 2>&1 && tpass "companion-bootstrap-active-variant-passes" || tfail "companion-bootstrap-active-variant-passes"
   printf '[host] 随包插件无需安装（companion 已就位），跳过\n' >"$OUT"
-  smoke_companion_gate >/dev/null 2>&1 && tpass "companion-already-installed-passes" || tfail "companion-already-installed-passes"
+  smoke_companion_terminal_gate >/dev/null 2>&1 && tpass "companion-already-installed-passes" || tfail "companion-already-installed-passes"
   : >"$OUT"
-  smoke_companion_gate >/dev/null 2>&1 && tpass "companion-silent-passes" || tfail "companion-silent-passes"
+  smoke_companion_terminal_gate >/dev/null 2>&1 && tpass "companion-silent-passes" || tfail "companion-silent-passes"
   return 0
 }

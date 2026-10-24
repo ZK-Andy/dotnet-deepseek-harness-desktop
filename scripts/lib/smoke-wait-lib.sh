@@ -15,9 +15,10 @@ source "$_SMOKE_WAIT_LIB_DIR/common.sh"
 # shellcheck source=./smoke-signals-lib.sh
 source "$_SMOKE_WAIT_LIB_DIR/smoke-signals-lib.sh"
 
-# companion 装配判门（唯一家；smoke_wait_ready 每轮调用，fail-fast）：已就位（无需安装）或
-# 换入 active → 过；失败/异常跳过/待装未完成 → 1（红，不等①——装配状态与探活无关）。
-smoke_companion_gate() {
+# companion 装配判门分两层（run `40140846103` 四腿红实证的竞速修复）：failfast=确定失败信号
+# （失败/异常跳过行出现即终态失败），smoke_wait_ready 每轮查；terminal=终态在位断言（待装后
+# 未见换入 active），只在①落定后/进程退出/等待窗尽调——装配中（npm install 在途）不竞速判红。
+smoke_companion_failfast_gate() {
   if log_has "$COMPANION_FAIL_RE"; then
     error "companion 装配失败（见随包插件安装失败行；stderr 详情在 host.log 的 dsh plugin add 输出）"
     return 1
@@ -26,6 +27,8 @@ smoke_companion_gate() {
     error "companion 装配被静默跳过（spec 解析失败或安装器资源未携带）"
     return 1
   fi
+}
+smoke_companion_terminal_gate() {
   if log_has "$COMPANION_PENDING_RE" && ! log_has "$COMPANION_ACTIVE_RE"; then
     error "companion 待装未完成（未就位后未见换入 active——装配中断或放弃）"
     return 1
@@ -190,7 +193,8 @@ progress_markers() { # $1=文件：标记行数（缺失即 0）
 #   ① 命中即进落定等待，落定结果即返回值（失败即 FAIL，不翻回安装链）；
 #   ② 命中后不收工，继续等①至超时/退出；超时/退出仍未见① = FAIL（②回退门已砍——
 #     安装链活着不是绿，②仅作观测信号）；
-#   ③ companion 装配判门每轮查（装配在 spawn 前收口，fail-fast，与①无关）；
+#   ③ companion 判门分两层（run `40140846103` 竞速修复）：failfast（失败/异常跳过行）每轮查；
+#     终态在位断言（待装未见换入 active）只在①落定后/进程退出/窗尽调，装配在途不判；
 #   ④ 进程退出补扫一次（信号可能落在退出前），按最佳信号收工；
 #   ⑤ 无进展满窗即提前收工 FAIL（零进展的②不是"慢"，是死）。
 # 每次循环打心跳并跑看门狗。
@@ -202,10 +206,10 @@ smoke_wait_ready() {
   OUT="$out"; LOG="$log"
   progress_watchdog_reset
   for _ in $(seq 1 "$SMOKE_WAIT"); do
-    if ! smoke_companion_gate; then return 1; fi
+    if ! smoke_companion_failfast_gate; then return 1; fi
     if log_has "$FULL_RE"; then
       grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
-      wait_settled "$pid"
+      wait_settled "$pid" && smoke_companion_terminal_gate
       return $?
     fi
     if [[ $boot_seen -eq 0 ]] && log_has "$BOOT_RE"; then
@@ -214,9 +218,10 @@ smoke_wait_ready() {
       log "已见②安装链（$((SECONDS - start))s），继续等①至超时/退出…"
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
+      if ! smoke_companion_terminal_gate; then return 1; fi
       if log_has "$FULL_RE"; then
         grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
-        wait_settled ""
+        wait_settled "" && smoke_companion_terminal_gate
         return $?
       fi
       if log_has "$BOOT_RE"; then
@@ -232,9 +237,10 @@ smoke_wait_ready() {
     fi
     sleep 1
   done
+  if ! smoke_companion_terminal_gate; then return 1; fi
   if log_has "$FULL_RE"; then
     grep -m1 -E "$FULL_RE" "$OUT" 2>/dev/null || grep -m1 -E "$FULL_RE" "$LOG"
-    wait_settled "$pid"
+    wait_settled "$pid" && smoke_companion_terminal_gate
     return $?
   fi
   if log_has "$BOOT_RE"; then
