@@ -17,7 +17,7 @@ Status: proposed
 
 结构成因（前两条为实测观察，第三条为【推断 · 未证】）：
 
-1. 壳只创建一个 WebView 承载全部 dsh Web UI（[Program.cs](../../../../src/DeepSeek.Harness.Desktop/Program.cs) 加载 `dsh web:` URL）；市场面板是同一文档里的 React 区域，渲染主线程即整个 UI 的主线程。
+1. 壳只创建一个 WebView 承载全部 dsh Web UI（[ShellWindow.cs](../../../../src/DeepSeek.Harness.Desktop/Hosting/ShellWindow.cs) 建 `NativeWebView` 并加载 `dsh web:` URL）；市场面板是同一文档里的 React 区域，渲染主线程即整个 UI 的主线程。
 2. dsh server、壳进程与合成器同处一个 systemd 用户会话 cgroup（`session-3.scope`），没有 `MemoryMax`/`MemorySwapMax`。增长到 6 GB 时整机进 swap，托盘与合成器一起被拖住，`systemd-oomd` 的判据是会话压力而非具体进程树，没有可用的恢复路径。
 3. 健康探针每 10 s 跑一次 `document.body.innerText`（[PageHealthMonitor.cs](../../../../src/DeepSeek.Harness.Desktop/PageBridge/PageHealthMonitor.cs)）：强制全文档 layout，在重页面上本身是额外负载；主线程被占时求值排队不返回，`dead` 计数也走不到有界恢复。本次事件中探针没有留下任何 dead 行，与该解释一致。
 
@@ -34,6 +34,17 @@ Status: proposed
 3. **探针降本**：页面每几秒把心跳写进一个 `data-*` 属性或全局变量，壳只读那个值；不再用 `innerText` 触发全文档 layout。
 
 验收：一个故意分配内存的合成负载页验证「限额触发 → 恢复面出现 → dsh server 不被误杀」；三平台各跑一遍。
+
+## Slices
+
+G5 已于 2026-10-24 落地，原文「随迁移一并落地」的前置条件已满足。整项不是一片能收的活，按下列步骤在**一个批次内**依次交付；**编号即执行顺序**，依赖在各条内标注。步骤不是会话单元——待办只记批次。
+
+- **S1 打包面与委派验收（CI，阻塞 S4）**：把委派做成打包产物的一部分，并让打包流水线自己验——`/usr/bin/<app>` 改为包装脚本：先试 `systemd-run --user --scope --property=Delegate=yes -- <app>`，user manager 不可达时回退直启（可用性优先，回退留痕）；`.desktop` 的 `Exec` 指向该包装脚本。`package.yml` 在安装冒烟之后新增断言步：以安装后的入口拉起，读 `/proc/<pid>/cgroup` 断言 scope 存在且目录可写、`memory` 控制器可开，再把子进程写进带 `MemoryMax` 的子 cgroup 验证限额只作用于子树。跑不出委派 scope 即该 job 红——不给「稍后人工验」留口子；回退路径同样断言（把 user manager 挡住后应用仍能正常起窗）。本机沙箱（bwrap，`/` 只读绑定、PID 1 非 systemd）不具执行条件，唯一执行面是 CI；sudo 仅用于 `loginctl enable-linger` 造 user manager，断言以普通用户执行。
+- **S2 dsh 独立账本（Linux）**：spawn 改经 `systemd-run --user --scope --collect --property=MemoryMax=<配置>`，Stop 与收割按 scope 而非 pid；判据「dsh 死 = 服务重启」不牵连壳与页面。命令构造与生命周期可单测，不依赖 S1。上游已把沙箱子进程放进 `dsh-subprocess-<pid>-<hex>.scope`（本会话自身 cgroup 即一例），命名形状有先例。
+- **S3 探针降本**：`PageHealthMonitor` 的 `innerText` 全文档 layout 改为页面写 `data-*` 心跳、壳只读该属性；同步 `Parse` 判据、回归测试与诊断包快照。无前置，可与 S2 并行。
+- **S4 渲染进程收编（依赖 S1 通过）**：建 WebView 后按 pid 发现 `WebKitWebProcess`，写入带 `MemoryMax` / `MemorySwapMax` 的委派子 cgroup；越界后走 dead → reload。
+- **S4′ 兜底（S1 不通过时）**：壳自身 scope 加帽 + 外部 `Restart=on-failure` 监督。接受整壳被杀、桌面不死并自动回来；放弃「reload 而非重启」这条收益。
+- **S5 阈值标定 + 平台验收（依赖 S2 + S4/S4′）**：合成负载页验证「限额触发 → 恢复面出现 → 另一账本未被误杀」；阈值对照浸泡基线标定，防误杀长列表/图片墙。平台保证不对称：Windows 用 Job Object（`JobMemoryLimit`），macOS 无按进程树硬上限原语（只能观测 + 主动 kill），三平台验收不得合并成同一判据。
 
 ## Alternatives considered
 
