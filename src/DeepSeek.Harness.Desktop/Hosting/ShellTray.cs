@@ -1,13 +1,15 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 
 namespace DeepSeek.Harness.Desktop.Hosting;
 
 /// <summary>G1 系统托盘（Avalonia <see cref="TrayIcon"/>）：图标 + 菜单（显示主窗 / 检查更新 / 重启 / 退出）。
 /// 只由 <see cref="TryCreate"/> 创建：图标缺失或构造失败即返回 null，关窗随之直接退出——托盘是
 /// 增强能力，绝不挡退出。菜单内容取旧栈同一模型 <see cref="TrayMenuActions"/>（文案与位次的单一家，
-/// 两宿主共用），本类只把条目 id 映射成原生回调；语言切换后的菜单重建尚未接（locale 命令已在 G2 装配，
-/// 但改语言不会重建本菜单，缺口记在 ADR avalonia-g3-exit-restart 的残项）。
+/// 两宿主共用），本类只把条目 id 映射成原生回调。菜单随 UI 语言重建：<see cref="UiLocale.Changed"/>
+/// 经 <see cref="TrayMenuRebuild"/> 触发后，在 UI 线程按当前语言重造并换装（ADR tray-menu-locale-rebuild）；
+/// 托盘不可用时不建绑定。
 /// 「检查更新」项与自更新栈同生灭（未装载即不出现，与旧宿主同判据）；检查结论落页面横幅
 /// （ADR avalonia-g3-update-surface）——Avalonia 托盘没有系统通知面，旧宿主的通知通道随迁移下线。
 /// 菜单动作都是原生回调，不经页面事件中继（托盘没有页面侧事件源）。</summary>
@@ -15,22 +17,41 @@ internal sealed class ShellTray : IDisposable
 {
     private readonly TrayIcon _icon;
     private readonly TrayIcons _icons;
+    private readonly UiLocale _uiLocale;
     private readonly Action _recall;
+    private readonly Action? _checkUpdate;
+    private readonly Action _restart;
     private readonly Action _quit;
+    private readonly Action<string> _log;
+    private readonly TrayMenuRebuild _menuRebuild;
+    private int _disposed;
 
-    private ShellTray(TrayIcon icon, TrayIcons icons, Action recall, Action quit, Action<string> log)
+    private ShellTray(
+        TrayIcon icon,
+        TrayIcons icons,
+        UiLocale uiLocale,
+        Action recall,
+        Action? checkUpdate,
+        Action restart,
+        Action quit,
+        Action<string> log)
     {
         _icon = icon;
         _icons = icons;
+        _uiLocale = uiLocale;
         _recall = recall;
+        _checkUpdate = checkUpdate;
+        _restart = restart;
         _quit = quit;
+        _log = log;
+        _menuRebuild = new TrayMenuRebuild(uiLocale, ScheduleMenuRebuild);
     }
 
     /// <summary>尝试挂托盘。返回 null = 本机不可用（图标缺失、无 StatusNotifierItem、缺原生库），
     /// 调用方据此让关窗直接退出。</summary>
     /// <param name="iconPath">托盘图标文件（可用性由装配层探测后传入）。</param>
     /// <param name="iconAvailable">图标文件是否存在（装配层探测，免本类直调文件系统）。</param>
-    /// <param name="uiLocale">UI 语言单点（决定创建时的菜单文案；切换重建随 G3）。</param>
+    /// <param name="uiLocale">UI 语言单点（创建时的菜单文案与后续重建的事件源）。</param>
     /// <param name="recall">唤回主窗动作（经唤回单点）。</param>
     /// <param name="checkUpdate">检查更新动作；null = 自更新栈未装载（菜单项随之消失）。</param>
     /// <param name="restart">重启动作（退出管道：回收运行时后拉起新实例）。</param>
@@ -46,6 +67,7 @@ internal sealed class ShellTray : IDisposable
         }
 
         TrayIcon? created = null;
+        ShellTray? tray = null;
         var icons = new TrayIcons();
         try
         {
@@ -53,27 +75,68 @@ internal sealed class ShellTray : IDisposable
             {
                 Icon = new WindowIcon(iconPath),
                 ToolTipText = "DeepSeek Harness Desktop",
-                Menu = BuildMenu(uiLocale, recall, checkUpdate, restart, quit),
                 IsVisible = true,
             };
             created.Clicked += (_, _) => recall();
+            tray = new ShellTray(created, icons, uiLocale, recall, checkUpdate, restart, quit, log);
+            created.Menu = tray.BuildCurrentMenu();
             icons.Add(created);
             TrayIcon.SetIcons(Application.Current, icons);
-            return new ShellTray(created, icons, recall, quit, log);
+            return tray;
         }
         catch (Exception ex)
         {
-            // 无托盘环境（无 StatusNotifierItem、缺原生库）：只留痕不挡启动；半成品就地释放
-            created?.Dispose();
+            // 无托盘环境（无 StatusNotifierItem、缺原生库）：只留痕不挡启动；半成品就地释放。
+            // 已构造的 ShellTray 必须先 Dispose——它已订阅进程级 UiLocale，单释放图标会把订阅漏到进程结束。
+            if (tray is not null)
+            {
+                tray.Dispose();
+            }
+            else
+            {
+                created?.Dispose();
+            }
+
             icons.Clear();
             log($"[host] 系统托盘不可用，关窗直接退出：{ex.Message}");
             return null;
         }
     }
 
+    /// <summary>语言变化后的重建（ADR tray-menu-locale-rebuild）：事件来自页面桥线程，构建与换装都在
+    /// UI 线程完成——原生菜单只能在该线程替换，构建异常也不落回 <see cref="UiLocale.Changed"/> 的调用方。
+    /// 托盘已释放时投递体直接丢弃；失败留痕并保留旧菜单。</summary>
+    private void ScheduleMenuRebuild() =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                _icon.Menu = BuildCurrentMenu();
+            }
+            catch (Exception ex)
+            {
+                _log($"[host] 托盘菜单重建失败：{ex.Message}");
+            }
+        });
+
+    /// <summary>按当前语言构造菜单：首建与重建共用的唯一入口。</summary>
+    /// <returns>原生菜单。</returns>
+    private NativeMenu BuildCurrentMenu() => BuildMenu(_uiLocale, _recall, _checkUpdate, _restart, _quit);
+
     /// <inheritdoc />
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        _menuRebuild.Dispose();
         try
         {
             _icon.IsVisible = false;
@@ -121,9 +184,9 @@ internal sealed class ShellTray : IDisposable
     }
 
     /// <summary>条目 id → 原生动作（纯映射，可单测）：未知 id 视为装配错误直接抛出——
-    /// 菜单模型与动作表由同一份条目清单生成，走到未知分支说明两处已漂移。抛出点在构建期
-    /// （<see cref="BuildMenu"/> 内、<see cref="TryCreate"/> 的 try 里），结果是整块托盘不注册、
-    /// 关窗直退并留一行日志，不会在点击回调里崩。</summary>
+    /// 菜单模型与动作表由同一份条目清单生成，走到未知分支说明两处已漂移。首建时抛出点在
+    /// <see cref="TryCreate"/> 的 try 里（整块托盘不注册、关窗直退并留一行日志）；运行期重建时
+    /// 抛出被 <see cref="ScheduleMenuRebuild"/> 的 catch 收成日志并保留旧菜单，不会在点击回调里崩。</summary>
     /// <param name="id">条目 id（<see cref="TrayMenuActions"/> 的常量）。</param>
     /// <param name="recall">唤回主窗。</param>
     /// <param name="checkUpdate">检查更新；null = 未装载（该条目不应出现）。</param>

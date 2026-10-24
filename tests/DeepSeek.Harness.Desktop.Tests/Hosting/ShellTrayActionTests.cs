@@ -2,11 +2,68 @@ using Avalonia.Controls;
 
 namespace DeepSeek.Harness.Desktop.Tests.Hosting;
 
-/// <summary>新宿主托盘菜单（ADR avalonia-g3-update-surface）：内容取自 <c>TrayMenuActions</c> 同一模型
-/// （显示主窗 / 检查更新 / 分隔线 / 重启 / 退出），本类只做「条目 id → 原生回调」映射。
-/// 语言切换后的重建不在本组覆盖（缺口记在 avalonia-g3-exit-restart 的残项）。</summary>
+/// <summary>新宿主托盘菜单（ADR avalonia-g3-update-surface、tray-menu-locale-rebuild）：内容取自
+/// <c>TrayMenuActions</c> 同一模型（显示主窗 / 检查更新 / 分隔线 / 重启 / 退出），本类做「条目 id → 原生回调」
+/// 映射；语言变化后的重建经 <c>TrayMenuRebuild</c> 驱动，与本组共用同一份菜单模型。</summary>
 public class ShellTrayActionTests
 {
+    /// <summary>语言变化触发一次重建回调（构建与挂载由回调负责，见 <c>ShellTray.ScheduleMenuRebuild</c>）。</summary>
+    [Fact]
+    public void Rebuild_OnLocaleChange_InvokesOnce()
+    {
+        var locale = new UiLocale();
+        int applied = 0;
+        using var rebuild = new TrayMenuRebuild(locale, () => applied++);
+
+        locale.Set("en");
+
+        Assert.Equal(1, applied);
+    }
+
+    /// <summary>同值上报不触发重建（<see cref="UiLocale.Set"/> 只在语言实际变化时发事件）。</summary>
+    [Fact]
+    public void Rebuild_WhenLocaleValueUnchanged_DoesNotInvoke()
+    {
+        var locale = new UiLocale();
+        int applied = 0;
+        using var rebuild = new TrayMenuRebuild(locale, () => applied++);
+
+        locale.Set("zh-CN");
+
+        Assert.Equal(0, applied);
+    }
+
+    /// <summary>释放后退订：此后的语言变化不再触发重建回调。</summary>
+    [Fact]
+    public void Rebuild_AfterDispose_DoesNotInvoke()
+    {
+        var locale = new UiLocale();
+        int applied = 0;
+        var rebuild = new TrayMenuRebuild(locale, () => applied++);
+
+        rebuild.Dispose();
+        locale.Set("en");
+
+        Assert.Equal(0, applied);
+    }
+
+    /// <summary>重建的内容面：按英文 locale 构造的菜单逐位等于英文模型（文案换了、位次没换）。</summary>
+    [Fact]
+    public void BuildMenu_EnglishLocale_UsesEnglishLabels()
+    {
+        var english = new UiLocale();
+        english.Set("en");
+
+        NativeMenu menu = ShellTray.BuildMenu(english, () => { }, () => { }, () => { }, () => { });
+
+        Assert.Equal(
+            TrayMenuActions.BuildEntries(includeUpdateItem: true, english).Select(entry => entry.Label),
+            Headers(menu));
+        Assert.NotEqual(
+            TrayMenuActions.BuildEntries(includeUpdateItem: true, new UiLocale()).Select(entry => entry.Label),
+            Headers(menu));
+    }
+
     /// <summary>四条菜单 id 各自映射到对应动作（互不串位：检查更新不得落到唤回上）。</summary>
     [Fact]
     public void ResolveAction_MapsEachMenuIdToItsOwnAction()

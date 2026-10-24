@@ -52,6 +52,7 @@
     "CloseToTrayCommandRouter.cs",
     "TrayCheckFeedback.cs",
     "TrayMenuActions.cs",
+    "TrayMenuRebuild.cs",
     "TrayRecallMaximize.cs"
   ],
   "Update": [

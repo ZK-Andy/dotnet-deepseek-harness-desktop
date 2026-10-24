@@ -58,7 +58,7 @@ A .NET desktop client for [DeepSeek Harness](https://github.com/deepseek-ai/deep
 **Window and system integration**
 
 - 🪟 **Frameless window** — all three platforms drop the native title bar for a shell-drawn one: traffic lights top left, seamless sidebar clearance, inline collapse toggle, draggable top strip, double-click zoom.
-- 🖥️ **System tray** — closing the window minimizes to the tray by default (switchable to quit in Settings); the menu offers show main window / check for updates (when the self-update stack is available) / restart / quit, labelled in the host UI language (rebuilding the menu after a runtime language switch is not wired yet); quit and restart share one orderly pipeline that reaps the runtime cleanly.
+- 🖥️ **System tray** — closing the window minimizes to the tray by default (switchable to quit in Settings); the menu offers show main window / check for updates (when the self-update stack is available) / restart / quit, labelled in the host UI language and rebuilt when the language changes at runtime; quit and restart share one orderly pipeline that reaps the runtime cleanly.
 - 🪟 **Window state memory** — the last size and maximized state are restored on restart (already kept across tray hide/recall).
 - 🚀 **Single-instance activation** — clicking the launcher again raises the existing window instead of spawning a duplicate (enforced on `Linux` / `macOS`; `Windows` does not arbitrate, so a second launch starts a new instance).
 - 🔁 **Launch at login** — one-click toggle in Settings (XDG autostart / registry Run / LaunchAgents).
