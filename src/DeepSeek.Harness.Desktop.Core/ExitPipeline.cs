@@ -11,7 +11,7 @@ public sealed class ExitPipeline
     private readonly Action _cancelSupervisor;
     private readonly Action _stopHost;
     private readonly Action _releaseMarker;
-    private readonly Action? _disposeListener;
+    private readonly Action _releaseLocalPorts;
     private readonly Action _closeWindow;
     private readonly Action _startWatchdog;
     private readonly Action<string>? _log;
@@ -22,7 +22,7 @@ public sealed class ExitPipeline
     /// <param name="cancelSupervisor">取消监督器（掐断恢复分支再 spawn）。</param>
     /// <param name="stopHost">停止运行时宿主（整树击杀 dsh）。</param>
     /// <param name="releaseMarker">释放 run-marker（失败仅致下轮按非受控退出自愈，不挡前两步）。</param>
-    /// <param name="disposeListener">释放单实例监听器；null = 未启用（Windows/降级）。</param>
+    /// <param name="releaseLocalPorts">释放本进程持有的本地监听端口（单实例 UDS 锁与回环代理监听 socket）。</param>
     /// <param name="closeWindow">关闭窗口。</param>
     /// <param name="startWatchdog">看门狗启动动作；null = 真看门狗（<see cref="ScheduleQuitWatchdog"/>），测试可注入记序 fake。</param>
     /// <param name="log">日志回调（可选）。</param>
@@ -30,7 +30,7 @@ public sealed class ExitPipeline
         Action cancelSupervisor,
         Action stopHost,
         Action releaseMarker,
-        Action? disposeListener,
+        Action releaseLocalPorts,
         Action closeWindow,
         Action? startWatchdog = null,
         Action<string>? log = null)
@@ -38,7 +38,7 @@ public sealed class ExitPipeline
         _cancelSupervisor = cancelSupervisor;
         _stopHost = stopHost;
         _releaseMarker = releaseMarker;
-        _disposeListener = disposeListener;
+        _releaseLocalPorts = releaseLocalPorts;
         _closeWindow = closeWindow;
         _startWatchdog = startWatchdog ?? ScheduleQuitWatchdog;
         _log = log;
@@ -58,7 +58,7 @@ public sealed class ExitPipeline
         _releaseMarker();
     }
 
-    /// <summary>托盘/恢复页有序退出：回收三件套 → 释放监听器 → 关窗 → 看门狗；
+    /// <summary>托盘/恢复页有序退出：回收三件套 → 释放本地监听端口 → 关窗 → 看门狗；
     /// once-guard：重复调用为 no-op。</summary>
     public void OrderlyQuit()
     {
@@ -69,15 +69,16 @@ public sealed class ExitPipeline
 
         _log?.Invoke("[tray] 有序退出：回收运行时后关闭窗口");
         ReapRuntime();
-        _disposeListener?.Invoke();
+        _releaseLocalPorts();
         _closeWindow();
         _startWatchdog();
     }
 
-    /// <summary>应用重启（ADR app-restart-native-switch）：回收三件套 → 释放监听器 → <b>拉起新实例</b> →
+    /// <summary>应用重启（ADR app-restart-native-switch）：回收三件套 → 释放本地监听端口 → <b>拉起新实例</b> →
     /// 关窗 → 看门狗；once-guard 与 <see cref="OrderlyQuit"/> 共享（先到者得，另一路径即 no-op）。
-    /// 回收与监听器释放必须先于 spawn：旧 dsh 树不死透，本进程看门狗的 <c>stopHost</c> 可能击杀
-    /// 新实例的 dsh；监听器/marker 不释放，新实例过不了单实例仲裁。</summary>
+    /// 回收与端口释放必须先于 spawn：旧 dsh 树不死透，本进程看门狗的 <c>stopHost</c> 可能击杀
+    /// 新实例的 dsh；单实例锁不释放，新实例过不了仲裁；回环代理端口不释放，继任者试绑记忆端口会
+    /// 撞上旧监听而降级 OS 重分配，本次重启丢一次会话恢复（ADR restart-proxy-port-release）。</summary>
     /// <param name="spawnSuccessor">拉起新实例的动作（宿主接线为 <c>AppRelaunch.SpawnSelf</c>）。</param>
     public void Restart(Action spawnSuccessor)
     {
@@ -88,7 +89,7 @@ public sealed class ExitPipeline
 
         _log?.Invoke("[tray] 重启：回收运行时后拉起新实例");
         ReapRuntime();
-        _disposeListener?.Invoke();
+        _releaseLocalPorts();
         spawnSuccessor();
         _closeWindow();
         _startWatchdog();

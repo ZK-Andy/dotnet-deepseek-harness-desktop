@@ -19,7 +19,8 @@ companion 设置区的「重启应用」落空；Web 通道失效时托盘菜单
 ## Decision
 
 - **退出管道在装配期构造**：`AvaloniaHost.CreateLifetime` 以回收三步（监督器取消 → `host.Stop` →
-  `RunMarker.Release`）、监听器释放与关窗动作构造 `ExitPipeline`，经 `RunUi` 传给 `ShellApplication`。
+  `RunMarker.Release`）、本地端口释放（单实例 UDS 锁 + 回环代理监听 socket）与关窗动作构造
+  `ExitPipeline`，经 `RunUi` 传给 `ShellApplication`。
   关窗动作在调用期取 `desktop.MainWindow` 并投递 UI 线程（建窗晚于装配，托盘/命令面调用必晚于建窗）。
   监督器取消在恢复/监督片回填为「取消监督令牌源 + 取消引导任务」（[avalonia-g1g3-recovery-bootstrap-supervision](2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)）：管道构造参数不变。
 - **托盘退出/重启收在 `ShellCommandRegistration.CreateTrayActions`**：两个动作都先 `CloseGate.ApproveExit()`
@@ -28,8 +29,8 @@ companion 设置区的「重启应用」落空；Web 通道失效时托盘菜单
   「重启」项（显示主窗 / 重启 / 分隔 / 退出），仍是原生回调；启动失败面的「退出」与托盘共用同一个 quit
   动作。
 - **`desktop.app.restart` 复用既有 `AppRestartCommandRouter`**：受理即回帧、200ms 冲刷延迟后执行，先批准
-  闸门再走同一个重启动作；回收与监听器释放先于 spawn（旧 dsh 树不死透会被看门狗击杀新实例，监听器不
-  释放新实例过不了单实例仲裁）。
+  闸门再走同一个重启动作；回收与本地端口释放先于 spawn（旧 dsh 树不死透会被看门狗击杀新实例；单实例
+  锁不释放新实例过不了仲裁；代理端口不释放继任者绑不回记忆端口）。
 - **spawn 失败仍关窗**：`SpawnGuarded` 把 `AppRelaunch.SpawnSelf` 的异常收成一行日志后返回，管道继续关窗
   并武装看门狗——否则留下 dsh 已死、窗口还在、看门狗未武装的僵尸壳，且管道 once-guard 已置位，此后
   托盘「退出/重启」与 `desktop.app.restart` 全部变成空操作。
@@ -53,16 +54,20 @@ companion 设置区的「重启应用」落空；Web 通道失效时托盘菜单
 ## Consequences
 
 - 托盘「退出 / 重启」、设置区「重启应用」与启动失败面「退出」在新宿主下可用且同源；退出序为
-  监督器取消 → 停运行时 → 释放 marker → 释放监听器 → 关窗（重启则先拉起新实例）→ 8s 看门狗。
-  `Run` 尾部的资源释放仍在关窗后兜底（`Stop` / `Release` / `Listener.Dispose` 均幂等）。
+  监督器取消 → 停运行时 → 释放 marker → 释放本地监听端口（单实例锁 + 代理监听 socket）→ 关窗
+  （重启则先拉起新实例）→ 8s 看门狗。`Run` 尾部的资源释放仍在关窗后兜底：`Stop` / `Release` /
+  `Listener.Dispose` 幂等，代理侧的 `ProxySetup.Dispose`（cancel + dispose CTS）不可重复，靠
+  `ShellResources` 的 `_disposed` 守卫保证只调用一次。
 - 窗口「直退」路径（托盘不可用或偏好关闭）不经管道，靠 `Run` 尾部回收——那条路径没有 8s 看门狗。
 - 托盘菜单含「检查更新」，且 Avalonia 托盘没有系统通知面，菜单触发的检查结论经「唤回主窗 + 页内横幅」送达
   （[avalonia-g3-update-surface](2026-10-23-avalonia-g3-update-surface.md)）。
 - `desktop.recovery.exit` 已随恢复/监督片注册（[avalonia-g1g3-recovery-bootstrap-supervision](2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)）：恢复页承载与退出契约见该篇。
 - 监督器取消已回填为 `CancelAndJoin`（取消监督令牌源与引导任务 + 按时限 join；[avalonia-g1g3-recovery-bootstrap-supervision](2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision.md)）：重启/退出先掐断监督分支再 spawn 或 Stop。
-- 语言切换后的托盘菜单重建仍未接（locale 命令已在 G2 装配，但改语言不重建菜单）。
-- 已知缺口（不在本片；旧宿主同形）：重启时回环代理端口由本进程持有到 `Run` 尾部才释放，继任者若先于
-  那次释放绑定，会走「记忆端口被占 → OS 重分配」，本次重启丢一次会话恢复。
+- 托盘菜单随 `UiLocale.Changed` 重建（[tray-menu-locale-rebuild](2026-10-24-tray-menu-locale-rebuild.md)）：
+  运行中切语言后菜单文案跟上，菜单模型与位次仍在 `TrayMenuActions` 单点。
+- 重启的端口释放覆盖回环代理监听 socket（[restart-proxy-port-release](../bug-fix/2026-10-24-restart-proxy-port-release.md)）：
+  继任者 spawn 前记忆端口已可绑，不再触发「被占 → OS 重分配」丢会话恢复；Windows 的 `TIME_WAIT`
+  边缘仍可能让继任者首次绑定失败并漂移一次（见该篇的已知边界）。
 - 无新增包引用；`docs/architecture.md` 托盘段与 README 双语迁移段同批更新。
 - 增量读数：gross 424 / 既有文件净增 +100 / fanout 7（帽 600 / 150 / 15）。
 
@@ -71,5 +76,7 @@ companion 设置区的「重启应用」落空；Web 通道失效时托盘菜单
 `ShellCommandRegistrationTests`（6 例）：四条命令族的覆盖面与不侵占（更新/托盘事件/引导/恢复/窗口）、
 `desktop.app.restart` 的「闸门放行 → 回收 → spawn → 关窗 → 看门狗」次序、托盘退出的批准时序（首个管道
 步骤即读到已批准）、spawn 抛错仍关窗的回归、closeToTray 状态帧、诊断导出端口路径。
-`CreateLifetime` 的生产绑定（哪台 host / marker / 监听器、关窗投递）属 Avalonia 应用装配，单测不覆盖，
-由实跑验收（托盘退出/重启、设置区重启）承担；测试基线数字的唯一事实源是 `scripts/test-baseline.json`。
+`CreateLifetime` 的生产绑定（哪台 host / marker / 端口释放动作、关窗投递）属 Avalonia 应用装配，单测不
+覆盖，由实跑验收（托盘退出/重启、设置区重启）承担；端口释放动作本身的接线由
+`ShellResourcesTests` 钉住（ADR restart-proxy-port-release）。测试基线数字的唯一事实源是
+`scripts/test-baseline.json`。

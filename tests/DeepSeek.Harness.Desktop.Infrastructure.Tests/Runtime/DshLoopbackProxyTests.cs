@@ -1175,6 +1175,52 @@ public class DshLoopbackProxyTests
         Assert.Equal(proxy.Url.Port, persisted);
     }
 
+    /// <summary>StopListener 只停监听、不掐在途连接（ADR restart-proxy-port-release）：挂起中的 SSE 仍能收到首行。
+    /// 与全量 <c>Dispose</c> 的区别正是本片的选型——后者释放转发客户端并中断该流。</summary>
+    [Fact]
+    public async Task StopListener_KeepsInFlightConnection()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stub = new StubDshHandler();
+        var forward = new DshShellForward(stub, s_fast);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, stub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+        using var page = new HttpClient();
+
+        using HttpResponseMessage response = await page.GetAsync(
+            new Uri(proxy.Url, "events"), HttpCompletionOption.ResponseHeadersRead, cts.Token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        proxy.StopListener();
+
+        using var reader = new StreamReader(
+            await response.Content.ReadAsStreamAsync(cts.Token), Encoding.UTF8);
+        Assert.Equal(": connected", await reader.ReadLineAsync(cts.Token));
+        await runCts.CancelAsync();
+    }
+
+    /// <summary>StopListener 只放端口、不收摊（ADR restart-proxy-port-release）：重启在继任者 spawn 前调用，
+    /// 继任者必须能立刻绑回同一端口；完整 Dispose 仍是幂等收摊，可在此后安全重复调用。</summary>
+    [Fact]
+    public void StopListener_ReleasesPortForSuccessor()
+    {
+        var forward = new DshShellForward(new StubDshHandler(), s_fast);
+        using var proxy = new DshLoopbackProxy(forward, _ => { }, new StubDshHandler());
+        int port = proxy.Url.Port;
+
+        proxy.StopListener();
+
+        using var successor = new TcpListener(IPAddress.Loopback, port);
+        successor.Start(); // 端口已被旧监听放掉：继任者可绑记忆端口，不触发 OS 重分配
+        Assert.Equal(port, ((IPEndPoint)successor.LocalEndpoint).Port);
+
+        proxy.Dispose(); // 端口已停后重复收摊不得抛（幂等）
+    }
+
     /// <summary>桩 dsh（内存传输）：token 跳 303 + 铸 cookie；/events 永不结束的 SSE；
     /// /rpc 断言头并回体；/goto-ext 外链；/loop 自循环；/chat 带 set-cookie 的 200（验剥离）。</summary>
     private sealed class StubDshHandler : HttpMessageHandler

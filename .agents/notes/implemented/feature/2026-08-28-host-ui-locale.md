@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Erratum: 2026-10-24 — 托盘重建落点「Program 接线 → `TrayService.SetMenu`」随 G5 旧宿主删除；现行落点 = `ShellTray` + `TrayMenuRebuild`（见 [2026-10-24-tray-menu-locale-rebuild](../architecture/2026-10-24-tray-menu-locale-rebuild.md)）。决定本身（`UiLocale.Changed` 驱动托盘菜单重建）不变，正文与 Testing 段的验收意图不动。
+
 ## Problem
 
 companion 客户端已接入 dsh i18n（中⇄英随语言切换），但宿主自绘 UI——托盘菜单（显示主窗/检查更新/退出）与三类宿主横幅（版本底线/非受控退出/更新就绪，含「知道了」按钮）——硬编码中文。dsh 界面切英文后这些宿主面仍为中文，双语体验断在宿主侧。

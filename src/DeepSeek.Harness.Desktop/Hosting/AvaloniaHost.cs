@@ -176,12 +176,15 @@ internal static class AvaloniaHost
     }
 
     /// <summary>退出管道装配（ADR avalonia-g3-exit-restart）：回收三步（监督器取消 → 停宿主 → 释放 marker）、
-    /// 监听器释放与关窗动作都是构造数据；关窗动作在调用期取主窗并投递到 UI 线程（建窗晚于本方法，
-    /// 而托盘/命令面调用必晚于建窗）。监督器取消同时掐断未落定的引导任务（ADR
-    /// avalonia-g1g3-recovery-bootstrap-supervision）：引导任务自己 spawn dsh，留着它会把刚回收的树再拉起来。</summary>
+    /// 本地端口释放与关窗动作都是构造数据；端口释放动作由接线层给出（
+    /// <see cref="ShellResources.ReleaseLocalPorts"/>，含单实例 UDS 锁与回环代理监听 socket）——
+    /// 重启时它必须先于继任者 spawn，否则继任者绑不回记忆端口（ADR restart-proxy-port-release）。关窗动作在
+    /// 调用期取主窗并投递到 UI 线程（建窗晚于本方法，而托盘/命令面调用必晚于建窗）。监督器取消同时掐断未落定
+    /// 的引导任务（ADR avalonia-g1g3-recovery-bootstrap-supervision）：引导任务自己 spawn dsh，留着它会把
+    /// 刚回收的树再拉起来。</summary>
     /// <param name="host">运行时宿主（回收时整树击杀 dsh）。</param>
     /// <param name="marker">本轮 run-marker（释放时校验 owner token）。</param>
-    /// <param name="instanceListener">单实例监听器（Windows/降级为 null）。</param>
+    /// <param name="releaseLocalPorts">本地监听端口释放动作（接线层产物，见 adr 注释）。</param>
     /// <param name="dshHome">DSH home（marker 根）。</param>
     /// <param name="cancelSupervisor">监督器取消动作（含引导取消与 join；见 ShellRecoveryContext.CancelAndJoin）。</param>
     /// <param name="closeWindow">关窗动作（接线层给出的同一份投递：退出管道与自更新安装路径共用）。</param>
@@ -189,7 +192,7 @@ internal static class AvaloniaHost
     internal static ExitPipeline CreateLifetime(
         HarnessRuntimeHost host,
         RunMarkerResult marker,
-        PrimaryListener? instanceListener,
+        Action releaseLocalPorts,
         string dshHome,
         Action cancelSupervisor,
         Action closeWindow) =>
@@ -197,7 +200,7 @@ internal static class AvaloniaHost
             cancelSupervisor: cancelSupervisor,
             stopHost: host.Stop,
             releaseMarker: () => RunMarker.Release(dshHome, marker.Token),
-            disposeListener: () => instanceListener?.Dispose(),
+            releaseLocalPorts: releaseLocalPorts,
             closeWindow: closeWindow,
             log: HostLog.Write);
 

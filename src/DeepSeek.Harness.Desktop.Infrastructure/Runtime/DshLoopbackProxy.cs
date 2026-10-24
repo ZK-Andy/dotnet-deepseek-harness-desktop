@@ -168,6 +168,10 @@ public sealed partial class DshLoopbackProxy : IDisposable
         }
     }
 
+    /// <summary>只停回环监听 socket、释放端口（ADR restart-proxy-port-release）：重启时须在继任者 spawn 前调用，
+    /// 让继任者能绑回记忆端口；在途连接与转发通道不动，完整收摊仍归 <see cref="Dispose"/>。幂等。</summary>
+    public void StopListener() => _listener.Stop();
+
     /// <summary>停止监听、释放 dsh 通道并落一行会话统计（在途连接随 socket 关闭收尾；幂等——
     /// 重复释放不再重复统计）。统计口径（ADR proxy-log-noise-reduction）：`N 请求` = 受理面进入转发的请求，
     /// 含未铸币 502（未到 dsh，计入失败）与壳自造 502（体不可读/回包超限，计入失败）；本地 holder/指南面与

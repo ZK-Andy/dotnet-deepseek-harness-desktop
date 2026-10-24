@@ -125,7 +125,7 @@ ALLOWED_METHODS = {
         "CreateShellResources",
         "CreateSharedState",
     },
-    "Bootstrap/ShellResources.cs": {"ShellResources", "Attach", "Track", "Dispose"},
+    "Bootstrap/ShellResources.cs": {"ShellResources", "Attach", "Track", "ReleaseLocalPorts", "Dispose"},
     "Hosting/AvaloniaHost.cs": {"Run", "AcquireSingleInstance", "AcquireRunMarker", "EnsureWebView2Runtime", "DisposeShell", "RunUi", "CreateStartup", "CreateLifetime"},
     "Hosting/ShellWiringRegistration.cs": {"Create", "CloseWindowOnUiThread", "RunWiring"},
 }

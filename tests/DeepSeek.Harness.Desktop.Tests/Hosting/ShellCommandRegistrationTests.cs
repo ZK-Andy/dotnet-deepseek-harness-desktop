@@ -21,7 +21,7 @@ public class ShellCommandRegistrationTests
             cancelSupervisor: () => record("cancel"),
             stopHost: () => record("stop"),
             releaseMarker: () => record("release"),
-            disposeListener: () => record("listener"),
+            releaseLocalPorts: () => record("ports"),
             closeWindow: () => record("close"),
             startWatchdog: () => record("watchdog"),
             log: _ => { });
@@ -92,7 +92,7 @@ public class ShellCommandRegistrationTests
 
         string[] seen = await WaitForStepsAsync(steps, 7, TimeSpan.FromSeconds(3));
         Assert.True(gate.ExitApproved);
-        Assert.Equal(["cancel", "stop", "release", "listener", "spawn", "close", "watchdog"], seen);
+        Assert.Equal(["cancel", "stop", "release", "ports", "spawn", "close", "watchdog"], seen);
     }
 
     /// <summary>验证托盘退出动作：闸门先批准（首个管道步骤即可见），再按回收序关窗。</summary>
@@ -111,7 +111,7 @@ public class ShellCommandRegistrationTests
 
         string[] seen = await WaitForStepsAsync(steps, 6, TimeSpan.FromSeconds(3));
         Assert.Equal(
-            ["cancel:True", "stop:True", "release:True", "listener:True", "close:True", "watchdog:True"],
+            ["cancel:True", "stop:True", "release:True", "ports:True", "close:True", "watchdog:True"],
             seen);
     }
 
@@ -136,7 +136,7 @@ public class ShellCommandRegistrationTests
 
         string[] seen = await WaitForStepsAsync(steps, 7, TimeSpan.FromSeconds(3));
         Assert.True(gate.ExitApproved);
-        Assert.Equal(["cancel", "stop", "release", "listener", "spawn", "close", "watchdog"], seen);
+        Assert.Equal(["cancel", "stop", "release", "ports", "spawn", "close", "watchdog"], seen);
         Assert.Contains(logs, line => line.Contains("spawn 失败", StringComparison.Ordinal));
     }
 

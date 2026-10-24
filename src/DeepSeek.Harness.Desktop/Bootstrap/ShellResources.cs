@@ -7,8 +7,8 @@ namespace DeepSeek.Harness.Desktop.Bootstrap;
 /// </summary>
 /// <remarks>释放序 host → proxy → cts → listener：宿主先停子进程并释放句柄；代理随后（内部 cancel +
 /// 释放 socket）；取消令牌源此时已无消费者；单实例监听器最后释放 UDS 地址。有序退出路径由
-/// <c>ExitPipeline</c> 先行释放（marker 清除有"仅有序退出"语义，故 marker 不在此列），本类型在其后
-/// 幂等兜底异常路径。</remarks>
+/// <c>ExitPipeline</c> 先行释放本地监听端口（单实例锁与代理监听 socket；marker 清除有"仅有序退出"
+/// 语义，故 marker 不在此列），本类型在其后幂等兜底异常路径——端口已停时重复 Dispose 不再重复释放。</remarks>
 internal sealed class ShellResources : IDisposable
 {
     private HarnessRuntimeHost? _host;
@@ -32,6 +32,15 @@ internal sealed class ShellResources : IDisposable
     /// <summary>登记单实例监听器（未启用时为 null）。</summary>
     /// <param name="listener">监听器；null = 仲裁未启用。</param>
     public void Attach(PrimaryListener? listener) => _listener = listener;
+
+    /// <summary>提前释放本地监听端口（ADR restart-proxy-port-release）：单实例 UDS 锁与回环代理监听 socket。
+    /// 退出管道在 spawn/关窗前调用它，让继任者能绑回记忆端口；不碰 marker、CTS 与代理转发通道，幂等
+    /// （重复调用只重跑两个幂等释放）。完整收摊仍归 <see cref="Dispose"/>。</summary>
+    public void ReleaseLocalPorts()
+    {
+        _listener?.Dispose();
+        _proxy?.Proxy?.StopListener();
+    }
 
     /// <inheritdoc />
     public void Dispose()

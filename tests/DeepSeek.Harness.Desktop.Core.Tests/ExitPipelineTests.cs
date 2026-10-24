@@ -1,8 +1,8 @@
 namespace DeepSeek.Harness.Desktop.Core.Tests;
 
 /// <summary>单实例退出管道记序契约（ADR child-process-reaping-port-drift /
-/// self-update-exit-reaps-dsh-child / composition-root-value-flow-pipeline）：回收三件套先于关窗、
-/// 先取消监督器再回收 dsh；once-guard 使双路径重复调用为 no-op。</summary>
+/// self-update-exit-reaps-dsh-child / composition-root-value-flow-pipeline）：回收三件套与本地端口释放先于
+/// 关窗/拉起继任者、先取消监督器再回收 dsh；once-guard 使双路径重复调用为 no-op。</summary>
 public class ExitPipelineTests
 {
     private sealed class Recorder
@@ -11,12 +11,12 @@ public class ExitPipelineTests
         public Action Step(string name) => () => Steps.Add(name);
     }
 
-    private static ExitPipeline Pipeline(Recorder r, bool nullListener = false) =>
+    private static ExitPipeline Pipeline(Recorder r) =>
         new(
             r.Step("cancel"),
             r.Step("stop"),
             r.Step("release"),
-            nullListener ? null : r.Step("disposeListener"),
+            r.Step("ports"),
             r.Step("closeWindow"),
             startWatchdog: r.Step("watchdog"));
 
@@ -30,24 +30,14 @@ public class ExitPipelineTests
         Assert.Equal(new[] { "cancel", "stop", "release" }, r.Steps);
     }
 
-    /// <summary>验证 OrderlyQuit 落实回收（cancel/stop/release）先于关窗、监听器释放在关窗前、看门狗最后启动的完整编排次序。</summary>
+    /// <summary>验证 OrderlyQuit 落实回收（cancel/stop/release）先于关窗、本地端口释放在关窗前、看门狗最后启动的完整编排次序。</summary>
     [Fact]
-    public void OrderlyQuit_ReapsBeforeDisposeAndClose_ThenWatchdog()
+    public void OrderlyQuit_ReapsAndReleasesPorts_BeforeClose_ThenWatchdog()
     {
         var r = new Recorder();
         Pipeline(r).OrderlyQuit();
 
-        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "closeWindow", "watchdog" }, r.Steps);
-    }
-
-    /// <summary>验证单实例监听器未启用（dispose 为 null）时 OrderlyQuit 跳过该步仍完成其余编排、不抛异常。</summary>
-    [Fact]
-    public void OrderlyQuit_NullListener_DoesNotThrow()
-    {
-        var r = new Recorder();
-        Pipeline(r, nullListener: true).OrderlyQuit();
-
-        Assert.Equal(new[] { "cancel", "stop", "release", "closeWindow", "watchdog" }, r.Steps);
+        Assert.Equal(new[] { "cancel", "stop", "release", "ports", "closeWindow", "watchdog" }, r.Steps);
     }
 
     /// <summary>验证 ReapRuntime 幂等：重复调用只执行一次回收三件套（双路径共用单实例的收口保证）。</summary>
@@ -73,7 +63,7 @@ public class ExitPipelineTests
         pipeline.OrderlyQuit();
         pipeline.OrderlyQuit();
 
-        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "closeWindow", "watchdog" }, r.Steps);
+        Assert.Equal(new[] { "cancel", "stop", "release", "ports", "closeWindow", "watchdog" }, r.Steps);
     }
 
     /// <summary>验证有序退出后 Run 尾部再走 ReapRuntime 不重复回收（双路径收敛于同一 once-guard）。</summary>
@@ -86,19 +76,20 @@ public class ExitPipelineTests
         pipeline.OrderlyQuit();
         pipeline.ReapRuntime();
 
-        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "closeWindow", "watchdog" }, r.Steps);
+        Assert.Equal(new[] { "cancel", "stop", "release", "ports", "closeWindow", "watchdog" }, r.Steps);
     }
 
-    /// <summary>验证 Restart 完整编排：回收 → 释放监听器 → <b>先拉起新实例</b> → 关窗 → 看门狗。
-    /// spawn 晚于回收是硬约束（ADR app-restart-native-switch）：旧 dsh 树不死透，看门狗 stopHost
-    /// 会击杀新实例的 dsh；监听器/marker 不释放，新实例过不了单实例仲裁。</summary>
+    /// <summary>验证 Restart 完整编排：回收 → 释放本地端口 → <b>先拉起新实例</b> → 关窗 → 看门狗。
+    /// spawn 晚于回收与端口释放是硬约束（ADR app-restart-native-switch、restart-proxy-port-release）：
+    /// 旧 dsh 树不死透，看门狗 stopHost 会击杀新实例的 dsh；单实例锁不释放，新实例过不了仲裁；
+    /// 代理端口不释放，继任者绑不回记忆端口。</summary>
     [Fact]
-    public void Restart_ReapsAndDisposes_BeforeSpawning_ThenClosesWithWatchdog()
+    public void Restart_ReapsAndReleasesPorts_BeforeSpawning_ThenClosesWithWatchdog()
     {
         var r = new Recorder();
         Pipeline(r).Restart(r.Step("spawn"));
 
-        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "spawn", "closeWindow", "watchdog" }, r.Steps);
+        Assert.Equal(new[] { "cancel", "stop", "release", "ports", "spawn", "closeWindow", "watchdog" }, r.Steps);
     }
 
     /// <summary>验证 Restart 幂等：重复调用只执行一次完整编排，不二次 spawn/关窗。</summary>
@@ -111,7 +102,7 @@ public class ExitPipelineTests
         pipeline.Restart(r.Step("spawn"));
         pipeline.Restart(r.Step("spawn"));
 
-        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "spawn", "closeWindow", "watchdog" }, r.Steps);
+        Assert.Equal(new[] { "cancel", "stop", "release", "ports", "spawn", "closeWindow", "watchdog" }, r.Steps);
     }
 
     /// <summary>验证 Restart 与 OrderlyQuit 共享 once-guard：先到者得，后到路径整体 no-op
@@ -129,7 +120,7 @@ public class ExitPipelineTests
         second.Restart(r2.Step("spawn"));
         second.OrderlyQuit();
 
-        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "closeWindow", "watchdog" }, r.Steps);
-        Assert.Equal(new[] { "cancel", "stop", "release", "disposeListener", "spawn", "closeWindow", "watchdog" }, r2.Steps);
+        Assert.Equal(new[] { "cancel", "stop", "release", "ports", "closeWindow", "watchdog" }, r.Steps);
+        Assert.Equal(new[] { "cancel", "stop", "release", "ports", "spawn", "closeWindow", "watchdog" }, r2.Steps);
     }
 }
