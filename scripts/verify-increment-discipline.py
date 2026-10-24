@@ -534,8 +534,8 @@ def _self_test() -> int:
         failed = 1
 
     # CPM costs two lines per dependency; the cap counts ids, not lines.
-    if _packages(['    <PackageVersion Include="Ryn.Plugins.Dialog" Version="0.38.0" />',
-                  '    <PackageReference Include="Ryn.Plugins.Dialog" />']) == 1:
+    if _packages(['    <PackageVersion Include="Some.Library" Version="1.0.0" />',
+                  '    <PackageReference Include="Some.Library" />']) == 1:
         print("  ok: one dependency counted once across CPM's two lines")
     else:
         print("  ✗ CPM dependency double-counted")

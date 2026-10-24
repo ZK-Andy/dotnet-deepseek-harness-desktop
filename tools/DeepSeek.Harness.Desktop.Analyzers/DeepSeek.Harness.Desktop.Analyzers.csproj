@@ -3,8 +3,8 @@
   <PropertyGroup>
     <!-- Roslyn 自研分析器工程（D003 机器化，ADR d003-empty-catch-analyzer）：
          netstandard2.0（分析器宿主最低兼容面）+ 最新语言版本；不打包、不进产品依赖——
-         消费方一律 Analyzer 引用（OutputItemType="Analyzer" + ReferenceOutputAssembly="false"，
-         Ryn.Ipc.Generator 先例），R2 程序集引用图不变（ArchitectureTests 程序集级互证仍过）。 -->
+         消费方一律 Analyzer 引用（OutputItemType="Analyzer" + ReferenceOutputAssembly="false"），
+         R2 程序集引用图不变（ArchitectureTests 程序集级互证仍过）。 -->
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>

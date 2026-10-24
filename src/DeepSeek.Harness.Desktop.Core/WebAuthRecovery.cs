@@ -72,7 +72,7 @@ public static class WebAuthRecovery
             return new PageVerdictDetail(PageVerdict.Unknown, HasSample: false, string.Empty, 0);
         }
 
-        // 非同源且无标记即不可判：占位页（ryn://app）、引导页、错误页都不该被当成"进了 dsh UI"。
+        // 非同源且无标记即不可判：占位页、引导页、错误页都不该被当成"进了 dsh UI"。
         // 鉴权标记不限 origin：壳 opaque origin 页（location.origin 为 null）上的 401 文本同样可判，
         // 正常 DSH UI 永不含该串（见 AuthRequiredMarker 注释），误伤面不变。
         bool sameOrigin = string.Equals(origin, expectedOrigin, StringComparison.OrdinalIgnoreCase);

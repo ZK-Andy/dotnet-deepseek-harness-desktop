@@ -41,7 +41,7 @@ public sealed class MainUiEntry
 
     /// <summary>引导完成后的铸币收尾（引导服务在 dsh 就位时回调）：覆盖式重铸（本路径是 bootstrap 的 epoch
     /// 起点），等窗后做终页裁决。<b>不主动导航</b>（鉴权自愈的同源重载除外）——窗口恒在代理源上，未铸币时
-    /// holder 自轮询就绪后自 reload（renderer 发起，绕开 saucer set_url 原生挂家族；见 ADR loopback-forward-proxy）。</summary>
+    /// holder 自轮询就绪后自 reload（renderer 发起，绕开原生 set_url 挂死家族；见 ADR loopback-forward-proxy）。</summary>
     /// <param name="url">dsh 就位端点（仅供落定重铸与日志；无需导航，恒驻代理源）。</param>
     /// <param name="ct">引导任务取消令牌。</param>
     public async Task RunAsync(DshWebUrl url, CancellationToken ct)

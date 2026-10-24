@@ -39,7 +39,7 @@ public class AvaloniaWebViewNavigatorTests
         Assert.Equal(1, arrived);
     }
 
-    /// <summary>求值回报按 JSON 字符串解壳（与 Ryn 端口同一解码点），探针读到的才是文本。</summary>
+    /// <summary>求值回报按 JSON 字符串解壳（<c>ScriptProbeValue.Decode</c> 是桥回报的唯一解码实现），探针读到的才是文本。</summary>
     [Fact]
     public async Task EvaluateScript_DecodesJsonStringEnvelope()
     {

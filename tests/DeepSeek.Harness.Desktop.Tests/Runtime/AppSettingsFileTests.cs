@@ -3,11 +3,11 @@ using System.Text.Json;
 namespace DeepSeek.Harness.Desktop.Tests.Runtime;
 
 /// <summary>随包 appsettings.json 的可解析性门禁（ADR frameless-uniform-caption-bar 的回归钉）：
-/// 该文件由 Ryn 应用构建器直接装载（<c>RynApplicationBuilder.Build</c> → Microsoft.Extensions.
-/// Configuration），**JSON 非法即启动崩**——而各选项类型的 <c>Load</c> 是 fail-safe（坏 JSON 回退默认）、
-/// 单测只喂自造 JSON 串，故文件本身被清空/写坏时单元测试全绿、发货后五腿安装冒烟全红
-/// （v0.6.3 实证：appsettings.json 被误写为 0 字节 → 五腿冒烟全红）。本测试读**仓库源文件**
-/// （测试输出目录的副本会被其它测试以假值覆写，不可作证），把「文件可解析且关键取值在位」机器化。</summary>
+/// 该文件经 fail-safe 读取器装载（<c>ConfigSectionFile.LoadFile</c>：坏 JSON 回退默认值并留痕一行、不阻塞启动），
+/// 单测又只喂自造 JSON 串——文件本身被清空/写坏时单测全绿、启动不崩而配置丢（仅装载留痕可查）
+/// （v0.6.3 曾实证 0 字节文件致五腿安装冒烟全红）。本测试读**仓库源文件**
+/// （测试输出目录的副本会被其它测试以假值覆写，不可作证），把「文件可解析且关键取值在位」机器化，
+/// 把丢失面钉在可发现的位置。</summary>
 public class AppSettingsFileTests
 {
     /// <summary>验证源 appsettings.json 是合法 JSON 对象，且关键节的关键取值在位

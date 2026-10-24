@@ -16,8 +16,8 @@ public class ArchitectureTests
     {
         string path = Path.Combine(TestRepoRoot.Find(), csprojRelative);
         Assert.True(File.Exists(path), $"missing csproj: {csprojRelative}");
-        // 只计程序集引用：OutputItemType="Analyzer" 的纯编译期工具引用（如 DSH0001 自研分析器、
-        // Ryn 生成器若改走项目引用）不产生程序集引用、不改变 R2 依赖方向，此处过滤；
+        // 只计程序集引用：OutputItemType="Analyzer" 的纯编译期工具引用（如 DSH0001 自研分析器）
+        // 不产生程序集引用、不改变 R2 依赖方向，此处过滤；
         // 程序集级互证（下）是方向的第二级证明。
         return XDocument.Load(path).Descendants("ProjectReference")
             .Where(e => e.Attribute("OutputItemType")?.Value != "Analyzer")
@@ -61,7 +61,7 @@ public class ArchitectureTests
         Assert.Equal(expected, refs);
     }
 
-    /// <summary>程序集级互证：Core 编译产物零 DeepSeek*/Ryn* 引用（R2 种子测试升级保留面）。</summary>
+    /// <summary>程序集级互证：Core 编译产物零跨层程序集引用。</summary>
     [Fact]
     public void CoreAssembly_HasZeroOuterReferences()
     {
@@ -69,18 +69,18 @@ public class ArchitectureTests
         string self = core.GetName().Name ?? string.Empty;
         string[] bad = AssemblyReferences(core)
             .Where(n => n != self &&
-                (n.StartsWith("DeepSeek.Harness.Desktop", StringComparison.Ordinal) || n.StartsWith("Ryn", StringComparison.Ordinal)))
+                n.StartsWith("DeepSeek.Harness.Desktop", StringComparison.Ordinal))
             .ToArray();
         Assert.True(bad.Length == 0, $"R2 violate: Core assembly references outer assemblies: {string.Join(", ", bad)}");
     }
 
-    /// <summary>程序集级互证：Infrastructure 编译产物只许引用 Core（Ryn*/Presentation 引用即违 R2）。</summary>
+    /// <summary>程序集级互证：Infrastructure 编译产物只许引用 Core（Presentation 引用即违 R2）。</summary>
     [Fact]
     public void InfrastructureAssembly_HasZeroPresentationReferences()
     {
         Assembly infra = typeof(DeepSeek.Harness.Desktop.Infrastructure.Runtime.HarnessRuntimeHost).Assembly;
         string[] bad = AssemblyReferences(infra)
-            .Where(n => n.StartsWith("Ryn", StringComparison.Ordinal) ||
+            .Where(n =>
                 (n.StartsWith("DeepSeek.Harness.Desktop", StringComparison.Ordinal) &&
                  !n.Equals("DeepSeek.Harness.Desktop.Core", StringComparison.Ordinal)))
             .ToArray();

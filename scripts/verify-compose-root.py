@@ -35,7 +35,7 @@ Six checks:
       assembly-level method is added here deliberately (update inventory + ADR).
   C3  `new` of self-owned concrete types in the root ≤ `--max-new` (default 6).
       Self-owned = a type declared anywhere under `--owned-src` (Core/
-      Infrastructure/Presentation); Ryn/BCL types do not count. Target-typed
+      Infrastructure/Presentation); BCL types do not count. Target-typed
       `new()` is attributed via the assigned field/property type on the same
       line; an unattributable one is reported, not skipped.
   C5  every self-owned type CONSTRUCTED in the root must be in the

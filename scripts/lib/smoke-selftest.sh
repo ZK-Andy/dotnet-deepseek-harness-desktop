@@ -100,7 +100,7 @@ smoke_selftest_common() { # $1=夹具根目录
   : >"$tdir/out"; : >"$tdir/host.log"
   printf '%s\n' '[host] dsh web = http://127.0.0.1:1/?token=t' \
     '[nav] 导航已到达：http://localhost:9/（origin → x）' \
-    '[nav] 导航已到达：ryn://app/index.html' >>"$tdir/out"
+    '[nav] 导航已到达：file:///tmp/boot/index.html' >>"$tdir/out"
   live="$(_st_live)"
   SETTLE_WAIT=2 wait_settled "$live" >/dev/null 2>&1 && tfail "settle-arrival-only-should-fail" || tpass "settle-arrival-only-fails"
   _st_kill_live
@@ -158,7 +158,7 @@ smoke_selftest_common() { # $1=夹具根目录
   progress_watchdog_tick 0 "$tdir/wd-home" && tpass "watchdog-first-alive" || tfail "watchdog-first-alive"
   progress_watchdog_tick $((_WD_STALL_SECONDS - 1)) "$tdir/wd-home" && tpass "watchdog-under-window" || tfail "watchdog-under-window"
   progress_watchdog_tick "$_WD_STALL_SECONDS" "$tdir/wd-home" && tfail "watchdog-stall-should-trip" || tpass "watchdog-stall-trips"
-  printf '[09:45:10 info] Ryn.Core.RynApplication: noise\n[update] Checking\n[health] alive\n' >>"$OUT"
+  printf '[09:45:10 info] DeepSeek.Harness.Desktop.ShellApplication: noise\n[update] Checking\n[health] alive\n' >>"$OUT"
   progress_watchdog_tick $((_WD_STALL_SECONDS + 100)) "$tdir/wd-home" && tfail "watchdog-misc-should-not-reset" || tpass "watchdog-misc-no-reset"
   echo '[bootstrap] test-progress' >>"$OUT"
   progress_watchdog_tick $((_WD_STALL_SECONDS + 300)) "$tdir/wd-home" && tpass "watchdog-growth-resets" || tfail "watchdog-growth-resets"
@@ -190,7 +190,7 @@ smoke_selftest_common() { # $1=夹具根目录
   live="$(_st_live)"
   SMOKE_WAIT=5 SETTLE_WAIT=90 smoke_wait_ready "$tdir/w4b" "$tdir/w4b" "$live" "$tdir/home" >/dev/null 2>&1 && tpass "wait-min-alive-settles" || tfail "wait-min-alive-settles"
   _st_kill_live
-  log="$tdir/w4c"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：ryn://app/index.html\n' >"$log"
+  log="$tdir/w4c"; printf '[bootstrap] 引导开始：x\n[host] dsh web = http://127.0.0.1:1/?token=t\n[nav] 导航已到达：file:///tmp/boot/index.html\n' >"$log"
   live="$(_st_live)"
   SMOKE_WAIT=5 SETTLE_WAIT=2 smoke_wait_ready "$log" "$log" "$live" "$tdir/home" >/dev/null 2>&1 && tfail "wait-placeholder-should-not-settle" || tpass "wait-placeholder-not-settled"
   _st_kill_live

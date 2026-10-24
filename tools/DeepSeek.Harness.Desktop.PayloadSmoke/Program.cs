@@ -4,9 +4,8 @@
 // 对自包含 publish 产物的 native 载荷面冒烟：清单存在性 → FFI 加载+导出解析 →
 // 功能用例（经 Skia 的 sk_data_new_from_file / sk_image_new_from_encoded 真解码 icon.png）。
 // 断言清单是宿主实际加载的面：Avalonia 渲染栈（Skia/HarfBuzz，macOS 另 libAvaloniaNative，
-// Windows 另 ANGLE 的 av_libglesv2）。Ryn 的 libsaucer*/libryn-pty/WebView2Loader 仍在产物里
-// （包引用随 G5 摘除）但无运行期加载路径——Windows 的 WebView2 由控件的 ManagedWebView2Loader
-// 定位已装运行时，不加载产物内的 loader——故不在此断言。
+// Windows 另 ANGLE 的 av_libglesv2）。Ryn 系 native 库已随 G5 摘除出包引用，无断言面；Windows 的 WebView2 由控件的
+// ManagedWebView2Loader 定位已装运行时——故均不在此断言。
 // 功能用例在**子进程**中执行：native 侧硬崩溃/挂死被记为失败项并继续其余用例，
 // 诊断清单（逐条列因，exit 1）不被单点崩溃截断。
 // 子进程用法（探针自复用，工作流不直接调用）:

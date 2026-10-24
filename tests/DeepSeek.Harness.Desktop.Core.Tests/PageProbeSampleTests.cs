@@ -20,8 +20,8 @@ public class PageProbeSampleTests
     [Fact]
     public void EmptyTextAfterSeparator_Splits()
     {
-        Assert.True(PageProbeSample.TrySplit("ryn://app" + PageProbeSample.Separator, out string origin, out string text));
-        Assert.Equal("ryn://app", origin);
+        Assert.True(PageProbeSample.TrySplit("about:blank" + PageProbeSample.Separator, out string origin, out string text));
+        Assert.Equal("about:blank", origin);
         Assert.Equal(string.Empty, text);
     }
 

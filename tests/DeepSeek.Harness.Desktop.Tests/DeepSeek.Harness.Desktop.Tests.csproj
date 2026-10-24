@@ -50,7 +50,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 镜像拆分（官方判据 7）：Ryn 宿主壳/装配面测试归 Presentation 层测试工程。 -->
+    <!-- 镜像拆分（官方判据 7）：宿主壳/装配面测试归 Presentation 层测试工程。 -->
     <ProjectReference Include="..\..\src\DeepSeek.Harness.Desktop\DeepSeek.Harness.Desktop.csproj" />
     <ProjectReference Include="..\..\src\DeepSeek.Harness.Desktop.Core\DeepSeek.Harness.Desktop.Core.csproj" />
     <ProjectReference Include="..\..\src\DeepSeek.Harness.Desktop.Infrastructure\DeepSeek.Harness.Desktop.Infrastructure.csproj" />

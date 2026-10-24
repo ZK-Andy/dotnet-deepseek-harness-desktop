@@ -119,7 +119,7 @@ public class WindowCommandRouterTests
         Assert.False(router.CanRoute(HostCommandIds.RecoveryExit));
     }
 
-    /// <summary>非本路由的命令：抛 Ryn 命令未找到（与其它路由同款）。</summary>
+    /// <summary>非本路由的命令：抛 CommandNotFoundException（与其它路由同款）。</summary>
     [Fact]
     public async Task RouteAsync_UnknownCommand_Throws()
     {

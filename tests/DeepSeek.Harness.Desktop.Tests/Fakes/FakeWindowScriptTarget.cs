@@ -1,8 +1,9 @@
 namespace DeepSeek.Harness.Desktop.Tests.Fakes;
 
 /// <summary>假窗口脚本求值端口（<see cref="IWindowScriptTarget"/> 替身）：记录每次送进的脚本与取消令牌，
-/// 并按序排定每轮结局——排定的 <see cref="Exception"/> 即模拟「窗口尚未就绪」的重试面（同步抛出，
-/// 与真实 Ryn 适配器同型：未就绪在返回 Task 之前就抛）；排定的 <see cref="string"/> 是桥回报原文
+/// 并按序排定每轮结局——排定的 <see cref="Exception"/> 即模拟「窗口尚未就绪」的失败路径
+/// （真实适配器在 async 链内抛出、以 faulted Task 到达调用方；本假体同步抛出，对「调用即 await」
+/// 的消费者等价）；排定的 <see cref="string"/> 是桥回报原文
 /// （如 <c>"text:42"</c>，真实桥回报是 JSON 字符串字面量）；队空即成功（回报 <c>{}</c>）。
 /// 队列、计数、「最后一次脚本」与「最后一次取消令牌」都在同一把锁内更新——<see cref="System.Collections.Generic.Queue{T}"/>
 /// 本身非线程安全，出锁读写会与池线程写入交错（ADR architecture/2026-10-21-window-script-target-port）。

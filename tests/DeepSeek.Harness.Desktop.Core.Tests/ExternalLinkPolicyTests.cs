@@ -29,7 +29,7 @@ public class ExternalLinkPolicyTests
         Assert.Equal(expected, ExternalLinkPolicy.IsExternalHttpLink(href, Origin, out _));
     }
 
-    /// <summary>验证 null/空白、相对路径与非 http(s) scheme（mailto/javascript/data/ryn）一律不判为外部链接。</summary>
+    /// <summary>验证 null/空白、相对路径与非 http(s) scheme（mailto/javascript/data/about）一律不判为外部链接。</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -39,7 +39,7 @@ public class ExternalLinkPolicyTests
     [InlineData("mailto:a@b.com")]
     [InlineData("javascript:alert(1)")]
     [InlineData("data:text/html,<h1>x</h1>")]
-    [InlineData("ryn://app/index.html")]
+    [InlineData("about:blank")]
     public void IsExternalHttpLink_NonHttpOrRelativeOrEmpty_ReturnsFalse(string? href)
     {
         Assert.False(ExternalLinkPolicy.IsExternalHttpLink(href, Origin, out _));

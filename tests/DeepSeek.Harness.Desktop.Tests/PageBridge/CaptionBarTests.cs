@@ -84,7 +84,7 @@ public class CaptionBarTests
     }
 
     /// <summary>验证红绿灯三点＝macOS 系统色（关闭红/最小化黄/最大化绿）、悬停出深色符号、
-    /// 位置对齐官方 <c>trafficLightPosition(16,18)</c>；按钮带 Ryn 声明式窗口控制属性且无事件处理器。</summary>
+    /// 位置对齐官方 <c>trafficLightPosition(16,18)</c>；按钮带声明式窗口控制属性且无事件处理器。</summary>
     [Fact]
     public void Build_DrawsMacTrafficLights()
     {
@@ -173,7 +173,7 @@ public class CaptionBarTests
 
     /// <summary>macOS 绿灯＝原生全屏（官方 macOS 绿灯是 Enter Full Screen，窗口缩放另有其键）：
     /// 换成本壳自有属性 + 自绑点击走 window.setFullscreen，并不再出现 data-webview-maximize——
-    /// 后者是 Ryn 注入脚本的窗口缩放语义，留着会与原生全屏并存且语义相左；其他平台保持缩放不变。</summary>
+    /// 后者是窗口缩放语义的属性，留着会与原生全屏并存且语义相左；其他平台保持缩放不变。</summary>
     [Fact]
     public void Build_MacChrome_GreenButtonEntersNativeFullscreen()
     {
@@ -188,7 +188,7 @@ public class CaptionBarTests
         // mac 恰是全屏语义所在分支：运行时状态仍静态不发（绿灯走自有属性 + 自绑点击，不走属性分支）。
         Assert.DoesNotContain("data-fullscreen", mac, StringComparison.Ordinal);
         // 缩放语义不得出现在本壳三点的标记或样式里（注入条的交互排除表里出现属性名不算——
-        // 那是与 Ryn 同款的语义表，不是本壳按钮的声明）
+        // 那是拖拽排除的语义表，不是本壳按钮的声明）
         Assert.DoesNotContain("button[data-webview-maximize]", mac, StringComparison.Ordinal);
         Assert.DoesNotContain("\\u003Cbutton data-webview-maximize\\u003E", mac, StringComparison.Ordinal);
         // 透明链只此一支：mac 脚本同样不得关掉注入条的命中（拖拽面回归钉，见红绿灯用例；
@@ -201,8 +201,8 @@ public class CaptionBarTests
         Assert.DoesNotContain(HostCommandIds.WindowSetFullscreen, other, StringComparison.Ordinal);
     }
 
-    /// <summary>macOS 毛玻璃透明链（官方 vibrancy 观感）：窗/网页背景由 RynOptions.Backdrop 清成透明，
-    /// 页面侧须让 html/body 透明、侧栏列半透明，材质才透得出来；官方用 html[data-platform='darwin']
+    /// <summary>macOS 毛玻璃透明链（官方 vibrancy 观感）：页面侧补官方那条透明链——html/body 透明、
+    /// 侧栏列改半透明色调，材质才透得出来；官方用 html[data-platform='darwin']
     /// 门控，而该属性正是本壳禁用的宿主冒充开关（插件崩），故按平台在注入期取舍——非 macOS 恒不含
     /// 透明链（无 backdrop 后端时会直接露底）。</summary>
     [Fact]
@@ -218,18 +218,16 @@ public class CaptionBarTests
         Assert.DoesNotContain("color-mix(", other, StringComparison.Ordinal);
     }
 
-    /// <summary>顶层文档守卫：同一份脚本还经 Ryn 的 <c>InjectScriptAsync</c> 注册为「每次页面加载执行」，
-    /// 而该注册按 no_frames=false 注入<b>所有 frame</b>；没有这条守卫时 dsh 的每个层级子文档都会长出
-    /// 一条壳顶栏。</summary>
+    /// <summary>顶层文档守卫：注入按文档进行，引擎侧求值不保证落在顶层文档；没有这条守卫时 dsh 的每个
+    /// 层级子文档都会长出一条壳顶栏。</summary>
     [Fact]
     public void Build_GuardsTopFrameOnly()
     {
         Assert.Contains("if(window.top!==window.self)return;", CaptionBar.Build(52), StringComparison.Ordinal);
     }
 
-    /// <summary>顶带拖拽判定收归本壳（回归钉）：Ryn 的自动拖拽条要求命中元素底边（bottom）≤ strip×1.5，
-    /// 而 dsh 把整条顶带留给自顶带起算的流内 chrome（侧栏 padding 区、<b>会话头部</b>）——该判据在我们这条带上
-    /// 不成立。四条接管判据（带内 / 非 html·body / 非交互 / 盒顶在带内起算且上溯流内）与两条 capture 监听
+    /// <summary>顶带拖拽判定收归本壳（回归钉）：dsh 把整条顶带留给自顶带起算的流内 chrome（侧栏 padding 区、<b>会话头部</b>）——「盒底 ≤ 条带上界」式判据对「盖住条带却向下延伸」的元素
+    /// 一律按内容处理，在我们这条带上不可靠。四条接管判据（带内 / 非 html·body / 非交互 / 盒顶在带内起算且上溯流内）与两条 capture 监听
     /// 缺一即退化回「整条拖不动」；按盒高判「全高」会把会话头部（<c>min-height:76px</c>）漏掉，中间内容列
     /// 因此整条不动——故此处钉的是<b>盒顶</b>判据。</summary>
     [Fact]

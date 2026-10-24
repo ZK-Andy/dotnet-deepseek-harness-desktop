@@ -29,9 +29,9 @@ public class WebAuthRecoveryTests
         Assert.Equal(WebAuthRecovery.PageVerdict.Unknown, Classify(raw, Origin));
     }
 
-    /// <summary>非同源（占位页 ryn://app、引导页）→ 未知，不算进了 dsh UI。</summary>
+    /// <summary>非同源（占位页、引导页）→ 未知，不算进了 dsh UI。</summary>
     [Theory]
-    [InlineData("ryn://app")]
+    [InlineData("about:blank")]
     [InlineData("http://127.0.0.1:1")]
     [InlineData("http://localhost:40683")]
     public void ForeignOrigin_IsUnknown(string origin)
@@ -115,7 +115,7 @@ public class WebAuthRecoveryTests
     /// <summary>无标记非同源文本恒 unknown（旧 ForeignOrigin 语义保留；marker 口径变更只影响含标记样本）。</summary>
     [Theory]
     [InlineData("null")]
-    [InlineData("ryn://app")]
+    [InlineData("about:blank")]
     public void UnmarkedForeignText_IsUnknown(string origin)
     {
         Assert.Equal(WebAuthRecovery.PageVerdict.Unknown, Classify(Sample(origin, "DeepSeek Harness"), "dsh-app://app"));
@@ -152,7 +152,7 @@ public class WebAuthRecoveryTests
     [Theory]
     [InlineData(null, false, "")]
     [InlineData("no-separator", false, "")]
-    [InlineData("ryn://app" + PageProbeSample.Separator + "text", true, "ryn://app")]
+    [InlineData("about:blank" + PageProbeSample.Separator + "text", true, "about:blank")]
     public void Detail_MarksMissingSample(string? raw, bool hasSample, string origin)
     {
         WebAuthRecovery.PageVerdictDetail detail = WebAuthRecovery.ClassifyDetail(raw, Origin);

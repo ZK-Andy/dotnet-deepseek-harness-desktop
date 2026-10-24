@@ -1,6 +1,6 @@
 namespace DeepSeek.Harness.Desktop.Tests.PageBridge;
 
-/// <summary>Ryn 桥返回值解码（ADR page-verdict-gate）：字符串带引号/转义是桥的真实形态，
+/// <summary>壳桥返回值解码（ADR page-verdict-gate）：字符串带引号/转义是桥的真实形态，
 /// 夹具必须用桥形态——否则"裸采样单测全绿、线上恒 unknown"这类外壳漂移门禁照不出。</summary>
 public class ScriptProbeValueTests
 {

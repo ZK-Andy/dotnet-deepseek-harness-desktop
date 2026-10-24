@@ -21,7 +21,7 @@ public class BootstrapCommandRouterTests
 
     /// <summary>验证路由未注册命令 desktop.unknown 抛 CommandNotFoundException。</summary>
     [Fact]
-    public async Task Router_UnknownCommand_ThrowsRynCommandNotFound()
+    public async Task Router_UnknownCommand_ThrowsCommandNotFound()
     {
         var router = new BootstrapCommandRouter(new RuntimeBootstrapGate());
         await Assert.ThrowsAsync<CommandNotFoundException>(

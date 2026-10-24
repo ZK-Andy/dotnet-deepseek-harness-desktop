@@ -6,8 +6,8 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// <summary>
 /// 单实例仲裁（ADR single-instance-launcher-activation）：首实例对 Unix domain socket
 /// <c>bind</code> 成功即持锁并监听；二次启动 bind 撞地址即向既有 socket 发送
-/// <c>show</c> 命令请首实例显示主窗，随后自身退出。GTK/saucer 按 ApplicationId 的互斥
-/// 在 Wayland 会话不生效（v0.3.7 实机取证），本组件不依赖它、先于任何 GTK 初始化执行。
+/// <c>show</c> 命令请首实例显示主窗，随后自身退出。旧栈的 ApplicationId 互斥
+/// 在 Wayland 会话不生效（v0.3.7 实机取证），本组件不依赖它、先于任何窗口栈初始化执行。
 /// </summary>
 /// <remarks>
 /// 平台边界：Linux/macOS 启用；Windows 无验证环境不启用（调用方按 OS 分支放行）。
