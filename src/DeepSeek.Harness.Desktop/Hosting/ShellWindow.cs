@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using DeepSeek.Harness.Desktop.Core.Platform;
 
 namespace DeepSeek.Harness.Desktop.Hosting;
 
@@ -9,6 +10,7 @@ namespace DeepSeek.Harness.Desktop.Hosting;
 internal sealed class ShellWindow : Window
 {
     private readonly ShellBridgeHost _bridgeHost;
+    private readonly IWindowGeometryStore? _geometryStore;
     private int _chromeWired;
     private int _maximizedAtHide = -1;
 
@@ -17,12 +19,33 @@ internal sealed class ShellWindow : Window
     /// 与引导页仍留 G1 后续片）。</param>
     /// <param name="devTools">是否开启 WebView 调试器（<c>DSH_DEVTOOLS=1</c>，与 dev 判定无关）。</param>
     /// <param name="bridgeHost">页面桥装配（挂载 WebView 后接上；无壳 origin 时自身降级跳过）。</param>
-    public ShellWindow(Uri? initialUri, bool devTools, ShellBridgeHost bridgeHost)
+    /// <param name="iconPath">窗口图标文件（装配层探测存在才传入；null = 不设，窗口用系统默认图标）。
+    /// X11 上 Avalonia 据此写 <c>_NET_WM_ICON</c>——任务栏/Alt-Tab 图标的数据源（真机实测缺失）。</param>
+    /// <param name="geometryStore">几何存储（null = 不持久化，用缺省尺寸）。</param>
+    public ShellWindow(Uri? initialUri, bool devTools, ShellBridgeHost bridgeHost, string? iconPath = null, IWindowGeometryStore? geometryStore = null)
     {
         _bridgeHost = bridgeHost;
+        _geometryStore = geometryStore;
         Title = "DeepSeek Harness";
         Width = 1200;
         Height = 800;
+        if (iconPath is not null)
+        {
+            try
+            {
+                Icon = new WindowIcon(iconPath);
+            }
+            catch (Exception ex)
+            {
+                // 图标装载失败只影响任务栏/Alt-Tab 显示，不值得打断窗口构造
+                HostLog.Write($"[host] 窗口图标装载失败（沿用系统默认）：{ex.Message}");
+            }
+        }
+
+        if (geometryStore?.Load() is { } geometry)
+        {
+            WindowGeometryRestore.Apply(this, geometry);
+        }
 
         var webView = new NativeWebView();
         webView.EnvironmentRequested += (_, e) => e.EnableDevTools = devTools;
@@ -39,12 +62,27 @@ internal sealed class ShellWindow : Window
             : WindowDecorations.Full;
 
         Content = webView;
+
+        // 几何落盘点（ADR 2026-10-25-window-identity-geometry-teardown）：窗口态变化即时存
+        // （最大化/全屏切换，覆盖崩溃与非受控退出前的最后状态）；移动/缩放不在拖拽流里逐帧写盘，
+        // 交给 HideToTray 与真实关窗两个收口点。自查 Closing 在外部判据之前订阅，两者互不影响。
+        PropertyChanged += (_, e) =>
+        {
+            if (e.Property == WindowStateProperty)
+            {
+                SaveGeometry();
+            }
+        };
+        Closing += (_, _) => SaveGeometry();
     }
 
     /// <inheritdoc />
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
+        // 窗口身份（WM_CLASS）先于一切分支：与打包面 StartupWMClass 配对，无壳 origin/无拖拽通道的
+        // 降级窗口同样要有身份。幂等（属性替换写），托盘唤回重触发无害。
+        X11WindowIdentity.Apply(this, HostLog.Write);
         // Show() 也会触发 OnOpened（托盘唤回）：接线只做一次，否则每次唤回都追加一条路由。
         if (Interlocked.Exchange(ref _chromeWired, 1) == 1)
         {
@@ -79,11 +117,33 @@ internal sealed class ShellWindow : Window
         HostLog.Write($"[host] 无边框顶栏启用：拖拽/缩放端口 {drag.Name}");
     }
 
-    /// <summary>隐藏到托盘：先记下隐藏前是否最大化，再隐藏（进程与 dsh 运行时继续存活）。</summary>
+    /// <summary>隐藏到托盘：先记下隐藏前是否最大化，再落几何快照（dsh 运行时可能随后随机器一起消失，
+    /// 下次冷启动以落盘值为准），最后隐藏。</summary>
     internal void HideToTray()
     {
         _maximizedAtHide = WindowState == WindowState.Maximized ? 1 : 0;
+        SaveGeometry();
         Hide();
+    }
+
+    /// <summary>退出前置摘除页面内容（ADR 2026-10-25-window-identity-geometry-teardown）：真实关窗前
+    /// 把 WebView 从视觉树摘下。真机实证收尾期 WebView 的 GTK 泵线程仍在绘制，直接拆窗会让在途绘制
+    /// 撞上正在销毁的 EGL 上下文（WebKitGTK swapBuffers SEGV，coredump ×2 同栈）；先摘内容使泵线程
+    /// 无 WebKit 可画，再走窗口销毁。幂等。</summary>
+    internal void DetachContentForShutdown()
+    {
+        Content = null;
+    }
+
+    /// <summary>几何快照落盘（尽力而为）：存储缺失即 no-op。</summary>
+    private void SaveGeometry()
+    {
+        if (_geometryStore is not { } store)
+        {
+            return;
+        }
+
+        store.Save(WindowGeometryRestore.Capture(this));
     }
 
     /// <summary>从托盘/二启唤回：还原最小化、显示并置前；隐藏前是最大化则恢复最大化，

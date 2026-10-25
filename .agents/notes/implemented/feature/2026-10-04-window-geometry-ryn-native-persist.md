@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-10-04/R1=ok R2=ok R3=ok
 
+Erratum: 2026-10-25 — 机制随 G5 旧宿主下线（`e5ff286`）在当前 src 已无代码定义（仅历史 doc 注释提及 RynOptions），Decision 落点条「不进 DSH_HOME——随机器而非随 profile 互通」的理由被继任决定反转（新落点=desktop profile 状态目录 `window-state.json`，理由：与端口/PID 记忆同族）；保留=问题诊断与「托盘正常是 hide/show 内存残留假象」的判据仍成立。继任决定见 [2026-10-25-window-identity-geometry-teardown](../bug-fix/2026-10-25-window-identity-geometry-teardown.md)。
+
 ## Problem
 
 壳重启后主窗口永远回到出厂尺寸（1200×800），用户上一次调整的尺寸/最大化状态全部丢失。原因：`RynOptions` 从未启用几何持久化，窗口每次冷启动按 opts 固定值重建；用户感知上「托盘关掉再打开能记住、重启就不记得」——后者是同一窗口实例 hide/show 的内存残留，并非有任何持久化在生效。跨重启的体验断裂在 0.38.0 升级后已具备零成本修复条件（见 Decision），此前 Ryn 无此能力，壳侧自建是唯一路径。

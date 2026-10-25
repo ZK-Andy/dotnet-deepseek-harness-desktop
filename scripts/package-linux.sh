@@ -58,7 +58,9 @@ Exec=$APP
 Icon=$APP
 Terminal=false
 Categories=Development;IDE;Utility;
-StartupWMClass=io.github.ZK-Andy.dotnet-deepseek-harness-desktop
+# 与壳侧 X11WindowIdentity.WmClass（src/DeepSeek.Harness.Desktop/Hosting/X11WindowIdentity.cs）是
+# 跨语言同一事实：改这里必须同步改该常量（WM_CLASS 匹配是精确字符串比对）。
+StartupWMClass=Dotnet.Deepseek.Harness.Desktop
 EOF
 
 # 3b) 图标（hicolor 多尺寸来自 assets/icons/*/apps.png；pixmaps 主图标来自 assets/icon.png

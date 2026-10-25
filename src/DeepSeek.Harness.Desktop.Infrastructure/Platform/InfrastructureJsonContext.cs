@@ -13,4 +13,5 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Platform;
     GenerationMode = JsonSourceGenerationMode.Serialization)]
 [JsonSerializable(typeof(RunMarker.MarkerFile))]
 [JsonSerializable(typeof(CloseBehaviorPreference.PreferencesFile))]
+[JsonSerializable(typeof(WindowGeometryStore.GeometryFile))]
 internal partial class InfrastructureJsonContext : JsonSerializerContext;

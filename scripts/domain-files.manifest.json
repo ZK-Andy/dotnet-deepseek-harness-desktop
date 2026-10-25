@@ -76,6 +76,8 @@
     "WebView2Registration.cs",
     "WebView2StartupGuard.cs",
     "WindowDrag.cs",
-    "WindowsMessageBox.cs"
+    "WindowGeometryRestore.cs",
+    "WindowsMessageBox.cs",
+    "X11WindowIdentity.cs"
   ]
 }

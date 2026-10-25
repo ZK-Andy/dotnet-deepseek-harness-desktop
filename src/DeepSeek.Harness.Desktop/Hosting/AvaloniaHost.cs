@@ -241,15 +241,16 @@ internal static class AvaloniaHost
         bool trayIconAvailable = File.Exists(trayIconPath); // verify-code-conventions: ignore 装配面：托盘图标存在性是配置探测，非业务直调
 
         return AppBuilder.Configure(() => new ShellApplication(
-                startup, devTools, recall, uiLocale, trayIconPath, trayIconAvailable, bridgeHost, stderrTail,
-                ShellCommandRegistration.CreateCloseBehavior(dshHome),
-                ShellCommandRegistration.CreateDiagnosticsExport(HostLog.Write),
-                exitPipeline,
-                recoveryContext,
-                closeGate,
-                updates,
-                closeWindow,
-                notices))
+            startup, devTools, recall, uiLocale, trayIconPath, trayIconAvailable, bridgeHost, stderrTail,
+            ShellCommandRegistration.CreateCloseBehavior(dshHome),
+            ShellCommandRegistration.CreateDiagnosticsExport(HostLog.Write),
+            ShellCommandRegistration.CreateWindowGeometryStore(HostLog.Write),
+            exitPipeline,
+            recoveryContext,
+            closeGate,
+            updates,
+            closeWindow,
+            notices))
             .UsePlatformDetect()
             .StartWithClassicDesktopLifetime(args);
     }

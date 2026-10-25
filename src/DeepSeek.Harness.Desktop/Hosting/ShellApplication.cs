@@ -23,6 +23,7 @@ internal sealed class ShellApplication : Application
     private readonly Func<IReadOnlyList<string>> _stderrTail;
     private readonly ICloseBehaviorPreference _closeBehavior;
     private readonly IDiagnosticsExport _diagnostics;
+    private readonly IWindowGeometryStore? _geometryStore;
     private readonly ExitPipeline _exitPipeline;
     private readonly ShellRecoveryContext _recoveryContext;
     private readonly CloseGate _closeGate;
@@ -64,6 +65,7 @@ internal sealed class ShellApplication : Application
     /// <param name="closeBehavior">关窗偏好：关窗判据与 desktop.closeToTray 路由共用同一实例
     /// （ADR avalonia-g3-shell-commands）。</param>
     /// <param name="diagnostics">诊断导出端口（desktop.diagnostics.export）。</param>
+    /// <param name="geometryStore">主窗几何存储（冷启动还原与退出/隐藏落盘；null = 不持久化，用缺省尺寸）。</param>
     /// <param name="exitPipeline">退出管道（托盘退出/重启与 desktop.app.restart 共用；回收序在管道内，
     /// ADR avalonia-g3-exit-restart）。</param>
     /// <param name="recoveryContext">恢复/引导/监督的宿主侧依赖束（ADR avalonia-g1g3-recovery-bootstrap-supervision）。</param>
@@ -82,6 +84,7 @@ internal sealed class ShellApplication : Application
         Func<IReadOnlyList<string>> stderrTail,
         ICloseBehaviorPreference closeBehavior,
         IDiagnosticsExport diagnostics,
+        IWindowGeometryStore? geometryStore,
         ExitPipeline exitPipeline,
         ShellRecoveryContext recoveryContext,
         CloseGate closeGate,
@@ -99,6 +102,7 @@ internal sealed class ShellApplication : Application
         _stderrTail = stderrTail;
         _closeBehavior = closeBehavior;
         _diagnostics = diagnostics;
+        _geometryStore = geometryStore;
         _exitPipeline = exitPipeline;
         _recoveryContext = recoveryContext;
         _closeGate = closeGate;
@@ -134,7 +138,7 @@ internal sealed class ShellApplication : Application
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         // 闸门在接线层构造（先于窗口）：启动失败面的「退出」、托盘「退出」与自更新安装共用同一放行点。
         CloseGate closeGate = _closeGate;
-        var window = new ShellWindow(_startup.InitialUri, _devTools, _bridgeHost);
+        var window = new ShellWindow(_startup.InitialUri, _devTools, _bridgeHost, _trayIconAvailable ? _trayIconPath : null, _geometryStore);
         desktop.MainWindow = window;
 
         // 退出/重启动作先于失败面与托盘构造（ADR avalonia-g3-exit-restart）：失败面「退出」、托盘
@@ -248,6 +252,9 @@ internal sealed class ShellApplication : Application
             _platformShutdown |= platformInitiated;
             if (!ShellClosePolicy.ShouldHide(closeGate.ExitApproved, _tray is not null, _closeBehavior.HideOnClose, platformInitiated))
             {
+                // 真实关窗：先摘 WebView 再让 Close 展开（ADR 2026-10-25-window-identity-geometry-teardown）——
+                // 收尾期 GTK 泵线程的在途绘制会撞上正在销毁的 EGL 上下文（真机 coredump ×2 同栈）。
+                window.DetachContentForShutdown();
                 return;
             }
 

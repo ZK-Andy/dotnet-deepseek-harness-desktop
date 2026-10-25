@@ -20,6 +20,13 @@ internal static class ShellCommandRegistration
     public static ICloseBehaviorPreference CreateCloseBehavior(string dshHome) =>
         new CloseBehaviorPreference(Path.Combine(dshHome, CloseBehaviorPreference.FileName));
 
+    /// <summary>主窗几何持久化（ADR 2026-10-25-window-identity-geometry-teardown）：desktop profile 状态
+    /// 目录下的 window-state.json。</summary>
+    /// <param name="log">日志回调。</param>
+    /// <returns>几何存储端口（文件落盘留在实现侧）。</returns>
+    public static IWindowGeometryStore CreateWindowGeometryStore(Action<string> log) =>
+        new WindowGeometryStore(WindowGeometryStore.DefaultFilePath(), log);
+
     /// <summary>诊断包导出器：当前唯一消费方是 <c>desktop.diagnostics.export</c>；失败面自动导出
     /// 尚未接（记在 ADR 的残留面）。</summary>
     /// <param name="log">日志回调。</param>
