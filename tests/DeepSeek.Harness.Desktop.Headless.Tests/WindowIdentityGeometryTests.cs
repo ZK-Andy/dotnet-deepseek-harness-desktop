@@ -32,11 +32,11 @@ public class WindowIdentityGeometryTests : IDisposable
         Assert.Equal("Dotnet.Deepseek.Harness.Desktop", X11WindowIdentity.WmClass);
     }
 
-    /// <summary>Apply 还原位置/尺寸/窗口态。</summary>
+    /// <summary>Apply 还原位置/尺寸/窗口态，并切 Manual（否则 CenterScreen 在显示时覆盖位置）。</summary>
     [AvaloniaFact]
     public void Apply_RestoresPositionSizeAndState()
     {
-        var window = new Window();
+        var window = new Window { WindowStartupLocation = WindowStartupLocation.CenterScreen };
         var geometry = new WindowGeometry(88, 66, 1024, 768, WindowGeometryState.Maximized);
 
         WindowGeometryRestore.Apply(window, geometry);
@@ -45,6 +45,20 @@ public class WindowIdentityGeometryTests : IDisposable
         Assert.Equal(1024, window.Width);
         Assert.Equal(768, window.Height);
         Assert.Equal(WindowState.Maximized, window.WindowState);
+        Assert.Equal(WindowStartupLocation.Manual, window.WindowStartupLocation);
+    }
+
+    /// <summary>(0,0) 快照按无效处理：跳过位置并保留居中启动（脱同步产物不回放左上角）。</summary>
+    [AvaloniaFact]
+    public void Apply_ZeroOrigin_SkipsPositionAndKeepsCenterScreen()
+    {
+        var window = new Window { WindowStartupLocation = WindowStartupLocation.CenterScreen };
+
+        WindowGeometryRestore.Apply(window, new WindowGeometry(0, 0, 1200, 800, WindowGeometryState.Normal));
+
+        Assert.Equal(WindowStartupLocation.CenterScreen, window.WindowStartupLocation);
+        Assert.Equal(WindowState.Normal, window.WindowState);
+        Assert.Equal(1200, window.Width);
     }
 
     /// <summary>全屏态还原。</summary>

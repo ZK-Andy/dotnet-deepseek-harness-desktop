@@ -29,6 +29,9 @@ internal sealed class ShellWindow : Window
         Title = "DeepSeek Harness";
         Width = 1200;
         Height = 800;
+        // 首启（无有效几何存档）居中：平台默认机制。有存档时 WindowGeometryRestore.Apply 会切 Manual
+        // 并落存档位置，居中只在缺省路径生效。
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
         if (iconPath is not null)
         {
             try

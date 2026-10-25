@@ -34,7 +34,9 @@ v0.7.0 linux 真机验收暴露三个确定性缺陷（2026-10-25，journal + co
    profile 状态目录 `window-state.json`（沿用 Ryn 时代文件名；JSON 源生成注册；读写 best-effort，
    损坏/缺失回缺省）。采集点=窗口态变化（即时，覆盖崩溃前最后状态）、HideToTray 与真实关窗
    （移动/缩放不逐帧写盘）；还原点=主窗构造（`WindowGeometryRestore` 纯映射：损坏尺寸跳过、
-   minimized 归 normal、normal/maximized/fullscreen 还原）。
+   minimized 归 normal、normal/maximized/fullscreen 还原）。**首启缺省居中**（真机跟进 2026-10-25：
+   `WindowStartupLocation.CenterScreen` 为缺省；(0,0) 位置按无效快照跳过——卡死脱同步期 Avalonia
+   记的位置与窗口系统实际摆放脱节的产物不回放左上角；有有效存档切 Manual 落存档位置）。
 3. **真实关窗前摘 WebView**：`ShellWindow.DetachContentForShutdown()`（Content=null，幂等），
    在 `ShellApplication` 关窗判据放行真实关窗时调用——先使 GTK 泵线程无 WebKit 可画，再让 Close
    展开窗口销毁。机制定性【推断 · 未证】：「在途绘制撞销毁中的 EGL 上下文」由 SEGV 栈序推断，

@@ -23,14 +23,19 @@ internal static class WindowGeometryRestore
     public static WindowGeometry Capture(Window window) =>
         new(window.Position.X, window.Position.Y, window.Width, window.Height, StateName(window.WindowState));
 
-    /// <summary>把快照还原到窗口：先位置尺寸（常态值），后窗口态。损坏字段跳过对应部分，绝不抛出。</summary>
+    /// <summary>把快照还原到窗口：先位置尺寸（常态值），后窗口态。损坏字段跳过对应部分，绝不抛出。
+    /// (0,0) 位置视为无效快照（卡死脱同步期的产物：Avalonia 记的位置与窗口系统实际摆放脱节）——
+    /// 跳过并保留 <see cref="WindowStartupLocation.CenterScreen"/> 居中启动，不回放左上角。</summary>
     /// <param name="window">目标窗口。</param>
     /// <param name="geometry">存储快照。</param>
     public static void Apply(Window window, WindowGeometry geometry)
     {
-        if (double.IsFinite(geometry.X) && double.IsFinite(geometry.Y))
+        if ((geometry.X != 0 || geometry.Y != 0)
+            && double.IsFinite(geometry.X) && double.IsFinite(geometry.Y))
         {
             window.Position = new PixelPoint((int)Math.Round(geometry.X), (int)Math.Round(geometry.Y));
+            // 存档位置要生效必须切 Manual，否则 CenterScreen 在显示时覆盖刚落的位置
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
         }
 
         if (double.IsFinite(geometry.Width) && geometry.Width >= MinWidth
