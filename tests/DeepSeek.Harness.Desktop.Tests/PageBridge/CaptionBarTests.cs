@@ -312,9 +312,10 @@ public class CaptionBarTests
             script,
             StringComparison.Ordinal);
         Assert.Contains(",EDGE_ON=true,", script, StringComparison.Ordinal);
-        // 边缩放不得抢交互控件：与顶带拖拽同一道 NODRAG/交互闸门（贴边滚动条/按钮优先点击）。
+        // 边缘缩放是窗口 chrome 语义（0.7.2 真机反转原「不抢交互控件」决定：dsh 侧栏/输入框/顶带
+        // 盖满四边，按内容让位则边缘区永远打不中）——排除面只留显式豁免 data-webview-ignore。
         Assert.Contains(
-            "if(t&&t.closest&&(t.closest(NODRAG)||t.closest('[data-webview-drag]')))return '';",
+            "if(t&&t.closest&&t.closest('[data-webview-ignore]'))return '';",
             script,
             StringComparison.Ordinal);
         Assert.Contains("bar.children[0].onclick=function(){call(\"window.close\");};", script, StringComparison.Ordinal);

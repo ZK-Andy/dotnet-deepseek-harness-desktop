@@ -5,7 +5,7 @@ Status: implemented
 Erratum: 2026-10-24 — 失效：`CaptionBarChannel` 双通道（`__ryn`/`__shell`）与 `window.__shell_titlebar` 发布（两者已删，脚本只走 `__shell`）；保留：顶栏几何、带内拖拽判据与双击自判的机制与取值理由。见 [avalonia-g5-ryn-host-retirement](2026-10-24-avalonia-g5-ryn-host-retirement.md)。正文不动。
 Erratum: 2026-10-23 — 增量闸豁免指针已转指 `2026-10-23-avalonia-g1g3-recovery-bootstrap-supervision`（本篇标记不再生效）
 
-Review: FULL/2026-10-23#2/R1=ok R2=ok R3=ok
+Review: FULL/2026-10-25/R1=ok R2=ok R3=ok
 
 增量闸豁免：gross ≤ 2200，fanout ≤ 15
 
@@ -41,6 +41,10 @@ Avalonia 自己的原始输入事件里，页面注入脚本拿不到。
   （`screenX + clientX`）、mousedown 捕获阶段先判 6px 边缘带发 `window.startResize`；
   macOS 的 `edgeResize=false`（边框缩放由窗口系统按 BorderOnly 提供，页面再抢边会既不缩放又吞点击）。
   旧通道行为不变（红黄与缩放绿灯仍靠 Ryn 属性委托；macOS 绿灯的原生全屏仍由本壳自绑）。
+  **边缘带排除面反转（2026-10-25 真机跟进）**：原设计边缘带与顶带拖拽共用同一道 NODRAG/交互闸门
+  （贴边控件优先点击）；0.7.2 实机实证 dsh 的侧栏/输入框/顶带盖满四边、边缘区永远打不中（缩放完全
+  失效），反转——边缘带是窗口 chrome 语义，6px 内内容一律让位，仅 `data-webview-ignore` 显式豁免；
+  并随 pointermove 增加边缘缩放光标可供性（原设计无光标反馈）。
 - **归一化**：页面给的坐标是 CSS 像素，X11 根坐标是设备像素——`AvaloniaWindowCommands` 按
   `Window.RenderScaling` 换算后再进端口。
 - **注入与降级**：`PageCaptionBar` 在每次导航完成后紧跟桥注入顶栏脚本；`ShellWindow.OnOpened` 判定端口后
@@ -71,7 +75,8 @@ Avalonia 自己的原始输入事件里，页面注入脚本拿不到。
   部分窗口管理器会以 `AlreadyGrabbed` 忽略本次移动——X11 真机必须验证「拖拽是否真的被 WM 接管」。
 - **X11 无 WM 时静默失败**：`XSendEvent` 返回 0 即判失败并留痕，但不会弹错误——顶栏拖不动时先查 `host.log`。
 - **边缘带占 6px**：页面最外 6px 被判为缩放面、先于内容命中（macOS 关掉了这条带）——贴边控件的点击会变成起缩，
-  这是无边框窗口的固有取舍；若 dsh 将来把可点控件贴到视口边缘，需要把这条带收窄或改为可配置。
+  这是无边框窗口的固有取舍（2026-10-25 起交互元素在带内也让位，贴边控件的实际牺牲面扩大到 6px 全带；
+  显式豁免走 `data-webview-ignore`）；若 dsh 将来把可点控件贴到视口边缘，需要把这条带收窄或改为可配置。
 - **引导页样式块独立注入**：静态条存在时样式（三变量/描边环）仍会注入，否则引导/回落页的描边环没有样式且
   留下零尺寸 flex 子项。
 - **macOS 端口按 OS 选**（句柄描述符在 Avalonia.Native 未公开）：若将来该后端变化需改判据；

@@ -27,7 +27,7 @@ internal sealed class AvaloniaWindowCommands : IWindowCommands
     }
 
     /// <inheritdoc />
-    public void BeginMove(int screenX, int screenY) => Run(() =>
+    public void BeginMove(int screenX, int screenY) => Run("move", () =>
     {
         if (!_drag.TryBeginMove(_window, ToDevicePixels(screenX, screenY)))
         {
@@ -36,7 +36,7 @@ internal sealed class AvaloniaWindowCommands : IWindowCommands
     });
 
     /// <inheritdoc />
-    public void BeginResize(WindowEdgeKind edge, int screenX, int screenY) => Run(() =>
+    public void BeginResize(WindowEdgeKind edge, int screenX, int screenY) => Run($"resize-{edge}", () =>
     {
         if (!_drag.TryBeginResize(_window, edge, ToDevicePixels(screenX, screenY)))
         {
@@ -45,19 +45,19 @@ internal sealed class AvaloniaWindowCommands : IWindowCommands
     });
 
     /// <inheritdoc />
-    public void ToggleMaximize() => Run(() =>
+    public void ToggleMaximize() => Run("toggle-maximize", () =>
         _window.WindowState = _window.WindowState == WindowState.Maximized
             ? WindowState.Normal
             : WindowState.Maximized);
 
     /// <inheritdoc />
-    public void Minimize() => Run(() => _window.WindowState = WindowState.Minimized);
+    public void Minimize() => Run("minimize", () => _window.WindowState = WindowState.Minimized);
 
     /// <inheritdoc />
-    public void Close() => Run(_window.Close);
+    public void Close() => Run("close", _window.Close);
 
     /// <inheritdoc />
-    public void SetFullscreen(bool fullscreen) => Run(() =>
+    public void SetFullscreen(bool fullscreen) => Run(fullscreen ? "fullscreen-on" : "fullscreen-off", () =>
         _window.WindowState = fullscreen ? WindowState.FullScreen : WindowState.Normal);
 
     /// <summary>页面给的是 CSS 像素（<c>window.screenX + clientX</c>），X11 的根坐标是设备像素：
@@ -71,10 +71,13 @@ internal sealed class AvaloniaWindowCommands : IWindowCommands
         return new PixelPoint((int)Math.Round(screenX * scale), (int)Math.Round(screenY * scale));
     }
 
-    /// <summary>封送 UI 线程执行（已在 UI 线程则直接执行）。</summary>
+    /// <summary>封送 UI 线程执行（已在 UI 线程则直接执行）。命令名随行落日志：页面命令帧是否到达
+    /// 命令面是窗口态缺陷群的判定位（到了=输入路由通、问题在后续；没到=页面输入未进桥）。</summary>
+    /// <param name="command">命令名（诊断用）。</param>
     /// <param name="action">窗口动作。</param>
-    private void Run(Action action)
+    private void Run(string command, Action action)
     {
+        _log($"[host] 窗口命令 {command}");
         if (Dispatcher.UIThread.CheckAccess())
         {
             Execute(action);

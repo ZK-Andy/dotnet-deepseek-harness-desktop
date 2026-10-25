@@ -15,6 +15,10 @@ internal static class CaptionBarDragScript
     /// <b>盒顶在带内起算</b>（<c>rect.top ≤ heightPx</c>，按盒高判「全高」会漏掉条状会话头部）；自身上溯
     /// 无 fixed/absolute（浮层/模态/分隔手柄都是定位元素 → 仍按内容处理；本壳自绘条自身是 fixed，条内
     /// 非按钮区域仍算壳带）。</para>
+    /// <para>边缘缩放（<c>edgeAt</c>）是窗口 chrome 语义，判定独立于顶带：6px 边缘内内容一律让位，
+    /// 仅 <c>data-webview-ignore</c> 显式豁免；并随 pointermove 提供边缘缩放光标可供性
+    /// （0.7.2 真机实证：按内容让位则 dsh 的侧栏/输入框/顶带盖满四边，缩放区永远打不中）。
+    /// </para>
     /// <para>双击自判的机制与取值理由、以及「最大化窗不先还原再拖」的依据，单一事实源在 ADR
     /// （Decision「顶带拖拽判定收归本壳」条与 Alternatives）。</para>
     /// </summary>
@@ -48,14 +52,7 @@ internal static class CaptionBarDragScript
         "var DBL_MS=" + CaptionBar.DoubleClickMs + ",DBL_SLOP=" + CaptionBar.DoubleClickSlopPx +
         ",EDGE_ON=" + edgeOn + ",EDGE=" + CaptionBar.ResizeEdgePx + ";" +
         "function call(cmd,args){try{var w=" + invoke + ";if(!w||!w.invoke)return;var p=w.invoke(cmd,args);if(p&&p.catch)p.catch(function(){});}catch(err){}}" +
-        "function edgeAt(e){if(!EDGE_ON)return '';" +
-        "var t=e.target;if(t&&t.closest&&(t.closest(NODRAG)||t.closest('[data-webview-drag]')))return '';" +
-        "var w=window.innerWidth,h=window.innerHeight," +
-        "x=e.clientX,y=e.clientY,t=y<=EDGE,b=y>=h-EDGE,l=x<=EDGE,r=x>=w-EDGE;" +
-        "if(!(t||b||l||r))return '';" +
-        "if(t&&l)return 'top-left';if(t&&r)return 'top-right';" +
-        "if(b&&l)return 'bottom-left';if(b&&r)return 'bottom-right';" +
-        "if(t)return 'top';if(b)return 'bottom';if(l)return 'left';return 'right';}" +
+        BuildEdgeScript(edgeResize) +
         "function bandPoint(e){" +
         "if(e.clientY>" + heightPx + ")return false;" +
         "var t=e.target;" +
@@ -88,5 +85,34 @@ internal static class CaptionBarDragScript
         "if(!bandClaim||!bandPoint(e))return;" +
         "call(" + toggleCmd + ");" +
         "},true);";
+    }
+
+    /// <summary>边缘缩放脚本（<c>edgeAt</c> 判定、缩放光标映射与 pointermove 监听）：
+    /// 边缘是窗口 chrome 语义——6px 边缘内内容一律让位（原生标题栏同规则），只有显式豁免
+    /// （<c>data-webview-ignore</c>）可阻断；交互元素/NODRAG 簇不豁免——dsh 的侧栏/输入框/顶带
+    /// 恰好盖满四边，按内容让位则边缘区永远打不中（0.7.2 真机实证：边缘缩放完全失效）。
+    /// pointermove 光标监听随 <paramref name="edgeResize"/> 门控（macOS 走系统边框缩放，不上监听）。</summary>
+    /// <param name="edgeResize">边缘缩放开关（宿主提供缩放通道才启用）。</param>
+    /// <returns>边缘缩放 JS 段（<c>edgeAt</c>/<c>edgeCursor</c> 定义与可选 pointermove 监听）。</returns>
+    private static string BuildEdgeScript(bool edgeResize)
+    {
+        return
+        "function edgeAt(e){if(!EDGE_ON)return '';" +
+        "var t=e.target;if(t&&t.closest&&t.closest('[data-webview-ignore]'))return '';" +
+        "var w=window.innerWidth,h=window.innerHeight," +
+        "x=e.clientX,y=e.clientY,t=y<=EDGE,b=y>=h-EDGE,l=x<=EDGE,r=x>=w-EDGE;" +
+        "if(!(t||b||l||r))return '';" +
+        "if(t&&l)return 'top-left';if(t&&r)return 'top-right';" +
+        "if(b&&l)return 'bottom-left';if(b&&r)return 'bottom-right';" +
+        "if(t)return 'top';if(b)return 'bottom';if(l)return 'left';return 'right';}" +
+        "function edgeCursor(ed){if(!ed)return '';" +
+        "if(ed==='left'||ed==='right')return 'ew-resize';" +
+        "if(ed==='top'||ed==='bottom')return 'ns-resize';" +
+        "return (ed==='top-left'||ed==='bottom-right')?'nwse-resize':'nesw-resize';}" +
+        (edgeResize
+            ? "document.addEventListener('pointermove',function(e){" +
+              "document.documentElement.style.cursor=edgeCursor(edgeAt(e));" +
+              "},true);"
+            : "");
     }
 }

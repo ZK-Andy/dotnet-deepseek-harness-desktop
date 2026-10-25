@@ -69,10 +69,12 @@ internal sealed class ShellWindow : Window
         // 几何落盘点（ADR 2026-10-25-window-identity-geometry-teardown）：窗口态变化即时存
         // （最大化/全屏切换，覆盖崩溃与非受控退出前的最后状态）；移动/缩放不在拖拽流里逐帧写盘，
         // 交给 HideToTray 与真实关窗两个收口点。自查 Closing 在外部判据之前订阅，两者互不影响。
+        // 态切换随行落日志：与窗口命令日志配对（命令到了、态没切=窗口系统侧脱同步的判定位）。
         PropertyChanged += (_, e) =>
         {
             if (e.Property == WindowStateProperty)
             {
+                HostLog.Write($"[host] 窗口态切换：{WindowState}");
                 SaveGeometry();
             }
         };
