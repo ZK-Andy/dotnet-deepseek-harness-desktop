@@ -27,7 +27,7 @@ internal static class X11FocusBootstrap
     /// <summary>复验时点（毫秒）：覆盖焦点窃取防护的短窗；总时长有界，不与用户的后续焦点选择竞争。</summary>
     private static readonly int[] s_recheckDelaysMs = [300, 800, 1500];
 
-    private static int _started;
+    private static int s_started;
 
     /// <summary>首映射后发起激活请求与有界复验（best-effort）：非 Linux、句柄非 XID、libX11 不可用
     /// 都静默跳过；进程级 once——托盘唤回重触发 <c>OnOpened</c> 时不得重跑（唤回路径由
@@ -47,7 +47,7 @@ internal static class X11FocusBootstrap
             return;
         }
 
-        if (Interlocked.Exchange(ref _started, 1) != 0)
+        if (Interlocked.Exchange(ref s_started, 1) != 0)
         {
             return;
         }
