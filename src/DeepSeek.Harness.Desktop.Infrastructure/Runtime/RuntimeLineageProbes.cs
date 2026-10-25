@@ -156,15 +156,17 @@ public static class RuntimeLineageProbes
 
     /// <summary>判定某 pid 是否仍在运行（收养的运行时的判活手段——它非本进程子进程，挂不上 Exited 事件）。</summary>
     /// <param name="pid">进程 id。</param>
-    /// <returns>仍在运行返回 true；不存在或无法判定返回 false（走恢复路径）。</returns>
-    /// <remarks>Linux 用 <c>/proc/&lt;pid&gt;</c> 存在性判定；其他平台退化为 <see cref="Process"/> 句柄判定。
+    /// <returns>仍在运行返回 true；不存在或僵尸态返回 false（走恢复路径）；Linux 下 stat 不可读但
+    /// 目录在时保守返回 true（fail loud，不静默放行撞端口）；其他平台无法判定返回 false。</returns>
+    /// <remarks>Linux 读 <c>/proc/&lt;pid&gt;/stat</c> 状态位判活（僵尸按死算，机制与理由单一事实源在
+    /// <see cref="ProcStatAlive"/>）；其他平台退化为 <see cref="Process"/> 句柄判定。
     /// 当前调用图里只有 Linux 收养路径可达（<see cref="Enumerate"/> 非 Linux 恒空 ⇒ 不收养），非 Linux 分支
     /// 作为边界组件 API 的跨平台完备性保留。</remarks>
     public static bool TryIsAlive(int pid)
     {
         if (OperatingSystem.IsLinux())
         {
-            return Directory.Exists($"/proc/{pid}");
+            return ProcStatAlive.IsAlive(pid);
         }
 
         try

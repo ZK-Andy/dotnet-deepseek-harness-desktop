@@ -792,7 +792,9 @@ public class DshLoopbackProxyTests
         Assert.Contains("prefers-color-scheme:dark", heldBody, StringComparison.Ordinal);
         Assert.Contains("class=\"spin\"", heldBody, StringComparison.Ordinal);
         Assert.Contains("conic-gradient", heldBody, StringComparison.Ordinal);
-        // 自恢复无计时器：失败只由事件驱动重试（online/可见性恢复/手动链），禁 setTimeout/setInterval。
+        // 自恢复无计时器：失败只由事件驱动重试（online/可见性恢复/手动链），禁 setTimeout；
+        // setInterval 仅限 bootElapsed 展示计时（ADR residue-alive-zombie-recheck 决策 4）——
+        // 重试链不得有任何定时器驱动（钉 setTimeout 全禁 + setInterval 只许出现在展示段）。
         Assert.Contains("addEventListener('online'", heldBody, StringComparison.Ordinal);
         Assert.Contains("addEventListener('visibilitychange'", heldBody, StringComparison.Ordinal);
         Assert.Contains("getElementById('retry')", heldBody, StringComparison.Ordinal);
@@ -801,7 +803,11 @@ public class DshLoopbackProxyTests
         Assert.Contains("bootRetry", heldBody, StringComparison.Ordinal);
         Assert.Contains(HostCommandIds.BootstrapRetry, heldBody, StringComparison.Ordinal);
         Assert.DoesNotContain("setTimeout", heldBody, StringComparison.Ordinal);
-        Assert.DoesNotContain("setInterval", heldBody, StringComparison.Ordinal);
+        int setIntervalUses = heldBody.Split(new[] { "setInterval" }, StringSplitOptions.None).Length - 1;
+        Assert.Equal(1, setIntervalUses);
+        Assert.Contains("bootElapsed", heldBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("setInterval(poll", heldBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("setInterval(function () { poll", heldBody, StringComparison.Ordinal);
 
         Assert.True(await forward.MintAsync(
             DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));

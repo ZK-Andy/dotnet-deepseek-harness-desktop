@@ -22,6 +22,12 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 /// </remarks>
 public static class OrphanDshReaper
 {
+    /// <summary>杀后复验轮数（首轮立即 + 4 轮间隔，总宽限约 0.8s：远小于误停摆代价，也不给真残留拖时间）。</summary>
+    internal const int PostKillRecheckAttempts = 5;
+
+    /// <summary>杀后复验轮间隔。</summary>
+    internal static readonly TimeSpan PostKillRecheckEvery = TimeSpan.FromMilliseconds(200);
+
     /// <summary>残留收敛结果（预检语义）：调用方据此决定 spawn / 跳过 / fail loud。</summary>
     internal enum ResidueState
     {
@@ -48,6 +54,8 @@ public static class OrphanDshReaper
     /// 可选——缺省时「活着但验不明」恒 Unreapable，即补丁前行为）。仅用于 PID 复用的他者甄别：
     /// 命令行明显不是自家 runtime 形态时判记录过期、按 Clear 收敛（见 <see cref="PlausiblyOwnRuntime"/>），
     /// 绝不据此杀进程。</param>
+    /// <param name="delay">杀后复验的轮间等待（注入；null = 零间隔连查，测试用）。生产注入短 sleep——
+    /// SIGKILL 到进程消失/僵尸化有毫秒级窗口，单次即判会把正常消亡误报成「杀不掉」而停摆。</param>
     /// <returns>收敛结论（<see cref="ResidueState"/>）。</returns>
     internal static ResidueState EnsureNoResidue(
         string pidPath,
@@ -55,7 +63,8 @@ public static class OrphanDshReaper
         Func<int, bool> isAlive,
         Action<int> killTree,
         Action<string>? log = null,
-        Func<int, string?>? readCommandLine = null)
+        Func<int, string?>? readCommandLine = null,
+        Action<TimeSpan>? delay = null)
     {
         (int Pid, string Token)? record = ReadSpawnRecord(pidPath);
         if (record is null)
@@ -106,7 +115,7 @@ public static class OrphanDshReaper
                 return ResidueState.Unreapable;
             }
 
-            if (AliveOrLoud("杀后复查"))
+            if (RecheckAfterKill(pid, delay, AliveOrLoud, log))
             {
                 log?.Invoke($"[host] 残留无法回收：pid {pid} 复验命中但杀后仍活，不 spawn（fail loud，请手动结束该进程）");
                 return ResidueState.Unreapable;
@@ -121,6 +130,42 @@ public static class OrphanDshReaper
         }
 
         return ResolveUnverifiedAlive(pid, pidPath, log, readCommandLine);
+    }
+
+    /// <summary>杀后有界复验（ADR residue-alive-zombie-recheck）：SIGKILL 已发出后进程消亡/僵尸化有毫秒级
+    /// 窗口，首轮即判会把正常消亡误报成「杀不掉」触发 fail-loud 停摆（2026-10-25 实机：误停 17s）。立即查
+    /// 一次，未死则按 <see cref="PostKillRecheckEvery"/> 间隔再查，共 <see cref="PostKillRecheckAttempts"/>
+    /// 次；全轮仍活才报 Unreapable。</summary>
+    /// <param name="pid">残留 pid。</param>
+    /// <param name="delay">轮间等待（null = 零间隔）。</param>
+    /// <param name="aliveOrLoud">判活包装（异常按仍活并留痕）。</param>
+    /// <param name="log">日志。</param>
+    /// <returns>true = 全轮复验后仍活（Unreapable）；false = 已确认死亡。</returns>
+    private static bool RecheckAfterKill(
+        int pid,
+        Action<TimeSpan>? delay,
+        Func<string, bool> aliveOrLoud,
+        Action<string>? log)
+    {
+        for (int attempt = 1; attempt <= PostKillRecheckAttempts; attempt++)
+        {
+            if (attempt > 1)
+            {
+                delay?.Invoke(PostKillRecheckEvery);
+            }
+
+            if (!aliveOrLoud($"杀后复查第{attempt}次"))
+            {
+                if (attempt > 1)
+                {
+                    log?.Invoke($"[host] 残留 pid {pid} 杀后第{attempt}次复查确认死亡");
+                }
+
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>「活着但验不明」的收敛：先做 PID 复用甄别（ADR pid-reuse-foreign-cmdline-clear）——命令行

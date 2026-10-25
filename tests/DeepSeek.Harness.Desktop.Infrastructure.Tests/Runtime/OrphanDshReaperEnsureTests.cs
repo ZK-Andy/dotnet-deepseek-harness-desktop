@@ -1,4 +1,6 @@
 
+using static DeepSeek.Harness.Desktop.Infrastructure.Runtime.OrphanDshReaper;
+
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
 /// <summary>残留收敛预检（OrphanDshReaper.EnsureNoResidue）决策契约（ADR residue-lock-fail-loud +
@@ -60,7 +62,7 @@ public class OrphanDshReaperEnsureTests
                 killTree: p => { killed = p; },
                 log: _ => { });
 
-            Assert.Equal(OrphanDshReaper.ResidueState.Reaped, state);
+            Assert.Equal(ResidueState.Reaped, state);
             Assert.Equal(4242, killed);
         }
         finally
@@ -377,5 +379,65 @@ public class OrphanDshReaperEnsureTests
         Assert.False(OrphanDshReaper.PlausiblyOwnRuntime("/usr/libexec/localsearch-3 --gdbus-service"));
         Assert.False(OrphanDshReaper.PlausiblyOwnRuntime("/usr/bin/python3 -m http.server"));
         Assert.False(OrphanDshReaper.PlausiblyOwnRuntime("/usr/sbin/nginx"));
+    }
+
+    /// <summary>杀后有界复验（ADR residue-alive-zombie-recheck）：杀后前两轮判活仍真（SIGKILL→消亡的毫秒级
+    /// 窗口实机形态），第三轮确认死亡——应收敛 Reaped 而非 Unreapable，且轮间隔注入被调用恰 2 次。</summary>
+    [Fact]
+    public void Ensure_KillThenDiesWithinGrace_ReturnsReaped()
+    {
+        string dir = NewDir();
+        try
+        {
+            string pidPath = WriteSpawnRecord(dir, 4242, "abc123");
+            int checks = 0;
+            int delays = 0;
+
+            ResidueState state = EnsureNoResidue(
+                pidPath,
+                readToken: _ => "abc123",
+                isAlive: _ => ++checks < 3, // 杀后第 1、2 次仍活，第 3 次确认死亡
+                killTree: _ => { },
+                log: _ => { },
+                delay: _ => delays++);
+
+            Assert.Equal(ResidueState.Reaped, state);
+            Assert.Equal(3, checks);
+            Assert.Equal(2, delays);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>杀后全轮复验仍活：恰好 <see cref="OrphanDshReaper.PostKillRecheckAttempts"/> 轮后报
+    /// Unreapable，轮间隔注入恰好轮数-1 次（有界停摆，不无限等）。</summary>
+    [Fact]
+    public void Ensure_StillAlive_AllRounds_BoundedUnreapable()
+    {
+        string dir = NewDir();
+        try
+        {
+            string pidPath = WriteSpawnRecord(dir, 4242, "abc123");
+            int checks = 0;
+            int delays = 0;
+
+            ResidueState state = EnsureNoResidue(
+                pidPath,
+                readToken: _ => "abc123",
+                isAlive: _ => { checks++; return true; },
+                killTree: _ => { },
+                log: _ => { },
+                delay: _ => delays++);
+
+            Assert.Equal(ResidueState.Unreapable, state);
+            Assert.Equal(PostKillRecheckAttempts, checks);
+            Assert.Equal(PostKillRecheckAttempts - 1, delays);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 }

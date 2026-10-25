@@ -218,7 +218,8 @@ public sealed partial class HarnessRuntimeHost : IDisposable, IRuntimeHost
             RuntimeLineageProbes.TryIsAlive,
             RuntimeLineageProbes.KillTree,
             _log,
-            RuntimeLineageProbes.ReadCommandLine);
+            RuntimeLineageProbes.ReadCommandLine,
+            static span => Thread.Sleep(span));
         return state == OrphanDshReaper.ResidueState.Unreapable;
     }
 

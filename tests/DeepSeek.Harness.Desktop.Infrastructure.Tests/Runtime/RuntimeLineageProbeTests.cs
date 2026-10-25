@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using static DeepSeek.Harness.Desktop.Infrastructure.Runtime.ProcStatAlive;
 
 namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
@@ -161,5 +162,41 @@ public class RuntimeLineageProbeTests
             listener.Stop();
             await serving;
         }
+    }
+
+    /// <summary>/proc stat 状态位提取（ADR residue-alive-zombie-recheck）：常规形、comm 含括号/空格形、
+    /// 无状态位形——SIGKILL 后僵尸被误判「杀后仍活」的根因钉子。</summary>
+    [Fact]
+    public void ExtractStateChar_ParsesProcStatShapes()
+    {
+        Assert.Equal('S', ExtractStateChar("795643 (node) S 1 795643 795610 0 -1 4194560 ..."));
+        Assert.Equal('Z', ExtractStateChar("795643 (sd-pam (x)) Z 1 795643 795610 0 -1 ..."));
+        Assert.Equal('R', ExtractStateChar("12 (kworker) R 2 0 0 0 -1 ..."));
+        Assert.Null(ExtractStateChar("795643 (node)"));
+        Assert.Null(ExtractStateChar(string.Empty));
+    }
+
+    /// <summary>状态位存活判定：Z（僵尸）与未知（null）按死算——僵尸不占端口不占资源；其余状态一律活。</summary>
+    [Fact]
+    public void AliveStateChar_ZombieAndUnknownAreDead()
+    {
+        Assert.False(AliveStateChar('Z'));
+        Assert.False(AliveStateChar(null));
+        Assert.True(AliveStateChar('R'));
+        Assert.True(AliveStateChar('S'));
+        Assert.True(AliveStateChar('D'));
+    }
+
+    /// <summary>Linux 判活实锚：自身 pid 活、不存在 pid 死（非 Linux 平台跳过——生产调用图 Linux-only）。</summary>
+    [Fact]
+    public void LinuxProcAlive_SelfAlive_MissingPidDead()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        Assert.True(IsAlive(Environment.ProcessId));
+        Assert.False(IsAlive(int.MaxValue));
     }
 }

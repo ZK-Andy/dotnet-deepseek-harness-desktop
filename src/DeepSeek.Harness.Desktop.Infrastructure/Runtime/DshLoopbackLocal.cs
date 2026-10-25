@@ -104,6 +104,7 @@ internal sealed class DshLoopbackLocal
         "</style></head>\n<body>\n" +
         "<div class=\"spin\"></div>\n" +
         "<h2>" + WebAuthRecovery.HolderMarker + "…</h2>\n" +
+        "<p id=\"bootElapsed\"></p>\n" +
         "<p><a href=\"/__shell_guide/\">Troubleshooting</a></p>\n" +
         "<p id=\"bootState\" style=\"display:none\"></p>\n" +
         "<a id=\"retry\" href=\"/__shell_ready\" style=\"display:none\">Retry</a>\n" +
@@ -112,7 +113,17 @@ internal sealed class DshLoopbackLocal
         "  var link = document.getElementById('retry');\n" +
         "  var bootState = document.getElementById('bootState');\n" +
         "  var bootRetry = document.getElementById('bootRetry');\n" +
+        "  var bootElapsed = document.getElementById('bootElapsed');\n" +
         "  var busy = false, failed = 0;\n" +
+        // 启动耗时显示（ADR holder-mint-gate-deepening 同批，纯展示不参与重试——重试链仍只由事件驱动）：
+        // dsh 冷启动实测 9–41s 高方差，此前 holder 零反馈，用户无从区分「慢」与「卡死」。
+        "  var bootT0 = Date.now();\n" +
+        "  if (bootElapsed) setInterval(function () {\n" +
+        "    var s = Math.floor((Date.now() - bootT0) / 1000);\n" +
+        "    var label = s < 60 ? (s + ' s elapsed') : (Math.floor(s / 60) + ' min ' + (s % 60) + ' s elapsed');\n" +
+        "    if (s >= 45) label += ' — taking longer than usual, details in host log';\n" +
+        "    bootElapsed.textContent = label;\n" +
+        "  }, 1000);\n" +
         "  function invoke(cmd) {\n" +
         "    if (!window.__shell || !window.__shell.invoke) return false;\n" +
         "    try { var p = window.__shell.invoke(cmd, {}); if (p && p.catch) p.catch(function () {}); return true; }\n" +

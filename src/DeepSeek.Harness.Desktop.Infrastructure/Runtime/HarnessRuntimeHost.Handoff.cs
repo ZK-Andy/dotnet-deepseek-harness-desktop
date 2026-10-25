@@ -306,8 +306,9 @@ public sealed partial class HarnessRuntimeHost
     /// <param name="expectedToken">收养时该进程的血统 token（复验身份）。</param>
     /// <returns>进程消失即完成；应用退出路径的 Stop 会杀掉它，故不会无限轮询。</returns>
     /// <remarks>判活必须带身份复验：pid 复用（正是本仓用 token 复验防范的同一风险）会让「/proc 存在」恒真，
-    /// 监督器将永远看不到该运行时退出、会话崩溃恢复静默失效。token 读不到（无权限/僵尸）按「仍在运行」
-    /// 处理——宁可晚恢复，也不把活着的运行时判死而触发抢端口。</remarks>
+    /// 监督器将永远看不到该运行时退出、会话崩溃恢复静默失效。僵尸态已被 <see cref="RuntimeLineageProbes.TryIsAlive"/>
+    /// 按死收敛（不占端口，提前恢复无抢端口风险）；token 读不到（无权限）按「仍在运行」处理——宁可晚恢复，
+    /// 也不把活着的运行时判死而触发抢端口。</remarks>
     private async Task WaitAdoptedExitAsync(int pid, string expectedToken)
     {
         while (true)

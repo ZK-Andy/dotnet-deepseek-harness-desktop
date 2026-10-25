@@ -57,8 +57,12 @@ public sealed partial class HarnessRuntimeHost
         ProcessStartInfo psi = BuildStartPsi(port, home, spawnToken);
         DateTimeOffset startedUtc = DateTimeOffset.UtcNow;
 
+        // spawn 段节拍（ADR residue-alive-zombie-recheck 同批）：此前 spawn→URL 之间零日志，
+        // 9–41s 的等待窗口卡在哪无法归因（16:21 会话 41s 实测）。起 spawn/拿到 URL 各留一行。
+        _log?.Invoke($"[host] 启动 dsh：等待 web 就绪（预算 {timeout.TotalSeconds:F0}s）…");
         Process process = Process.Start(psi)
             ?? throw new InvalidOperationException("无法启动 dsh 进程。");
+        _log?.Invoke($"[host] dsh 进程已起：pid {process.Id}");
         _process = process;
         // spawn 成功立即落盘 pid+token：崩溃监督重启（RestartAsync）复用同一路径覆盖为新 token。
         PersistSpawn(process.Id, spawnToken);
@@ -76,6 +80,7 @@ public sealed partial class HarnessRuntimeHost
         {
             // 起始时刻即「新生续任者」的参照：只有诞生于它之后的血统服务端才是接力产物
             _runtimeStartedUtc = startedUtc;
+            _log?.Invoke($"[host] dsh web 就绪：耗时 {(DateTimeOffset.UtcNow - startedUtc).TotalSeconds:F1}s");
             return outcome;
         }
 
