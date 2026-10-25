@@ -31,6 +31,12 @@ Review: FULL/2026-10-25#2/R1=ok R2=ok R3=ok
 
 **缩放边日志名与协议对齐**：宿主日志的缩放边从枚举 `ToString()`（`TopLeft`）改为页面协议 kebab 名（`top-left`）——命令帧到命令面的判定位靠日志与协议名对读。
 
+## 窗口态通知与导航空窗
+
+X11 上每次窗口态切换产生两条 `WindowState` 变更通知：先 `旧 -> 旧`，再真实切换。来源是 Avalonia 12.1.4 `Window.cs` 的 `WindowState` setter——置平台属性后立即以 `PlatformImpl.WindowState != value` 判「请求被拒」并补发强制通知（源码注释自认可能 old==new）；X11 实现的 setter 只投递 `_NET_WM_STATE` 请求即返回，此刻 getter 仍是旧值，故每次切换必先发伪通知，真切换随后由 WM 的 `_NET_WM_STATE` 回调补齐。宿主对两条通知同等处理：伪通知推的是页面已有值（幂等），`PublishMaximized` 的序号守卫丢弃先到的旧推送，`SaveGeometry` 每次切换写两次快照。页面通道只见正确终值——`中间态可见` 属窗口合成动画，不是页侧错值。启动期几何恢复先于 `PropertyChanged` 订阅，那时的伪通知没有观察者，日志只留真切换。
+
+顶栏 DOM 属页面（注入脚本建在文档里）：导航空窗期（holder → dsh 的文档替换）条随文档销毁，重建等导航完成后的注入。空窗期点红绿灯没有落点，宿主侧零命令，加载完成自愈。代价是导航期点击被吞且不排队。
+
 ## Alternatives considered
 
 - **X11 事件泵收 `WM_TAKE_FOCUS`（计划书原第 1/2 件）**：源码级证伪——Mutter `src/x11/window-x11.c` 的 `send_icccm_message` 以 `event_mask=0` 发该消息，X 协议下只投递建窗客户端；Avalonia `src/Avalonia.X11/X11Window.cs`（12.1.4）写的 `WM_PROTOCOLS` 只含 `WM_DELETE_WINDOW`/`_NET_WM_SYNC_REQUEST`，其 ClientMessage 分支亦不处理该消息——本壳独立连接永远收不到；且只往 `WM_PROTOCOLS` 加原子而不响应会让 Mutter（`priv->wm_take_focus` 为真即改走应答路径）放弃直落焦点，反而恶化。落败，改道激活请求。
@@ -38,6 +44,8 @@ Review: FULL/2026-10-25#2/R1=ok R2=ok R3=ok
 - **去抖做在宿主命令面**（`ToggleMaximize` 收到两条相邻命令吞第二条）：去抖窗内第二次合法点击（顶带双击自判路径）同样会被吞，语义混淆；按钮双击的病灶在按钮 click 监听，就地修。落败。
 - **还原位置回放做在 `WindowGeometryStore` 落盘值上**：落盘值在态切换瞬间采集，此时 X11 ConfigureNotify 是否已到不确定，可能存进最大化几何；内存态 `PositionChanged` 追踪只记常态、时序确定。落败。
 - **最大化态也发布全屏/最小化等全量态进页面**：当前页面判定只消费最大化一处（`data-fullscreen` 静态不发是上游 CSS 语义，运行时状态已有宿主侧口径）；全量通道无消费方，YAGNI。落败。
+- **把顶栏改为宿主侧悬浮层**（不随文档销毁，消除导航空窗期的点击丢失）：chrome 的视觉与命中面（侧栏让位、模态遮罩让位、主题取值）全要重做，成本远超一个加载期点击丢失。落败。
+- **在宿主 handler 过滤 old==new 伪通知**（`previous == current` 早退）：纯降噪，却动窗口生命周期面且需真机复验，收益不抵风险。落败。
 
 ## Consequences
 
