@@ -27,6 +27,7 @@ internal sealed class ShellBridge : IDisposable
     private readonly int _captionHeightPx;
     private readonly Func<bool> _captionBarEnabled;
     private readonly Func<bool> _edgeResizeEnabled;
+    private readonly Func<bool> _maximizedState;
     private readonly UiLocale? _uiLocale;
     private readonly CancellationTokenSource _cts = new();
     // 令牌在构造期取一次：Dispose 会释放 CTS，之后再读 `_cts.Token` 会抛 ObjectDisposedException，
@@ -56,7 +57,8 @@ internal sealed class ShellBridge : IDisposable
         Action<string> log,
         Func<bool>? captionBarEnabled = null,
         UiLocale? uiLocale = null,
-        Func<bool>? edgeResizeEnabled = null)
+        Func<bool>? edgeResizeEnabled = null,
+        Func<bool>? maximizedState = null)
     {
         ArgumentNullException.ThrowIfNull(surface);
         ArgumentNullException.ThrowIfNull(routers);
@@ -70,6 +72,7 @@ internal sealed class ShellBridge : IDisposable
         _captionHeightPx = captionHeightPx;
         _captionBarEnabled = captionBarEnabled ?? (static () => false);
         _edgeResizeEnabled = edgeResizeEnabled ?? (static () => true);
+        _maximizedState = maximizedState ?? (static () => false);
         _uiLocale = uiLocale;
         _log = log;
         _token = _cts.Token;
@@ -326,7 +329,7 @@ internal sealed class ShellBridge : IDisposable
             if (_captionBarEnabled())
             {
                 await PageCaptionBar.InjectAsync(
-                    _surface, _captionHeightPx, _uiLocale, _macChrome, _edgeResizeEnabled(), ct, _log)
+                    _surface, _captionHeightPx, _uiLocale, _macChrome, _edgeResizeEnabled(), _maximizedState(), ct, _log)
                     .ConfigureAwait(false);
             }
         }

@@ -13,9 +13,10 @@ internal static class PageCaptionBar
     /// <param name="uiLocale">UI 语言回落（脚本执行期按 <c>html[lang]</c> 现取）。</param>
     /// <param name="macChrome">是否 macOS 形态。</param>
     /// <param name="edgeResize">宿主是否提供边缘缩放通道（macOS 由窗口系统代劳，页面不得抢边）。</param>
+    /// <param name="maximized">注入时窗口是否最大化（页面通道初值，运行时由宿主推新）。</param>
     /// <returns>注入脚本原文。</returns>
-    public static string Script(int captionHeightPx, UiLocale? uiLocale, bool macChrome, bool edgeResize) =>
-        CaptionBar.Build(captionHeightPx, uiLocale, macChrome, edgeResize);
+    public static string Script(int captionHeightPx, UiLocale? uiLocale, bool macChrome, bool edgeResize, bool maximized = false) =>
+        CaptionBar.Build(captionHeightPx, uiLocale, macChrome, edgeResize, maximized);
 
     /// <summary>对当前文档注入顶栏脚本。</summary>
     /// <param name="surface">网页视图可测面。</param>
@@ -23,15 +24,16 @@ internal static class PageCaptionBar
     /// <param name="uiLocale">UI 语言回落。</param>
     /// <param name="macChrome">是否 macOS 形态。</param>
     /// <param name="edgeResize">宿主是否提供边缘缩放通道。</param>
+    /// <param name="maximized">注入时窗口是否最大化（页面通道初值，运行时由宿主推新）。</param>
     /// <param name="ct">取消令牌。</param>
     /// <param name="log">日志委托。</param>
     /// <returns>完成的任务。</returns>
     public static async Task InjectAsync(
-        IWebViewSurface surface, int captionHeightPx, UiLocale? uiLocale, bool macChrome, bool edgeResize, CancellationToken ct, Action<string> log)
+        IWebViewSurface surface, int captionHeightPx, UiLocale? uiLocale, bool macChrome, bool edgeResize, bool maximized, CancellationToken ct, Action<string> log)
     {
         try
         {
-            await surface.InvokeScriptAsync(Script(captionHeightPx, uiLocale, macChrome, edgeResize), ct).ConfigureAwait(false);
+            await surface.InvokeScriptAsync(Script(captionHeightPx, uiLocale, macChrome, edgeResize, maximized), ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

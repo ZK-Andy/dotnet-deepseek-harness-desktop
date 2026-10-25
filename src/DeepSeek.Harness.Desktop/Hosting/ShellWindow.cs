@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using DeepSeek.Harness.Desktop.Core.Platform;
 
@@ -13,6 +14,10 @@ internal sealed class ShellWindow : Window
     private readonly IWindowGeometryStore? _geometryStore;
     private int _chromeWired;
     private int _maximizedAtHide = -1;
+
+    /// <summary>常态位置追踪（设备像素）：只在 <c>WindowState.Normal</c> 时随 <c>PositionChanged</c>
+    /// 记录，作为取消最大化失败时的回放数据源（见 <see cref="ReplayRestoredPosition"/>）。</summary>
+    private PixelPoint? _lastNormalPosition;
 
     /// <summary>创建主窗并挂载 WebView。</summary>
     /// <param name="initialUri">初始 URL（壳 origin；null = 代理绑定失败，窗口留空。wwwroot 降级
@@ -70,11 +75,30 @@ internal sealed class ShellWindow : Window
         // （最大化/全屏切换，覆盖崩溃与非受控退出前的最后状态）；移动/缩放不在拖拽流里逐帧写盘，
         // 交给 HideToTray 与真实关窗两个收口点。自查 Closing 在外部判据之前订阅，两者互不影响。
         // 态切换随行落日志：与窗口命令日志配对（命令到了、态没切=窗口系统侧脱同步的判定位）。
+        // 态切换同时发布页面通道（最大化态边缘判定短路）并做还原位置回放（见 ReplayRestoredPosition）。
+        // 常态位置随 PositionChanged 追踪（只在常态记）：回放数据源，拖拽/缩放/居中都进同一份。
+        PositionChanged += (_, p) =>
+        {
+            // (0,0) 按无效跳过（与 WindowGeometryRestore.Apply 同判据）：取消最大化落 (0,0) 的
+            // 迟到 ConfigureNotify 不得污染常态追踪，否则下一轮回放即回放 (0,0)。
+            if (WindowState == WindowState.Normal && !(p.Point.X == 0 && p.Point.Y == 0))
+            {
+                _lastNormalPosition = p.Point;
+            }
+        };
         PropertyChanged += (_, e) =>
         {
             if (e.Property == WindowStateProperty)
             {
-                HostLog.Write($"[host] 窗口态切换：{WindowState}");
+                var previous = (WindowState)e.OldValue!;
+                var current = (WindowState)e.NewValue!;
+                HostLog.Write($"[host] 窗口态切换：{previous} -> {current}");
+                _bridgeHost.PublishMaximized(current == WindowState.Maximized);
+                if (previous == WindowState.Maximized && current == WindowState.Normal)
+                {
+                    ReplayRestoredPosition();
+                }
+
                 SaveGeometry();
             }
         };
@@ -88,6 +112,9 @@ internal sealed class ShellWindow : Window
         // 窗口身份（WM_CLASS）先于一切分支：与打包面 StartupWMClass 配对，无壳 origin/无拖拽通道的
         // 降级窗口同样要有身份。幂等（属性替换写），托盘唤回重触发无害。
         X11WindowIdentity.Apply(this, HostLog.Write);
+        // 首映射焦点兜底（ADR 2026-10-25-exit-kill-focus-debounce-batch）：X11 上首映射后发激活请求
+        // 并有界复验；进程级 once（唤回路径由 Show+Activate 覆盖）。
+        X11FocusBootstrap.Apply(this, HostLog.Write);
         // Show() 也会触发 OnOpened（托盘唤回）：接线只做一次，否则每次唤回都追加一条路由。
         if (Interlocked.Exchange(ref _chromeWired, 1) == 1)
         {
@@ -138,6 +165,22 @@ internal sealed class ShellWindow : Window
     internal void DetachContentForShutdown()
     {
         Content = null;
+    }
+
+    /// <summary>取消最大化后的位置回放（兜底，ADR 2026-10-25-exit-kill-focus-debounce-batch）：
+    /// X11 上还原几何全托付 WM 的 saved_rect，而其写入有静默跳过面（floating 判定/拖拽中不存）——
+    /// 跳过时取消最大化落到零初始化 (0,0)（0.7.4 真机实证）。用常态位置追踪值显式回放；无追踪值
+    /// （最大化前未发生过 PositionChanged）即跳过，绝不回放 (0,0)。Win/macOS 的 WM 自行还原正确，
+    /// 回放等值幂等无观感差异。</summary>
+    private void ReplayRestoredPosition()
+    {
+        if (_lastNormalPosition is not { } position)
+        {
+            return;
+        }
+
+        Position = position;
+        HostLog.Write($"[host] 还原位置回放：({position.X},{position.Y})");
     }
 
     /// <summary>几何快照落盘（尽力而为）：存储缺失即 no-op。</summary>

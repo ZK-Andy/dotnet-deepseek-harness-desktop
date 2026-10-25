@@ -201,6 +201,37 @@ public class CaptionBarTests
         Assert.DoesNotContain(HostCommandIds.WindowSetFullscreen, other, StringComparison.Ordinal);
     }
 
+    /// <summary>缩放键双击去抖回归钉（0.7.4 真机日志实锤：双击 = 两条 <c>toggle-maximize</c> 相隔
+    /// ~200ms，翻去翻回净零）：第二次 click 落在双击窗（<see cref="CaptionBar.DoubleClickMs"/>）内即吞掉，
+    /// 双击只发一条命令；macOS 绿灯走原生全屏语义，不去抖（原生全屏自带 toggle 防抖面）。</summary>
+    [Fact]
+    public void Build_ZoomButtonDebouncesDoubleClick()
+    {
+        string script = CaptionBar.Build(52);
+        Assert.Contains("var dshZoomStamp=0;", script, StringComparison.Ordinal);
+        Assert.Contains("if(now-dshZoomStamp<500)return;", script, StringComparison.Ordinal);
+
+        string mac = CaptionBar.Build(52, macChrome: true);
+        Assert.DoesNotContain("dshZoomStamp", mac, StringComparison.Ordinal);
+    }
+
+    /// <summary>最大化态进页面通道回归钉（0.7.4 真机实证：最大化态 6px 边缘带吞贴边点击/发无效
+    /// resize/显缩放光标）：注入即发布 <c>window.__dsh_desk_maximized</c> 初值（导航重建文档后随文档
+    /// 销毁，注入即自愈）；<c>edgeAt</c> 对该变量整体短路（命中判定与缩放光标一并退出）。</summary>
+    [Fact]
+    public void Build_PublishesMaximizedStateChannel_AndEdgeShortCircuits()
+    {
+        string normal = CaptionBar.Build(52);
+        Assert.Contains("window.__dsh_desk_maximized=0;", normal, StringComparison.Ordinal);
+
+        string maximized = CaptionBar.Build(52, maximized: true);
+        Assert.Contains("window.__dsh_desk_maximized=1;", maximized, StringComparison.Ordinal);
+
+        // 两份脚本同用一条 edgeAt 判定线：短路判据在判定函数内，不随初值分支
+        Assert.Contains("function edgeAt(e){if(!EDGE_ON)return '';if(window.__dsh_desk_maximized)return '';",
+            normal, StringComparison.Ordinal);
+    }
+
     /// <summary>毛玻璃透明链防回潮钉（ADR caption-bar-vibrancy-chain-removal）：透明链的窗口侧
     /// backdrop 半边已随旧 Ryn 宿主下线，Avalonia 宿主窗口不透明、<c>NativeWebView</c> 包无背景透明
     /// 旋钮——页侧单边透明只会把侧栏洗成白底近似色。两分支（含 mac 闸内）都不得再产出透明链；

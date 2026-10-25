@@ -3,8 +3,13 @@ namespace DeepSeek.Harness.Desktop.Core;
 /// <summary>
 /// 单实例退出管道（ADR composition-root-value-flow-pipeline）：有序退出步骤是构造数据，幂等由
 /// 内嵌 once-guard 保证——托盘有序退出、Run 尾部回收、自更新兜底强退共用同一实例。
-/// 回收序（cancel 监督器 → 停宿主 → 释放 marker）先于关窗：hide-to-tray 拦截下未批准的 Close
+/// 回收序（cancel 监督器 → 停宿主 → 释放 marker）先于硬退：hide-to-tray 拦截下未批准的 Close
 /// 会吞成隐藏，回收滞留会把「退出」变成托盘里的僵尸实例。
+/// 退出终态是<b>硬退</b>（ADR 2026-10-25-exit-kill-focus-debounce-batch）：本机 WebKitGTK 的优雅
+/// 拆除从未按时走完、8s 看门狗已成事实退出路径（真机实证每次退出静默 13s+ 由强杀收尾）——回收与
+/// 端口释放完成后直接 <c>Environment.Exit(0)</c>，不投递关窗、不等 GTK/WebKit 拆除；看门狗保留为
+/// 保险（硬退正常即时完成，永远轮不到它）。代价：跳过 <c>Closing</c> 几何落盘与退场内容摘除，
+/// 可能伴随 WebKitGTK 退场噪声（崩的只是壳尸首，dsh 已杀、端口已放）。
 /// </summary>
 public sealed class ExitPipeline
 {
@@ -12,7 +17,7 @@ public sealed class ExitPipeline
     private readonly Action _stopHost;
     private readonly Action _releaseMarker;
     private readonly Action _releaseLocalPorts;
-    private readonly Action _closeWindow;
+    private readonly Action _hardExit;
     private readonly Action _startWatchdog;
     private readonly Action<string>? _log;
     private int _reapDone;
@@ -23,24 +28,24 @@ public sealed class ExitPipeline
     /// <param name="stopHost">停止运行时宿主（整树击杀 dsh）。</param>
     /// <param name="releaseMarker">释放 run-marker（失败仅致下轮按非受控退出自愈，不挡前两步）。</param>
     /// <param name="releaseLocalPorts">释放本进程持有的本地监听端口（单实例 UDS 锁与回环代理监听 socket）。</param>
-    /// <param name="closeWindow">关闭窗口。</param>
     /// <param name="startWatchdog">看门狗启动动作；null = 真看门狗（<see cref="ScheduleQuitWatchdog"/>），测试可注入记序 fake。</param>
+    /// <param name="hardExit">退出终态动作；null = 真 <c>Environment.Exit(0)</c>，测试注入记序 fake。</param>
     /// <param name="log">日志回调（可选）。</param>
     public ExitPipeline(
         Action cancelSupervisor,
         Action stopHost,
         Action releaseMarker,
         Action releaseLocalPorts,
-        Action closeWindow,
         Action? startWatchdog = null,
+        Action? hardExit = null,
         Action<string>? log = null)
     {
         _cancelSupervisor = cancelSupervisor;
         _stopHost = stopHost;
         _releaseMarker = releaseMarker;
         _releaseLocalPorts = releaseLocalPorts;
-        _closeWindow = closeWindow;
         _startWatchdog = startWatchdog ?? ScheduleQuitWatchdog;
+        _hardExit = hardExit ?? (() => Environment.Exit(0));
         _log = log;
     }
 
@@ -58,7 +63,7 @@ public sealed class ExitPipeline
         _releaseMarker();
     }
 
-    /// <summary>托盘/恢复页有序退出：回收三件套 → 释放本地监听端口 → 关窗 → 看门狗；
+    /// <summary>托盘/恢复页有序退出：回收三件套 → 释放本地监听端口 → 看门狗（保险）→ 硬退；
     /// once-guard：重复调用为 no-op。</summary>
     public void OrderlyQuit()
     {
@@ -67,15 +72,15 @@ public sealed class ExitPipeline
             return;
         }
 
-        _log?.Invoke("[tray] 有序退出：回收运行时后关闭窗口");
+        _log?.Invoke("[tray] 有序退出：回收运行时后硬退");
         ReapRuntime();
         _releaseLocalPorts();
-        _closeWindow();
         _startWatchdog();
+        _hardExit();
     }
 
     /// <summary>应用重启（ADR app-restart-native-switch）：回收三件套 → 释放本地监听端口 → <b>拉起新实例</b> →
-    /// 关窗 → 看门狗；once-guard 与 <see cref="OrderlyQuit"/> 共享（先到者得，另一路径即 no-op）。
+    /// 看门狗（保险）→ 硬退；once-guard 与 <see cref="OrderlyQuit"/> 共享（先到者得，另一路径即 no-op）。
     /// 回收与端口释放必须先于 spawn：旧 dsh 树不死透，本进程看门狗的 <c>stopHost</c> 可能击杀
     /// 新实例的 dsh；单实例锁不释放，新实例过不了仲裁；回环代理端口不释放，继任者试绑记忆端口会
     /// 撞上旧监听而降级 OS 重分配，本次重启丢一次会话恢复（ADR restart-proxy-port-release）。</summary>
@@ -87,12 +92,12 @@ public sealed class ExitPipeline
             return;
         }
 
-        _log?.Invoke("[tray] 重启：回收运行时后拉起新实例");
+        _log?.Invoke("[tray] 重启：回收运行时后拉起新实例硬退");
         ReapRuntime();
         _releaseLocalPorts();
         spawnSuccessor();
-        _closeWindow();
         _startWatchdog();
+        _hardExit();
     }
 
     /// <summary>8s 退出看门狗（无令牌，退出即终态）：主循环届时仍未返回则先补一次 Stop（幂等）再强制终结。

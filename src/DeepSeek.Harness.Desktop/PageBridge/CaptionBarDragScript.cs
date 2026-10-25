@@ -91,13 +91,15 @@ internal static class CaptionBarDragScript
     /// 边缘是窗口 chrome 语义——6px 边缘内内容一律让位（原生标题栏同规则），只有显式豁免
     /// （<c>data-webview-ignore</c>）可阻断；交互元素/NODRAG 簇不豁免——dsh 的侧栏/输入框/顶带
     /// 恰好盖满四边，按内容让位则边缘区永远打不中（0.7.2 真机实证：边缘缩放完全失效）。
+    /// 最大化态整体短路（宿主经页面通道发布 <c>window.__dsh_desk_maximized</c>）：最大化的窗无可缩放边，
+    /// 命中判定与缩放光标一并退出——否则 6px 带吞贴边点击、发无效 resize、显缩放光标（0.7.4 真机）。
     /// pointermove 光标监听随 <paramref name="edgeResize"/> 门控（macOS 走系统边框缩放，不上监听）。</summary>
     /// <param name="edgeResize">边缘缩放开关（宿主提供缩放通道才启用）。</param>
     /// <returns>边缘缩放 JS 段（<c>edgeAt</c>/<c>edgeCursor</c> 定义与可选 pointermove 监听）。</returns>
     private static string BuildEdgeScript(bool edgeResize)
     {
         return
-        "function edgeAt(e){if(!EDGE_ON)return '';" +
+        "function edgeAt(e){if(!EDGE_ON)return '';if(window." + CaptionBar.MaximizedStateVar + ")return '';" +
         "var t=e.target;if(t&&t.closest&&t.closest('[data-webview-ignore]'))return '';" +
         "var w=window.innerWidth,h=window.innerHeight," +
         "x=e.clientX,y=e.clientY,t=y<=EDGE,b=y>=h-EDGE,l=x<=EDGE,r=x>=w-EDGE;" +

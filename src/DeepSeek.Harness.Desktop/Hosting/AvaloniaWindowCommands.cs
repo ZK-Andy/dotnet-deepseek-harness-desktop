@@ -36,11 +36,19 @@ internal sealed class AvaloniaWindowCommands : IWindowCommands
     });
 
     /// <inheritdoc />
-    public void BeginResize(WindowEdgeKind edge, int screenX, int screenY) => Run($"resize-{edge}", () =>
+    public void BeginResize(WindowEdgeKind edge, int screenX, int screenY) => Run($"resize-{EdgeLabel(edge)}", () =>
     {
+        // 最大化态无可缩放边（页面通道已短路边缘判定，此处是脱同步期兜底）：直接吞掉，
+        // 不给窗口系统发无效缩放（0.7.4 真机实证最大化态 6px 带发 resize）。
+        if (_window.WindowState == WindowState.Maximized)
+        {
+            _log("[host] 缩放忽略（最大化态）");
+            return;
+        }
+
         if (!_drag.TryBeginResize(_window, edge, ToDevicePixels(screenX, screenY)))
         {
-            _log($"[host] 缩放未发起（端口 {_drag.Name}，边 {edge}）");
+            _log($"[host] 缩放未发起（端口 {_drag.Name}，边 {EdgeLabel(edge)}）");
         }
     });
 
@@ -59,6 +67,23 @@ internal sealed class AvaloniaWindowCommands : IWindowCommands
     /// <inheritdoc />
     public void SetFullscreen(bool fullscreen) => Run(fullscreen ? "fullscreen-on" : "fullscreen-off", () =>
         _window.WindowState = fullscreen ? WindowState.FullScreen : WindowState.Normal);
+
+    /// <summary>缩放边的日志名：与页面协议的 kebab-case 同名（页面发 <c>top-left</c>，日志不再漂成
+    /// 枚举 <c>TopLeft</c>——命令帧到命令面的判定位靠日志与协议名对读）。</summary>
+    /// <param name="edge">缩放边。</param>
+    /// <returns>协议侧边名。</returns>
+    private static string EdgeLabel(WindowEdgeKind edge) => edge switch
+    {
+        WindowEdgeKind.Left => "left",
+        WindowEdgeKind.Right => "right",
+        WindowEdgeKind.Top => "top",
+        WindowEdgeKind.Bottom => "bottom",
+        WindowEdgeKind.TopLeft => "top-left",
+        WindowEdgeKind.TopRight => "top-right",
+        WindowEdgeKind.BottomLeft => "bottom-left",
+        WindowEdgeKind.BottomRight => "bottom-right",
+        _ => edge.ToString(),
+    };
 
     /// <summary>页面给的是 CSS 像素（<c>window.screenX + clientX</c>），X11 的根坐标是设备像素：
     /// 按窗口缩放比换算，否则 scale≠1 时移动/缩放的锚点会按比例偏。</summary>

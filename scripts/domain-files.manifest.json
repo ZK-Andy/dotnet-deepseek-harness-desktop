@@ -78,6 +78,7 @@
     "WindowDrag.cs",
     "WindowGeometryRestore.cs",
     "WindowsMessageBox.cs",
+    "X11FocusBootstrap.cs",
     "X11WindowIdentity.cs"
   ]
 }

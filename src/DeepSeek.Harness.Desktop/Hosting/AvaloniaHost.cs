@@ -187,21 +187,18 @@ internal static class AvaloniaHost
     /// <param name="releaseLocalPorts">本地监听端口释放动作（接线层产物，见 adr 注释）。</param>
     /// <param name="dshHome">DSH home（marker 根）。</param>
     /// <param name="cancelSupervisor">监督器取消动作（含引导取消与 join；见 ShellRecoveryContext.CancelAndJoin）。</param>
-    /// <param name="closeWindow">关窗动作（接线层给出的同一份投递：退出管道与自更新安装路径共用）。</param>
     /// <returns>退出管道。</returns>
     internal static ExitPipeline CreateLifetime(
         HarnessRuntimeHost host,
         RunMarkerResult marker,
         Action releaseLocalPorts,
         string dshHome,
-        Action cancelSupervisor,
-        Action closeWindow) =>
+        Action cancelSupervisor) =>
         new(
             cancelSupervisor: cancelSupervisor,
             stopHost: host.Stop,
             releaseMarker: () => RunMarker.Release(dshHome, marker.Token),
             releaseLocalPorts: releaseLocalPorts,
-            closeWindow: closeWindow,
             log: HostLog.Write);
 
     /// <summary>开 Avalonia 主循环（窗口、托盘与页面桥都在 <see cref="ShellApplication"/> 里接线）。</summary>
@@ -217,7 +214,7 @@ internal static class AvaloniaHost
     /// <param name="recoveryContext">恢复/引导/监督的宿主侧依赖束。</param>
     /// <param name="closeGate">关窗闸门（失败面/托盘/恢复页/自更新安装共用）。</param>
     /// <param name="updates">自更新面（命令路由、启动检查与托盘「检查更新」动作）。</param>
-    /// <param name="closeWindow">主窗关窗投递（恢复页退出与退出管道共用同一份）。</param>
+    /// <param name="closeWindow">主窗关窗投递（恢复页退出消费；退出管道已改硬退不再消费）。</param>
     /// <param name="notices">启动期告知（版本底线/非受控退出横幅）。</param>
     /// <returns>进程退出码。</returns>
     private static int RunUi(

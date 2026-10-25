@@ -16,6 +16,8 @@ internal sealed class ShellBridgeHost : IDisposable
     private readonly UiLocale _uiLocale;
     private volatile bool _captionBarEnabled;
     private volatile bool _edgeResize;
+    private volatile bool _maximized;
+    private int _publishSeq;
     private readonly string? _origin;
     private readonly ISystemBrowser _browser;
     private readonly bool _macChrome;
@@ -100,9 +102,50 @@ internal sealed class ShellBridgeHost : IDisposable
             if (_surface is not null)
             {
                 _ = PageCaptionBar.InjectAsync(
-                    _surface, _captionHeightPx, _uiLocale, _macChrome, _edgeResize, _token, _log);
+                    _surface, _captionHeightPx, _uiLocale, _macChrome, _edgeResize, _maximized, _token, _log);
             }
         }
+    }
+
+    /// <summary>发布最大化态进页面通道（ADR 2026-10-25-exit-kill-focus-debounce-batch）：更新注入初值
+    /// 并对当前文档推 <c>window.__dsh_desk_maximized</c>——最大化态边缘判定整体短路（6px 带不吞点击、
+    /// 不发无效 resize、不显缩放光标）。推送失败静默（窗口未就绪等），导航完成注入会以当前值自愈。</summary>
+    /// <param name="maximized">当前是否最大化。</param>
+    public void PublishMaximized(bool maximized)
+    {
+        _maximized = maximized;
+        if (_surface is null)
+        {
+            return;
+        }
+
+        // 序号守卫：快速连切时旧推送不得后到盖新值（输家直接放弃，赢家带最新字段值）。
+        int seq = Interlocked.Increment(ref _publishSeq);
+        _ = Task.Run(async () =>
+        {
+            if (seq != Volatile.Read(ref _publishSeq) || maximized != _maximized)
+            {
+                return;
+            }
+
+            try
+            {
+                await _scriptTarget.EvaluateAsync(
+                    $"window.{CaptionBar.MaximizedStateVar}={(maximized ? 1 : 0)};", _token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // 收口期。
+            }
+            catch (InvalidOperationException)
+            {
+                // 窗口未就绪（页面尚未挂载）：注入初值已带当前值，无须重试。
+            }
+            catch (Exception ex)
+            {
+                _log($"[shell-bridge] 最大化态推送失败（导航注入自愈）：{ex.Message}");
+            }
+        });
     }
 
     /// <summary>把已挂进视觉树的网页视图接上页面桥（重复调用为 no-op）。</summary>
@@ -131,7 +174,8 @@ internal sealed class ShellBridgeHost : IDisposable
             _log,
             captionBarEnabled: () => _captionBarEnabled,
             uiLocale: _uiLocale,
-            edgeResizeEnabled: () => _edgeResize);
+            edgeResizeEnabled: () => _edgeResize,
+            maximizedState: () => _maximized);
         _bridge.Attach();
     }
 

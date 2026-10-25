@@ -45,12 +45,13 @@ internal static class ShellWiringRegistration
             preflight.Bootstrap, host, supervisorCts, shared.ShellForward, shared.Timeouts, HostLog.Write);
         // 关窗闸门先于窗口与自更新面（ADR avalonia-g3-shell-commands）：安装路径与托盘退出共用同一放行点。
         var closeGate = new CloseGate();
-        // 退出/重启管道（ADR avalonia-g3-exit-restart、restart-proxy-port-release）：回收三步、端口释放与
-        // 关窗动作即构造数据；托盘菜单、desktop.app.restart 与恢复页共用同一实例（幂等由管道内 once-guard 保证）。
-        // 关窗动作同时交给自更新面：安装器派生后要关窗放行脚本等待环，两处不得各写一份投递。
+        // 退出/重启管道（ADR avalonia-g3-exit-restart、restart-proxy-port-release）：回收三步与端口释放
+        // 即构造数据；托盘菜单、desktop.app.restart 与恢复页共用同一实例（幂等由管道内 once-guard 保证）。
+        // 终态为硬退（ADR 2026-10-25-exit-kill-focus-debounce-batch）：不再投递关窗。关窗动作只归
+        // 自更新面与恢复页：安装器派生后要关窗放行脚本等待环，两处不得各写一份投递。
         Action closeWindow = CloseWindowOnUiThread;
         ExitPipeline exitPipeline = AvaloniaHost.CreateLifetime(
-            host, marker, resources.ReleaseLocalPorts, dshHome, recovery.CancelAndJoin, closeWindow);
+            host, marker, resources.ReleaseLocalPorts, dshHome, recovery.CancelAndJoin);
 
         // 页面桥（ADR avalonia-g2-shell-bridge）：代理未绑定时 origin 为 null，
         // 桥整体降级跳过（ShellBridgeHost 自持该判据）。
@@ -125,7 +126,7 @@ internal static class ShellWiringRegistration
 /// <param name="Recovery">恢复/引导/监督依赖束。</param>
 /// <param name="CloseGate">关窗闸门（失败面/托盘/恢复页与自更新安装共用的同一放行点）。</param>
 /// <param name="Updates">自更新面（命令路由、启动检查与托盘「检查更新」动作）。</param>
-/// <param name="CloseWindow">主窗关窗投递（退出管道、自更新安装与恢复页退出共用）。</param>
+/// <param name="CloseWindow">主窗关窗投递（自更新安装与恢复页退出共用；退出管道已改硬退不再消费）。</param>
 /// <param name="Notices">启动期告知（版本底线/非受控退出横幅；引导落定后由窗口起步收口触发）。</param>
 internal sealed record RunWiring(
     ShellStartup Startup,

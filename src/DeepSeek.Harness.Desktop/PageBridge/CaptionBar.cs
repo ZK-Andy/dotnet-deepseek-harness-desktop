@@ -49,6 +49,10 @@ internal static class CaptionBar
     /// <summary>绿灯按钮属性（闸外，含非 macOS 与 Rosetta-x64）：窗口缩放语义。</summary>
     private const string ZoomGreenAttr = "data-webview-maximize";
 
+    /// <summary>最大化态页面通道变量名（宿主推送与注入初值的单一命名源，见
+    /// <c>ShellBridgeHost.PublishMaximized</c> 与 <see cref="CaptionBarDragScript"/> 的 edgeAt 短路）。</summary>
+    public const string MaximizedStateVar = "__dsh_desk_maximized";
+
     /// <summary>dsh 三变量协议名（上游公开量；语义归 <see cref="Core.WindowChrome.ChromeInsets"/>，
     /// 本类只做渲染——协议改名只改此处）。</summary>
     private const string TopClearanceVar = "--dsh-frame-top-clearance";
@@ -69,11 +73,14 @@ internal static class CaptionBar
     /// 缺失时的回落值，文档自带语言时以文档为准。</param>
     /// <param name="macChrome">是否启用原生 macOS chrome（调用点传 <see cref="MacNativeChrome.IsEnabled"/>，
     /// 理由与闸界见其类注）：true 时绿灯走<i>原生全屏</i>而非窗口缩放。否则恒 false。</param>
+    /// <param name="maximized">注入时窗口是否最大化（页面通道初值；运行时由宿主推新，见
+    /// <c>ShellBridgeHost.PublishMaximized</c>）：最大化态边缘判定整体短路。</param>
     public static string Build(
         int heightPx,
         UiLocale? uiLocale = null,
         bool macChrome = false,
-        bool edgeResize = true)
+        bool edgeResize = true,
+        bool maximized = false)
     {
         bool english = uiLocale?.IsEnglish == true;
         // 两套语言的按钮可达名都进脚本：脚本注册后由引擎在**每次页面加载**时执行（注入时机见类注），
@@ -106,6 +113,9 @@ internal static class CaptionBar
                // 会让该页的拖拽与描边环整段缺失——条与监听分开守卫。
                "if(window.__dsh_caption_ready)return;" +
                "window.__dsh_caption_ready=1;" +
+               // 最大化态初值（运行时由宿主随态变化推新，见 ShellBridgeHost.PublishMaximized）：
+               // 导航重建文档后此变量随文档销毁，注入即发布当前值，边缘判定不依赖推送时序。
+               "window." + MaximizedStateVar + "=" + (maximized ? "1" : "0") + ";" +
                "var id='" + ElementId + "';" +
                "var bar=document.getElementById(id);" +
                // 样式独立于条存在性：引导页自带静态条时仍需要三变量/描边环等规则（静态条只带条本身）。
@@ -273,7 +283,14 @@ internal static class CaptionBar
             "call(" + fullscreenCmd + ",{fullscreen:!fs});};";
 
         // 三键各自 onclick（重复注入时覆盖而非叠监听）。
-        string green = macChrome ? fullscreen : "bar.children[2].onclick=function(){call(" + toggleCmd + ");};";
+        // 缩放键去抖：按钮上的 dblclick 原生可达，双击即两条 click = 两条 toggle-maximize（相隔
+        // ~200ms）翻去翻回净零（0.7.4 真机日志实锤）；第二次点击落在双击窗内即吞掉——与原生标题栏
+        // 双击语义同窗（<see cref="DoubleClickMs"/>）。
+        string green = macChrome
+            ? fullscreen
+            : "var dshZoomStamp=0;" +
+              "bar.children[2].onclick=function(){var now=Date.now();" +
+              "if(now-dshZoomStamp<" + DoubleClickMs + ")return;dshZoomStamp=now;call(" + toggleCmd + ");};";
         return "bar.children[0].onclick=function(){call(" + closeCmd + ");};" +
                "bar.children[1].onclick=function(){call(" + minimizeCmd + ");};" + green;
     }
