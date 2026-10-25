@@ -40,3 +40,6 @@ resources/runtime/
 /.review-briefs/
 # workspace memory (dsh-continual-evolve)
 .evolve/
+
+# 客户端侧工作区记忆（本机工作底稿，非事实源；事实家见 AGENTS.md「文档纪律」）
+/.workbuddy/
