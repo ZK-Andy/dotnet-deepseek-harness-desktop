@@ -26,4 +26,4 @@ Review: FULL/2026-10-26/R1=ok R2=ok R3=ok
 ## Testing
 
 - actionlint 与 `verify-governance.py` 全绿。
-- 待验（本批推送后）：ci.yml run 的 `changes` 作业绿，且日志不再出现 `target Node.js 20` 行。
+- run `40357813146`（`7429f75`）全作业绿：日志中 `Node.js 20` 行数 0（升前 run `40352264564` 为 1），build-test 三腿与 docs/changes 均绿。
