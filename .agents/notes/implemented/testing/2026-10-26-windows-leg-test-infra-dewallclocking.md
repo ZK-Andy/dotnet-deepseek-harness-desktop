@@ -26,14 +26,14 @@ Status: implemented
 ## Consequences
 
 - 两处红从此指向真实回归：轮次与顺序被钉死，节奏变化会红在具体断言名上，而不是随机超时。
-- windows 特有面仍未在本机验证：powershell 分支（30s 预算、stderr 排空、`FileShare.None` 失败消息）在 Linux 上无法执行，首次实证点是下一次 windows 腿真跑；若 powershell 在 `HELD` 前挂死，消息形态是「失败时仍在运行、已终止（退出码 -1）」且 stderr 很可能为空。
+- windows 特有面仍只在本机之外验证：powershell 分支（30s 预算、stderr 排空、`FileShare.None` 失败消息）在 Linux 上无法执行，首次实证 = run `40352264564` windows 腿全绿（Core 209/209、Infrastructure 593 通过 19 跳过，含监督器五例与跨进程锁三例）；单次绿不构成概率证明，机制上墙钟依赖已移除。若 powershell 在 `HELD` 前挂死，消息形态是「失败时仍在运行、已终止（退出码 -1）」且 stderr 很可能为空。
 - 成功路径的 stderr 排空 task 不消费结果：`Stop()` 的 Dispose 与它在极端时序下可能让它以 `ObjectDisposedException` 结束。.NET 对未观察异常默认不终止进程，反复实跑未出现（残留风险，不是静默失败面）。
-- 单测时长下降：改前五个监督器用例按墙钟预算凑轮数（预算合计 3.4s，属配置值而非实测）；改后零延迟 + 信号停驻，5 例单次实跑 137–218ms（n=6）。
+- 单测时长下降：改前五个监督器用例按墙钟预算凑轮数（预算合计 3.4s，属配置值而非实测）；改后零延迟 + 信号停驻，5 例单次实跑 151–218ms（n=4，本机 Linux）。
 - 用例数未增删：基线值见 [`scripts/test-baseline.json`](../../../../scripts/test-baseline.json)，本批不触发跟值。
 
 ## Testing
 
-- `dotnet test tests/DeepSeek.Harness.Desktop.Core.Tests --filter RuntimeSupervisorTests` → 5/5（连跑 4 次全绿，151–218ms）。
+- `dotnet test tests/DeepSeek.Harness.Desktop.Core.Tests --filter RuntimeSupervisorTests` → 5/5（连跑 4 次全绿，151–218ms）；CI run `40352264564` windows 腿 Core 209/209 全绿。
 - `dotnet test tests/DeepSeek.Harness.Desktop.Infrastructure.Tests --filter "StalePackagePrunerTests|ReleaseAssetTests"` → 42/42（含跨进程锁持有者三例）。
 - 两工程 build 仅环境性 NU1900（本机 NuGet 缓存只读），无代码警告；`dotnet format --verify-no-changes --severity warn` 对两文件 exit 0。
 - 失败诊断实证（Linux/python3 分支，传不存在父目录）：消息含「就绪预算 30s、失败前已退出（退出码 1）、stderr 尾部 Traceback/FileNotFoundError」。

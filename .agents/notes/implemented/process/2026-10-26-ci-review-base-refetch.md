@@ -39,4 +39,4 @@ docs 作业在两道闸之前新增一步「解析评审 base」：`BASE = pull_
 
 - 门的机械面：actionlint（1.7.12 钉版，`-shellcheck -S warning`）exit 0、`verify-governance.py` OK、`verify-shell-standards.sh` OK。
 - 步骤行为面：以 pyyaml 取出该步 `run:` 块，在四种 base 形态下实跑——本地已有 → `ok`；空/全零 → `none`；伪造 sha → `unreachable`（GitHub 回 `not our ref`，该步 exit 1、后续两闸不执行）；缺对象但可补拉（浅仓端到端）→ `ok` 且 `git diff --numstat` 可算。
-- 真 runner 面：workflow 变更只有实跑能暴露表达式问题，首次验证点是本批推送触发的 ci.yml run。
+- 真 runner 面：run `40352264564`（`34d0d8d`）docs 作业实跑——解析步输出 `review base: state=ok base=01bdc22…`，两闸随后用 `DSH_REVIEW_BASE` 判定，整 job 绿；补拉分支（`unreachable`/可补拉）尚无真 runner 触发条件（需改写历史推送），其行为由上述步内实跑覆盖。
