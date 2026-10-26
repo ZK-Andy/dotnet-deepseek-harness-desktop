@@ -22,11 +22,11 @@ workflow 与 composite action 的 action 钉版按「最小 node24 原生大版�
 
 - `upload-artifact v4→v6`：v6 与 v4 的输入面逐项全等、v6.0.0 release notes 实证变更面仅 node24 运行时 + punycode 修复（评审轮 gh api 实证，非推断）；本仓 10 处上传全是「唯一名 + if-no-files-found」简单形态，无 merge/隐藏文件/overwrite 语义依赖。
 - `action-gh-release v2→v3`：v3 = node24 运行时迁移，release.yml 传参 8 项在 v3 输入清单全在（评审轮实证）；该步仅 tag 触发，下次发版前无实跑面，发布是用户显式门（既有纪律），风险被该门隔离。
-- **遗留警告源（诚实成本）**：`dorny/paths-filter@v3`（ci.yml，第三方）仍 node20——官方 action 警告面本批清完，该条待上游出 node24 版再单点升；下次看到 node20 警告先看是不是它，勿误判为本批回归。
 - **setup-node v5 记账**：`packageManager` 字段存在时会自动启用依赖缓存（[上游 PR #1348](https://github.com/actions/setup-node/pull/1348)）——本仓现态惰性（无根级 package.json、无该字段），但 companion 包将来加该字段会静默改变 CI 行为。node20 弃用背景见 [官方 changelog](https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/)。
 - **runner 版本前提记账**：download-artifact v7 与 upload-artifact v6 均要求 Actions Runner ≥ 2.327.1（各自 release notes IMPORTANT 块，[v7](https://github.com/actions/download-artifact/releases/tag/v7.0.0)/[v6](https://github.com/actions/upload-artifact/releases/tag/v6.0.0)）——本仓 release/package 全 GitHub-hosted runner 现态惰性，自托管 runner 引入时须复核。
+- **第三方项收尾**：[`dorny/paths-filter` 升 v4](2026-10-26-paths-filter-v4-node24.md)（node24 原生；其补丁与安全修复不涉本仓消费面）。
 - 机器定档：workflow 触 behavior-surface FULL（本篇随批三审）。
 
 ## Testing
 
-- actionlint（1.7.12 钉版）+ verify-governance + verify-shell-standards 全绿；workflow 变更的实跑面 = 下一次 CI run（推送即触发）。
+- actionlint（1.7.12 钉版）+ verify-governance + verify-shell-standards 全绿；workflow 变更的实跑面 = run `40352264564`（`34d0d8d`）全作业绿。
