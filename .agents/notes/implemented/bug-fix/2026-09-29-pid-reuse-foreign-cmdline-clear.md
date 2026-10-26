@@ -48,8 +48,8 @@ Status: implemented
 
 `OrphanDshReaperEnsureTests` 新增五钉：异己 cmdline → Clear + 脏记录被清 + 不杀；node 形态 → 保持
 Unreapable + 记录保留；cmdline 不可读/委托异常 → Unreapable；`PlausiblyOwnRuntime` 白名单形状。
-`RuntimeSupervisorTests` 新增节流钉：锁死轮数不因节流减少、首轮与步长轮留痕、同文日志数严格小于锁死
-轮数。
+`RuntimeSupervisorTests` 新增节流钉：锁死轮数不因节流减少、首轮与步长轮留痕；断言形态见
+[windows 腿测试基础设施去墙钟化](../testing/2026-10-26-windows-leg-test-infra-dewallclocking.md)。
 
 ## Related
 

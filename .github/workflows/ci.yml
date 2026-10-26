@@ -142,31 +142,59 @@ jobs:
       - name: 注册点纪律闸（R1：基础设施具体类型只许出现在注册处；ADR coupling-shift-left-gates）
         run: |
           python3 scripts/verify-registration-discipline.py --enforce
-      - name: 增量纪律闸（耦合左移②：gross/既有文件净增/跨层扇出/新包引用四帽，超帽即红；ADR coupling-increment-enforce）
+      - name: 解析评审 base（改写历史后的游离 base 显式补拉）
         env:
           REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          BASE="$REVIEW_BASE"
-          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+          set -euo pipefail
+          BASE="${REVIEW_BASE:-}"
+          STATE=none
+          if [ -n "$BASE" ] && [ "$BASE" != "0000000000000000000000000000000000000000" ]; then
+            if git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+              STATE=ok
+            else
+              # force-with-lease 改写历史后，event.before 指向的提交不再被任何 ref 覆盖：
+              # fetch-depth: 0 的 checkout 只取 refs 可达面，本地就没有这个对象。GitHub 允许
+              # 按 sha 取游离对象（2026-10-26 探针实证，公开仓匿名可取）；--depth=1 只裁祖先
+              # 关系，该提交自身的树与 blob 完整——两闸要的正是这个快照（diff 的 blob 比对与
+              # git show 读基线正文），祖先关系无人使用。
+              echo "评审 base $BASE 不在本地历史（改写历史后的游离对象），按 sha 补拉" >&2
+              timeout 90 git fetch --no-tags --depth=1 origin "$BASE" >&2 || true
+              if git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+                STATE=ok
+              else
+                STATE=unreachable
+              fi
+            fi
+          fi
+          if [ "$STATE" = "unreachable" ]; then
+            # 不可判即违规（ADR review-tier-escape-proofing / increment-gate-enforce）：两条闸都无从
+            # 判定变更集，在此统一硬红——后续两闸不再各报一遍，出红步名即原因所在。
+            echo "::error::评审 base $BASE 不在历史且补拉失败（force-with-lease 改写历史后的典型形态）——两闸无法判定变更集；先 push 一个空提交重建可判 base" >&2
+            exit 1
+          fi
+          echo "DSH_REVIEW_BASE=$BASE" >> "$GITHUB_ENV"
+          echo "DSH_REVIEW_BASE_STATE=$STATE" >> "$GITHUB_ENV"
+          echo "review base: state=$STATE base=${BASE:-<none>}"
+      - name: 增量纪律闸（耦合左移②：gross/既有文件净增/跨层扇出/新包引用四帽，超帽即红；ADR coupling-increment-enforce）
+        run: |
+          # state 只可能 ok/none：unreachable 已在「解析评审 base」步硬红并中止作业。
+          if [ "$DSH_REVIEW_BASE_STATE" = "none" ]; then
             echo "::warning::增量闸无 base 可比（首推/新建分支），本次跳过" >&2
           else
-            echo "increment-discipline --since $BASE"
-            python3 scripts/verify-increment-discipline.py --since "$BASE" --enforce --exempt .agents/notes/implemented/bug-fix/2026-10-25-window-identity-geometry-teardown.md
+            echo "increment-discipline --since $DSH_REVIEW_BASE"
+            python3 scripts/verify-increment-discipline.py --since "$DSH_REVIEW_BASE" --enforce --exempt .agents/notes/implemented/bug-fix/2026-10-25-window-identity-geometry-teardown.md
           fi
       - name: 评审档位硬闸（FULL 档变更须携 Review 证据；ADR review-tier-escape-proofing）
-        env:
-          REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          BASE="$REVIEW_BASE"
-          # 无 base（首推/新建分支）时无法判定变更集，本步必须停——工作树扫描在干净的
-          # CI checkout 上是空集、恒绿，不得作为 fallback。判据与 verify-review-tier
-          # 对不可达 base 的处置同源（无法判定 = 违规）。
-          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+          # 无 base（首推/新建分支）无法判定变更集，本步必须停——工作树扫描在干净的 CI checkout 上是
+          # 空集、恒绿，不得作为 fallback。base 不可达已在「解析评审 base」步硬红，此处 state 只可能 ok/none。
+          if [ "$DSH_REVIEW_BASE_STATE" = "none" ]; then
             echo "::error::档位门禁无法判定变更集（无 base，首推/新建分支）——不得静默放行" >&2
             exit 1
           fi
-          echo "review-tier --since $BASE"
-          python3 scripts/verify-review-tier.py --since "$BASE" --enforce
+          echo "review-tier --since $DSH_REVIEW_BASE"
+          python3 scripts/verify-review-tier.py --since "$DSH_REVIEW_BASE" --enforce
 
   # companion 客户端半边的 JS 测试腿（ADR testing/2026-10-21-companion-client-js-tests）：
   # 插件改动不命中 code 过滤面，故无条件执行；node:test 零依赖，不需要 pnpm install。
