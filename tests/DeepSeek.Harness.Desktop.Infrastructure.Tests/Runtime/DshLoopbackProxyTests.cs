@@ -850,13 +850,19 @@ public class DshLoopbackProxyTests
         await Task.Delay(500, cts.Token);
         Assert.False(waiting.IsCompleted);
 
-        Assert.True(await forward.MintAsync(
-            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+        var mintUrl = DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}"));
+        Assert.True(await forward.MintAsync(mintUrl, _ => { }, cts.Token));
+
+        // 303 即解除长轮询：先收等待，再触发探活——否则 Revalidate 的 fail-open 会替 Mint 完成等待，
+        // 本测就证明不了「早放行」。
         using HttpResponseMessage ready = await waiting;
         string body = await ready.Content.ReadAsStringAsync(cts.Token);
 
         Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
         Assert.Contains("\"ready\":true", body, StringComparison.Ordinal);
+
+        // 探针形状只在收养重验的稳定化里发（冷启动铸币不再前置探活）。
+        Assert.True(await forward.RevalidateAsync(mintUrl, _ => { }, cts.Token));
         // 探活体镜像 0.2.0 客户端 wire 语义：client-request 信封 + 斜杠 method（host.log 实证形态）。
         Assert.Contains("\"type\":\"client-request\"", stub.LastProbeBody, StringComparison.Ordinal);
         Assert.Contains("\"method\":\"session/list\"", stub.LastProbeBody, StringComparison.Ordinal);

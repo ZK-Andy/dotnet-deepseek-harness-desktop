@@ -7,7 +7,8 @@ namespace DeepSeek.Harness.Desktop.Infrastructure.Tests.Runtime;
 
 /// <summary>壳铸币与跟进目标解析（对齐上游 web-document.ts）：条件回环模拟 dsh 门
 /// （正确 token 303 + 铸 cookie；错 token 401），断言铸币/零泄漏/取消语义/跟进纯函数。
-/// 稳定化判据为复合面（会话面 + 通道面 mux 升级，ADR mint-epoch-mux-gate）；
+/// 冷启动铸币在 303 即放行路由、不再前置探活（ADR cold-start-mint-303-release）；复合探活
+/// （会话面 + 通道面 mux 升级）只服务收养重验（ADR mint-epoch-mux-gate）。
 /// 转发执行面在 <c>DshLoopbackProxy</c>（见 <c>DshLoopbackProxyTests</c>）。</summary>
 public class DshShellForwardTests
 {
@@ -32,9 +33,10 @@ public class DshShellForwardTests
         PollInterval: TimeSpan.FromMilliseconds(10),
         Budget: TimeSpan.FromSeconds(1));
 
-    /// <summary>铸币存 cookie：303 + 名值记住；稳定化探活（携带铸得 cookie）即 Ready；日志无秘密。</summary>
+    /// <summary>铸币存 cookie 并在 303 即放行 route：不发起任何就绪探活（冷启动门控已撤），
+    /// 日志无秘密。</summary>
     [Fact]
-    public async Task Mint_ValidToken_StoresCookieWithoutSecretsInLog()
+    public async Task Mint_ValidToken_ReleasesRouteWithoutProbing()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
@@ -47,12 +49,12 @@ public class DshShellForwardTests
         bool minted = await forward.MintAsync(url, lines.Add, cts.Token);
 
         Assert.True(minted);
-        Assert.True(server.ProbeCookieSeen, "稳定化探活应携带铸得的 cookie（POST /api/session/list）");
+        Assert.True(forward.TryGetRoute(out _, out _), "303 即放行：route 应立即可见");
+        Assert.Equal(0, server.SessionProbeCount);
         Assert.DoesNotContain(lines, l => l.Contains(GoodToken));
         Assert.DoesNotContain(lines, l => l.Contains(CookieValue));
         Assert.Contains(lines, l => l.Contains("303") && l.Contains(CookieName));
-        Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面与通道面 Ready"));
-        Assert.DoesNotContain(lines, l => l.Contains("预算耗尽"));
+        Assert.Contains(lines, l => l.Contains("route 即放行"));
     }
 
     /// <summary>错 token 铸币失败 loud 返回 false，不抛。</summary>
@@ -70,14 +72,13 @@ public class DshShellForwardTests
         bool minted = await forward.MintAsync(url, lines.Add, cts.Token);
 
         Assert.False(minted);
+        Assert.False(forward.TryGetRoute(out _, out _));
         Assert.DoesNotContain(lines, l => l.Contains("WRONG"));
     }
 
-    /// <summary>稳定化不通过不放行：303 已铸到 cookie 但会话面 400ms 才就绪，route/TCS 在稳定化
-    /// 未达成前不得可见（holder 不得提前 reload 进半成品页面，ADR holder-mint-gate-deepening）。
-    /// 虚拟时钟下中间态断言的窗口由轮数决定（两拍探活才放行），与墙钟负载无关。</summary>
+    /// <summary>会话面未就绪时铸币也不等待：就绪判定不再挂在铸币上（ADR 冷启动 303 即放行）。</summary>
     [Fact]
-    public async Task Mint_RouteInvisibleUntilStabilized()
+    public async Task Mint_DoesNotWaitForWebFace()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
@@ -86,43 +87,36 @@ public class DshShellForwardTests
             new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast, new VirtualTimeProvider());
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
-        Task<bool> minting = forward.MintAsync(url, _ => { }, cts.Token);
-        await Task.Delay(100, cts.Token);
+        Assert.True(await forward.MintAsync(url, _ => { }, cts.Token));
 
-        Assert.False(minting.IsCompleted);
-        Assert.False(forward.TryGetRoute(out _, out _), "稳定化未通过前 route 不得可见");
-
-        Assert.True(await minting);
         Assert.True(forward.TryGetRoute(out _, out _));
+        Assert.Equal(0, server.SessionProbeCount);
     }
 
-    /// <summary>延迟就绪（0 &lt; 时延 &lt; 预算）：稳定化真正走「探活 Ready 达稳定窗」放行而非 fail-open
-    /// 兜底——日志含稳定化成功标记、无预算耗尽标记（评审补强：区分门控放行与预算兜底放行两条路径）。
-    /// 分叉由虚拟时钟决定：两拍探活（建立 readySince + 维持稳定窗）虚拟耗时 10ms 远小于预算，
-    /// 与探活真实延迟/并行负载无关（墙钟竞速曾致 CI 误判 fail-open）。</summary>
+    /// <summary>收养重验的就绪稳定化（原铸币门的判据现在只服务收养链）：延迟就绪走
+    /// 「探活 Ready 达稳定窗」放行而非 fail-open；分叉由虚拟时钟决定。</summary>
     [Fact]
-    public async Task Mint_WebFaceReadyAfterDelay_PassesGateWithoutFailOpen()
+    public async Task Revalidate_WebFaceReadyAfterDelay_PassesGateWithoutFailOpen()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
-        // 就绪时延 30ms：走「首次探活未就绪 → 建立基准 → 维持稳定窗」的真实序列。
         using var server = new DshMimicResponder(port, cts.Token) { ReadyDelayMilliseconds = 30 };
         var forward = new DshShellForward(
             new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false }, s_fast, new VirtualTimeProvider());
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
-        bool minted = await forward.MintAsync(url, lines.Add, cts.Token);
+        Assert.True(await forward.MintAsync(url, lines.Add, cts.Token));
+        Assert.True(await forward.RevalidateAsync(url, lines.Add, cts.Token));
 
-        Assert.True(minted);
         Assert.True(forward.TryGetRoute(out _, out _));
         Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面与通道面 Ready"));
         Assert.DoesNotContain(lines, l => l.Contains("预算耗尽"));
     }
 
-    /// <summary>会话面恒不就绪：预算耗尽 fail-open——仍铸币（返回 true）且日志留痕预算耗尽标记。</summary>
+    /// <summary>收养重验的会话面恒不就绪：预算耗尽 fail-open——重验仍返回 true 且日志留痕。</summary>
     [Fact]
-    public async Task Mint_WebFaceNeverReady_FailOpenAfterBudget()
+    public async Task Revalidate_WebFaceNeverReady_FailOpenAfterBudget()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
@@ -132,10 +126,9 @@ public class DshShellForwardTests
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
-        bool minted = await forward.MintAsync(url, lines.Add, cts.Token);
+        Assert.True(await forward.MintAsync(url, lines.Add, cts.Token));
+        Assert.True(await forward.RevalidateAsync(url, lines.Add, cts.Token));
 
-        Assert.True(minted);
-        Assert.True(forward.TryGetRoute(out _, out _));
         Assert.Contains(lines, l => l.Contains("预算耗尽") && l.Contains("fail-open"));
     }
 
@@ -143,7 +136,7 @@ public class DshShellForwardTests
     /// <c>{args:{_request:{}}}</c> 包装。夹具按实机网关语义拒裸形状，形状一漂移本测即红——旧版裸
     /// <c>payload:{}</c> 正是被网关以 200 + ok:false 回绝、令门控 100% fail-open 的形态。</summary>
     [Fact]
-    public async Task Mint_ProbePayload_CarriesTypertArgsEnvelope()
+    public async Task Revalidate_ProbePayload_CarriesTypertArgsEnvelope()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
@@ -153,6 +146,7 @@ public class DshShellForwardTests
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
         Assert.True(await forward.MintAsync(url, _ => { }, cts.Token));
+        Assert.True(await forward.RevalidateAsync(url, _ => { }, cts.Token));
 
         Assert.True(server.ProbeCookieSeen);
         Assert.False(server.ProbeArgumentsRejected, $"探针形状被网关拒：{server.LastProbeBody}");
@@ -161,11 +155,10 @@ public class DshShellForwardTests
             server.LastProbeBody, StringComparison.Ordinal);
     }
 
-    /// <summary>复合门钉通道面（ADR mint-epoch-mux-gate）：会话面先就绪、通道面 100ms 后才挂载时，
-    /// route 在通道面就绪前不得可见（页面树数据钉在 mux 连上之后，提前放行即「UI 先出、树后到」）；
-    /// 通道面就绪后复合判据达稳定窗正常放行（非 fail-open）。</summary>
+    /// <summary>收养重验的复合门钉通道面（ADR mint-epoch-mux-gate）：会话面先就绪、通道面 100ms 后才
+    /// 挂载时，重验在通道面就绪前不得完成；通道面就绪后达稳定窗正常放行（非 fail-open）。</summary>
     [Fact]
-    public async Task Mint_CompositeGate_WaitsForMuxFace()
+    public async Task Revalidate_CompositeGate_WaitsForMuxFace()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
@@ -175,23 +168,21 @@ public class DshShellForwardTests
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
-        Task<bool> minting = forward.MintAsync(url, lines.Add, cts.Token);
+        Assert.True(await forward.MintAsync(url, lines.Add, cts.Token));
+        Task<bool> revalidating = forward.RevalidateAsync(url, lines.Add, cts.Token);
         await Task.Delay(50, cts.Token);
 
-        Assert.False(minting.IsCompleted, "通道面未就绪时铸币不得完成");
-        Assert.False(forward.TryGetRoute(out _, out _), "通道面未就绪前 route 不得可见");
+        Assert.False(revalidating.IsCompleted, "通道面未就绪时收养重验不得完成");
 
-        Assert.True(await minting);
-        Assert.True(forward.TryGetRoute(out _, out _));
+        Assert.True(await revalidating);
         Assert.True(server.MuxCookieSeen, "通道面探活应携带 cookie 完成 WebSocket 升级");
         Assert.Contains(lines, l => l.Contains("就绪稳定化：会话面与通道面 Ready"));
         Assert.DoesNotContain(lines, l => l.Contains("预算耗尽"));
     }
 
-    /// <summary>通道面恒不就绪（零字节销毁形态）：预算耗尽 fail-open——仍铸币且日志留痕，
-    /// 与会话面恒不就绪同 degradation 语义。</summary>
+    /// <summary>收养重验的通道面恒不就绪（零字节销毁形态）：预算耗尽 fail-open，与会话面恒不就绪同义。</summary>
     [Fact]
-    public async Task Mint_MuxNeverReady_FailOpenAfterBudget()
+    public async Task Revalidate_MuxNeverReady_FailOpenAfterBudget()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         int port = LoopbackHttpResponder.ReserveFreePort();
@@ -201,10 +192,9 @@ public class DshShellForwardTests
         var lines = new List<string>();
         var url = DshWebUrl.From(new Uri($"http://127.0.0.1:{port}/?token={GoodToken}"));
 
-        bool minted = await forward.MintAsync(url, lines.Add, cts.Token);
+        Assert.True(await forward.MintAsync(url, lines.Add, cts.Token));
+        Assert.True(await forward.RevalidateAsync(url, lines.Add, cts.Token));
 
-        Assert.True(minted);
-        Assert.True(forward.TryGetRoute(out _, out _));
         Assert.True(server.MuxProbeDestroyed, "通道面探活应命中零字节销毁形态");
         Assert.Contains(lines, l => l.Contains("预算耗尽") && l.Contains("fail-open"));
     }
@@ -386,6 +376,9 @@ public class DshShellForwardTests
         /// <summary>是否观察到携带铸得 cookie 的会话面探活（POST /api/session/list）。</summary>
         public bool ProbeCookieSeen { get; private set; }
 
+        /// <summary>会话面探活被调用的次数（单轮/连续判据的轮数断言用）。</summary>
+        public int SessionProbeCount { get; private set; }
+
         /// <summary>最近一次探活请求体（形状断言用）。</summary>
         public string LastProbeBody { get; private set; } = string.Empty;
 
@@ -525,6 +518,7 @@ public class DshShellForwardTests
                         && head.Contains($"Cookie: {CookieName}={CookieValue}", StringComparison.Ordinal))
                     {
                         ProbeCookieSeen = true;
+                        SessionProbeCount++;
                         LastProbeBody = body;
                         if (!body.Contains("\"payload\":{\"args\":{\"_request\":{}}}", StringComparison.Ordinal))
                         {

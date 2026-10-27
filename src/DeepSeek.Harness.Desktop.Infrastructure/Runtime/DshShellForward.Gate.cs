@@ -1,17 +1,12 @@
-using System.Net.Sockets;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-
 namespace DeepSeek.Harness.Desktop.Infrastructure.Runtime;
 
-/// <summary><see cref="DshShellForward"/> 的铸币就绪门面（partial，ADR 尺寸健康闸 F1）：
-/// 铸币/收养重验、就绪稳定化复合探活（会话面 + 通道面）与 epoch 化门控状态
-/// （ADR holder-mint-gate-deepening / mint-epoch-mux-gate）。传输与请求构造面在
-/// <c>DshShellForward.cs</c>。</summary>
+/// <summary><see cref="DshShellForward"/> 的铸币/就绪门面（partial，ADR 尺寸健康闸 F1）：
+/// token 铸币在 303 即放行路由；收养重验做复合探活稳定窗；epoch 化门控状态见
+/// <see cref="InvalidateRoute"/>（ADR holder-mint-gate-deepening / mint-epoch-mux-gate /
+/// 冷启动 303 即放行）。传输与请求构造面在 <c>DshShellForward.cs</c>。</summary>
 public sealed partial class DshShellForward
 {
-    // 铸币稳定化默认参数：稳定窗/节拍与收养链探测同参（RelayWebReadinessGate 文档：节拍 1s 下
+    // 收养重验稳定化默认参数：稳定窗/节拍与收养链探测同参（RelayWebReadinessGate 文档：节拍 1s 下
     // 2s 窗即 ≥3 拍连续 Ready）；预算封顶后 fail-open。非用户可调行为，不进 RuntimeTimeouts。
     private static readonly ReadyStabilization s_defaultStabilization = new(
         StableWindow: TimeSpan.FromSeconds(2),
@@ -20,10 +15,10 @@ public sealed partial class DshShellForward
 
     // 未铸币等待预算：覆盖市场插件更新「update → restart scheduled」的接力收养窗口（2026-10-07 实机
     // 事件：dsh 退出 → 收养重验放行 12s，窗口内 19 条未铸币 502 打进旧页面的市场组件）+ 余量；预算
-    // 到点仍无铸币才回落 loud 502。非用户可调行为，不进 RuntimeTimeouts（与铸币稳定化参数同口径）。
+    // 到点仍无铸币才回落 loud 502。非用户可调行为，不进 RuntimeTimeouts（与收养重验稳定化参数同口径）。
     internal static readonly TimeSpan DefaultUnmintedWaitBudget = TimeSpan.FromSeconds(15);
 
-    /// <summary>铸币稳定化参数（internal 测试缝：经构造注入覆写以压缩时长；null = 生产默认）。</summary>
+    /// <summary>收养重验稳定化参数（internal 测试缝：经构造注入覆写以压缩时长；null = 生产默认）。</summary>
     /// <param name="StableWindow">Ready 须连续维持的时长（<see cref="RelayWebReadinessGate"/>）。</param>
     /// <param name="PollInterval">探活轮询节拍。</param>
     /// <param name="Budget">稳定化总预算；到期未稳定即 fail-open 放行。</param>
@@ -39,14 +34,13 @@ public sealed partial class DshShellForward
     private TaskCompletionSource _mintedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>用 token URL 铸币并记住 authority + cookie（覆盖式；失败 loud 返回 false，不抛）。
-    /// 303 铸到 cookie 后先做就绪稳定化（cookie 复合探活：会话面 <c>POST /api/session/list</c> + 通道面
-    /// <c>GET /api/remote.mux</c> 升级，Ready 连续维持达稳定窗才放行；预算耗尽 fail-open），route 写入与
-    /// 就绪放行同时落定——holder reload 落地时页面可用性（含树数据通道）必然已就绪
-    /// （ADR holder-mint-gate-deepening / mint-epoch-mux-gate）。</summary>
+    /// 303（认证行挂载完成）即放行 route：holder 立即 reload 进真页面，就绪由页面自身重连/重试收敛
+    /// （ADR 冷启动 303 即放行——前置复合探活实测 5–9s，且与页面首取 session/list 重复）。
+    /// 失败不写 route，调用方按降级走。</summary>
     /// <param name="url">dsh 完整端点（含 token，仅发请求，值永不记日志）。</param>
     /// <param name="log">日志回调（只记状态/头名，值永不落盘）。</param>
     /// <param name="ct">取消令牌。</param>
-    /// <returns>true = 铸到 cookie（含稳定化 fail-open）；false = 链断（日志已留痕，调用方按降级走）。</returns>
+    /// <returns>true = 铸到 cookie（route 已放行）；false = 链断（日志已留痕，调用方按降级走）。</returns>
     public async Task<bool> MintAsync(DshWebUrl url, Action<string> log, CancellationToken ct)
     {
         string origin = url.Authority;
@@ -75,7 +69,15 @@ public sealed partial class DshShellForward
             }
 
             string cookie = string.Join("; ", pairs);
-            return await SettleAsync(origin, cookie, cookie, "铸币", log, ct).ConfigureAwait(false);
+            lock (_gate)
+            {
+                _authority = origin;
+                _cookieHeader = cookie;
+                _mintedTcs.TrySetResult();
+            }
+
+            log($"[shell] 铸币：303 已验证，route 即放行（holder 立即 reload；页面自证就绪，不再前置探活）");
+            return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -98,14 +100,16 @@ public sealed partial class DshShellForward
         }
     }
 
-    /// <summary>铸币后的就绪稳定化（ADR holder-mint-gate-deepening / mint-epoch-mux-gate）：303 只证认证行挂载，
-    /// 前端静态面、会话服务与远端流通道由更晚挂载的行提供，此刻放行只会让 holder reload 落进「UI 框架在、
-    /// 会话树不在」的渐进渲染。以 cookie 对 origin 复合探活——<c>POST /api/session/list</c>（会话面）+
-    /// <c>GET /api/remote.mux</c> WebSocket 升级（通道面；页面的树数据钉在它连上之后，且 dsh 的该升级路由
-    /// 等 <c>appReady</c> 才注册、此前升级被零字节销毁——探活判据必须含它，约束细节见 ADR）。
-    /// 两判据同时 Ready 连续维持达稳定窗即通过——门控位置钉在「页面可用」，首屏回到「UI + 树一次出全」。
-    /// 总预算封顶，到期未稳定 fail-open（dsh 挂死由监督器/恢复面兜底，铸币不得无界等待）。
-    /// 取消（ct）即上抛——与铸币语义同源。</summary>
+    /// <summary>收养重验的就绪探活（ADR holder-mint-gate-deepening / mint-epoch-mux-gate）：以现持 cookie
+    /// 对 origin 复合探活——<c>POST /api/session/list</c>（会话面）+ <c>GET /api/remote.mux</c> WebSocket
+    /// 升级（通道面；页面的树数据钉在它连上之后，且 dsh 的该升级路由等 <c>appReady</c> 才注册、此前升级
+    /// 被零字节销毁）。两判据同时 Ready 须连续维持达稳定窗才放行：市场自重启窗口里将死的前驱仍会应答
+    /// （401 + 短正文），单次判据即收养即落进「连上随即断线」。总预算封顶，到期未稳定 fail-open（dsh 挂死
+    /// 由监督器/恢复面兜底，探活不得无界等待）。取消（ct）即上抛——与收养语义同源。</summary>
+    /// <param name="origin">dsh authority（探活目标）。</param>
+    /// <param name="cookie">存留的 cookie 头值。</param>
+    /// <param name="log">日志回调。</param>
+    /// <param name="ct">取消令牌。</param>
     private async Task WaitWebFaceStableAsync(string origin, string cookie, Action<string> log, CancellationToken ct)
     {
         ReadyStabilization settings = _stabilization ?? s_defaultStabilization;
@@ -150,114 +154,6 @@ public sealed partial class DshShellForward
         }
     }
 
-    /// <summary>单次会话面探活：镜像实机 dsh 客户端 <c>call()</c> 的 wire 语义（dsh-client-connection：
-    /// 信封 <c>{type:"client-request",rpcId,method,payload}</c> POST 到 <c>/api/&lt;method&gt;</c>，成功回包为
-    /// <c>result.ok === true</c> 的 server-response）。payload 必须包成 <c>{args:{_request:{}}}</c>：typert 网关
-    /// 强制「恰好一个 plain-object args 字段」（dsh-api-gateway <c>invokeRpc</c> 校验），session/list 的 args
-    /// 描述符只收保留空请求 <c>_request</c>（<c>{cursor}</c> 被 boundary validation 拒）。形状错时网关仍回 200，
-    /// 但体是 <c>ok:false</c> 的 gateway 错误信封——判据因此恒不成立、稳定化恒 fail-open
-    /// （ADR mint-probe-payload-envelope 实机实证；旧版发裸 <c>payload:{}</c> 即此形态）。
-    /// Ready = 200 + 回包为 <c>result.ok:true</c> 的 server-response 信封；网关校验失败/服务未激活/超时/
-    /// 应答异常一律未就绪。调用方取消（ct）即上抛，探活自身超时按未就绪折算不外抛。</summary>
-    private async Task<bool> ProbeSessionListReadyAsync(string origin, string cookie, CancellationToken ct, TimeSpan timeout)
-    {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(timeout);
-        try
-        {
-            // 信封为固定形状（method/args 是常量，rpcId 是 GUID——皆无转义风险），手工拼装避免为此开源生成注册面。
-            // payload 的 args 包装是 typert 网关硬契约（见方法 doc）；_request 为 session/list 的保留空请求。
-            string envelope =
-                "{\"type\":\"client-request\",\"rpcId\":\"" + Guid.NewGuid().ToString("D") +
-                "\",\"method\":\"session/list\",\"payload\":{\"args\":{\"_request\":{}}}}";
-            using HttpRequestMessage request = BuildForwardRequest(
-                "POST", origin + "/api/session/list", Encoding.UTF8.GetBytes(envelope),
-                new Dictionary<string, string> { ["Content-Type"] = "application/json" }, cookie);
-            using HttpResponseMessage response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
-            if ((int)response.StatusCode != 200)
-            {
-                return false;
-            }
-
-            await using Stream body = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-            using var buffer = new MemoryStream();
-            await body.CopyToAsync(buffer, cts.Token).ConfigureAwait(false);
-            buffer.Position = 0;
-            using JsonDocument document = await JsonDocument.ParseAsync(buffer, cancellationToken: cts.Token).ConfigureAwait(false);
-            JsonElement root = document.RootElement;
-            return root.ValueKind == JsonValueKind.Object
-                && root.TryGetProperty("type", out JsonElement type) && type.ValueEquals("server-response")
-                && root.TryGetProperty("result", out JsonElement result) && result.ValueKind == JsonValueKind.Object
-                && result.TryGetProperty("ok", out JsonElement ok) && ok.ValueKind == JsonValueKind.True;
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or IOException
-            or ObjectDisposedException or JsonException)
-        {
-            return false;
-        }
-    }
-
-    /// <summary>单次通道面探活：对 origin <c>GET /api/remote.mux</c> 发 WebSocket 升级（携带 cookie），
-    /// 完成真实握手、读到 101 即就绪、随即弃连。**裸 TCP 单连接**（不走 ClientWebSocket：其连接池对
-    /// 被掐断的升级请求有内部重试，实测一次探活派生 ~4 条内核连接——探活须是行为良好的单连接客户端，
-    /// 不给半死的 dsh 添连接风暴，多客户端同时探测的场景同理）。零字节销毁（上游 appReady 前
-    /// 「无路由即 destroy」形态，无 HTTP 状态可判）/401/403/超时/异常一律未就绪。调用方取消（ct）即上抛，
-    /// 探活自身超时按未就绪折算不外抛。</summary>
-    private async Task<bool> ProbeMuxReadyAsync(string origin, string cookie, CancellationToken ct, TimeSpan timeout)
-    {
-        using var client = new TcpClient();
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(timeout);
-        try
-        {
-            Uri baseUri = new(origin);
-            await client.ConnectAsync(baseUri.Host, baseUri.Port, cts.Token).ConfigureAwait(false);
-            NetworkStream stream = client.GetStream();
-            string key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
-            var head = new StringBuilder();
-            head.Append("GET /api/remote.mux HTTP/1.1\r\n");
-            head.Append("Host: ").Append(baseUri.Authority).Append("\r\n");
-            head.Append("Upgrade: websocket\r\nConnection: Upgrade\r\n");
-            head.Append("Sec-WebSocket-Key: ").Append(key).Append("\r\nSec-WebSocket-Version: 13\r\n");
-            if (!string.IsNullOrEmpty(cookie))
-            {
-                head.Append("Cookie: ").Append(cookie).Append("\r\n");
-            }
-
-            head.Append("\r\n");
-            await stream.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()), cts.Token).ConfigureAwait(false);
-            byte[] first = new byte[16];
-            int read = 0;
-            while (read < first.Length)
-            {
-                int n = await stream.ReadAsync(first.AsMemory(read, first.Length - read), cts.Token).ConfigureAwait(false);
-                if (n == 0)
-                {
-                    break;
-                }
-
-                read += n;
-            }
-
-            // 状态行前缀按实际读到的长度比（单次 ReadAsync 半段到达即误判未就绪，白耗一个节拍）。
-            return read >= 12 && first.AsSpan(0, 12).SequenceEqual("HTTP/1.1 101"u8);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex) when (ex is SocketException or IOException or ObjectDisposedException or OperationCanceledException)
-        {
-            // 连接被拒/升级被拒/零字节销毁/探活超时：未就绪；清单外异常不在此吞——
-            // 上抛由铸币/重验信封 loud 留痕折算。
-            return false;
-        }
-    }
-
     /// <summary>铸币态失效（epoch 化，ADR mint-epoch-mux-gate）：dsh 进程死亡即由监督面调用——route 清空
     /// （代理 `/` 立即回落 holder、其余转发请求进入有界等待铸币，见 ADR unminted-bounded-wait；预算内
     /// 放行即照常转发，页面自刷被门控吸收），就绪门重新武装（下一个未决门
@@ -286,7 +182,7 @@ public sealed partial class DshShellForward
 
     /// <summary>收养重验（token-free 的 epoch 重铸，ADR mint-epoch-mux-gate）：市场接力续任者的
     /// per-process token 壳拿不到，旧 token URL 铸币恒 401；但会话 cookie 同 authority 仍有效。
-    /// 以现持 cookie 对 <paramref name="url"/> origin 复合探活（会话面 + 通道面，同铸币稳定化），
+    /// 以现持 cookie 对 <paramref name="url"/> origin 复合探活（会话面 + 通道面，同收养重验稳定化），
     /// 稳定即重指 route 并放行（holder 长轮询解除）。无存 cookie 即回落 <see cref="MintAsync"/>
     /// （token 铸币路径：壳自 spawn 的 URL 带新 token 仍可用）。返回 false = 链断（日志已留痕，
     /// 调用方按降级走）；取消（ct）即上抛。</summary>
@@ -305,17 +201,16 @@ public sealed partial class DshShellForward
             return await MintAsync(url, log, ct).ConfigureAwait(false);
         }
 
-        return await SettleAsync(origin, cookie, writeCookie: null, "收养重验", log, ct).ConfigureAwait(false);
+        return await SettleAsync(origin, cookie, "收养重验", log, ct).ConfigureAwait(false);
     }
 
-    /// <summary>就绪稳定化 + 落定（Mint/Revalidate 共用尾部）：复合探活稳定后放行就绪门。route 写入
-    /// 与 TCS 置结果必须同临界区（<see cref="InvalidateRoute"/> 在锁内替换 TCS——锁外置结果与失效并发
-    /// 即「无 route 放行」，holder 落进自旋或死进程页，R2 Blocker 1 收口；
-    /// <see cref="TaskCreationOptions.RunContinuationsAsynchronously"/> 下锁内置结果不内联跑续延，安全）。
-    /// cookie 分读写两位：probeCookie 供探活携带；writeCookie 非 null 才覆盖存 cookie（Mint 写铸得值；
-    /// Revalidate 只重指 origin 不覆盖——并发 Mint 已换新 cookie 时覆盖即行为变更，R1 Suggestion 收口）。
-    /// 失败 loud 返回 false 不抛（探活 URL 不含 token，无脱敏面）；ct 取消上抛。</summary>
-    private async Task<bool> SettleAsync(string origin, string probeCookie, string? writeCookie, string label, Action<string> log, CancellationToken ct)
+    /// <summary>收养重验的就绪探活 + 落定：复合探活通过后重指 route 并放行就绪门（cookie 不动——
+    /// 铸得值由 <see cref="MintAsync"/> 在 303 时写入）。route 写入与 TCS 置结果必须同临界区
+    /// （<see cref="InvalidateRoute"/> 在锁内替换 TCS——锁外置结果与失效并发即「无 route 放行」，
+    /// holder 落进自旋或死进程页；<see cref="TaskCreationOptions.RunContinuationsAsynchronously"/>
+    /// 下锁内置结果不内联跑续延，安全）。失败 loud 返回 false 不抛（探活 URL 不含 token，无脱敏面）；
+    /// ct 取消上抛。</summary>
+    private async Task<bool> SettleAsync(string origin, string probeCookie, string label, Action<string> log, CancellationToken ct)
     {
         try
         {
@@ -323,11 +218,6 @@ public sealed partial class DshShellForward
             lock (_gate)
             {
                 _authority = origin;
-                if (writeCookie is not null)
-                {
-                    _cookieHeader = writeCookie;
-                }
-
                 _mintedTcs.TrySetResult();
             }
 
