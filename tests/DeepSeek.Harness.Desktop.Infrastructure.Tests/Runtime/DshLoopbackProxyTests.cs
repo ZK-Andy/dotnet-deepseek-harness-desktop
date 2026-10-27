@@ -859,6 +859,7 @@ public class DshLoopbackProxyTests
         string body = await ready.Content.ReadAsStringAsync(cts.Token);
 
         Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
+        Assert.Equal("application/json", ready.Content.Headers.ContentType?.ToString());
         Assert.Contains("\"ready\":true", body, StringComparison.Ordinal);
 
         // 探针形状只在收养重验的稳定化里发（冷启动铸币不再前置探活）。
@@ -906,6 +907,7 @@ public class DshLoopbackProxyTests
             using HttpResponseMessage head = await page.SendAsync(headRequest, cts.Token);
             string headBody = await head.Content.ReadAsStringAsync(cts.Token);
             Assert.Equal(HttpStatusCode.OK, head.StatusCode);
+            Assert.Equal("text/html; charset=utf-8", head.Content.Headers.ContentType?.ToString());
             Assert.Equal("<html>GUIDE</html>".Length, head.Content.Headers.ContentLength);
             Assert.Equal(string.Empty, headBody);
 

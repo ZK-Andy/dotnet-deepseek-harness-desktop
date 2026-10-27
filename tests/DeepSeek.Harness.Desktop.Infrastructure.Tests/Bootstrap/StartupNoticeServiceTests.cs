@@ -52,6 +52,26 @@ public class StartupNoticeServiceTests
         Assert.Equal("0.0.1", Assert.Single(floors));
     }
 
+    /// <summary>引导介入过（<c>IsNeeded=true</c>）：Resolve 探到的版本已过期，必须重探并以新值判定。
+    /// 取生产可达组合——IsNeeded 的成因是旧值缺失或落后，故旧值 0.0.1 低于底线、探针 9.9.9 高于底线：
+    /// 复用旧值会以 0.0.1 推底线横幅，判据反转则根本不重探。</summary>
+    [Fact]
+    public async Task RunAsync_BootstrapIntervened_ReprobesInsteadOfReusingStaleVersion()
+    {
+        var floors = new List<string>();
+        var unclean = new List<int>();
+        int probes = 0;
+        var bootstrap = new FakeBootstrap(settled: true) { IsNeeded = true, ResolvedDshVersion = "0.0.1" };
+        StartupNoticeService service = NewService(
+            bootstrap, floors, unclean, probe: "9.9.9", onProbe: () => probes++);
+
+        await service.RunAsync(CancellationToken.None);
+
+        Assert.Equal(1, probes);
+        Assert.Empty(floors);
+        Assert.Empty(unclean);
+    }
+
     /// <summary>验证版本探测失败（未知）时跳过底线横幅：未知 ≠ 不合格，不拿横幅打扰用户。</summary>
     [Fact]
     public async Task RunAsync_ProbeFailed_SkipsVersionFloorBanner()
@@ -115,7 +135,7 @@ public class StartupNoticeServiceTests
 
         public FakeBootstrap(bool settled) => _settled = settled;
 
-        public bool IsNeeded => false;
+        public bool IsNeeded { get; init; }
 
         public string? ResolvedDshVersion { get; set; }
 

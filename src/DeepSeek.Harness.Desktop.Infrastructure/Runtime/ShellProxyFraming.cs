@@ -172,7 +172,7 @@ internal static class ShellProxyFraming
     internal static async Task WriteSmallAsync(NetworkStream stream, int status, string text, CancellationToken ct)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(text);
-        string head = $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n";
+        string head = BuildHead(status, "text/plain; charset=utf-8", bytes.Length, extraHeaders: null);
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
         await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
     }
@@ -181,7 +181,7 @@ internal static class ShellProxyFraming
     internal static async Task WriteJsonAsync(NetworkStream stream, int status, string json, CancellationToken ct)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(json);
-        string head = $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Type: application/json\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n";
+        string head = BuildHead(status, "application/json", bytes.Length, extraHeaders: null);
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
         await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
     }
@@ -200,7 +200,7 @@ internal static class ShellProxyFraming
     /// <summary>只写响应头（HEAD 语义：头与 GET 同值，无体）。</summary>
     internal static async Task WriteHeadAsync(NetworkStream stream, int status, string contentType, long contentLength, CancellationToken ct)
     {
-        string head = $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Type: {contentType}\r\nContent-Length: {contentLength}\r\nConnection: close\r\n\r\n";
+        string head = BuildHead(status, contentType, contentLength, extraHeaders: null);
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
     }
 
