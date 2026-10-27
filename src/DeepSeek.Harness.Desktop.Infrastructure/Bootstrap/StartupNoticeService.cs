@@ -67,7 +67,11 @@ public sealed class StartupNoticeService
         }
 
         string home = HarnessRuntimeHost.ResolveDshHome();
-        string? detected = await _versionProbe(_versionProbeTimeout, ct);
+        // 复用首次探测（ADR 2026-10-26-cold-start-wait-collapse-and-proxy-cache-headers P3）：Resolve 已
+        // spawn 过一次 dsh --version；引导未介入时是同一二进制，此处不必再 spawn。引导介入过则 PATH 上的
+        // dsh 刚被装/升，Resolve 的值已过期，必须重探。
+        string? detected = _bootstrap.IsNeeded ? null : _bootstrap.ResolvedDshVersion;
+        detected ??= await _versionProbe(_versionProbeTimeout, ct);
         if (detected is not null)
         {
             _log($"[host] dsh 版本 {detected}（底线 {RuntimeVersionGate.MinimumVersion}）");

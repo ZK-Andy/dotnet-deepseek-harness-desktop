@@ -34,6 +34,24 @@ public class StartupNoticeServiceTests
         Assert.Empty(unclean);
     }
 
+    /// <summary>引导未介入时复用 Resolve 探到的版本：不再 spawn 第二次 <c>dsh --version</c>
+    /// （ADR 2026-10-26-cold-start-wait-collapse-and-proxy-cache-headers P3）；判定仍按复用值走。</summary>
+    [Fact]
+    public async Task RunAsync_BootstrapResolvedVersion_ReusesWithoutSecondProbe()
+    {
+        var floors = new List<string>();
+        var unclean = new List<int>();
+        int probes = 0;
+        var bootstrap = new FakeBootstrap(settled: true) { ResolvedDshVersion = "0.0.1" };
+        StartupNoticeService service = NewService(
+            bootstrap, floors, unclean, probe: "9.9.9", onProbe: () => probes++);
+
+        await service.RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, probes);
+        Assert.Equal("0.0.1", Assert.Single(floors));
+    }
+
     /// <summary>验证版本探测失败（未知）时跳过底线横幅：未知 ≠ 不合格，不拿横幅打扰用户。</summary>
     [Fact]
     public async Task RunAsync_ProbeFailed_SkipsVersionFloorBanner()
@@ -67,7 +85,8 @@ public class StartupNoticeServiceTests
         List<string> floors,
         List<int> unclean,
         string? probe = null,
-        bool previousRunUnclean = false) =>
+        bool previousRunUnclean = false,
+        Action? onProbe = null) =>
         new(
             bootstrap,
             TimeSpan.FromSeconds(1),
@@ -84,7 +103,11 @@ public class StartupNoticeServiceTests
                 unclean.Add(1);
                 return Task.CompletedTask;
             },
-            (_, _) => Task.FromResult(probe));
+            (_, _) =>
+            {
+                onProbe?.Invoke();
+                return Task.FromResult(probe);
+            });
 
     private sealed class FakeBootstrap : IFirstBootBootstrap
     {
@@ -93,6 +116,8 @@ public class StartupNoticeServiceTests
         public FakeBootstrap(bool settled) => _settled = settled;
 
         public bool IsNeeded => false;
+
+        public string? ResolvedDshVersion { get; set; }
 
         public RuntimeBootstrapGate Gate => new();
 

@@ -17,7 +17,7 @@ Review: FULL/2026-10-23#2/R1=ok R2=ok R3=ok
 - **进程内模态**：`Hosting/FailureDialogWindow`（Avalonia `Window.ShowDialog`，正文 = 可选中滚动的只读文本框，两个按钮：退出 / 留在窗口，Esc 与关闭框等价于留在窗口）＋ `Hosting/InProcessFailureDialog : IFailureDialog`（`IsAvailable` 恒真；属主缺失或建窗异常回 `false`；属主收在托盘时先 `Show()`/`Activate()` 唤回再弹——Avalonia 要求父窗可见，否则模态根本不出现）。
 - **处置用例**：`Hosting/StartupFailureFace` 只依赖端口（`IFailureDialog` + 尾部取法 + 退出动作 + 日志），正文构建也在 try 内（构建抛出同样只留痕），headless 可测。**只有显式 `true` 才批准关窗并 Close**——与托盘退出共用 `CloseGate`。
 - **正文口径**：`RecoveryDialogText.Build` 的 `exportPath` 可为 `null`（本次不涉及导出，整节省略；不能拿「导出失败」冒充「未尝试」），`actions` 可换。启动失败传 `UiCopy.StartupFailureActions`，其中不含「自动恢复/正在重试」口径（「重新启动应用即可再试」是可执行的事实，不是被承诺的自动行为）。
-- **接线**：`ShellStartup` 增 `Failed` 事件（后台线程触发，先留痕再发事件）；`ShellApplication` 订阅并 fire-and-forget 调处置用例，模态经 `Dispatcher.UIThread.Post` 建。
+- **接线**：`ShellStartup` 经 `AttachFailureSink` 交付失败（后台线程触发，先留痕再交付；窗口显示后挂载，早到的失败补交付一次）；`ShellApplication` 在 `Opened` 挂载并 fire-and-forget 调处置用例，模态经 `Dispatcher.UIThread.Post` 建。
 - **文案**：新增 `UiCopy.StartupFailureTitle/Reason/Actions`、`DialogStayLabel`；退出按钮复用 `UiCopy.RecoveryExitButton`（同一句话不立两处）。
 
 ## Alternatives considered
@@ -34,7 +34,7 @@ Review: FULL/2026-10-23#2/R1=ok R2=ok R3=ok
 - 启动体失败时模态出现（属主在托盘里则先唤回主窗），正文含原因、stderr 尾部与启动失败动作说明，不含「自动恢复」口径。
 - 用户选退出：先批准 `CloseGate` 再关窗；选留在窗口或直接关闭：进程与窗口保持；模态通道故障（属主缺失/建窗异常/取消）只留痕，不退出。
 - 崩溃恢复路径（旧宿主 `RecoverySurface`）行为不变。
-- **模态无 headless 测试宿主**：机器证据只到正文构建、处置用例与 `ShellStartup` 事件；`ShowDialog` 在各平台窗口管理器下的表现未验【推断 · 未证】。
+- **模态无 headless 测试宿主**：机器证据只到正文构建、处置用例与 `ShellStartup` 的晚挂载交付；`ShowDialog` 在各平台窗口管理器下的表现未验【推断 · 未证】。
 - **一次失败一条模态**：启动体只跑一次，故不设去重；若将来 G3 把监督循环接到本面，需要「一周期一次」的闩（旧宿主 `_failureSurfaceShown`）。
 - **调度器停止残余风险**：`Dispatcher.UIThread.Post` 在 Avalonia 关停后可能不再执行，此时模态不会出现、
   `ConfirmAsync` 的 TCS 永不完成。生产调用点传 `CancellationToken.None`，取消兜底不会触发；该分支只发生在
@@ -45,6 +45,6 @@ Review: FULL/2026-10-23#2/R1=ok R2=ok R3=ok
 ## Testing
 
 - `StartupFailureFaceTests`：退出只挂显式 true、留在窗口/不退出、通道故障只留痕、取消不退出、英文分支（含「不含自动恢复文案」断言）。
-- `ShellStartupTests`：启动体抛出后 `Failed` 携带原异常。
+- `ShellStartupTests`：启动体抛出后经 `AttachFailureSink` 交付原异常。
 - `RecoveryDialogTextTests`：`exportPath:null` 省略导出节、自定义动作行替换恢复口径。
 - 未覆盖：Avalonia 模态的外观与按钮行为（`FailureDialogWindow` 无 headless 宿主）——列入真机验收：启动失败时模态出现、正文可复制、退出经闸门关窗。

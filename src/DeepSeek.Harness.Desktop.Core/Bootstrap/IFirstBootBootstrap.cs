@@ -10,6 +10,10 @@ public interface IFirstBootBootstrap
     /// <summary>本轮是否需要首启引导（全局 dsh 未检出或落后兼容底线）。</summary>
     bool IsNeeded { get; }
 
+    /// <summary>最近一次 <see cref="Resolve"/> 探测到的全局 dsh 版本（未探测/探测失败为 null）。
+    /// 引导未介入时该值即当前运行时版本，启动期告知据此免去第二次 <c>dsh --version</c> spawn。</summary>
+    string? ResolvedDshVersion { get; }
+
     /// <summary>引导重试闸门（引导页 desktop.bootstrap.retry 消费）。</summary>
     RuntimeBootstrapGate Gate { get; }
 

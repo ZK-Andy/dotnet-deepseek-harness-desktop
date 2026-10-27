@@ -14,6 +14,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     private RuntimeBootstrapOptions _options = new();
     private readonly RuntimeTimeouts _timeouts;
     private bool _needed;
+    private string? _pathVersion;
     private TaskCompletionSource? _settled;
     private CancellationTokenSource? _cts;
 
@@ -42,6 +43,9 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     public bool IsNeeded => _needed;
 
     /// <inheritdoc />
+    public string? ResolvedDshVersion => _pathVersion;
+
+    /// <inheritdoc />
     public RuntimeBootstrapGate Gate { get; } = new();
 
     /// <inheritdoc />
@@ -61,6 +65,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
                 TimeSpan.FromSeconds(_timeouts.VersionProbeTimeoutSeconds),
                 CancellationToken.None)
             .GetAwaiter().GetResult();
+        _pathVersion = pathVersion;
         // 没有 → 装；落后 next 兼容底线（低于底部）→ 经引导更新到 @next；否则直接用。
         // 引导内 npm install -g @next 幂等（安装或更新）；检测"落后"以兼容底线（MinimumVersion）为
         // 廉价代理——精确对齐 @next 需启动时查询 npm dist-tag（见实现受阻点/决策点）。

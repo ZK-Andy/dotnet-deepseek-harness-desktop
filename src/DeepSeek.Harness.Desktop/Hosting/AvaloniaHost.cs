@@ -65,7 +65,8 @@ internal static class AvaloniaHost
                 preflight, shared, host, starter, proxy, marker!, instanceListener, dshHome, resources, recall);
             startup = wiring.Startup;
             bridgeHost = wiring.BridgeHost;
-
+            // 起步早于窗口：窗口/WebView 初始化与 dsh spawn 并行（ADR cold-start-wait-collapse）。
+            startup.Begin();
             return RunUi(
                 args, wiring.Startup, preflight.Launch.DevTools, recall, shared.UiLocale,
                 wiring.BridgeHost, () => host.StderrTail, dshHome, wiring.Exit, wiring.Recovery,

@@ -32,6 +32,7 @@ internal sealed class ShellApplication : Application
     private readonly StartupNoticeService _notices;
     private ShellRecoveryAssembly? _recovery;
     private bool _platformShutdown;
+    private int _startupHooks;
     private volatile ShellTray? _tray;
 
     /// <summary>启动失败面接线（ADR 2026-10-23-avalonia-failure-dialog）：起步体在后台线程失败，
@@ -46,11 +47,11 @@ internal sealed class ShellApplication : Application
             _uiLocale,
             quit: quit,
             log: HostLog.Write);
-        _startup.Failed += exception => _ = Task.Run(() =>
+        _startup.AttachFailureSink(exception => _ = Task.Run(() =>
         {
             HostLog.Write($"[host] 启动失败面接管：{exception.GetType().Name}");
             _ = face.ShowAsync(CancellationToken.None);
-        });
+        }));
     }
 
     /// <summary>创建应用对象。</summary>
@@ -146,7 +147,6 @@ internal sealed class ShellApplication : Application
         (Action quit, Action restart) = ShellCommandRegistration.CreateTrayActions(
             closeGate, _exitPipeline, log: HostLog.Write);
 
-        WireStartupFailure(window, quit);
         WireTray(quit, restart);
         RegisterCommandRouters(closeGate, restart);
         WireRecovery(closeGate, window);
@@ -164,7 +164,18 @@ internal sealed class ShellApplication : Application
             }
         }));
 
-        window.Opened += (_, _) => _startup.Begin(StartRecoveryAfterStartup);
+        window.Opened += (_, _) =>
+        {
+            // 起步早于建窗：显示后补挂失败面与监督（只交付一次）；Show() 唤回会重触发 Opened，接线只做一次。
+            if (Interlocked.Exchange(ref _startupHooks, 1) == 1)
+            {
+                return;
+            }
+
+            WireStartupFailure(window, quit);
+            _startup.AttachAfterStart(StartRecoveryAfterStartup);
+            _updates.Start();
+        };
     }
 
     /// <summary>托盘创建（无图标/无托盘环境回落 null，关窗判据据此直退）。</summary>
@@ -198,9 +209,6 @@ internal sealed class ShellApplication : Application
         {
             _bridgeHost.AddRouter(router);
         }
-
-        // 启动对账 + 后台检查一次（旧宿主在同一位次：托盘之后、监督之前）；就绪横幅订阅随之建立。
-        _updates.Start();
     }
 
     /// <summary>恢复/引导/监督（ADR avalonia-g1g3-recovery-bootstrap-supervision）：网页视图已随窗口构造挂上桥。
@@ -286,7 +294,7 @@ internal sealed class ShellApplication : Application
 
     /// <summary>起步收口后接引导与监督（ADR avalonia-g1g3-recovery-bootstrap-supervision）：引导服务
     /// 只在首启需要时真正启动（否则 no-op），监督循环等引导落定后进入恢复循环。两者都在池线程上跑，
-    /// 页面面经桥端口与 UI 线程封送。</summary>
+    /// 页面面经桥端口与 UI 线程封送；起步若在窗口显示前已收口，本方法在 `Opened` 的 UI 线程上同步执行。</summary>
     private void StartRecoveryAfterStartup()
     {
         ShellRecoveryAssembly? recovery = _recovery;

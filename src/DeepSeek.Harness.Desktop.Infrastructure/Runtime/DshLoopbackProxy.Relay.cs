@@ -219,6 +219,8 @@ public sealed partial class DshLoopbackProxy
     {
         // set-cookie 永不进页面（壳代持，上游同款）。
         string contentType = terminal.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
+        // 缓存头白名单（ADR cold-start-wait-collapse）：丢弃缓存头会让页面缓存退化为浏览器启发式、冷启动重放旧 SPA。
+        IReadOnlyList<KeyValuePair<string, string>> cacheHeaders = ProxyHeaderPolicy.ResponseCacheHeaders(terminal);
         int status = (int)terminal.StatusCode;
         Interlocked.Increment(ref _requestCount);
         bool failed = status >= 400;
@@ -269,7 +271,7 @@ public sealed partial class DshLoopbackProxy
                 _log($"[shell] 代理回包：{status} {contentType} {bytes.Length}字节（{req.Method} {ShellProxyFraming.PagePath(req.Target)}，{elapsed.TotalMilliseconds:F0}ms）");
             }
 
-            await ShellProxyFraming.WriteBufferedAsync(stream, status, contentType, bytes, ct).ConfigureAwait(false);
+            await ShellProxyFraming.WriteBufferedAsync(stream, status, contentType, bytes, ct, cacheHeaders).ConfigureAwait(false);
             return;
         }
 
@@ -278,7 +280,7 @@ public sealed partial class DshLoopbackProxy
             _log($"[shell] 代理流转：{status} {contentType}（{req.Method} {ShellProxyFraming.PagePath(req.Target)}，页断联即停，{elapsed.TotalMilliseconds:F0}ms）");
         }
 
-        await ShellProxyFraming.WriteStreamHeadAsync(stream, status, contentType, ct).ConfigureAwait(false);
+        await ShellProxyFraming.WriteStreamHeadAsync(stream, status, contentType, ct, cacheHeaders).ConfigureAwait(false);
         try
         {
             await terminal.Content.CopyToAsync(stream, ct).ConfigureAwait(false);

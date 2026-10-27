@@ -24,7 +24,7 @@ Consequences 与 `Hosting/ShellTray.cs` 的类注释都记着这个缺口，且�
   不共享状态机（无容器，跨宿主共享会让 dev 门禁与寿命面互相牵连）。
 - **三条路由按装载与否给值**：`coordinator.Machine` 为 null（dev 门禁且未设 `DSH_DESKTOP_UPDATE_FORCE`）时
   路由表为空、托盘动作为 null——与旧宿主同判据「栈未装载即不出现」，invoke 自然失败，不注册假路由。
-- **启动检查与就绪横幅**：`UpdateSurface.Start()` 在窗口接线期（托盘创建之后、窗口 Opened 之前）调用
+- **启动检查与就绪横幅**：`UpdateSurface.Start()` 在窗口 `Opened` 后调用（首屏之后，不与窗口初始化抢带宽）
   `coordinator.Start()`——启动对账 + 后台检查一次，并订阅 ready 就绪横幅。横幅落点有 holder 判据：
   `PagePump` 先探当前文档是否仍是 holder 过渡页（`WebAuthRecovery.HolderMarker`），是则按节拍重试到真 UI
   出现再注入——否则横幅会随 holder 的 `location.reload()` 一起消失，而协调器的 `_readyNotified` 已置位、

@@ -63,7 +63,10 @@ internal sealed class DshLoopbackLocal
             && !_forward.TryGetRoute(out _, out _))
         {
             _log("[shell] 代理服务 holder 页（未铸币；就绪后页自 reload）");
-            await ShellProxyFraming.WriteHtmlAsync(stream, 200, HolderPage, ct).ConfigureAwait(false);
+            // holder 是「dsh 尚未就绪」的瞬态文档：显式 no-store，防持久缓存重放旧 holder（ADR cold-start-wait-collapse）。
+            await ShellProxyFraming.WriteHtmlAsync(
+                stream, 200, HolderPage, ct,
+                [new KeyValuePair<string, string>("Cache-Control", "no-store")]).ConfigureAwait(false);
             return true;
         }
 

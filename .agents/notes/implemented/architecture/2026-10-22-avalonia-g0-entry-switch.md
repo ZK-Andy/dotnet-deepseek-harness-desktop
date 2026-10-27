@@ -18,7 +18,7 @@ Review: FULL/2026-10-22/R1=ok R2=ok R3=ok
 - 新增壳工程域目录 `Hosting/`：`AvaloniaHost.cs` 作为装配面进 `verify-compose-root.py` 的 `ASSEMBLY_SURFACE_EXTRA`（受 C1/C2 方向闸，不进域清单）；`ShellApplication` / `ShellStartup` / `ShellWindow` 登记进 `scripts/domain-files.manifest.json` 的 C8 在册清单。
 - 包：`Avalonia.Desktop` 12.1.4、`Avalonia.Themes.Fluent` 12.1.4、`Avalonia.Controls.WebView` 12.1.1（CPM 单一版本源）。
 - 启动链复用：`PreBuildRegistration.CreateSharedState` / `CreatePreflight` / `CreateRuntimeStarter`、`RuntimeStarter`（Core 用例）、`HarnessRuntimeHost`、`DshLoopbackProxy` 原样接入，崩溃 marker 用 `RunMarker.Acquire/Release` 补齐；启动前置 `ProfileLifecycle.EnsureReady` 与 `CompanionPreSpawn.EnsureInstalled` 按旧编排偏序在后台相执行（两者均 headless，不需要页面反馈）；单实例仲裁复用 `LauncherActivation.TryBindPrimary`（唤回回调 no-op）；`ShellResources` 仍是进程级资源唯一释放者，`AvaloniaHost.Run` 的 `finally` 释放一次。
-- 窗口先亮：`ShellWindow` 挂 `NativeWebView`，初始 URL 是壳 origin（代理 `Url`）；`Opened` 后 `ShellStartup.Begin` 在后台跑 spawn 与铸币，页面经代理自行加载。`DSH_DEVTOOLS=1` 映射到 `EnvironmentRequested.EnableDevTools`。
+- 窗口先亮：`ShellWindow` 挂 `NativeWebView`，初始 URL 是壳 origin（代理 `Url`）；装配面在 `RunUi` 前触发 `ShellStartup.Begin`，窗口/WebView 初始化与 spawn、铸币并行，页面经代理自行加载；`Opened` 只补挂失败面与监督（[ADR 2026-10-26](../bug-fix/2026-10-26-cold-start-wait-collapse-and-proxy-cache-headers.md)）。`DSH_DEVTOOLS=1` 映射到 `EnvironmentRequested.EnableDevTools`。
 - 本片边界：不接托盘、顶栏、`window.__shell` 桥、监督器、恢复面、更新 UI 与首启引导（无全局 dsh 时的自动安装随 G1）；Ryn 装配面保留在仓库内但不被入口调用（回退路径 = `git revert` 本片，ADR 不设运行时开关）。
 - 站外导航在壳侧兜底：`ShellWindow` 在 `NavigationStarted` 取消非壳 origin 的导航，`NewWindowRequested` 一律不弹新窗；打开系统浏览器与 `app.openExternal` 复核随 G2 接回。
 

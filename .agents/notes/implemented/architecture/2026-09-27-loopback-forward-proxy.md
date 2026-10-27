@@ -37,7 +37,7 @@ Related: 前序 `bug-fix/2026-09-27-shell-mint-and-forward`（传输面被本篇
 ## Consequences
 
 - 代价：自研最小 HTTP/1.1 解析转发（成帧/本地/隧道三类拆分，各 ≤400 行；请求体只认 `Content-Length`，chunked 请求 loud 502）；loopback 信任面（token/cookie 不出本机，与既有模型一致）；SSE 空闲不断（页断联即 cancel，`EventSource` 自重连）。
-- 收益：流/RPC/WS/eval/invoke 全活（WS 为裸 TCP 隧道 + 头手术）；mint/303/脱敏纪律沿用；三平台同构；诊断 loud 行保留（入口/终态/升级面三步）；响应头最小集仍按需（沿用前序 TODO）。
+- 收益：流/RPC/WS/eval/invoke 全活（WS 为裸 TCP 隧道 + 头手术）；mint/303/脱敏纪律沿用；三平台同构；诊断 loud 行保留（入口/终态/升级面三步）；回包缓存头白名单（`Cache-Control`/`ETag`/`Last-Modified`/`Expires`，`Set-Cookie` 永不透传）见 [ADR 2026-10-26](../bug-fix/2026-10-26-cold-start-wait-collapse-and-proxy-cache-headers.md)。
 - 已知边界：`_ipcBase` 绝对化只覆盖冷/热启动——收养/恢复等运行期导航仍落在相对源页面（上游 `Yupmoh/Ryn#102` 无时间表），影响面限于运行期重导航后的探针，由见证门承担。
 
 ## Testing

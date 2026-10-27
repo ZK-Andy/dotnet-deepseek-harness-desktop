@@ -82,6 +82,9 @@ public class ShellRecoveryRegistrationTests
         public bool IsNeeded => false;
 
         /// <inheritdoc />
+        public string? ResolvedDshVersion => null;
+
+        /// <inheritdoc />
         public RuntimeBootstrapGate Gate { get; } = new();
 
         /// <summary>Start 调用次数。</summary>

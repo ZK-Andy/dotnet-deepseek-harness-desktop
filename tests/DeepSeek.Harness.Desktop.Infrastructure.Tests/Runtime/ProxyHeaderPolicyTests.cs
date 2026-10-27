@@ -87,4 +87,37 @@ public class ProxyHeaderPolicyTests
         Assert.Contains("Cookie: shell-cookie=2\r\n", head);
         Assert.Contains("Upgrade: websocket\r\n", head);
     }
+
+    /// <summary>回包白名单（ADR 2026-10-26-...）：只取缓存四项（响应头与 Content 头都要查到），
+    /// Set-Cookie 与任意其它头一律不取——白名单即安全边界，放宽即把壳 cookie 暴露给页面。</summary>
+    [Fact]
+    public void ResponseCacheHeaders_TakesWhitelistOnly()
+    {
+        using var response = new HttpResponseMessage();
+        response.Headers.TryAddWithoutValidation("Cache-Control", "no-store");
+        response.Headers.TryAddWithoutValidation("ETag", "\"doc-v1\"");
+        response.Headers.TryAddWithoutValidation("Set-Cookie", "leak=1; Path=/");
+        response.Headers.TryAddWithoutValidation("X-Dsh-Secret", "must-not-leak");
+        response.Content = new StringContent("x");
+        response.Content.Headers.TryAddWithoutValidation("Last-Modified", "Mon, 26 Oct 2026 00:00:00 GMT");
+        response.Content.Headers.TryAddWithoutValidation("Expires", "0");
+
+        List<KeyValuePair<string, string>> headers = ProxyHeaderPolicy.ResponseCacheHeaders(response);
+
+        Assert.Equal(
+            ["Cache-Control", "ETag", "Last-Modified", "Expires"],
+            headers.Select(h => h.Key));
+        Assert.DoesNotContain(headers, h =>
+            h.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase) ||
+            h.Value.Contains("must-not-leak", StringComparison.Ordinal));
+    }
+
+    /// <summary>无白名单头即空集：壳不补默认值（是否给 HTML 补 no-store 是产品决定，不在此面）。</summary>
+    [Fact]
+    public void ResponseCacheHeaders_EmptyWhenDshSendsNothing()
+    {
+        using var response = new HttpResponseMessage { Content = new StringContent("x") };
+
+        Assert.Empty(ProxyHeaderPolicy.ResponseCacheHeaders(response));
+    }
 }

@@ -187,10 +187,12 @@ internal static class ShellProxyFraming
     }
 
     /// <summary>写 HTML 小体（holder 页；`Connection: close` 定界）。</summary>
-    internal static async Task WriteHtmlAsync(NetworkStream stream, int status, string html, CancellationToken ct)
+    internal static async Task WriteHtmlAsync(
+        NetworkStream stream, int status, string html, CancellationToken ct,
+        IReadOnlyList<KeyValuePair<string, string>>? extraHeaders = null)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(html);
-        string head = $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n";
+        string head = BuildHead(status, "text/html; charset=utf-8", bytes.Length, extraHeaders);
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
         await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
     }
@@ -217,18 +219,47 @@ internal static class ShellProxyFraming
         _ => "application/octet-stream",
     };
 
-    internal static async Task WriteBufferedAsync(NetworkStream stream, int status, string contentType, byte[] bytes, CancellationToken ct)
+    internal static async Task WriteBufferedAsync(
+        NetworkStream stream, int status, string contentType, byte[] bytes, CancellationToken ct,
+        IReadOnlyList<KeyValuePair<string, string>>? extraHeaders = null)
     {
-        string head = $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Type: {contentType}\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n";
+        string head = BuildHead(status, contentType, bytes.Length, extraHeaders);
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
         await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
     }
 
-    internal static async Task WriteStreamHeadAsync(NetworkStream stream, int status, string contentType, CancellationToken ct)
+    internal static async Task WriteStreamHeadAsync(
+        NetworkStream stream, int status, string contentType, CancellationToken ct,
+        IReadOnlyList<KeyValuePair<string, string>>? extraHeaders = null)
     {
         // 流式回包：close 定界（分块由 dsh 侧 HttpClient 解开，此处不再组块；页侧 EventSource 照常消费）。
-        string head = $"HTTP/1.1 {status} {Reason(status)}\r\nContent-Type: {contentType}\r\nConnection: close\r\n\r\n";
+        string head = BuildHead(status, contentType, contentLength: null, extraHeaders);
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
+    }
+
+    /// <summary>回包头组帧：Content-Type → Content-Length（仅定长）→ 白名单透传头 → Connection。</summary>
+    private static string BuildHead(
+        int status, string contentType, long? contentLength,
+        IReadOnlyList<KeyValuePair<string, string>>? extraHeaders)
+    {
+        var head = new StringBuilder(256);
+        head.Append("HTTP/1.1 ").Append(status).Append(' ').Append(Reason(status)).Append("\r\n");
+        head.Append("Content-Type: ").Append(contentType).Append("\r\n");
+        if (contentLength is long length)
+        {
+            head.Append("Content-Length: ").Append(length).Append("\r\n");
+        }
+
+        if (extraHeaders is not null)
+        {
+            foreach ((string name, string value) in extraHeaders)
+            {
+                head.Append(name).Append(": ").Append(value).Append("\r\n");
+            }
+        }
+
+        head.Append("Connection: close\r\n\r\n");
+        return head.ToString();
     }
 
     internal static string Reason(int status) => status switch

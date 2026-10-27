@@ -100,7 +100,7 @@ public class DshLoopbackProxyTests
         await runCts.CancelAsync();
     }
 
-    /// <summary>GET 缓冲回放：path 原样映射 + 类型透传 + set-cookie 永不进页面。</summary>
+    /// <summary>GET 缓冲回放：path 原样映射 + 类型透传 + 缓存头白名单透传 + set-cookie 与非白名单头永不进页面。</summary>
     [Fact]
     public async Task Proxy_Get_ServesBufferedWithoutSetCookie()
     {
@@ -122,6 +122,12 @@ public class DshLoopbackProxyTests
         Assert.Equal("text/html; charset=utf-8", response.Content.Headers.ContentType?.ToString());
         Assert.Contains("/chat/?x=1", body, StringComparison.Ordinal);
         Assert.False(response.Headers.Contains("Set-Cookie"));
+        // 缓存头白名单（ADR 2026-10-26-...）：dsh 原值透传，白名单外一律丢弃——丢缓存头会让 WebKit
+        // 持久缓存退化成启发式并在冷启动重放旧 SPA；多透一个头则破坏「只取四项」的安全面。
+        Assert.Equal("public, max-age=60", response.Headers.CacheControl?.ToString());
+        Assert.Equal("\"chat-v1\"", response.Headers.ETag?.Tag);
+        Assert.Equal("Mon, 26 Oct 2026 00:00:00 GMT", response.Content.Headers.LastModified?.ToString("r"));
+        Assert.False(response.Headers.Contains("X-Dsh-Secret"));
         await runCts.CancelAsync();
     }
 
@@ -783,6 +789,8 @@ public class DshLoopbackProxyTests
         string heldBody = await held.Content.ReadAsStringAsync(cts.Token);
 
         Assert.Equal(HttpStatusCode.OK, held.StatusCode);
+        // holder 是瞬态文档：显式 no-store（ADR 2026-10-26-...），堵住旧 holder 被持久缓存重放。
+        Assert.Equal("no-store", held.Headers.CacheControl?.ToString());
         Assert.Contains("__shell_ready", heldBody, StringComparison.Ordinal);
         Assert.Contains("location.reload()", heldBody, StringComparison.Ordinal);
         // holder 首行即裁决排除用的标记常量（改文案必同步改常量，否则误判健康）。
@@ -1346,6 +1354,12 @@ public class DshLoopbackProxyTests
                     Content = new StringContent("UI for " + request.RequestUri?.PathAndQuery, Encoding.UTF8, "text/html"),
                 };
                 ui.Headers.TryAddWithoutValidation("Set-Cookie", $"{CookieName}=ROTATED; Path=/");
+                // 缓存头白名单用例的源值（ADR 2026-10-26-...）：前三项必须透传，X-Dsh-Secret 不在白名单必须丢弃。
+                // Last-Modified 是 Content 头（HttpResponseHeaders 会拒收），必须挂在 Content.Headers 上。
+                ui.Headers.TryAddWithoutValidation("Cache-Control", "public, max-age=60");
+                ui.Headers.TryAddWithoutValidation("ETag", "\"chat-v1\"");
+                ui.Content.Headers.TryAddWithoutValidation("Last-Modified", "Mon, 26 Oct 2026 00:00:00 GMT");
+                ui.Headers.TryAddWithoutValidation("X-Dsh-Secret", "must-not-leak");
                 return ui;
             }
 

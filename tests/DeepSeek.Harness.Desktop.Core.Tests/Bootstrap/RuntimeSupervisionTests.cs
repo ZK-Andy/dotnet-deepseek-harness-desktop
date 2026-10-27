@@ -56,6 +56,8 @@ public class RuntimeSupervisionTests
 
         public bool IsNeeded => false;
 
+        public string? ResolvedDshVersion => null;
+
         public RuntimeBootstrapGate Gate => new();
 
         public void Resolve()

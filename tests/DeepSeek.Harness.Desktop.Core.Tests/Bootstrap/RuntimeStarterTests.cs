@@ -7,6 +7,7 @@ public class RuntimeStarterTests
     private sealed class FakeBootstrap : IFirstBootBootstrap
     {
         public bool IsNeeded { get; init; }
+        public string? ResolvedDshVersion => null;
         public int ShimCalls { get; private set; }
         public RuntimeBootstrapGate Gate => new();
         public void Resolve() { }
