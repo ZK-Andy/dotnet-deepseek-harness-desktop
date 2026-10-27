@@ -5,14 +5,17 @@ namespace DeepSeek.Harness.Desktop.Hosting;
 
 /// <summary>
 /// X11 首映射焦点兜底（ADR 2026-10-25-exit-kill-focus-debounce-batch、
-/// 2026-10-28-first-map-input-focus-recheck）：装后自动重启上下文实测首映射失焦——
-/// <c>_NET_ACTIVE_WINDOW</c> 悬在无 WM_CLASS 幽灵窗上，键盘面（媒体键/页内 tab/Alt-Tab）
-/// 全废（键盘事件只投焦点窗）。修法：首映射后向根窗口发 <c>_NET_ACTIVE_WINDOW</c> 激活请求
-/// （source indication=1，应用发起；与 <see cref="X11WindowDrag"/> 同型的根窗口 ClientMessage），
-/// 并做<b>有界复验</b>——短窗内键盘焦点本体（<c>XGetInputFocus</c>）未达本窗则按
-/// <see cref="Decide"/> 补激活请求或直落 XSetInputFocus（10-28 实测：复验只读 EWMH 代理指标时，
-/// 活动窗已指向本窗而输入焦点未跟随的背离态会被放行），复验窗外不再干预（此后用户自行选择
-/// 焦点是合法态）。
+/// 2026-10-28-first-map-input-focus-recheck、2026-10-28-first-map-surface-remap）：装后自动重启
+/// 上下文实测首映射失焦——<c>_NET_ACTIVE_WINDOW</c> 悬在无 WM_CLASS 幽灵窗上，键盘面（媒体键/
+/// 页内 tab/Alt-Tab）全废（键盘事件只投焦点窗）。修法三段：①首映射后向根窗口发
+/// <c>_NET_ACTIVE_WINDOW</c> 激活请求（source indication=1，应用发起；与 <see cref="X11WindowDrag"/>
+/// 同型的根窗口 ClientMessage）；②<b>有界复验</b>——短窗内键盘焦点本体（<c>XGetInputFocus</c>）未达
+/// 本窗则按 <see cref="Decide"/> 补激活请求或直落 XSetInputFocus（10-28 实测：复验只读 EWMH 代理
+/// 指标时，活动窗已指向本窗而输入焦点未跟随的背离态会被放行）；③<b>撤回重映射尾步</b>——复验收口后
+/// 确定性 withdraw+map 一次：冷启动竞速下壳窗在 Mutter↔Xwayland 场景的表面输入关联可能损坏
+/// （X 层焦点/形状/几何/堆叠全部健康而键盘指针不进，实测 X 层重映射即愈，与「托盘唤回自愈」同机制），
+/// 重映射是表面层唯一可从壳侧发起的重建通道；重映射后恢复最大化态并重发激活。全序列有界
+/// （复验 ≈2.6s + 重映射 ≈0.8s），此后不再干预（用户自行选择焦点是合法态）。
 /// <para><b>WM_TAKE_FOCUS 路线不可行</b>（源码级证实，计划书原第 1/2 件改道）：Avalonia 写的
 /// <c>WM_PROTOCOLS</c> 不含该原子、其 ClientMessage 处理也忽略之；Mutter 补发该消息用
 /// <c>event_mask=0</c>——X 协议下只投递建窗客户端（Avalonia 连接），本壳的独立连接永远收不到；
@@ -30,8 +33,17 @@ internal static class X11FocusBootstrap
     private const int RevertToPointerRoot = 1;
     private const int MaxAncestryDepth = 16;
 
+    /// <summary>EWMH <c>_NET_WM_STATE</c> 消息的动作码：<c>_NET_WM_STATE_ADD</c>。</summary>
+    private static readonly IntPtr s_netWmStateAdd = new(1);
+
     /// <summary>复验时点（毫秒）：覆盖焦点窃取防护的短窗；总时长有界，不与用户的后续焦点选择竞争。</summary>
     private static readonly int[] s_recheckDelaysMs = [300, 800, 1500];
+
+    /// <summary>重映射间隔（毫秒）：withdraw 后留窗口给 WM 完成取消管理，再 map 重建（实测 500ms 生效，取整 400）。</summary>
+    private const int RemapGapMs = 400;
+
+    /// <summary>重映射后的焦点本体复验时点（毫秒）：单次留痕，不再触发恢复动作。</summary>
+    private const int RemapVerifyDelayMs = 400;
 
     private static int s_started;
 
@@ -71,6 +83,13 @@ internal static class X11FocusBootstrap
         return ewmhActive == self ? FocusRecoveryAction.SetInputFocusDirect : FocusRecoveryAction.ResendActivate;
     }
 
+    /// <summary>重映射后的最大化态恢复决策（纯函数）：仅当撤回前 <c>MAXIMIZED_VERT</c>+<c>HORZ</c>
+    /// 双原子同在才按最大化恢复——与 Avalonia「双原子同在才认最大化」同判据，半贴靠/单原子态不误扩。</summary>
+    internal static bool DecideRemapRestore(bool maxVertPresent, bool maxHorzPresent)
+    {
+        return maxVertPresent && maxHorzPresent;
+    }
+
     /// <summary>首映射后发起激活请求与有界复验（best-effort）：非 Linux、句柄非 XID、libX11 不可用
     /// 都静默跳过；进程级 once——托盘唤回重触发 <c>OnOpened</c> 时不得重跑（唤回路径由
     /// <c>Show+Activate</c> 的宿主既有激活通道覆盖）。</summary>
@@ -97,8 +116,8 @@ internal static class X11FocusBootstrap
         _ = Task.Run(() => Run(handle, log));
     }
 
-    /// <summary>发激活请求并按 <see cref="s_recheckDelaysMs"/> 复验：活动窗不是本窗就补发；任一步失败
-    /// 留痕即收（焦点缺失可由托盘唤回自愈，不值得打断）。</summary>
+    /// <summary>发激活请求并按 <see cref="s_recheckDelaysMs"/> 复验，随后执行撤回重映射尾步：
+    /// 任一步失败留痕即收（焦点缺失可由托盘唤回自愈，不值得打断）。</summary>
     private static void Run(IntPtr windowHandle, Action<string> log)
     {
         IntPtr display;
@@ -136,6 +155,7 @@ internal static class X11FocusBootstrap
             SendActivate(display, root, windowHandle, activeWindowAtom);
             log("[host] 焦点兜底：已发 _NET_ACTIVE_WINDOW 激活请求");
 
+            bool focusReached = false;
             foreach (int delayMs in s_recheckDelaysMs)
             {
                 Thread.Sleep(delayMs);
@@ -146,7 +166,8 @@ internal static class X11FocusBootstrap
                 switch (Decide(windowHandle, ReadActiveWindow(display, root, activeWindowAtom), inputFocus, inputFocusInSubtree))
                 {
                     case FocusRecoveryAction.Reached:
-                        return;
+                        focusReached = true;
+                        break;
                     case FocusRecoveryAction.ResendActivate:
                         SendActivate(display, root, windowHandle, activeWindowAtom);
                         log($"[host] 焦点兜底：活动窗仍非本窗，{delayMs}ms 补发激活请求");
@@ -156,7 +177,14 @@ internal static class X11FocusBootstrap
                         log($"[host] 焦点兜底：{delayMs}ms 复验活动窗已指向本窗但输入焦点未跟随，直落 XSetInputFocus");
                         break;
                 }
+
+                if (focusReached)
+                {
+                    break;
+                }
             }
+
+            RunSurfaceRemap(display, root, windowHandle, activeWindowAtom, log);
         }
         catch (Exception ex)
         {
@@ -169,9 +197,50 @@ internal static class X11FocusBootstrap
         }
     }
 
-    /// <summary>向根窗口发 <c>_NET_ACTIVE_WINDOW</c> ClientMessage（EWMH）：window=本窗、
-    /// l[0]=source indication（1=应用发起）、l[1]=timestamp（0=CurrentTime）、l[2]=当前活动窗（0）。</summary>
-    private static void SendActivate(IntPtr display, IntPtr root, IntPtr windowHandle, IntPtr messageAtom)
+    /// <summary>撤回重映射尾步（ADR 2026-10-28-first-map-surface-remap）：冷启动竞速下壳窗在
+    /// Mutter↔Xwayland 场景的表面输入关联可能损坏（X 层焦点/形状/几何/堆叠全健康而键盘指针不进，
+    /// 2026-10-28 真机实测 withdraw+map 重建即愈）——复验序列收口后确定性撤回重映射一次，按撤回前
+    /// 状态恢复最大化（<see cref="DecideRemapRestore"/>）并重发激活，再做单次留痕复验。</summary>
+    private static void RunSurfaceRemap(IntPtr display, IntPtr root, IntPtr windowHandle, IntPtr activeWindowAtom, Action<string> log)
+    {
+        IntPtr wmStateAtom = XInternAtom(display, "_NET_WM_STATE", false);
+        IntPtr maxVertAtom = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_VERT", false);
+        IntPtr maxHorzAtom = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_HORZ", false);
+        bool restoreMaximize = wmStateAtom != IntPtr.Zero && maxVertAtom != IntPtr.Zero && maxHorzAtom != IntPtr.Zero
+            && DecideRemapRestore(
+                ReadHasAtom(display, windowHandle, wmStateAtom, maxVertAtom),
+                ReadHasAtom(display, windowHandle, wmStateAtom, maxHorzAtom));
+
+        log("[host] 焦点兜底：撤回重映射重建窗口表面（冷启动表面关联修复）");
+        _ = XWithdrawWindow(display, windowHandle, XDefaultScreen(display));
+        _ = XFlush(display);
+        Thread.Sleep(RemapGapMs);
+        _ = XMapWindow(display, windowHandle);
+        _ = XFlush(display);
+
+        if (restoreMaximize)
+        {
+            SendRootClientMessage(display, root, windowHandle, wmStateAtom, s_netWmStateAdd, maxVertAtom, maxHorzAtom, (IntPtr)1);
+            _ = XFlush(display);
+        }
+
+        SendActivate(display, root, windowHandle, activeWindowAtom);
+        Thread.Sleep(RemapVerifyDelayMs);
+        IntPtr inputFocus = ReadInputFocus(display);
+        bool inputFocusInSubtree = inputFocus.ToInt64() > 1
+            && inputFocus != windowHandle
+            && IsSelfOrDescendant(display, windowHandle, inputFocus);
+        bool reached = Decide(windowHandle, ReadActiveWindow(display, root, activeWindowAtom), inputFocus, inputFocusInSubtree)
+            == FocusRecoveryAction.Reached;
+        log(reached
+            ? "[host] 焦点兜底：重映射完成，焦点本体已到位"
+            : "[host] 焦点兜底：重映射完成，焦点本体未跟随（留痕，不再干预）");
+    }
+
+    /// <summary>向根窗口发 EWMH ClientMessage（format 32，data.l 四槽）。激活请求（<c>_NET_ACTIVE_WINDOW</c>）
+    /// 为 l[0]=source indication（1=应用发起）、l[1]=timestamp（0=CurrentTime）、l[2]=当前活动窗（0）、l[3]=0；
+    /// <c>_NET_WM_STATE</c> 为 l[0]=动作、l[1]/l[2]=属性原子、l[3]=source indication。</summary>
+    private static void SendRootClientMessage(IntPtr display, IntPtr root, IntPtr windowHandle, IntPtr messageAtom, IntPtr data0, IntPtr data1, IntPtr data2, IntPtr data3)
     {
         IntPtr xevent = Marshal.AllocHGlobal(EventSize);
         try
@@ -189,9 +258,10 @@ internal static class X11FocusBootstrap
             Marshal.WriteInt64(xevent, 32, windowHandle.ToInt64());
             Marshal.WriteInt64(xevent, 40, messageAtom.ToInt64());
             Marshal.WriteInt32(xevent, 48, 32);
-            Marshal.WriteInt64(xevent, 56, 1); // source indication：应用发起
-            Marshal.WriteInt64(xevent, 64, 0); // timestamp：CurrentTime
-            Marshal.WriteInt64(xevent, 72, 0); // 当前活动窗：无
+            Marshal.WriteInt64(xevent, 56, data0.ToInt64());
+            Marshal.WriteInt64(xevent, 64, data1.ToInt64());
+            Marshal.WriteInt64(xevent, 72, data2.ToInt64());
+            Marshal.WriteInt64(xevent, 80, data3.ToInt64());
 
             _ = XSendEvent(display, root, false, SubstructureRedirectMask | SubstructureNotifyMask, xevent);
             _ = XFlush(display);
@@ -199,6 +269,50 @@ internal static class X11FocusBootstrap
         finally
         {
             Marshal.FreeHGlobal(xevent);
+        }
+    }
+
+    /// <summary>激活请求便捷形：<_NET_ACTIVE_WINDOW> 四槽填法见 <see cref="SendRootClientMessage"/>。</summary>
+    private static void SendActivate(IntPtr display, IntPtr root, IntPtr windowHandle, IntPtr messageAtom)
+    {
+        SendRootClientMessage(display, root, windowHandle, messageAtom, (IntPtr)1, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    /// <summary>读窗口 <paramref name="stateAtom"/> 属性（ATOM 数组，format 32 在 LP64 按 long 单元返回），
+    /// 判是否含 <paramref name="atom"/>；读失败/空属性按不含处理。</summary>
+    private static bool ReadHasAtom(IntPtr display, IntPtr window, IntPtr stateAtom, IntPtr atom)
+    {
+        if (XGetWindowProperty(
+                display, window, stateAtom, 0, 32, false, AnyPropertyType,
+                out _, out int actualFormat, out IntPtr nitems, out _, out IntPtr prop) != 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            if (actualFormat != 32 || prop == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            long count = nitems.ToInt64();
+            for (long i = 0; i < count; i++)
+            {
+                if (Marshal.ReadInt64(prop, checked((int)(i * sizeof(long)))) == atom.ToInt64())
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            if (prop != IntPtr.Zero)
+            {
+                _ = XFree(prop);
+            }
         }
     }
 
@@ -314,6 +428,15 @@ internal static class X11FocusBootstrap
 
     [DllImport(LibX11, EntryPoint = "XQueryTree", ExactSpelling = true)]
     private static extern int XQueryTree(IntPtr display, IntPtr window, out IntPtr rootReturn, out IntPtr parentReturn, ref IntPtr childrenReturn, out int nchildrenReturn);
+
+    [DllImport(LibX11, EntryPoint = "XWithdrawWindow", ExactSpelling = true)]
+    private static extern int XWithdrawWindow(IntPtr display, IntPtr window, int screenNumber);
+
+    [DllImport(LibX11, EntryPoint = "XMapWindow", ExactSpelling = true)]
+    private static extern int XMapWindow(IntPtr display, IntPtr window);
+
+    [DllImport(LibX11, EntryPoint = "XDefaultScreen", ExactSpelling = true)]
+    private static extern int XDefaultScreen(IntPtr display);
 
     // C 原型返回 XErrorHandler 函数指针（LP64 下 8B）——按指针对型封送，返回值丢弃。
     [DllImport(LibX11, EntryPoint = "XSetErrorHandler", ExactSpelling = true)]

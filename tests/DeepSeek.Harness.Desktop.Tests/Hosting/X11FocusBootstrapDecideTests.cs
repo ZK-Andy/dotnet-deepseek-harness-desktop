@@ -65,4 +65,16 @@ public class X11FocusBootstrapDecideTests
             X11FocusBootstrap.FocusRecoveryAction.SetInputFocusDirect,
             X11FocusBootstrap.Decide(s_self, s_self, s_ghostWindow, inputFocusInSubtree: false));
     }
+
+    /// <summary>验证重映射最大化恢复决策（ADR 2026-10-28-first-map-surface-remap）：仅 VERT+HORZ
+    /// 双原子同在才按最大化恢复——与 Avalonia「双原子同在才认最大化」同判据，半贴靠/单原子态
+    /// 不得误扩为全屏最大化。</summary>
+    [Fact]
+    public void RemapRestore_RequiresBothMaximizeAtoms()
+    {
+        Assert.True(X11FocusBootstrap.DecideRemapRestore(maxVertPresent: true, maxHorzPresent: true));
+        Assert.False(X11FocusBootstrap.DecideRemapRestore(maxVertPresent: true, maxHorzPresent: false));
+        Assert.False(X11FocusBootstrap.DecideRemapRestore(maxVertPresent: false, maxHorzPresent: true));
+        Assert.False(X11FocusBootstrap.DecideRemapRestore(maxVertPresent: false, maxHorzPresent: false));
+    }
 }
