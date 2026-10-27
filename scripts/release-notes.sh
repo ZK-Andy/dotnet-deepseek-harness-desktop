@@ -21,7 +21,7 @@ type_bucket() {
     fix*)                               echo fix   ;;
     perf*)                              echo perf  ;;
     docs*)                              echo docs  ;;
-    chore*|build*|ci*|refactor*|style*) echo chore ;;
+    chore*|build*|ci*|process*|refactor*|style*) echo chore ;;
     *)                                  echo ""    ;;
   esac
 }
