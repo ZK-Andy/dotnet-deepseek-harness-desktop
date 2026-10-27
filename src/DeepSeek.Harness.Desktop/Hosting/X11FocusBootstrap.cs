@@ -4,16 +4,20 @@ using Avalonia.Controls;
 namespace DeepSeek.Harness.Desktop.Hosting;
 
 /// <summary>
-/// X11 首映射焦点兜底（ADR 2026-10-25-exit-kill-focus-debounce-batch）：装后自动重启上下文实测
-/// 首映射失焦——<c>_NET_ACTIVE_WINDOW</c> 悬在无 WM_CLASS 幽灵窗上，键盘面（媒体键/页内 tab/Alt-Tab）
+/// X11 首映射焦点兜底（ADR 2026-10-25-exit-kill-focus-debounce-batch、
+/// 2026-10-28-first-map-input-focus-recheck）：装后自动重启上下文实测首映射失焦——
+/// <c>_NET_ACTIVE_WINDOW</c> 悬在无 WM_CLASS 幽灵窗上，键盘面（媒体键/页内 tab/Alt-Tab）
 /// 全废（键盘事件只投焦点窗）。修法：首映射后向根窗口发 <c>_NET_ACTIVE_WINDOW</c> 激活请求
 /// （source indication=1，应用发起；与 <see cref="X11WindowDrag"/> 同型的根窗口 ClientMessage），
-/// 并做<b>有界复验</b>——短窗内活动窗仍非本窗则补发（Mutter 的焦点窃取防护可能吞首次请求），
-/// 复验窗外不再干预（此后用户自行选择焦点是合法态）。
+/// 并做<b>有界复验</b>——短窗内键盘焦点本体（<c>XGetInputFocus</c>）未达本窗则按
+/// <see cref="Decide"/> 补激活请求或直落 XSetInputFocus（10-28 实测：复验只读 EWMH 代理指标时，
+/// 活动窗已指向本窗而输入焦点未跟随的背离态会被放行），复验窗外不再干预（此后用户自行选择
+/// 焦点是合法态）。
 /// <para><b>WM_TAKE_FOCUS 路线不可行</b>（源码级证实，计划书原第 1/2 件改道）：Avalonia 写的
 /// <c>WM_PROTOCOLS</c> 不含该原子、其 ClientMessage 处理也忽略之；Mutter 补发该消息用
 /// <c>event_mask=0</c>——X 协议下只投递建窗客户端（Avalonia 连接），本壳的独立连接永远收不到；
-/// 且只声明不响应会让 Mutter 放弃直落焦点改等客户端应答，反而恶化。</para>
+/// 且只声明不响应会让 Mutter 放弃直落焦点改等客户端应答，反而恶化。直落 XSetInputFocus 是另一条
+/// 协议路径，不受该投递限制。</para>
 /// </summary>
 internal static class X11FocusBootstrap
 {
@@ -23,11 +27,49 @@ internal static class X11FocusBootstrap
     private const long SubstructureRedirectMask = 1L << 20;
     private const int EventSize = 192;
     private const long AnyPropertyType = 0;
+    private const int RevertToPointerRoot = 1;
+    private const int MaxAncestryDepth = 16;
 
     /// <summary>复验时点（毫秒）：覆盖焦点窃取防护的短窗；总时长有界，不与用户的后续焦点选择竞争。</summary>
     private static readonly int[] s_recheckDelaysMs = [300, 800, 1500];
 
     private static int s_started;
+
+    /// <summary>本连接的错误处理器：返回 0 即吞掉该 X 错误（BadMatch/BadWindow 等），静字段防 GC。</summary>
+    private static readonly XErrorHandler s_ignoreXErrors = (_, _) => 0;
+
+    /// <summary>Xlib 错误处理器签名（按连接安装，per-thread）。</summary>
+    private delegate int XErrorHandler(IntPtr display, IntPtr errorEvent);
+
+    /// <summary>复验动作：键盘焦点本体是否到位（X11 I/O 面之外唯一可单测的决策面）。</summary>
+    internal enum FocusRecoveryAction
+    {
+        /// <summary>input focus 已在本窗，收口。</summary>
+        Reached,
+
+        /// <summary>活动窗仍非本窗：补发 EWMH 激活请求（原有路径）。</summary>
+        ResendActivate,
+
+        /// <summary>活动窗已指向本窗但 input focus 未跟随（EWMH/本体背离态）：直落 XSetInputFocus。</summary>
+        SetInputFocusDirect,
+    }
+
+    /// <summary>复验决策：以键盘焦点本体（<c>XGetInputFocus</c>）为准——本体落在本窗或本窗后代即收口，
+    /// 不看代理指标；未到位时活动窗非本窗走激活补发、活动窗已指向本窗则直落。</summary>
+    /// <param name="self">本窗 XID。</param>
+    /// <param name="ewmhActive">根窗口 <c>_NET_ACTIVE_WINDOW</c> 读值（读不到为 0）。</param>
+    /// <param name="inputFocus">X input focus 读值（None/PointerRoot 均非本窗）。</param>
+    /// <param name="inputFocusInSubtree">input focus 是本窗后代（宿主嵌入的 WebView 子窗等，取焦是
+    /// 用户合法态，直落顶窗反而从页面抢焦点）；<paramref name="inputFocus"/> 为本窗时无需此参。</param>
+    internal static FocusRecoveryAction Decide(IntPtr self, IntPtr ewmhActive, IntPtr inputFocus, bool inputFocusInSubtree = false)
+    {
+        if (inputFocus == self || inputFocusInSubtree)
+        {
+            return FocusRecoveryAction.Reached;
+        }
+
+        return ewmhActive == self ? FocusRecoveryAction.SetInputFocusDirect : FocusRecoveryAction.ResendActivate;
+    }
 
     /// <summary>首映射后发起激活请求与有界复验（best-effort）：非 Linux、句柄非 XID、libX11 不可用
     /// 都静默跳过；进程级 once——托盘唤回重触发 <c>OnOpened</c> 时不得重跑（唤回路径由
@@ -78,6 +120,12 @@ internal static class X11FocusBootstrap
 
         try
         {
+            // 本连接独占的线程级错误处理器：直落 XSetInputFocus 与父链上行的 XQueryTree 可能抛
+            // BadMatch/BadWindow（复验窗内用户最小化/窗口销毁等），默认 Xlib 处理器会终止整个进程——
+            // 吞错留待下一次复验，best-effort 语义不能因一次 X 错误放大为壳崩溃。delegate 存静态
+            // 字段防 GC 回收。安装放 try 内：失败随整体放弃并走 finally 收链。
+            _ = XSetErrorHandler(s_ignoreXErrors);
+
             IntPtr root = XDefaultRootWindow(display);
             IntPtr activeWindowAtom = XInternAtom(display, "_NET_ACTIVE_WINDOW", false);
             if (root == IntPtr.Zero || activeWindowAtom == IntPtr.Zero)
@@ -91,13 +139,23 @@ internal static class X11FocusBootstrap
             foreach (int delayMs in s_recheckDelaysMs)
             {
                 Thread.Sleep(delayMs);
-                if (ReadActiveWindow(display, root, activeWindowAtom) == windowHandle)
+                IntPtr inputFocus = ReadInputFocus(display);
+                bool inputFocusInSubtree = inputFocus.ToInt64() > 1
+                    && inputFocus != windowHandle
+                    && IsSelfOrDescendant(display, windowHandle, inputFocus);
+                switch (Decide(windowHandle, ReadActiveWindow(display, root, activeWindowAtom), inputFocus, inputFocusInSubtree))
                 {
-                    return;
+                    case FocusRecoveryAction.Reached:
+                        return;
+                    case FocusRecoveryAction.ResendActivate:
+                        SendActivate(display, root, windowHandle, activeWindowAtom);
+                        log($"[host] 焦点兜底：活动窗仍非本窗，{delayMs}ms 补发激活请求");
+                        break;
+                    case FocusRecoveryAction.SetInputFocusDirect:
+                        SetInputFocus(display, windowHandle);
+                        log($"[host] 焦点兜底：{delayMs}ms 复验活动窗已指向本窗但输入焦点未跟随，直落 XSetInputFocus");
+                        break;
                 }
-
-                SendActivate(display, root, windowHandle, activeWindowAtom);
-                log($"[host] 焦点兜底：活动窗仍非本窗，{delayMs}ms 补发激活请求");
             }
         }
         catch (Exception ex)
@@ -173,6 +231,56 @@ internal static class X11FocusBootstrap
         }
     }
 
+    /// <summary>input focus 是否落在本窗子树（XQueryTree 沿父链上行，深度有界）；查询失败按非后代
+    /// 处理——直落主修方向优先于理论误伤面（后代误判在复验窗内的概率与代价都远低于真失焦不修）。</summary>
+    private static bool IsSelfOrDescendant(IntPtr display, IntPtr self, IntPtr window)
+    {
+        IntPtr current = window;
+        for (int depth = 0; depth < MaxAncestryDepth; depth++)
+        {
+            if (current == self)
+            {
+                return true;
+            }
+
+            IntPtr children = IntPtr.Zero;
+            if (XQueryTree(display, current, out _, out IntPtr parent, ref children, out _) == 0)
+            {
+                return false;
+            }
+
+            if (children != IntPtr.Zero)
+            {
+                _ = XFree(children);
+            }
+
+            if (parent == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            current = parent;
+        }
+
+        return false;
+    }
+
+    /// <summary>直落输入焦点（<c>XSetInputFocus</c>）：对已映射可见窗由任意连接发起均合法，不经
+    /// WM 焦点窃取防护的判定面；<c>RevertToPointerRoot</c> 与 Mutter 自身直落形态一致（健康态实测
+    /// revert=1）。X 错误由 <see cref="s_ignoreXErrors"/> 吞掉（同步化经随后的复验往返自然消费）。</summary>
+    private static void SetInputFocus(IntPtr display, IntPtr windowHandle)
+    {
+        _ = XSetInputFocus(display, windowHandle, RevertToPointerRoot, IntPtr.Zero);
+        _ = XFlush(display);
+    }
+
+    /// <summary>读 X input focus（键盘焦点本体；None=0/PointerRoot=1 均非本窗）；revert-to 值丢弃。</summary>
+    private static IntPtr ReadInputFocus(IntPtr display)
+    {
+        XGetInputFocus(display, out IntPtr focus, out _);
+        return focus;
+    }
+
     [DllImport(LibX11, EntryPoint = "XOpenDisplay", ExactSpelling = true)]
     private static extern IntPtr XOpenDisplay(string? displayName);
 
@@ -197,4 +305,17 @@ internal static class X11FocusBootstrap
 
     [DllImport(LibX11, EntryPoint = "XFree", ExactSpelling = true)]
     private static extern int XFree(IntPtr data);
+
+    [DllImport(LibX11, EntryPoint = "XGetInputFocus", ExactSpelling = true)]
+    private static extern int XGetInputFocus(IntPtr display, out IntPtr focusReturn, out int revertToReturn);
+
+    [DllImport(LibX11, EntryPoint = "XSetInputFocus", ExactSpelling = true)]
+    private static extern int XSetInputFocus(IntPtr display, IntPtr focusWindow, int revertTo, IntPtr time);
+
+    [DllImport(LibX11, EntryPoint = "XQueryTree", ExactSpelling = true)]
+    private static extern int XQueryTree(IntPtr display, IntPtr window, out IntPtr rootReturn, out IntPtr parentReturn, ref IntPtr childrenReturn, out int nchildrenReturn);
+
+    // C 原型返回 XErrorHandler 函数指针（LP64 下 8B）——按指针对型封送，返回值丢弃。
+    [DllImport(LibX11, EntryPoint = "XSetErrorHandler", ExactSpelling = true)]
+    private static extern IntPtr XSetErrorHandler(XErrorHandler handler);
 }
