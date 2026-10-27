@@ -2,9 +2,14 @@
 """Verify source-code size health (architecture R4 + compose-root R1).
 
 Implements the size health gate from the architecture-mechanization ADR
-(`.agents/notes/proposed/process/2026-08-30-architecture-mechanization.md`):
+(`.agents/notes/implemented/process/2026-08-30-architecture-mechanization.md`):
 
-  F1  any file > `--file-limit` physical lines (default 400)
+  F1  any file > `--file-limit` physical lines (default 400) — report-only.
+      File length is a proxy metric, not an invariant: enforcing it forced
+      cohesion-blind splits (files riding just under the cap, partial-class
+      fragmentation), so F1 prints as a splitting-pressure note and never
+      fails `--enforce` (ADR code-health-f1-report-only). The god-object
+      signals that do enforce are method-level: F2/F4.
   F2  any method > `--method-limit` lines (default 80)
   F3  assembly-surface ROOT set (AvaloniaHost*.cs + Program.cs), total
       > `--compose-total-limit` lines (default 500) — the root is gated by
@@ -23,8 +28,9 @@ are a nudge, not a spec, and the thresholds are generous.
 single reported item (an explicit, named exemption — nothing is silently
 relaxed).
 
-Default is report-only (prints violations, exit 0). `--enforce` exits 1 on any
-violation. `--self-test` runs offline synthetic fixtures.
+Default is report-only (prints violations, exit 0). `--enforce` exits 1 on
+enforced violations (F2/F3/F4); F1 notes print in either mode and never gate
+(ADR code-health-f1-report-only). `--self-test` runs offline synthetic fixtures.
 
 Usage: python3 scripts/verify-code-health.py [--src DIR] [--enforce]
        python3 scripts/verify-code-health.py --self-test
@@ -183,32 +189,39 @@ def _is_compose_root(path: Path) -> bool:
 
 
 def _violations(path: Path, file_limit: int, method_limit: int,
-                compose_method_limit: int) -> list[str]:
+                compose_method_limit: int) -> tuple[list[str], list[str]]:
+    """Return (enforced, report-only) violation lines for one file.
+
+    F1 (file length) is the report-only lane; F2/F4 (method length) enforce.
+    """
     lines = path.read_text(encoding="utf-8").splitlines()
     out: list[str] = []
+    notes: list[str] = []
     total = len(lines)
     is_compose = _is_compose_root(path)
 
     if total > file_limit:
-        # F1 applies to all files alike; the compose-root set is gated in
-        # aggregate (F3 in _scan), not by a per-file budget.
-        out.append(f"  {path.name}: F1 {total} lines > {file_limit}")
+        # F1 applies to all files alike as a note; the compose-root set is
+        # gated in aggregate (F3 in _scan), not by a per-file budget.
+        notes.append(f"  {path.name}: F1 {total} lines > {file_limit}")
 
     limit = compose_method_limit if is_compose else method_limit
     if _file_ignore(lines):
-        return out  # whole file exempt from method checks
+        return out, notes  # whole file exempt from method checks
 
     for start, end in _method_spans(lines):
         span = end - start + 1
         if span > limit and not _has_ignore((start - 1, end - 1), lines):
             kind = "F4" if is_compose else "F2"
             out.append(f"  {path.name}:{start}: {kind} method {span} lines > {limit}")
-    return out
+    return out, notes
 
 
 def _scan(src: Path, file_limit: int, method_limit: int,
-          compose_method_limit: int, compose_total_limit: int) -> list[str]:
+          compose_method_limit: int, compose_total_limit: int) -> tuple[list[str], list[str]]:
+    """Return (enforced violations, report-only notes) for one scan root."""
     rows: list[str] = []
+    notes: list[str] = []
     compose_total = 0
     for path in sorted(src.rglob("*.cs")):
         rel = path.relative_to(src)
@@ -216,13 +229,15 @@ def _scan(src: Path, file_limit: int, method_limit: int,
             continue
         if _is_compose_root(path):
             compose_total += len(path.read_text(encoding="utf-8").splitlines())
-        for v in _violations(path, file_limit, method_limit, compose_method_limit):
-            rows.append(v)
+        enforced, file_notes = _violations(path, file_limit, method_limit,
+                                           compose_method_limit)
+        rows.extend(enforced)
+        notes.extend(file_notes)
     if compose_total > compose_total_limit:
         rows.append(
             f"  F3 assembly-surface root set {compose_total} lines > {compose_total_limit} "
             f"(Program.cs + AvaloniaHost*.cs; orchestration belongs in domain services, not new partials)")
-    return rows
+    return rows, notes
 
 
 def _self_test() -> int:
@@ -255,26 +270,27 @@ def _self_test() -> int:
         # passing case
         (root / "Pass.cs").write_text("\n".join(cases[0][0]) + "\n", encoding="utf-8")
         (root / "Pass2.cs").write_text("\n".join(cases[1][0]) + "\n", encoding="utf-8")
-        rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
-                     DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
-        if rows:
-            print(f"  ✗ conforming files reported: {rows}")
+        rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
+                            DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
+        if rows or notes:
+            print(f"  ✗ conforming files reported: {rows} / {notes}")
             failed = 1
         else:
             print("  ok: conforming files -> pass")
 
-        # failing file-limit case
+        # F1 is report-only: a > file-limit file yields a note, never an
+        # enforced row (ADR code-health-f1-report-only).
         big_file = ["namespace Foo;"] + \
             ["public class C {"] + \
             [f"    // line {i}" for i in range(410)] + \
             ["}"]
         (root / "BigFile.cs").write_text("\n".join(big_file) + "\n", encoding="utf-8")
-        rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
-                     DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
-        if any("F1" in r for r in rows):
-            print("  ok: F1 file-limit violation flagged")
+        rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
+                            DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
+        if any("F1" in r for r in notes) and not any("F1" in r for r in rows):
+            print("  ok: F1 file-limit overage is a report-only note, not enforced")
         else:
-            print(f"  ✗ F1 not flagged: {rows}")
+            print(f"  ✗ F1 lane wrong: rows={rows} notes={notes}")
             failed = 1
 
         # failing method case (a method whose body exceeds method-limit)
@@ -284,8 +300,8 @@ def _self_test() -> int:
         big_method = ["namespace Foo;", "public class C {"] + body + ["}"]
         (root / "BigMethod.cs").write_text("\n".join(big_method) + "\n",
                                            encoding="utf-8")
-        rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
-                     DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
+        rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
+                            DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
         if any("F2" in r for r in rows):
             print("  ok: F2 method-limit violation flagged")
         else:
@@ -299,9 +315,9 @@ def _self_test() -> int:
         ] + ["    }"]
         compose = ["namespace Foo;", "public class C {"] + compose_body + ["}"]
         (root / "AvaloniaHost.cs").write_text("\n".join(compose) + "\n",
-                                                  encoding="utf-8")
-        rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
-                     DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
+                                              encoding="utf-8")
+        rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
+                            DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
         if any("F4" in r for r in rows):
             print("  ok: F4 assembly-surface method violation flagged")
         else:
@@ -317,17 +333,17 @@ def _self_test() -> int:
         # 两文件自足超帽（303+253=556 > 500），不依赖前序夹具残留行数。
         (root / "AvaloniaHost.App.cs").write_text("\n".join(padded(300)) + "\n", encoding="utf-8")
         (root / "Program.cs").write_text("\n".join(padded(250)) + "\n", encoding="utf-8")
-        rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
-                     DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
-        if any("F3" in r for r in rows) and not any("F1" in r and "App" in r for r in rows):
+        rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
+                            DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
+        if any("F3" in r for r in rows) and not any("F1" in r and "App" in r for r in notes):
             print("  ok: F3 assembly-surface root set-total violation flagged")
         else:
-            print(f"  ✗ F3 not flagged (or F1 misfired): {rows}")
+            print(f"  ✗ F3 not flagged (or F1 misfired): {rows} / {notes}")
             failed = 1
 
         # and the same set passing when the total is under budget
-        rows = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
-                     DEFAULT_COMPOSE_METHOD_LIMIT, 700)
+        rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
+                            DEFAULT_COMPOSE_METHOD_LIMIT, 700)
         if not any("F3" in r for r in rows):
             print("  ok: F3 passes under raised set budget")
         else:
@@ -358,21 +374,31 @@ def main() -> int:
     parser.add_argument("--compose-total-limit", type=int,
                         default=DEFAULT_COMPOSE_TOTAL_LIMIT)
     parser.add_argument("--enforce", action="store_true",
-                        help="exit 1 on any violation (default: report only)")
+                        help="exit 1 on enforced violations F2/F3/F4 "
+                             "(F1 is report-only; default: report only)")
     args = parser.parse_args()
 
     rows = []
+    notes = []
     for s in args.src:
-        rows.extend(_scan(Path(s), args.file_limit, args.method_limit,
-                          args.compose_method_limit, args.compose_total_limit))
+        enforced, file_notes = _scan(Path(s), args.file_limit, args.method_limit,
+                                     args.compose_method_limit, args.compose_total_limit)
+        rows.extend(enforced)
+        notes.extend(file_notes)
+    if notes:
+        print(f"code-health: {len(notes)} report-only size note(s) (F1, not gated)")
+        for r in notes:
+            print(r)
     if rows:
         print(f"code-health: {len(rows)} size violation(s)")
         for r in rows:
             print(r)
         if args.enforce:
             return 1
-    else:
+    elif not notes:
         print("code-health: OK")
+    else:
+        print("code-health: OK (F1 notes above are report-only)")
     return 0
 
 

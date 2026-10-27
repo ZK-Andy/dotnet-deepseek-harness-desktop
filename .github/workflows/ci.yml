@@ -176,7 +176,7 @@ jobs:
           echo "DSH_REVIEW_BASE=$BASE" >> "$GITHUB_ENV"
           echo "DSH_REVIEW_BASE_STATE=$STATE" >> "$GITHUB_ENV"
           echo "review base: state=$STATE base=${BASE:-<none>}"
-      - name: 增量纪律闸（耦合左移②：gross/既有文件净增/跨层扇出/新包引用四帽，超帽即红；ADR coupling-increment-enforce）
+      - name: 增量纪律闸（耦合左移②：gross/既有文件净增/新文件/跨层扇出/新包引用五帽，超帽即红；ADR increment-gate-enforce、increment-new-file-cap）
         run: |
           # state 只可能 ok/none：unreachable 已在「解析评审 base」步硬红并中止作业。
           if [ "$DSH_REVIEW_BASE_STATE" = "none" ]; then

@@ -86,10 +86,10 @@ bash scripts/verify-shell-standards.sh   # 脚本规范 S1-S6（含 shellcheck -
 python3 scripts/verify-readme-badges.py  # README 双语 tests/coverage 徽章 == scripts/test-baseline.json
 python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/待办文件与预算/冷归档卷；存在即校验）
 python3 scripts/verify-governance.py     # Issue/PR 模板治理字段 + 工作流/composite action 的 run: 禁插值事件载荷/env 回读
-python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（F3=装配面根集合计 ≤500；report 默认；--enforce 才 fail）
+python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（F1=单文件行数仅报告不拦；F2/F4 方法帽与 F3=装配面根集合计 ≤500 强制，--enforce 才 fail）
 python3 scripts/verify-compose-root.py   # 装配面语义闸（根集=Program+Hosting/AvaloniaHost*；装配面另含 PreBuildRegistration/ShellResources/ShellWiringRegistration；根集只装配 C1-C3/C5：方法清单封闭/new 自有类型 ≤6/单 dot 分部/构造清单；C7 装配期构造清单：PreBuildRegistration*.cs 的构造须在册；C8 文件在册：清单 `scripts/domain-files.manifest.json` 双向，根级 .cs 只许根集或装配面，装配面声明须存在，一个文件只登记一处；C4/C6 随旧编排器退役；--enforce 才 fail）
 python3 scripts/verify-registration-discipline.py # 注册点纪律闸（R1：基础设施具体类型只许出现在注册处：Presentation 注册外直接 new ≤1/静态调用 ≤11；--enforce 才 fail）
-python3 scripts/verify-increment-discipline.py # 增量纪律闸（耦合左移②：gross/既有文件净增/跨层扇出/新包引用四帽 600/150/15/1；--enforce 已接 pre-commit/pre-push/CI）
+python3 scripts/verify-increment-discipline.py # 增量纪律闸（耦合左移②：gross/既有文件净增/新文件/跨层扇出/新包引用五帽 600/150/400/15/1；--enforce 已接 pre-commit/pre-push/CI）
 python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）
 python3 scripts/verify-ui-copy.py    # UI 文案单一词典（UiCopy*.cs 为唯一家；四条不变量：消费文件零 CJK 字面量 + index.html 登记 + EN 字典↔`*En` 常量全等 + client.js zh/en 键集相等）
 python3 scripts/verify-skill-format.py    # 技能格式（frontmatter/目录束/内链/结构）
@@ -108,7 +108,7 @@ scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
 | docs/cookbook.md | ≤ 2900 词 |
 | docs/cookbook-archive.md（冻结冷归档层） | ≤ 400 词 |
 | docs/coding-standards.md | ≤ 700 词 |
-| docs/architecture-standards.md | ≤ 600 词 |
+| docs/architecture-standards.md | ≤ 620 词 |
 | docs/script-standards.md | ≤ 500 词 |
 | docs/architecture.md | ≤ 990 词 |
 | docs/testing.md | ≤ 850 词 |

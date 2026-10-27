@@ -28,7 +28,8 @@
     },
     {
       "path": "docs/architecture-standards.md",
-      "max_words": 600
+      "max_words": 620,
+      "_justify_bump": "2026-10-28 提额 600->620：R4 增补 F1（组件行数）降 report-only 的判据与 ADR 指针（code-health-f1-report-only），原文件仅余 5 词无法容纳新增语义；rationale 细节已在 ADR，规范层只留规则句（ADR increment-new-file-cap 同批）。"
     },
     {
       "path": "docs/script-standards.md",

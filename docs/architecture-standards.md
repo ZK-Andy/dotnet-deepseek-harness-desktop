@@ -38,8 +38,8 @@
 - **例外（触 UI/WebView 适配器落 Presentation）**：实现需要 Avalonia 控件类型时只能住主工程——Infrastructure 引 Presentation 违 R2（`ArchitectureTests` 断言）；判例 ADR [value-flow-batch1](../.agents/notes/implemented/architecture/2026-09-15-value-flow-batch1-state-sinking.md)、[startup-usecases-sink-to-core](../.agents/notes/implemented/architecture/2026-10-15-startup-usecases-sink-to-core.md)。
 - **IPC/帧契约**：跨界 ID 用强类型/Branded（禁裸 `string` 跨包）；帧形状经源生成上下文（主工程 `AppJsonContext` / Core `UpdateJsonContext`，AOT 安全）；帧契约演进须留痕。
 
-### R4 · 反上帝对象 / 尺寸健康闸（健康提示，非编码规范）
-组件超 ~400 行、方法超 ~80 行、装配面内含业务逻辑 → 评审/门禁提示；是健康检查，不设上限（见 [coding-standards.md](coding-standards.md)）。
+### R4 · 反上帝对象 / 尺寸健康闸
+强制面＝方法长度（F2/F4）与根集合计（F3）；组件行数（F1）为 report-only 评审信号（ADR [code-health-f1-report-only](../.agents/notes/implemented/process/2026-10-28-code-health-f1-report-only.md)）；装配面内含业务逻辑仍强制；强制阈值「先拆再上」（feature-flow 步骤 4）。
 
 ### R5 · 与 coding-standards 的分工
 本文件管**组织/结构/契约**；[coding-standards.md](coding-standards.md) 管**单段代码与行为契约**。冲突时各以聚焦面为准。

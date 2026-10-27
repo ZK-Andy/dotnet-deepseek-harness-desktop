@@ -14,7 +14,18 @@ anyway. Report-first ran from 2026-10-12 to the first live batch, whose
 only OVER was a brand-new 362-line gate script — a shape with nothing to
 split or trim, since a file the diff adds has its whole length as net
 gain. So `--enforce` is live (hooks + CI) and file-max reads growth of
-files that already existed at BASE only (ADR coupling-increment-enforce).
+files that already existed at BASE only (ADR increment-gate-enforce).
+That exemption later became a loophole of its own: routing new code into
+new files skipped size measurement entirely — rewarding exactly the
+scattering a granularity review exists to catch. A separate newfile cap
+now covers whole-file additions (calibration: per-batch max new file 200
+over the recent n=30 non-merge batch window through 2026-10-28; the
+362-line gate script above — first live batch `af25eb1`, outside the
+baseline window — remains the known hand-authored max, and
+generated-artifact batches ride the gross cap and the named-exemption
+path (live precedent: the 2026-10-22 architecture-diagram retirement
+batch); cap 400 clears the hand-authored maxes —
+ADR increment-new-file-cap).
 
 Metrics over one diff moment (`--staged` = index vs HEAD for pre-commit,
 `--since BASE` = BASE..HEAD for pre-push/CI, default = worktree vs HEAD plus
@@ -27,9 +38,15 @@ untracked files):
              (ADR increment-gate-default-untracked). The other two moments need
              no such term (the index and the commits already carry the files).
   file-max   largest net gain (added - deleted) among files that existed
-             at BASE (ADR coupling-increment-enforce); gross already
-             bounds what a new file can contribute. Untracked files are
+             at BASE (ADR increment-gate-enforce); whole-file additions
+             are measured by newfile below. Untracked files are
              additions too, so the default moment keeps them out of it.
+  newfile    largest whole-file addition: added lines of a status-A file
+             (a rename split below similarity 50% surfaces as delete+add,
+             so its add-side counts here) or an untracked file at the
+             default moment. Closest single measure against routing new
+             code into new files to skip size measurement
+             (ADR increment-new-file-cap).
   fanout     added code references to Infrastructure-declared types
              (short names via the live type inventory plus declarations the
              diff itself adds under Infrastructure/, comments/strings/usings
@@ -72,15 +89,29 @@ from gate_common import (CSharpLineScanner, NEW_EXPR_RE, STATIC_ACCESS_RE,
 # coupling-increment-baseline): near-p90 lines, unchanged when `--enforce`
 # went live. Under the existing-only file-max measure that same window gives
 # p90=89/max=187, so 150 still sits between the two
-# (ADR coupling-increment-enforce).
+# (ADR increment-gate-enforce).
 DEFAULT_MAX_GROSS = 600
 DEFAULT_MAX_FILE_NET = 150
+# New-file cap (ADR increment-new-file-cap): whole-file additions are exempt
+# from file-max (a new file has no pre-existing size to grow), which made
+# routing new code into new files a size-measurement exemption. Calibration:
+# per-batch max new file 200 over the recent n=30 non-merge batch window
+# through 2026-10-28 (max = X11FocusBootstrap.cs, 7773d65); the 362-line gate
+# script that motivated the original exemption (first live batch af25eb1,
+# outside the baseline window) is the known hand-authored max; generated-
+# artifact batches ride gross and the named-exemption path. 400 clears the
+# hand-authored maxes with headroom.
+DEFAULT_MAX_NEW_FILE = 400
 DEFAULT_MAX_FANOUT = 15
 DEFAULT_MAX_PACKAGES = 1
 DEFAULT_INFRA_SRC = "src/DeepSeek.Harness.Desktop.Infrastructure"
 # file-max is measured over pre-existing files only: `--diff-filter` takes an
 # include-list, so leaving `A` out drops exactly the files this diff adds.
 _EXISTING_DIFF_FILTER = "--diff-filter=CDMRTUXB"
+# newfile is measured over pure additions: status-A rows are files this diff
+# adds whole; a rename split below similarity 50% surfaces as delete+add, so
+# its add-side counts here too.
+_NEW_DIFF_FILTER = "--diff-filter=A"
 # git's `buffer_is_binary` sniffs only the first 8000 bytes; the untracked-file
 # line count follows the same window so the two readings agree (ADR
 # increment-gate-default-untracked).
@@ -145,23 +176,25 @@ def _changed_paths(mode: str, since: str) -> set[str]:
     return paths
 
 
-def _numstat_args(diff_args: list[str], existing_only: bool) -> list[str]:
-    """`--numstat` argv for one diff moment; existing_only drops added files."""
-    extra = [_EXISTING_DIFF_FILTER] if existing_only else []
+def _numstat_args(diff_args: list[str],
+                  diff_filter: str | None = None) -> list[str]:
+    """`--numstat` argv for one diff moment; diff_filter narrows the status set."""
+    extra = [diff_filter] if diff_filter else []
     return [*diff_args, "--numstat", *extra]
 
 
-def _sizes(numstat_all: str, numstat_existing: str) -> tuple[int, str, int]:
-    """(gross, top_path, file_max): volume over all files, file-max over existing.
+def _sizes(numstat_all: str, numstat_existing: str,
+           numstat_new: str) -> tuple[int, str, int, str, int]:
+    """(gross, top_path, file_max, new_top, new_file_max).
 
-    A file the diff adds has no pre-existing size to grow — its whole length
-    is net gain, it cannot be split or trimmed, and gross already bounds it —
-    so only files present at BASE feed file-max
-    (ADR coupling-increment-enforce).
+    gross over all files; file-max over existing-file growth only; newfile
+    over whole-file additions — the metric split and its rationale live in
+    the module docstring and ADR increment-new-file-cap.
     """
     gross, _top, _file_max = _metrics(numstat_all)
     _gross, top_path, file_max = _metrics(numstat_existing)
-    return gross, top_path, file_max
+    _gross, new_top, new_file_max = _metrics(numstat_new)
+    return gross, top_path, file_max, new_top, new_file_max
 
 
 def _infra_inventory(infra_src: Path,
@@ -303,18 +336,22 @@ def _line_count(data: bytes) -> int | None:
     return count if data.endswith(b"\n") else count + 1
 
 
-def _untracked_additions() -> tuple[int, list[tuple[str, list[str]]], list[str]]:
-    """(gross lines, .cs sections, .csproj/.props lines) for untracked files.
+def _untracked_additions() -> tuple[int, list[tuple[str, list[str]]], list[str],
+                                    int, str]:
+    """(gross lines, .cs sections, .csproj/.props lines, new-file max, its path).
 
     Only the default moment needs this: `--staged` sees added files through the
-    index and `--since BASE` through the commits. Without the term a fully
-    unstaged batch reads far below its real size (ADR
-    increment-gate-default-untracked). One bytes read per file feeds both the
-    line count and (for source/project suffixes) the UTF-8 decode.
+    index and `--since BASE` through the commits (ADR
+    increment-gate-default-untracked). One bytes read per file feeds the line
+    count, the newfile max and (for source/project suffixes) the UTF-8 decode;
+    an untracked file is a whole-file addition, so its length is a newfile
+    candidate too.
     """
     gross = 0
     cs_sections: list[tuple[str, list[str]]] = []
     proj_lines: list[str] = []
+    new_max = 0
+    new_path = ""
     for path, key in _untracked_paths():
         try:
             data = path.read_bytes()
@@ -324,6 +361,9 @@ def _untracked_additions() -> tuple[int, list[tuple[str, list[str]]], list[str]]
         if count is None:
             continue
         gross += count
+        if count > new_max:
+            new_max = count
+            new_path = key
         suffix = Path(key).suffix
         if suffix not in (".cs", ".csproj", ".props"):
             continue
@@ -335,21 +375,27 @@ def _untracked_additions() -> tuple[int, list[tuple[str, list[str]]], list[str]]
             cs_sections.append((key, text.splitlines()))
         else:
             proj_lines.extend(text.splitlines())
-    return gross, cs_sections, proj_lines
+    return gross, cs_sections, proj_lines, new_max, new_path
 
 
 def _measure(mode: str, since: str) -> dict:
     args = _diff_args(mode, since)
-    numstat = _git(_numstat_args(args, existing_only=False))
-    numstat_existing = _git(_numstat_args(args, existing_only=True))
-    gross, top_path, file_max = _sizes(numstat, numstat_existing)
+    numstat = _git(_numstat_args(args))
+    numstat_existing = _git(_numstat_args(args, _EXISTING_DIFF_FILTER))
+    numstat_new = _git(_numstat_args(args, _NEW_DIFF_FILTER))
+    gross, top_path, file_max, new_top, new_file_max = _sizes(
+        numstat, numstat_existing, numstat_new)
     cs_diff = _git([*args, "-U0", "--", "*.cs"])
     cs_sections = _plus_sections(cs_diff)
     proj_diff = _git([*args, "-U0", "--", "*.csproj", "*.props"])
     proj_plus = _plus_lines(proj_diff)
     if mode == "worktree":
-        untracked_gross, untracked_cs, untracked_proj = _untracked_additions()
+        untracked_gross, untracked_cs, untracked_proj, untracked_new_max, \
+            untracked_new_path = _untracked_additions()
         gross += untracked_gross
+        if untracked_new_max > new_file_max:
+            new_file_max = untracked_new_max
+            new_top = untracked_new_path
         cs_sections = [*cs_sections, *untracked_cs]
         proj_plus = [*proj_plus, *untracked_proj]
     inventory = _infra_inventory(Path(DEFAULT_INFRA_SRC), cs_sections)
@@ -357,7 +403,8 @@ def _measure(mode: str, since: str) -> dict:
     fanout, examples = _fanout(cs_sections, inventory)
     packages = _packages(proj_plus)
     return {"gross": gross, "top_path": top_path,
-            "file_max": file_max, "fanout": fanout,
+            "file_max": file_max, "new_top_path": new_top,
+            "new_file_max": new_file_max, "fanout": fanout,
             "fanout_examples": examples, "packages": packages}
 
 
@@ -367,6 +414,10 @@ def _check(m: dict, caps: dict) -> list[str]:
         rows.append(f"  gross {m['gross']} > {caps['gross']} (split the PR or justify in the ADR)")
     if m["file_max"] > caps["file"]:
         rows.append(f"  file-max(existing) +{m['file_max']} > +{caps['file']} ({m['top_path'] or '?'})")
+    if m["new_file_max"] > caps["newfile"]:
+        rows.append(f"  new-file-max +{m['new_file_max']} > +{caps['newfile']} "
+                    f"({m['new_top_path'] or '?'}) — a whole-file addition must fit the cap "
+                    f"or take a named exemption")
     if m["fanout"] > caps["fanout"]:
         rows.append(f"  new infra refs {m['fanout']} > {caps['fanout']}")
         rows.extend(f"    e.g. {e}" for e in m["fanout_examples"])
@@ -386,19 +437,23 @@ def _self_test() -> int:
         failed = 1
 
     # A file the diff adds is not file growth: only files present at BASE feed
-    # file-max, while gross still counts every file (ADR coupling-increment-enforce).
-    args_all = _numstat_args(["diff", "--cached"], existing_only=False)
-    args_existing = _numstat_args(["diff", "--cached"], existing_only=True)
+    # file-max, while gross still counts every file (ADR increment-gate-enforce).
+    args_all = _numstat_args(["diff", "--cached"])
+    args_existing = _numstat_args(["diff", "--cached"], _EXISTING_DIFF_FILTER)
+    args_new = _numstat_args(["diff", "--cached"], _NEW_DIFF_FILTER)
     if (args_all == ["diff", "--cached", "--numstat"]
-            and args_existing == ["diff", "--cached", "--numstat", _EXISTING_DIFF_FILTER]):
-        print("  ok: existing-only numstat args carry the filter that drops added files")
+            and args_existing == ["diff", "--cached", "--numstat", _EXISTING_DIFF_FILTER]
+            and args_new == ["diff", "--cached", "--numstat", _NEW_DIFF_FILTER]):
+        print("  ok: numstat args carry all/no/exact-add status filters")
     else:
-        print(f"  ✗ numstat args: all={args_all} existing={args_existing}")
+        print(f"  ✗ numstat args: all={args_all} existing={args_existing} new={args_new}")
         failed = 1
 
-    sizes = _sizes("400\t0\tnew.py\n100\t20\texisting.py\n", "100\t20\texisting.py\n")
-    if sizes == (520, "existing.py", 80):
-        print("  ok: new-file net excluded from file-max, kept in gross")
+    sizes = _sizes("400\t0\tnew.py\n100\t20\texisting.py\n",
+                   "100\t20\texisting.py\n",
+                   "400\t0\tnew.py\n")
+    if sizes == (520, "existing.py", 80, "new.py", 400):
+        print("  ok: new-file net excluded from file-max, measured by newfile, kept in gross")
     else:
         print(f"  ✗ sizes: {sizes}")
         failed = 1
@@ -452,29 +507,38 @@ def _self_test() -> int:
         finally:
             os.chdir(cwd)
         # old.txt +80 is the only pre-existing growth: new.py (added) and
-        # rew.txt (added side of a rename split at <50% similarity) are out.
-        if (m["gross"], m["top_path"], m["file_max"]) == (880, "old.txt", 80):
-            print("  ok: e2e — added files and rename add-side stay out of file-max")
+        # rew.txt (added side of a rename split at <50% similarity) are out of
+        # file-max and into newfile, whose max is new.py's whole 400 lines.
+        if (m["gross"], m["top_path"], m["file_max"], m["new_file_max"]) == (880, "old.txt", 80, 400):
+            print("  ok: e2e — added files and rename add-side feed newfile, not file-max")
         else:
-            print(f"  ✗ e2e: gross={m['gross']} file_max={m['file_max']} top={m['top_path']}")
+            print(f"  ✗ e2e: gross={m['gross']} file_max={m['file_max']} top={m['top_path']} "
+                  f"new_max={m['new_file_max']} new_top={m['new_top_path']}")
             failed = 1
 
         # `git diff` cannot see untracked files: the default (worktree) moment
         # must add them or a fully unstaged batch reads low (ADR
         # increment-gate-default-untracked). Staged/since moments already carry
         # them, so the same tree read as `staged` stays at 880.
-        (repo / "untracked_extra.txt").write_text("u\n" * 30, encoding="utf-8")
+        # The untracked file's 450 lines must WIN the newfile max: a smaller
+        # fixture would let the staged numstat path (new.py, 400) satisfy the
+        # assertion and the untracked→newfile merge would be untested (R1/R2
+        # review, gate-granularity).
+        (repo / "untracked_extra.txt").write_text("u\n" * 450, encoding="utf-8")
         os.chdir(repo)
         try:
             worktree = _measure("worktree", "")
             staged = _measure("staged", "")
         finally:
             os.chdir(cwd)
-        if (worktree["gross"], worktree["file_max"]) == (910, 80) and staged["gross"] == 880:
-            print("  ok: e2e — worktree moment adds untracked files; staged moment does not")
+        if (worktree["gross"], worktree["file_max"]) == (1330, 80) and staged["gross"] == 880 \
+                and worktree["new_file_max"] == 450 \
+                and worktree["new_top_path"] == "untracked_extra.txt":
+            print("  ok: e2e — worktree moment adds untracked files into gross and newfile; staged does not")
         else:
             print(f"  ✗ e2e untracked: worktree={worktree['gross']}/+{worktree['file_max']}"
-                  f" staged={staged['gross']}")
+                  f" staged={staged['gross']} new_max={worktree['new_file_max']}"
+                  f" new_top={worktree['new_top_path']}")
             failed = 1
 
         # An untracked section keeps its repo-relative key: an untracked
@@ -556,21 +620,33 @@ def _self_test() -> int:
         failed = 1
 
     m = {"gross": 700, "top_path": "a.cs",
-         "file_max": 200, "fanout": 20, "fanout_examples": ["e"],
+         "file_max": 200, "new_top_path": "big-new.py", "new_file_max": 450,
+         "fanout": 20, "fanout_examples": ["e"],
          "packages": 2}
-    rows = _check(m, {"gross": 600, "file": 150, "fanout": 15, "packages": 1})
-    if len(rows) == 5 and any("gross 700" in r for r in rows):
-        print("  ok: all four caps flag")
+    rows = _check(m, {"gross": 600, "file": 150, "newfile": 400, "fanout": 15,
+                      "packages": 1})
+    if len(rows) == 6 and any("gross 700" in r for r in rows) \
+            and any("new-file-max +450" in r for r in rows):
+        print("  ok: all five caps flag")
     else:
         print(f"  ✗ caps: {rows}")
         failed = 1
 
     ex = EXEMPT_RE.search("增量闸豁免：gross ≤ 600，fanout ≤ 15，packages ≤ 3")
     ex2 = EXEMPT_RE.search("增量闸豁免：gross ≤ 600，fanout ≤ 15")
-    if ex and ex.group(3) == "3" and ex2 and ex2.group(3) is None:
+    if ex and ex.group(3) == "3" and ex.group(4) is None \
+            and ex2 and ex2.group(3) is None and ex2.group(4) is None:
         print("  ok: exemption marker takes an optional packages cap")
     else:
         print(f"  ✗ exemption packages: {ex and ex.groups()} / {ex2 and ex2.groups()}")
+        failed = 1
+
+    ex3 = EXEMPT_RE.search("增量闸豁免：gross ≤ 900，fanout ≤ 20，packages ≤ 3，newfile ≤ 500")
+    ex4 = EXEMPT_RE.search("增量闸豁免：gross ≤ 900，fanout ≤ 20，newfile ≤ 500")
+    if ex3 and ex3.group(4) == "500" and ex4 and ex4.group(3) is None and ex4.group(4) == "500":
+        print("  ok: exemption marker takes an optional newfile cap (with or without packages)")
+    else:
+        print(f"  ✗ exemption newfile: {ex3 and ex3.groups()} / {ex4 and ex4.groups()}")
         failed = 1
 
     if failed == 0:
@@ -582,7 +658,8 @@ def _self_test() -> int:
 
 EXEMPT_RE = re.compile(
     r"增量闸豁免[：:]\s*gross\s*≤\s*(\d+)[，,]\s*fanout\s*≤\s*(\d+)"
-    r"(?:[，,]\s*packages\s*≤\s*(\d+))?")
+    r"(?:[，,]\s*packages\s*≤\s*(\d+))?"
+    r"(?:[，,]\s*newfile\s*≤\s*(\d+))?")
 
 
 def _exemption(adr: str, mode: str, since: str) -> dict | None:
@@ -604,18 +681,22 @@ def _exemption(adr: str, mode: str, since: str) -> dict | None:
         return None
     added = _plus_lines(_git([*_diff_args(mode, since), "-U0", "--", adr]))
     marked = [line for line in added if "增量闸豁免" in line]
-    if not marked:
-        print("  exempt: 豁免标记不在本次新增行内——不生效（旧标记随批次失效）")
-        return None
-    if m.group(3) and not any("packages" in line for line in marked):
-        print("  exempt: packages 帽须写在同一新增标记行内——不生效")
+    # EXEMPT_RE takes the FIRST marker in the file, so the caps it parsed and
+    # the line validated here are the same line: anchoring to it keeps a stale
+    # pre-batch marker from riding along while some other added line merely
+    # mentions the tokens (R1 review, gate-granularity — subsumes the old
+    # per-cap same-line checks for packages/newfile).
+    matched_line = next((ln for ln in text.splitlines() if EXEMPT_RE.search(ln)), "")
+    if not marked or matched_line not in marked:
+        print("  exempt: 豁免标记行不在本次新增行内——不生效（旧标记随批次失效）")
         return None
     changed = _changed_paths(mode, since)
     if adr not in changed:
         print(f"  exempt: {adr} 不在本次变更集内——豁免不生效")
         return None
     return {"adr": adr, "gross": int(m.group(1)), "fanout": int(m.group(2)),
-            "packages": int(m.group(3)) if m.group(3) else None}
+            "packages": int(m.group(3)) if m.group(3) else None,
+            "newfile": int(m.group(4)) if m.group(4) else None}
 
 
 def main() -> int:
@@ -628,13 +709,14 @@ def main() -> int:
     group.add_argument("--since", default="", help="BASE..HEAD (pre-push/CI)")
     parser.add_argument("--max-gross", type=int, default=DEFAULT_MAX_GROSS)
     parser.add_argument("--max-file", type=int, default=DEFAULT_MAX_FILE_NET)
+    parser.add_argument("--max-new-file", type=int, default=DEFAULT_MAX_NEW_FILE)
     parser.add_argument("--max-fanout", type=int, default=DEFAULT_MAX_FANOUT)
     parser.add_argument("--max-packages", type=int, default=DEFAULT_MAX_PACKAGES)
     parser.add_argument("--enforce", action="store_true",
                         help="exit 1 on any OVER (default: report only)")
     parser.add_argument("--exempt", default="",
                         help="豁免依据 ADR 路径：仅当该 ADR 处于本次变更集内且正文带"
-                             "「增量闸豁免：gross ≤ N，fanout ≤ N，packages ≤ N」标记时，按该标记放宽上限；"
+                             "「增量闸豁免：gross ≤ N，fanout ≤ N，packages ≤ N，newfile ≤ N」标记时，按该标记放宽上限；"
                              "批次落地后 ADR 进入基线，豁免自动失效（一次性）")
     args = parser.parse_args()
     mode = "staged" if args.staged else ("since" if args.since else "worktree")
@@ -646,6 +728,7 @@ def main() -> int:
         return 1
 
     caps = {"gross": args.max_gross, "file": args.max_file,
+            "newfile": args.max_new_file,
             "fanout": args.max_fanout, "packages": args.max_packages}
     exempt = _exemption(args.exempt, mode, args.since)
     if exempt:
@@ -653,10 +736,17 @@ def main() -> int:
         caps["fanout"] = max(caps["fanout"], exempt["fanout"])
         if exempt["packages"] is not None:
             caps["packages"] = max(caps["packages"], exempt["packages"])
-        extra = f" / packages ≤ {exempt['packages']}" if exempt["packages"] is not None else ""
+        if exempt["newfile"] is not None:
+            caps["newfile"] = max(caps["newfile"], exempt["newfile"])
+        extra = ""
+        if exempt["packages"] is not None:
+            extra += f" / packages ≤ {exempt['packages']}"
+        if exempt["newfile"] is not None:
+            extra += f" / newfile ≤ {exempt['newfile']}"
         print(f"  exempt: {exempt['adr']}（本变更集内，gross ≤ {exempt['gross']} / fanout ≤ {exempt['fanout']}{extra}）")
     print(f"  gross: {m['gross']} (cap {caps['gross']}) | "
           f"file-max(existing): +{m['file_max']} {m['top_path'] or ''}(cap +{caps['file']}) | "
+          f"new-file-max: +{m['new_file_max']} {m['new_top_path'] or ''}(cap +{caps['newfile']}) | "
           f"fanout: {m['fanout']} (cap {caps['fanout']}) | packages: {m['packages']} (cap {caps['packages']})")
     rows = _check(m, caps)
     for r in rows:

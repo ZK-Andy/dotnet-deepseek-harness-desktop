@@ -57,7 +57,7 @@ else
   echo "  (origin/main 不存在，跳过——CI 仍会全量拦截)"
 fi
 
-# 增量纪律闸（耦合左移②：outgoing 区间四帽，超帽在 push 前拦下；CI 端同口径复核）。
+# 增量纪律闸（耦合左移②：outgoing 区间五帽（含新文件帽），超帽在 push 前拦下；CI 端同口径复核）。
 # base 取 merge-base：origin/main 已前进而本支未合并时，两点区间会把上游提交算作
 # 本批的删除行、gross 虚高（上方 OUTGOING 变更面的三点区间同理）。
 if git rev-parse --verify origin/main >/dev/null 2>&1; then
