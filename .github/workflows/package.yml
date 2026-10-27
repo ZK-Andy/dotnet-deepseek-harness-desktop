@@ -244,6 +244,9 @@ jobs:
 
       # 证据缺失分档（与 linux 腿同款）：冒烟跑过且失败时判 error，其余（冒烟绿、或
       # 被前置步失败跳过）判 warn——warn 恒定的上传步等于永不失败的门。
+      # x64 腿另有第三种缺失形态：arm64 主机 + x86_64 主二进制按 file 魔数判形态跳过执行层
+      # （ADR process/2026-10-25-mac-x64-rosetta-execution-skip），截图无物、日志只有一行
+      # skip 说明——同样落 warn，不是漏传。
       - name: 上传冒烟截图（best-effort，人眼复核）
         if: always()
         uses: actions/upload-artifact@v6

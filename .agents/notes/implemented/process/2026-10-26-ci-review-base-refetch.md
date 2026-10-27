@@ -4,6 +4,8 @@ Status: implemented
 
 Review: FULL/2026-10-26/R1=ok R2=ok R3=ok
 
+Review: FULL/2026-10-27/R1=ok R2=ok R3=ok
+
 ## Problem
 
 `ci.yml` 的两道闸（增量纪律、评审档位）都以推送事件的 `github.event.before` 作 diff base。force-with-lease 改写历史后，这个 sha 不再被任何 ref 覆盖：`actions/checkout` 即便 `fetch-depth: 0` 也只取 refs 可达面，runner 本地就没有该对象，闸拿到的是 `git diff <base>..HEAD` 的 `fatal: Invalid revision range`。
@@ -31,12 +33,12 @@ docs 作业在两道闸之前新增一步「解析评审 base」：`BASE = pull_
 
 - 改写历史后的推送从「红得没有原因」变成「红得有名有姓」：可判时按四帽/Review 证据正常判，不可判时点名补救并保留硬红。
 - 补拉不保证转绿。本地以 `5de1008` 为 base 复现的判据是 `gross 979 > 600`（v0.7.3–v0.7.5 全部历史进入 diff）——补拉把 undeterminable 换成实质判定，红可能仍在，这是预期行为。
-- 依赖 GitHub「按 sha 取游离对象」这一行为；上游若收紧，`unreachable` 硬红会把原因写明，不会静默放行。该行为只对仍留在对象库中的提交成立，GC 之后补拉失败。
+- 依赖 GitHub「按 sha 取游离对象」这一行为；上游若收紧，`unreachable` 硬红会把原因写明，不会静默放行；对象被 GC 后补拉失败，这一后果的触发前提由 [cookbook](../../../../docs/cookbook.md) 的「按 sha 取游离对象」条承载（对象仍在远端库且不可达）。本地 `file://` 复现该补拉时：默认 v2 协议可取，v0 客户端因缺 `allow-*-sha1-in-want` 广告而自拒；`uploadpack.allowAnySHA1InWant` 只影响 v0 的广告能力。
 - docs 作业的 checkout 是 `persist-credentials: false`，补拉依赖公开仓匿名可达；仓库转私有须在此步前置凭据。
 - 仅 base 游离时多一次网络往返（`timeout 90` 兜底），正常推送零成本。
 
 ## Testing
 
 - 门的机械面：actionlint（1.7.12 钉版，`-shellcheck -S warning`）exit 0、`verify-governance.py` OK、`verify-shell-standards.sh` OK。
-- 步骤行为面：以 pyyaml 取出该步 `run:` 块，在四种 base 形态下实跑——本地已有 → `ok`；空/全零 → `none`；伪造 sha → `unreachable`（GitHub 回 `not our ref`，该步 exit 1、后续两闸不执行）；缺对象但可补拉（浅仓端到端）→ `ok` 且 `git diff --numstat` 可算。
+- 步骤行为面：以 pyyaml 取出该步 `run:` 块，在四种 base 形态下实跑——本地已有 → `ok`；空/全零 → `none`；伪造 sha → `unreachable`（GitHub 回 `not our ref`，该步 exit 1、后续两闸不执行）；缺对象但可补拉（浅仓端到端）→ `ok` 且 `git diff --numstat` 可算；该复现在默认 v2 协议下取 GitHub 游离 sha，本地 `file://` 复现的 v0 差异见 Consequences。
 - 真 runner 面：run `40352264564`（`34d0d8d`）docs 作业实跑——解析步输出 `review base: state=ok base=01bdc22…`，两闸随后用 `DSH_REVIEW_BASE` 判定，整 job 绿；补拉分支（`unreachable`/可补拉）尚无真 runner 触发条件（需改写历史推送），其行为由上述步内实跑覆盖。

@@ -52,7 +52,7 @@ Review: FULL/2026-10-27#3/R1=ok R2=ok R3=ok
 
 - `DeepSeek.Harness.Desktop.Infrastructure.Tests`（616 例）：白名单四项透传/白名单外丢弃/`Set-Cookie` 不进页面（经真回环 socket）、holder `no-store`、版本复用免第二次探针。
 - `DeepSeek.Harness.Desktop.Tests`（270 例）：`ShellStartup` 晚挂载四态（失败先于挂载、收口后挂载立即跑且只跑一次、失败/取消不接监督）。
-- 本地合计 1123 例全绿；CI 跟值与覆盖率待流水线回填。
+- 本地合计 1123 例全绿；CI 实测 1123/67.55% 已回填（数字以 `scripts/test-baseline.json` 为准）。
 
 ## Related
 

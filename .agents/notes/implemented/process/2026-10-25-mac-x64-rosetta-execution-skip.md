@@ -8,7 +8,7 @@ package 冒烟 mac x64 腿在 GH-hosted runner（Intel runner 已于 2025-12 退
 
 ## Decision
 
-- mac 冒烟在「主机 arm64 且主二进制 x86_64」形态跳过执行层：`smoke_launch_skipped_on_rosetta`（`file` 魔数实测判二进制架构，非 env 依赖，本地/CI 同判；universal 二进制防误跳）→ 挂载/安装/主二进制在位断言后收绿退出，写真实 skip 说明进 `SMOKE_LOG_DIR`。产物层验证全保留（PayloadSmoke 探针/dmg 布局断言在 workflow 前置步骤，此前已绿）。截图 artifact 预期为空——上传步既有 outcome 门（成功+空=warn）已兼容，workflow 零改动。
+- mac 冒烟在「主机 arm64 且主二进制 x86_64」形态跳过执行层：`smoke_launch_skipped_on_rosetta`（`file` 魔数实测判二进制架构，非 env 依赖，本地/CI 同判；universal 二进制防误跳）→ 挂载/安装/主二进制在位断言后收绿退出，写真实 skip 说明进 `SMOKE_LOG_DIR`。产物层验证全保留（PayloadSmoke 探针/dmg 布局断言在 workflow 前置步骤，此前已绿）。截图 artifact 预期为空——上传步既有 outcome 门（成功+空=warn）已兼容；workflow 无逻辑改动，上传步注释列明该缺失形态。
 - 三平台（mac/linux-deb/linux-rpm/win）冒烟启动行改 tee 双写：应用输出实时进 step 日志 + 全量落文件（`> >(tee -a …) 2>&1 &`，pid 语义不变）。rpm 腿的日志文件随之为「dnf 安装输出 + 应用输出」组合（启动行不再截断，原防截断补偿拷贝删除；dnf 行不命中任何判定正则，评审实证）。
 - 自测夹具：Rosetta 判定四例（arm64 主机+x86_64 跳过/arm64 二进制不跳/x86_64 主机不跳/universal 不跳，Mach-O/fat 魔数文件实测 `file` 判定）。
 
