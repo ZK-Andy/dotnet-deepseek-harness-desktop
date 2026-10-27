@@ -44,7 +44,7 @@ Review: LIGHT/2026-10-27/R2=ok（首轮 0 Blocker + 3 Suggestion：夹具不可�
 ## Testing
 
 - `DeepSeek.Harness.Desktop.Infrastructure.Tests`：新增 1 例（重探分支）+ 2 条 `Content-Type` 断言（JSON 探针、guide HEAD）；`StartupNoticeServiceTests` 与 `DshLoopbackProxyTests` 既有用例全绿，回环 socket 面覆盖合流后的写出口。
-- 计数与覆盖率以 `scripts/test-baseline.json` 为唯一家；本批不跟值（无覆盖率变化主张）。
+- 计数与覆盖率以 `scripts/test-baseline.json` 为唯一家：CI run `40460987827` 实测并集 1124/67.51%，已随基线跟值（`c1a7f65`）。
 
 ## Related
 
