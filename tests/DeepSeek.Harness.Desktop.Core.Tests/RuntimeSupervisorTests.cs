@@ -18,6 +18,9 @@ public class RuntimeSupervisorTests
         private int _restartCalls;
 
         public IReadOnlyList<string> StderrTail { get; init; } = Array.Empty<string>();
+
+        /// <summary>崩溃证据的可控退出码（null = 宿主未观察到退出，证据缺失分支）。</summary>
+        public int? LastExitCode { get; init; }
         public string RuntimeDescription => "fake dsh";
         public bool Residue { get; init; }
         public Uri? NextUrl { get; init; }
@@ -200,5 +203,37 @@ public class RuntimeSupervisorTests
         Assert.Equal(new[] { "recovery", "recovery" }, trace.Order);
         Assert.Equal(1, trace.Logs.Count(l => l.Contains("恢复失败")));
         Assert.Equal(1, trace.Logs.Count(l => l.Contains("重启未给出 URL")));
+    }
+
+    /// <summary>崩溃证据必须带退出码：只有 stderr 时「一片干净的输出」无法区分被信号杀（137/143）
+    /// 与自己退出（0）——2026-10-28 实机市场更新后 dsh 静默退出，stderr 尾部只有两行常规模型列表，
+    /// 事后无法归因。退出码与 stderr 证据在同一轮恢复前落盘，顺序不敏感。</summary>
+    [Fact]
+    public async Task RunAsync_LogsExitCodeAlongsideStderrTail()
+    {
+        using var cts = new CancellationTokenSource(s_hangGuard);
+        var host = new FakeHost { NextUrl = Url("new-boot"), StderrTail = new[] { "calm" }, LastExitCode = 137 };
+        (RuntimeSupervisor supervisor, SupervisorTrace trace) = Supervisor(host);
+
+        await RunUntilParkedAsync(supervisor, host.Parked, cts);
+
+        Assert.Contains(trace.Logs, l => l.Contains("子进程退出码：137") && l.Contains("SIGKILL"));
+        Assert.Contains(trace.Logs, l => l.Contains("子进程 stderr 尾部") && l.Contains("calm"));
+    }
+
+    /// <summary>退出码取不到时如实说「未取得」，不得省略整行或伪造成 0——缺失的证据必须可辨认，
+    /// 否则事后读日志的人会把「没有这行」当成「正常退出」。</summary>
+    [Fact]
+    public async Task RunAsync_MissingExitCode_SaysUnavailable()
+    {
+        using var cts = new CancellationTokenSource(s_hangGuard);
+        var host = new FakeHost { NextUrl = Url("new-boot"), LastExitCode = null };
+        (RuntimeSupervisor supervisor, SupervisorTrace trace) = Supervisor(host);
+
+        await RunUntilParkedAsync(supervisor, host.Parked, cts);
+
+        Assert.Contains(trace.Logs, l => l.Contains("子进程退出码：未取得"));
+        // stderr 空也要留一行：与「有 stderr 但被截断」区分开。
+        Assert.Contains(trace.Logs, l => l.Contains("子进程 stderr：空"));
     }
 }

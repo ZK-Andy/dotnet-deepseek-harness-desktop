@@ -75,7 +75,7 @@ public sealed class RuntimeSupervisor
                     if (blockedRounds == 1 || blockedRounds % _blockedLogEveryRounds == 0)
                     {
                         _log?.Invoke("[supervisor] dsh 子进程退出，执行恢复…");
-                        LogStderrTail();
+                        LogExitEvidence();
                         _log?.Invoke("[supervisor] 残留无法安全回收，跳过本轮重启（fail loud，锁原因已交失败面按卡住阈值门控）");
                     }
 
@@ -86,7 +86,7 @@ public sealed class RuntimeSupervisor
 
                 blockedRounds = 0;
                 _log?.Invoke("[supervisor] dsh 子进程退出，执行恢复…");
-                LogStderrTail();
+                LogExitEvidence();
 
                 await _showRecovery(false);
                 Uri? url = await _host.RestartAsync(_restartTimeout, ct);
@@ -120,15 +120,41 @@ public sealed class RuntimeSupervisor
         }
     }
 
-    /// <summary>子进程死前 stderr 只存内存尾巴，随进程消失——趁恢复前落盘留证。</summary>
-    private void LogStderrTail()
+    /// <summary>
+    /// 子进程死后落盘崩溃证据：退出码 + stderr 尾巴。两者缺一不可——退出码区分「被信号杀死」
+    /// （137/143）与「正常退出」（0），stderr 给出 dsh 自己的说法；只留 stderr 时，一片干净的输出
+    /// 无法判定是被外部杀掉还是自己走的（2026-10-28 实机：市场更新后子进程静默退出，stderr 尾部
+    /// 只有两行常规模型列表，事后无法归因）。
+    /// </summary>
+    private void LogExitEvidence()
     {
+        int? exitCode = _host.LastExitCode;
+        _log?.Invoke(exitCode is int code
+            ? $"[supervisor] 子进程退出码：{code}（{DescribeExitCode(code)}）"
+            : "[supervisor] 子进程退出码：未取得（宿主未观察到，或进程对象已释放）");
+
         IReadOnlyList<string> stderrTail = _host.StderrTail;
-        if (stderrTail.Count > 0)
+        if (stderrTail.Count == 0)
         {
-            _log?.Invoke($"[supervisor] 子进程 stderr 尾部：\n{string.Join('\n', stderrTail.TakeLast(8))}");
+            _log?.Invoke("[supervisor] 子进程 stderr：空");
+            return;
         }
+
+        _log?.Invoke($"[supervisor] 子进程 stderr 尾部：\n{string.Join('\n', stderrTail.TakeLast(8))}");
     }
+
+    /// <summary>退出码的人读注解（POSIX 信号语义；Windows 无对应负数约定，按原值报）。</summary>
+    /// <param name="code">进程退出码。</param>
+    /// <returns>一句话判读。</returns>
+    private static string DescribeExitCode(int code) => code switch
+    {
+        0 => "正常退出",
+        137 => "SIGKILL（被强杀或 OOM）",
+        143 => "SIGTERM（被请求终止）",
+        134 => "SIGABRT（自中止）",
+        139 => "SIGSEGV（段错误）",
+        _ => "非零退出",
+    };
 
     private async Task AwaitChildExitOrCancelAsync(CancellationToken ct)
     {

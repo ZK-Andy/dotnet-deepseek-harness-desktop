@@ -10,6 +10,13 @@ public interface IRuntimeHost
     /// <summary>子进程 stderr 内存尾巴（死前落盘留证用）。</summary>
     IReadOnlyList<string> StderrTail { get; }
 
+    /// <summary>
+    /// 最近一次退出的运行时进程退出码；未观察到退出（仍存活 / 从未起过 / 已被回收后再无新退出）时 null。
+    /// 与 <see cref="StderrTail"/> 一起构成崩溃证据：只有退出码能区分「被信号杀死」（如 137）与
+    /// 「正常退出」（0）——两者在 stderr 上可能都是一片干净。
+    /// </summary>
+    int? LastExitCode { get; }
+
     /// <summary>本次采用的运行时描述（日志/恢复屏用，如 <c>PATH dsh</c>）。</summary>
     string RuntimeDescription { get; }
 

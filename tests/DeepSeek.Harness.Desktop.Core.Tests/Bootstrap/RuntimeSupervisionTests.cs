@@ -16,6 +16,8 @@ public class RuntimeSupervisionTests
 
         public IReadOnlyList<string> StderrTail => Array.Empty<string>();
 
+        public int? LastExitCode => null;
+
         public string RuntimeDescription => "fake dsh";
 
         public bool Residue { get; init; }

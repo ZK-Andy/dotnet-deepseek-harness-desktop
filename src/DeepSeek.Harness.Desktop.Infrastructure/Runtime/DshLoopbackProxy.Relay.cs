@@ -187,8 +187,11 @@ public sealed partial class DshLoopbackProxy
             }
 
             int status = (int)response.StatusCode;
-            if (status is < 300 or >= 400)
+            if (!IsRedirect(status))
             {
+                // 终态回包直交页面。304 走这里而不是重定向分支：它是「条件请求命中缓存」的终态，
+                // 不带 Location，跟进只会落到 502——dsh 对静态资源发 ETag，页面带 If-None-Match
+                // 复验时整批资产曾被误判成 502（ADR proxy-conditional-request-passthrough）。
                 return response;
             }
 
@@ -212,6 +215,13 @@ public sealed partial class DshLoopbackProxy
             currentBody = null;
         }
     }
+
+    /// <summary>3xx 重定向判定（唯一家）：只有带 Location 语义的状态码归重定向跟进分支。
+    /// 304 是条件请求命中缓存的终态，必须直交页面——把它算进 3xx 会让每个带 <c>If-None-Match</c>
+    /// 的资产请求落进「无 Location → 502」（ADR proxy-conditional-request-passthrough）。</summary>
+    /// <param name="status">上游状态码。</param>
+    /// <returns>true = 重定向，进跟进循环。</returns>
+    private static bool IsRedirect(int status) => status is 301 or 302 or 303 or 307 or 308;
 
     private async Task RelayTerminalAsync(
         NetworkStream stream, ShellProxyFraming.PageRequest req,

@@ -20,6 +20,9 @@ public class RuntimeStarterTests
     private sealed class FakeHost : IRuntimeHost
     {
         public IReadOnlyList<string> StderrTail { get; init; } = Array.Empty<string>();
+
+        public int? LastExitCode { get; init; }
+
         public string RuntimeDescription { get; init; } = "fake dsh";
         public Uri? NextUrl { get; init; }
         public List<TimeSpan> SpawnTimeouts { get; } = [];

@@ -64,6 +64,9 @@ public sealed partial class HarnessRuntimeHost
             ?? throw new InvalidOperationException("无法启动 dsh 进程。");
         _log?.Invoke($"[host] dsh 进程已起：pid {process.Id}");
         _process = process;
+        // 新实例起跑即清上一次的退出观测：否则重启成功后再崩溃时，监督器读到的是上一个进程的退出码
+        // （证据错位比缺证据更糟——会把「上次 -9」当成本次死因）。
+        ClearLastExit();
         // spawn 成功立即落盘 pid+token：崩溃监督重启（RestartAsync）复用同一路径覆盖为新 token。
         PersistSpawn(process.Id, spawnToken);
         if (ct.IsCancellationRequested)

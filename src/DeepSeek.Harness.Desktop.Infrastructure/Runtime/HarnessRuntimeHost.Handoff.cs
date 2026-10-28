@@ -315,6 +315,9 @@ public sealed partial class HarnessRuntimeHost
         {
             if (!RuntimeLineageProbes.TryIsAlive(pid))
             {
+                // 收养的续任者不是本进程子进程，拿不到 ExitCode（无 wait 权限）：证据面只留「已退出」，
+                // 退出码在 host.log 上显示为未取得——不要把它误读成「观测失效」。
+                _log?.Invoke($"[host] 收养的续任者已退出：pid {pid}（非本进程子进程，无退出码可取）");
                 return;
             }
 
@@ -322,6 +325,7 @@ public sealed partial class HarnessRuntimeHost
             if (token is not null && !string.Equals(token, expectedToken, StringComparison.Ordinal))
             {
                 // pid 已复用给别的进程：当初收养的运行时已经退出
+                _log?.Invoke($"[host] 收养的续任者已退出：pid {pid} 被复用（token 已变，无退出码可取）");
                 return;
             }
 

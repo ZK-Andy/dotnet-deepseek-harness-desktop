@@ -181,10 +181,37 @@ public class DshLoopbackProxyTests
         await runCts.CancelAsync();
     }
 
+    /// <summary>304 是条件请求命中缓存的终态，必须原样交页面（连同 ETag）：把它算进 3xx 会让
+    /// 每个带 <c>If-None-Match</c> 的资源请求落进「无 Location → 502」。实机 2026-10-28：dsh 对
+    /// <c>/assets/*</c> 发 ETag，命中即 304，经壳代理全变 502（ADR proxy-conditional-request-passthrough）。</summary>
+    [Fact]
+    public async Task Proxy_NotModified_PassesThroughInsteadOf502()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stub = new StubDshHandler();
+        var forward = new DshShellForward(stub, s_fast);
+        Assert.True(await forward.MintAsync(
+            DshWebUrl.From(new Uri($"http://127.0.0.1:9/?token={GoodToken}")), _ => { }, cts.Token));
+        var lines = new List<string>();
+        using var proxy = new DshLoopbackProxy(forward, lines.Add, stub);
+        using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        _ = proxy.RunAsync(runCts.Token);
+        using var page = new HttpClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(proxy.Url, "cached"));
+        request.Headers.TryAddWithoutValidation("If-None-Match", "\"cached-v1\"");
+        using HttpResponseMessage response = await page.SendAsync(request, cts.Token);
+
+        Assert.Equal(HttpStatusCode.NotModified, response.StatusCode);
+        Assert.Equal("\"cached-v1\"", response.Headers.ETag?.ToString());
+        // 304 不是失败面：既不进「跟进终止」分支，也不计失败。
+        Assert.DoesNotContain(lines, l => l.Contains("跟进终止"));
+        await runCts.CancelAsync();
+    }
+
     /// <summary>自循环 303 耗尽跳数即 loud 502，不把裸 3xx 交给页面。</summary>
     [Fact]
-    public async Task Proxy_RedirectLoop_StopsWith502()
-    {
+    public async Task Proxy_RedirectLoop_StopsWith502()    {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
         var forward = new DshShellForward(stub, s_fast);
@@ -1339,6 +1366,16 @@ public class DshLoopbackProxyTests
                     Content = new StringContent(echo, Encoding.UTF8, "application/json"),
                 };
                 return ok;
+            }
+
+            if (path == "/cached")
+            {
+                // 条件请求靶点：带 If-None-Match 且命中即 304（带 ETag、无 Location、无体——
+                // 与 dsh 静态资源真实回包同形）。
+                var notModified = new HttpResponseMessage(HttpStatusCode.NotModified);
+                notModified.Headers.TryAddWithoutValidation("ETag", "\"cached-v1\"");
+                notModified.Headers.TryAddWithoutValidation("Cache-Control", "no-cache");
+                return notModified;
             }
 
             if (path == "/goto-ext")

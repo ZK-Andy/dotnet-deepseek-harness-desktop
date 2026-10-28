@@ -24,6 +24,12 @@ public sealed partial class HarnessRuntimeHost : IDisposable, IRuntimeHost
     private readonly List<string> _stderrTail = new(StderrTailCapacity);
     private readonly object _stderrLock = new();
 
+    /// <summary>最近一次观察到的运行时退出（写入点：单次启动尝试的回收、收养续任者的判活收口）。
+    /// 用引用型观测记录而非哨兵整数：0 是合法退出码，可空语义不靠魔法值表达。</summary>
+    private ExitObservation? _lastExit;
+
+    private sealed record ExitObservation(int Code);
+
     /// <summary>创建运行时宿主（恒以 PATH 上的全局 dsh 形态运行）。</summary>
     /// <param name="log">日志回调（可选）：端口漂移等运行时决策留痕 host.log（缺省 null 安全）。</param>
     /// <param name="timeouts">运行时超时/重试配置（装配期唯一创建点注入；测试可省略走配置默认值）。</param>
@@ -35,6 +41,16 @@ public sealed partial class HarnessRuntimeHost : IDisposable, IRuntimeHost
 
     /// <summary>本次采用的运行时描述（日志/恢复屏用）。</summary>
     public string RuntimeDescription => "PATH dsh";
+
+    /// <summary>最近一次退出的运行时退出码（未观察到退出时 null）。</summary>
+    public int? LastExitCode => Volatile.Read(ref _lastExit)?.Code;
+
+    /// <summary>记录一次退出观测（并发安全；监督器读面与本方法不共享锁）。</summary>
+    /// <param name="code">进程退出码。</param>
+    private void RecordExit(int code) => Volatile.Write(ref _lastExit, new ExitObservation(code));
+
+    /// <summary>清空退出观测（新实例起跑时调用：证据只属于当前这一次生命周期）。</summary>
+    private void ClearLastExit() => Volatile.Write(ref _lastExit, null);
 
     /// <summary>失败时可读的诊断尾巴（stderr 末 N 行）。</summary>
     public IReadOnlyList<string> StderrTail
@@ -227,17 +243,50 @@ public sealed partial class HarnessRuntimeHost : IDisposable, IRuntimeHost
     /// <c>Exited</c> 事件；收养的市场续任者非本进程子进程，改由 <see cref="WaitAdoptedExitAsync"/> 轮询判活。</summary>
     public Task WaitForExitAsync()
     {
-        if (_process is not { HasExited: false } p)
+        if (_process is not { } p)
         {
             return _adoptedPid is int adopted && _adoptedToken is string token
                 ? WaitAdoptedExitAsync(adopted, token)
                 : Task.CompletedTask;
         }
 
+        if (p.HasExited)
+        {
+            // 进程在挂事件前就已退出：Exited 回调永远不会来，退出码只能在这里补记——
+            // 否则「等 URL 超时→回收→再退出」与「进程自发早退」两条路径都拿不到证据。
+            TryRecordProcessExit(p);
+            return Task.CompletedTask;
+        }
+
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         p.EnableRaisingEvents = true;
-        p.Exited += (_, _) => tcs.TrySetResult();
+        p.Exited += (_, _) =>
+        {
+            // 退出码是崩溃证据里唯一能区分「被信号杀」与「正常退出」的量：在 Exited 回调里取，
+            // 而不是等 StopCore 回收后才读（StopCore 可能直接 Kill，那时读到的是自己那刀的结果）。
+            TryRecordProcessExit(p);
+            tcs.TrySetResult();
+        };
         return tcs.Task;
+    }
+
+    /// <summary>从已退出的 <see cref="Process"/> 读退出码并留档；进程未退或已释放则留原值。
+    /// 观测口的所有失败都是「证据缺失」，绝不把异常抛进监督循环。</summary>
+    /// <param name="process">刚退出的子进程。</param>
+    private void TryRecordProcessExit(Process process)
+    {
+        try
+        {
+            if (process.HasExited)
+            {
+                RecordExit(process.ExitCode);
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception)
+        {
+            // 进程对象已释放 / 平台不支持读退出码：证据缺失不比缺证据更糟，不打扰监督循环
+            _log?.Invoke($"[supervisor] 读取子进程退出码失败（证据缺失）：{ex.GetType().Name}");
+        }
     }
 
     /// <summary>停止并回收 dsh 子进程（整棵进程树）。经生命周期串行化门——门被 spawn 长时间
