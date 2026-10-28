@@ -30,11 +30,11 @@ public sealed class UiLocale
     public UiLanguage Language => UiLanguageResolver.Resolve(_locale);
     /// <summary>
     /// 未接线语言单点时的缺省语言（各消费方的「可选 UiLocale」参数共用此一处）：
-    /// 中文——本产品主要受众，且与 <see cref="ResolveInitial"/> 探测不出时回中文同向。
+    /// 委托 <see cref="UiLanguageResolver.NoSource"/>——「没有 locale 来源」的唯一事实源。
     /// 与 <see cref="UiLanguageResolver.Resolve"/> 的「未注册 locale 回落英文」不矛盾：
     /// 那是<b>已知 locale 但语言未注册</b>的情形，这里是<b>没有 locale 来源</b>的缺省展示。
     /// </summary>
-    public static UiLanguage DefaultLanguage => UiLanguage.Zh;
+    public static UiLanguage DefaultLanguage => UiLanguageResolver.NoSource;
 
     /// <summary>确认按钮文案（横幅共用，随当前 locale；字面量单一事实源在 <see cref="UiCopy"/>）。</summary>
     public string OkLabel => UiCopy.OkLabel(Language);
@@ -90,8 +90,9 @@ public sealed class UiLocale
             return persisted;
         }
 
-        // 探测面在 Infrastructure（Core 不读环境变量）；探测不出或未接线即回中文（本产品主要受众）。
+        // 探测面在 Infrastructure（Core 不读环境变量）；探测不出或未接线即「无来源」，
+        // 取 UiLanguageResolver.NoSourceLocale（缺省语言单点，本文件不再另写字面量）。
         string? detected = probe?.Detect();
-        return string.IsNullOrWhiteSpace(detected) ? "zh-CN" : detected;
+        return string.IsNullOrWhiteSpace(detected) ? UiLanguageResolver.NoSourceLocale : detected;
     }
 }

@@ -37,12 +37,34 @@ public class UiLocaleTests
     [InlineData("ru-RU", UiLanguage.Ru)]
     [InlineData("pt-BR", UiLanguage.Pt)]
     [InlineData("ko-KR", UiLanguage.En)]
-    [InlineData("", UiLanguage.En)]
     public void Language_ResolvesEightLocaleClosedSet(string locale, UiLanguage expected)
     {
         var ui = new UiLocale();
-        ui.Set(string.IsNullOrEmpty(locale) ? "en" : locale);
+        ui.Set(locale);
         Assert.Equal(expected, ui.Language);
+    }
+
+    /// <summary>「没有 locale 来源」（null/空白）不是「未注册语言」：它取缺省语言单点，不是英文回落。
+    /// 三处缺省面必须同值——<see cref="UiLanguageResolver.NoSource"/>、<see cref="UiLocale.DefaultLanguage"/>、
+    /// 以及 <see cref="UiLocale"/> 无端口时的初始 locale（ADR ui-locale-no-source-single-source）。</summary>
+    [Fact]
+    public void NoSource_IsOneFactAcrossAllDefaults()
+    {
+        // 语言面：产品缺省是中文（钉值，不是钉委托）
+        Assert.Equal(UiLanguage.Zh, UiLanguageResolver.NoSource);
+        // 标记面 → 语言面：规范标记必须解析回同一语言（标记改成未注册形态会立刻红）
+        Assert.Equal(UiLanguageResolver.NoSource, UiLanguageResolver.Resolve(UiLanguageResolver.NoSourceLocale));
+        // 与单点同值：任一侧的语言值改成另一种语言即红。注：这条不判「委托关系」——
+        // 把 DefaultLanguage 改回同值字面量仍会通过，委托本身没有可机器判据的观测点。
+        Assert.Equal(UiLanguageResolver.NoSource, UiLocale.DefaultLanguage);
+        // 「无来源」三个入口同答
+        Assert.Equal(UiLanguageResolver.NoSource, UiLanguageResolver.Resolve(null));
+        Assert.Equal(UiLanguageResolver.NoSource, UiLanguageResolver.Resolve(""));
+        Assert.Equal(UiLanguageResolver.NoSource, UiLanguageResolver.Resolve("   "));
+        // 生产路径：探测端口没接线 / 回空白，都落规范标记（BOM 在探测面就归零，见 OsLocaleProbeTests）
+        Assert.Equal(UiLanguageResolver.NoSourceLocale, new UiLocale().Current);
+        Assert.Equal(UiLanguageResolver.NoSourceLocale, new UiLocale(probe: new FakeProbe(null)).Current);
+        Assert.Equal(UiLanguageResolver.NoSourceLocale, new UiLocale(probe: new FakeProbe("")).Current);
     }
 
     /// <summary>POSIX 形态的 locale（OS 探测面给的就是这一族：<c>LC_ALL</c>/<c>LANG</c> 的
@@ -186,6 +208,13 @@ public class UiLocaleTests
     public void IsPlausibleLocale_Boundaries(string locale, bool expected)
     {
         Assert.Equal(expected, UiLocale.IsPlausibleLocale(locale));
+    }
+
+    /// <summary>探测端口测试替身：固定回一个值（含 null / 只有 BOM 的退化形态）。</summary>
+    private sealed class FakeProbe(string? detect) : IHostLocaleProbe
+    {
+        /// <inheritdoc />
+        public string? Detect() => detect;
     }
 
     /// <summary>持久化端口测试替身：固定回读值 + 记录写入次数。</summary>

@@ -10,10 +10,11 @@
 2. wwwroot/index.html 的每个 `data-i18n` 节点必须自带非空首屏文案（静态页是首启第一个可见面）；
 3. index.html 的八语言表 `var D = { <lang>: { … }, … }` **按页面自身结构**核：
    七种非中文语言各须一张表、键集跨语言全等、`data-i18n`/`data-i18n-aria` 节点与表键双向覆盖、
-   译文非空、同语言「最小化/最大化」可达名不得同形；zh 走页内内联节点（`var D` 不得含 zh 副本），
+   译文非空、同语言「最小化/最大化」可达名不得同形、非中文语言表不得与 en 逐键全等（整表未译）；zh 走页内内联节点（`var D` 不得含 zh 副本），
    其标题栏三个可达名对着生产词典 `UiCopy.CaptionButtonNames` 的真实源码逐值核；
 4. plugins/dsh-desktop-companion/client/client.js 的八本字典键集相等（zh 为键集事实源，
-   键漏一边即漏译）。
+   键漏一边即漏译）；值面：每键须有非空字面量译文、非 zh/ja 不得含汉字、与 zh 全等须在豁免册内、
+   非豁免键不得整本与 en 逐键全等。
 
 host.log 诊断行不属 UI 文案：字面量带 `[host]` 等 log 形态前缀的豁免（已知边界：
 以 `[tag]` 开头的真 UI 文案理论上可借道，风险可忽略——UI 文案没有该书写惯例）。
@@ -22,7 +23,7 @@ host.log 诊断行不属 UI 文案：字面量带 `[host]` 等 log 形态前缀�
 不做通用 JS 解析）。提取为空即报错——形态一变就 fail loud，不得退化成恒真。比较前统一解码 `\\uXXXX` 等转义（姊妹文件惯用 `\\u2026` 写
 省略号，两侧写法可能不同）。拼接串（`正在安装 ` + 插件名）登记的正是前段本身，故全等成立。
 不变量 1 的提取边界：注释行（`//`/`///`/`*`/`/*` 起头）不参与提取——注释是散文，不是文案。
-自测：--self-test（临时夹具，正反十六例）。
+自测：--self-test（临时夹具，正反十八例）。
 """
 from __future__ import annotations
 
@@ -224,6 +225,13 @@ def _check(
         if en_text is not None and zh_text.strip() == en_text.strip():
             failures.append(f"{index_label}: 页内 zh 文案 {key} 与 en 译文全等（{zh_text!r}）——未译或抄错语言")
 
+    # ⑤ 整表与 en 逐键全等 = 整表未译：拉丁语种躲得过不变量 4 的汉字判据，这是漏译的第二形态。
+    #    豁免册里的键跨语言本就同形，不计入证据——否则「只有品牌词与 en 相同」的合法表会被误判。
+    for lang in [lg for lg in non_zh if lg != "en"]:
+        judged = {k: v for k, v in (tables.get(lang) or {}).items() if k not in VALUE_SHARED_OK}
+        if judged and all(en_table.get(k) == v for k, v in judged.items()):
+            failures.append(f"{index_label}: {lang} 表与 en 逐键全等（{len(judged)} 键）——整表未译")
+
     # 不变量 4：client.js 八本字典——键集全等（zh 为事实源，漏一边即漏译）+ 值面三判据
     #   ② 每键必须有字面量译文且非空（键在、值缺失曾是静默盲区：键集相等掩盖整本英文残留）；
     #   ③ 非汉字语种（ja 除外，它本就混用汉字）不得出现汉字——整本译文被 zh 顶替的典型形态；
@@ -245,6 +253,7 @@ def _check(
                 failures.append(f"{client_label}: {name} 的值含汉字（未译或整本沿用 zh）：{leaks!r}")
     zh_keys = per_locale.get("zh") or set()
     zh_values = values_by_locale.get("zh") or {}
+    en_values = values_by_locale.get("en") or {}
     # zh 是键集与值的事实源：它自己的值退化成引用时，下面的「与 zh 全等」会拿 None 逐键跳过。
     if lacking := sorted(k for k in zh_keys if k not in zh_values):
         failures.append(f"{client_label}: zh 的 {lacking!r} 无字面量译文（值形态变更？）")
@@ -265,6 +274,12 @@ def _check(
             if value is None or value != zh_values.get(key) or key in VALUE_SHARED_OK:
                 continue
             failures.append(f"{client_label}: {name} 的 {key} 译文与 zh 全等（{value!r}），漏译或未进 VALUE_SHARED_OK")
+        # ⑤ 整本未译：非豁免键全都与 en 同键同值（拉丁语种躲得过汉字判据）
+        if name == "en":
+            continue
+        judged = {k: v for k, v in (values_by_locale.get(name) or {}).items() if k not in VALUE_SHARED_OK}
+        if judged and all(en_values.get(k) == v for k, v in judged.items()):
+            failures.append(f"{client_label}: {name} 的字典与 en 逐键全等（{len(judged)} 键）——整本未译")
     return failures
 
 
@@ -415,6 +430,21 @@ def self_test() -> int:
     f11 = _check([], "<html><body></body></html>", client_ok, chrome_ok)
     assert any("未能从 var D 提取到语言表" in x for x in f11), f11
 
+    # 反例 16：client.js 某语言整本与 en 同值（拉丁语种躲得过汉字判据，旧判据全绿）
+    client_de_en = client_ok.replace("  alpha: 'A5',", "  alpha: 'A1',")
+    f16 = _check([], html_ok, client_de_en, chrome_ok)
+    assert any("de 的字典与 en 逐键全等" in x for x in f16), f16
+
+    # 反例 17：页内某语言整表与 en 同值（同上，只是页面侧）
+    de_en_block = ("  de: {\n    retry: 'R-en',\n"
+                   "    capMinimize: 'm-en',\n    capMaximize: 'M-en',\n    capClose: 'c-en',\n  },\n")
+    html_de_en = html_ok.replace(
+        "  de: {\n    retry: 'R-de',\n"
+        "    capMinimize: 'm-de',\n    capMaximize: 'M-de',\n    capClose: 'c-de',\n  },\n",
+        de_en_block)
+    f17 = _check([], html_de_en, client_ok, chrome_ok)
+    assert any("de 表与 en 逐键全等" in x for x in f17), f17
+
     # 提取层自己的夹具也挂在这条门禁路径上：库改动若无人执行，形同没有夹具
     # （CI 与两个 hook 只跑本脚本的 --self-test）。
     import ui_copy_extract
@@ -423,7 +453,7 @@ def self_test() -> int:
         print("FAIL 提取层夹具（scripts/lib/ui_copy_extract.py）")
         return 1
 
-    print("self-test OK (16 cases + 提取层 6 组)")
+    print("self-test OK (18 cases + 提取层 6 组)")
     return 0
 
 

@@ -228,12 +228,17 @@
                 capClose: 'Fechar',
             },
         };
+        // 「没有 locale 来源」的规范形态：宿主回包缺失或为空白时用这里。取值与原生壳
+        // UiLanguageResolver.NoSourceLocale 同一个（页面不能引用 C# 常量，只能两侧互相锚定）。
+        // 注意与「有值但语言未注册」（→ en，上游 FALLBACK_LOCALE 同向）是两种情形，别合并。
+        var NO_SOURCE_LOCALE = 'zh-CN';
         function applyLocale(locale) {
             // 主语言子标签定表；未注册语言回落 en（与原生壳 UiLanguageResolver 同向，
             // ADR ui-copy-eight-locales）。分隔符与原生壳一致地认 -、_、.（POSIX 形态
             // zh_CN.UTF-8 若原样到这里，只按 '-' 切会把整串当主标签、连带把中文用户甩到英文）。
             // zh 走 zh-CN，其余写回各自的 BCP 47 主标签。
-            var primary = String(locale || 'zh').toLowerCase().split(/[-_.]/)[0];
+            var raw = locale == null ? '' : String(locale).trim();
+            var primary = (raw || NO_SOURCE_LOCALE).toLowerCase().split(/[-_.]/)[0];
             var table = D[primary] || D.en;
             var isZh = primary === 'zh';
             document.documentElement.lang = isZh ? 'zh-CN' : (D[primary] ? primary : 'en');

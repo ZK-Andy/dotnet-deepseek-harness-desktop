@@ -18,9 +18,9 @@ Review: FULL/2026-10-28#4/R1=ok R2=ok R3=ok
 
 八语言化按一条主线落地：**语言集封闭、字典全量、兜底指向英文**。
 
-1. **语言键**：新增 `UiLanguage`（Zh/En/Ja/Es/Fr/De/Ru/Pt）与 `UiLanguageResolver`（按主语言子标签解析，分隔符认 `-`/`_`/`.`——OS 探测面给的是 POSIX 形态 `zh_CN.UTF-8`；未注册语言与空值一律 `En`）。这是 locale→语言判定的唯一家，消费方不再各自写正则。
+1. **语言键**：新增 `UiLanguage`（Zh/En/Ja/Es/Fr/De/Ru/Pt）与 `UiLanguageResolver`（按主语言子标签解析，分隔符认 `-`/`_`/`.`——OS 探测面给的是 POSIX 形态 `zh_CN.UTF-8`；未注册语言一律 `En`；空白不是未注册，取缺省语言单点 `NoSource`，见 [ui-locale-no-source-single-source](../simplification/2026-10-28-ui-locale-no-source-single-source.md)）。这是 locale→语言判定的唯一家，消费方不再各自写正则。
 
-   **缺省语言单点**：`UiLocale.DefaultLanguage`（中文）供各消费方「可选 `UiLocale` 参数」共用。它与「未注册 locale 回落英文」不矛盾——前者是**没有 locale 来源**的缺省展示，后者是**已知 locale 但语言未注册**。
+   **缺省语言单点**：`UiLocale.DefaultLanguage`（中文，委托 `UiLanguageResolver.NoSource`）供各消费方「可选 `UiLocale` 参数」共用。它与「未注册 locale 回落英文」不矛盾——前者是**没有 locale 来源**的缺省展示，后者是**已知 locale 但语言未注册**，两条在解析处显式分道。
 2. **字典形态**：`UiCopy` 的 `bool english` 全部换成 `UiLanguage lang`，每条文案经私有 `Pick(lang, zh:…, en:…, ja:…, es:…, fr:…, de:…, ru:…, pt:…)`。**具名实参**是刻意的：漏一种语言编译即失败，不需要测试兜底。带参文案统一 `string.Format(InvariantCulture, …, arg)`，占位符从 C# 内插迁到 `{0}`/`{1}`。
 3. **兜底方向**：`Language` 是消费方取语言的唯一入口（`IsEnglish` 判据在本批内先降级为 `Language == En`、随后随生产消费者清零删除）。即 ja/es/fr/de/ru/pt 走各自字典，未注册语言（含 ko 等）走英文——与上游 `FALLBACK_LOCALE` 同向。
 4. **三处静态面同步**：
@@ -60,14 +60,14 @@ Review: FULL/2026-10-28#4/R1=ok R2=ok R3=ok
 
 ## Testing
 
-- `UiLocaleTests.Language_ResolvesEightLocaleClosedSet`（12 例 Theory）：八语言 + 两种未注册语言 + 空值，逐条钉解析结果。
+- `UiLocaleTests.Language_ResolvesEightLocaleClosedSet`（11 例 Theory）：八语言 + `en-GB`/`zh-Hans` 两种变体 + `ko-KR`（唯一未注册）逐条钉解析结果；空白输入的缺省方向由 `NoSource_IsOneFactAcrossAllDefaults` 钉（见 [ui-locale-no-source-single-source](../simplification/2026-10-28-ui-locale-no-source-single-source.md)）。
 - `UiLocaleTests.Language_ResolvesPosixLocaleForms`（8 例 Theory）：POSIX 形态（`zh_CN.UTF-8`/`zh_TW.Big5`/`ja_JP.UTF-8`/`pt_BR.UTF-8`/`en_US.UTF-8`/`ko_KR.UTF-8` 等）逐条钉解析——纵深防御的回归网。
 - `OsLocaleProbeTests.Detect_NormalizesPosixToBcp47`（8 例 Theory）：归一落点在探测面（剥 `.` 修饰符、`_`→`-`；含 `C`/`POSIX` 两个「未设置」取值）。
 - `UiLocaleTests.Language_NonChineseLocales_NeverFallBackToChinese`：六种新增语言**不得**取到中文文案（直接断言托盘「退出」与中文分支不同）——本批的核心回归。
 - `UiLocaleTests.UiCopy_AllEightLanguages_DistinctNonEmpty`：八语言逐条非空；抽查三条两两互异。
 - `CaptionBarTests.Build_AriaLabels_EightLocaleTablesWithDocumentPick`（3 例 Theory）：注入脚本含八语言表，且回落**两段**形态正确——`L[k]||(k?L.en:L["<宿主语言>"])`。旧形态 `L[k]||L.en||L[fb]` 的第三段恒不可达（`L.en` 恒存在），本轮修复为可达形态。
 - 既有 `[Theory]` 的 `[InlineData(false/true)]` 改为 `[InlineData(UiLanguage.Zh/En)]`；`if (english)` 一类判据改为 `lang != UiLanguage.Zh`。
-- `verify-ui-copy --self-test`（16 例）：逐例对应一条判据，其中「语言整表被删」「非拉丁文案未登记」「同语言两键可达名相同」「可达名缺失」「节点缺首屏文案」「生产词典抽不到 zh 可达名」六例直指门禁盲区——这些形态此前均静默通过。前五例与门禁改动同批做过变异实证；第六例（抽取失败分支）是同批评审发现漏覆盖后补的。
+- `verify-ui-copy --self-test`（18 例）：逐例对应一条判据，其中「语言整表被删」「非拉丁文案未登记」「同语言两键可达名相同」「可达名缺失」「节点缺首屏文案」「生产词典抽不到 zh 可达名」六例直指门禁盲区——这些形态此前均静默通过。前五例与门禁改动同批做过变异实证；第六例（抽取失败分支）是同批评审发现漏覆盖后补的。
 - 全量 `dotnet test` 全绿（计数与覆盖率基线的机器家在 `scripts/test-baseline.json`，本篇不复制）；`verify-ui-copy`、`verify-code-health`、`verify-code-conventions`、`verify-increment-discipline`（带本批豁免）、`verify-adr-format`、`verify-md-links` 全绿。
 
 ## Deferred
