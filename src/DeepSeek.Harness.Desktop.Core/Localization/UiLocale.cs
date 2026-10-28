@@ -3,8 +3,9 @@ namespace DeepSeek.Harness.Desktop.Core.Localization;
 /// <summary>
 /// 宿主 UI 语言单点（ADR host-ui-locale）：托盘菜单、横幅与引导页文案的 locale 依据。
 /// 语言值经 dsh→companion→宿主单向桥接（companion 监听 <c>html[lang]</c> 上报）并持久化，
-/// 初始值取上次上报（记不住时回退宿主 locale 探测端口，端口未接线即回中文）；非 <c>en*</c> 一律按中文——对齐 dsh
-/// 字典查找链的兜底方向。
+/// 初始值取上次上报（记不住时回退宿主 locale 探测端口，端口未接线即回中文）。
+/// 具体语言分支由 <see cref="UiLanguageResolver"/> 单点判定：八种已注册语言取各自字典，
+/// 其余一律回落英文——与上游 <c>FALLBACK_LOCALE = 'en'</c> 同向（ADR ui-copy-eight-locales）。
 /// </summary>
 public sealed class UiLocale
 {
@@ -22,14 +23,21 @@ public sealed class UiLocale
         _locale = ResolveInitial(store, probe);
     }
 
-    /// <summary>当前 locale（如 <c>zh-CN</c>/<c>en</c>，原样保存便于诊断展示）。</summary>
+    /// <summary>当前 locale（如 <c>zh-CN</c>/<c>ja-JP</c>，原样保存便于诊断展示）。</summary>
     public string Current => _locale;
 
-    /// <summary>UI 文案是否取英文分支。</summary>
-    public bool IsEnglish => _locale.StartsWith("en", StringComparison.OrdinalIgnoreCase);
+    /// <summary>当前 UI 语言（八种封闭集之一；未注册 locale 回落到英文）。</summary>
+    public UiLanguage Language => UiLanguageResolver.Resolve(_locale);
+    /// <summary>
+    /// 未接线语言单点时的缺省语言（各消费方的「可选 UiLocale」参数共用此一处）：
+    /// 中文——本产品主要受众，且与 <see cref="ResolveInitial"/> 探测不出时回中文同向。
+    /// 与 <see cref="UiLanguageResolver.Resolve"/> 的「未注册 locale 回落英文」不矛盾：
+    /// 那是<b>已知 locale 但语言未注册</b>的情形，这里是<b>没有 locale 来源</b>的缺省展示。
+    /// </summary>
+    public static UiLanguage DefaultLanguage => UiLanguage.Zh;
 
     /// <summary>确认按钮文案（横幅共用，随当前 locale；字面量单一事实源在 <see cref="UiCopy"/>）。</summary>
-    public string OkLabel => UiCopy.OkLabel(IsEnglish);
+    public string OkLabel => UiCopy.OkLabel(Language);
 
     /// <summary>locale 发生实际变化时触发（托盘菜单重建等消费方订阅）。</summary>
     public event Action? Changed;
@@ -50,7 +58,9 @@ public sealed class UiLocale
     }
 
     /// <summary>宽松合法性：字母数字段（<c>-</c> 分隔）形态即可（<c>zh-CN</c>/<c>en</c>）；具体语言分支由
-    /// <see cref="IsEnglish"/> 判。持久化回读与 companion 上报共用此判据——规则单一事实源。</summary>
+    /// <see cref="Language"/>（<see cref="UiLanguageResolver"/>）判。持久化回读与 companion 上报共用
+    /// 此判据——规则单一事实源。注意它<b>不接受</b> POSIX 形态（<c>zh_CN</c>）：归一发生在探测面
+    /// （<c>OsLocaleProbe</c>），此处保持 BCP 47 契约。</summary>
     /// <param name="locale">待判定的语言标记。</param>
     /// <returns>形态合法为 true。</returns>
     public static bool IsPlausibleLocale(string locale)

@@ -22,7 +22,7 @@ public static class RecoveryDialogText
     /// <param name="stderrTail">子进程 stderr 尾部行（监督器已在重启前留证）。</param>
     /// <param name="exportPath">诊断包落盘路径；空串表示导出失败（正文取失败文案）；null 表示本次不涉及
     /// 诊断包导出（如启动失败），整节省略——不能拿「导出失败」冒充「未尝试」。</param>
-    /// <param name="english">是否取英文分支。</param>
+    /// <param name="lang">文案语言。</param>
     /// <param name="actions">动作说明行（缺省取崩溃恢复口径）；启动失败须传
     /// <see cref="UiCopy.StartupFailureActions"/>——「继续在后台自动恢复」对启动失败是假话。</param>
     /// <returns>可直接交原生模态展示的正文（尾部节按 600 字符预算装箱；原因/动作恒在，导出节随入参）。</returns>
@@ -30,24 +30,24 @@ public static class RecoveryDialogText
         string reason,
         IReadOnlyList<string> stderrTail,
         string? exportPath,
-        bool english,
+        UiLanguage lang,
         string? actions = null)
     {
         string? export = exportPath is null
             ? null
             : exportPath.Length > 0
-                ? UiCopy.RecoveryDialogExportPrefix(english) + exportPath
-                : UiCopy.RecoveryDialogExportFailed(english);
-        string actionLine = actions ?? UiCopy.RecoveryDialogActions(english);
+                ? UiCopy.RecoveryDialogExportPrefix(lang) + exportPath
+                : UiCopy.RecoveryDialogExportFailed(lang);
+        string actionLine = actions ?? UiCopy.RecoveryDialogActions(lang);
         List<string> lines = FitTail(
             CollapseRepeats(stderrTail.TakeLast(MaxTailLines).Select(Clip).ToList()),
             reason.Length + (export?.Length ?? 0) + actionLine.Length,
-            english);
+            lang);
 
         var text = new StringBuilder(reason);
         if (lines.Count > 0)
         {
-            text.Append('\n').Append('\n').Append(UiCopy.RecoveryDialogTailHeading(english));
+            text.Append('\n').Append('\n').Append(UiCopy.RecoveryDialogTailHeading(lang));
             foreach (string line in lines)
             {
                 text.Append('\n').Append(line);
@@ -88,9 +88,9 @@ public static class RecoveryDialogText
     /// <summary>尾部行装箱：去重后从最新往最旧装，固定部 + 标题 + 已装行恒 ≤ 尾部节预算；一行都装不下即整个尾部节退场。</summary>
     /// <param name="lines">折叠后的尾部行（原序）。</param>
     /// <param name="fixedLength">原因 + 导出 + 动作说明三段合计长度。</param>
-    /// <param name="english">是否取英文分支（标题长度计入预算）。</param>
+    /// <param name="lang">文案语言（标题长度按该语言计入预算）。</param>
     /// <returns>装下的尾部行（原序子集）。</returns>
-    private static List<string> FitTail(List<string> lines, int fixedLength, bool english)
+    private static List<string> FitTail(List<string> lines, int fixedLength, UiLanguage lang)
     {
         var kept = new List<string>();
         if (lines.Count == 0)
@@ -98,7 +98,7 @@ public static class RecoveryDialogText
             return kept;
         }
 
-        int used = fixedLength + UiCopy.RecoveryDialogTailHeading(english).Length + 5; // 两个 \n\n + 一个 \n
+        int used = fixedLength + UiCopy.RecoveryDialogTailHeading(lang).Length + 5; // 两个 \n\n + 一个 \n
         for (int i = lines.Count - 1; i >= 0; i--)
         {
             int cost = lines[i].Length + 1; // 行前换行

@@ -45,15 +45,15 @@ internal sealed class StartupFailureFace
         try
         {
             // 正文构建也在 try 内：尾部取法/文案构建的任何抛出都必须落日志，不能静默消失。
-            bool english = _uiLocale.IsEnglish;
+            UiLanguage lang = _uiLocale.Language;
             string message = RecoveryDialogText.Build(
-                UiCopy.StartupFailureReason(english),
+                UiCopy.StartupFailureReason(lang),
                 _stderrTail(),
                 exportPath: null,
-                english,
-                actions: UiCopy.StartupFailureActions(english));
+                lang,
+                actions: UiCopy.StartupFailureActions(lang));
             quit = await _dialog
-                .ConfirmAsync(UiCopy.StartupFailureTitle(english), message, ct)
+                .ConfirmAsync(UiCopy.StartupFailureTitle(lang), message, ct)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)

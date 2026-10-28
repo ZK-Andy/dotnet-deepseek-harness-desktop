@@ -133,32 +133,120 @@
     <p id="fallbackHint"><span data-i18n="fallbackHint">请检查</span> <code>DEEPSEEK_API_KEY</code> <span data-i18n="fallbackHintTail">与日志，或重启应用。</span></p>
     <script>
         // 宿主 UI 语言（UiLocale）：页面在 dsh 启动前渲染，语言只能由宿主给（拉取而非推送，避免注入时序竞态）
-        var EN = {
-            stepEnsureNode: 'Ensure system-global Node',
-            stepInstallDsh: 'Install global dsh via npm (network required)',
-            stepVerifyDsh: 'Verify dsh version',
-            retry: 'Retry',
-            fallbackText: 'Runtime not ready (',
-            fallbackTextTail: 'did not yield a URL in time).',
-            fallbackHint: 'Check',
-            fallbackHintTail: 'and the logs, or restart the app.',
-            capMinimize: 'Minimize',
-            capMaximize: 'Maximize',
-            capClose: 'Close'
+        // 七种非中文语言的静态文案；zh 走上方内联节点（不设 D.zh 副本）。
+        // verify-ui-copy 核对：语言闭集、键集跨语言全等、节点⇄表键双向覆盖、译文非空。
+        var D = {
+            en: {
+                stepEnsureNode: 'Ensure system-global Node',
+                stepInstallDsh: 'Install global dsh via npm (network required)',
+                stepVerifyDsh: 'Verify dsh version',
+                retry: 'Retry',
+                fallbackText: 'Runtime not ready (',
+                fallbackTextTail: 'did not yield a URL in time).',
+                fallbackHint: 'Check',
+                fallbackHintTail: 'and the logs, or restart the app.',
+                capMinimize: 'Minimize',
+                capMaximize: 'Maximize',
+                capClose: 'Close',
+            },
+            ja: {
+                stepEnsureNode: 'システムグローバルの Node を確認',
+                stepInstallDsh: 'npm でグローバル dsh をインストール（ネットワーク必須）',
+                stepVerifyDsh: 'dsh バージョンを確認',
+                retry: '再試行',
+                fallbackText: 'ランタイムの準備ができていません（',
+                fallbackTextTail: '時間内に URL が返されませんでした）。',
+                fallbackHint: '確認してください：',
+                fallbackHintTail: 'とログ。またはアプリを再起動してください。',
+                capMinimize: '最小化',
+                capMaximize: '最大化',
+                capClose: '閉じる',
+            },
+            es: {
+                stepEnsureNode: 'Asegurar Node global del sistema',
+                stepInstallDsh: 'Instalar dsh global con npm (requiere red)',
+                stepVerifyDsh: 'Verificar la versión de dsh',
+                retry: 'Reintentar',
+                fallbackText: 'Tiempo de ejecución no listo (',
+                fallbackTextTail: 'no devolvió una URL a tiempo).',
+                fallbackHint: 'Compruebe',
+                fallbackHintTail: 'y los registros, o reinicie la aplicación.',
+                capMinimize: 'Minimizar',
+                capMaximize: 'Maximizar',
+                capClose: 'Cerrar',
+            },
+            fr: {
+                stepEnsureNode: 'Garantir Node global du système',
+                stepInstallDsh: 'Installer dsh global via npm (réseau requis)',
+                stepVerifyDsh: 'Vérifier la version de dsh',
+                retry: 'Réessayer',
+                fallbackText: 'L\'exécution n\'est pas prête (',
+                fallbackTextTail: 'n\'a pas fourni d\'URL à temps).',
+                fallbackHint: 'Vérifiez',
+                fallbackHintTail: 'et les journaux, ou redémarrez l’application.',
+                capMinimize: 'Réduire',
+                capMaximize: 'Agrandir',
+                capClose: 'Fermer',
+            },
+            de: {
+                stepEnsureNode: 'Systemweites Node sicherstellen',
+                stepInstallDsh: 'Globales dsh via npm installieren (Netzwerk erforderlich)',
+                stepVerifyDsh: 'dsh-Version prüfen',
+                retry: 'Erneut versuchen',
+                fallbackText: 'Laufzeit nicht bereit (',
+                fallbackTextTail: 'hat nicht rechtzeitig eine URL geliefert).',
+                fallbackHint: 'Prüfen Sie',
+                fallbackHintTail: 'und die Protokolle, oder starten Sie die App neu.',
+                capMinimize: 'Minimieren',
+                capMaximize: 'Maximieren',
+                capClose: 'Schließen',
+            },
+            ru: {
+                stepEnsureNode: 'Обеспечить системный Node',
+                stepInstallDsh: 'Установить глобальный dsh через npm (требуется сеть)',
+                stepVerifyDsh: 'Проверить версию dsh',
+                retry: 'Повторить',
+                fallbackText: 'Среда выполнения не готова (',
+                fallbackTextTail: 'не выдала URL вовремя).',
+                fallbackHint: 'Проверьте',
+                fallbackHintTail: 'и журналы, либо перезапустите приложение.',
+                capMinimize: 'Свернуть',
+                capMaximize: 'Развернуть',
+                capClose: 'Закрыть',
+            },
+            pt: {
+                stepEnsureNode: 'Garantir Node global do sistema',
+                stepInstallDsh: 'Instalar dsh global via npm (requer rede)',
+                stepVerifyDsh: 'Verificar a versão do dsh',
+                retry: 'Tentar novamente',
+                fallbackText: 'Tempo de execução não está pronto (',
+                fallbackTextTail: 'não retornou uma URL a tempo).',
+                fallbackHint: 'Verifique',
+                fallbackHintTail: 'e os logs, ou reinicie o aplicativo.',
+                capMinimize: 'Minimizar',
+                capMaximize: 'Maximizar',
+                capClose: 'Fechar',
+            },
         };
         function applyLocale(locale) {
-            var english = /^en/i.test(locale || '');
-            document.documentElement.lang = english ? 'en' : 'zh-CN';
-            if (!english) { return; }
+            // 主语言子标签定表；未注册语言回落 en（与原生壳 UiLanguageResolver 同向，
+            // ADR ui-copy-eight-locales）。分隔符与原生壳一致地认 -、_、.（POSIX 形态
+            // zh_CN.UTF-8 若原样到这里，只按 '-' 切会把整串当主标签、连带把中文用户甩到英文）。
+            // zh 走 zh-CN，其余写回各自的 BCP 47 主标签。
+            var primary = String(locale || 'zh').toLowerCase().split(/[-_.]/)[0];
+            var table = D[primary] || D.en;
+            var isZh = primary === 'zh';
+            document.documentElement.lang = isZh ? 'zh-CN' : (D[primary] ? primary : 'en');
+            if (isZh) { return; }
             var nodes = document.querySelectorAll('[data-i18n]');
             for (var i = 0; i < nodes.length; i++) {
                 var key = nodes[i].getAttribute('data-i18n');
-                if (EN[key]) { nodes[i].textContent = EN[key]; }
+                if (table[key]) { nodes[i].textContent = table[key]; }
             }
             var ariaNodes = document.querySelectorAll('[data-i18n-aria]');
             for (var j = 0; j < ariaNodes.length; j++) {
                 var ariaKey = ariaNodes[j].getAttribute('data-i18n-aria');
-                if (EN[ariaKey]) { ariaNodes[j].setAttribute('aria-label', EN[ariaKey]); }
+                if (table[ariaKey]) { ariaNodes[j].setAttribute('aria-label', table[ariaKey]); }
             }
         }
         // 语言未定前的宿主帧先入队：applyLocale 只改静态节点，若进度帧先到会停在中文而与静态文案混排；

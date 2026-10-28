@@ -42,7 +42,7 @@ import re
 import sys
 from pathlib import Path
 
-from gate_common import CSharpLineScanner, is_compose_root_name
+from gate_common import CSharpLineScanner, SelfTest, is_compose_root_name
 
 DEFAULT_FILE_LIMIT = 400
 DEFAULT_METHOD_LIMIT = 80
@@ -243,17 +243,17 @@ def _scan(src: Path, file_limit: int, method_limit: int,
 def _self_test() -> int:
     import tempfile
 
+    # 两个合规夹具：都应在扫描后零 rows/零 notes（断言在下方 st.ok 里）。
     cases = [
-        # (lines, expected_violation_count, desc)
-        ([
+        [
             "namespace Foo;",
             "public class C {",
             "    public void OK(int x) {",
             "        return;",
             "    }",
             "}",
-        ], 0, "conforming small file -> pass"),
-        ([
+        ],
+        [
             "namespace Foo;",
             "public class C {",
             "    public void Big() {",
@@ -261,22 +261,18 @@ def _self_test() -> int:
             "        var j = 2;",
             "    }",
             "}",
-        ], 0, "small method -> pass"),
+        ],
     ]
     # 2) a > file-limit / method-limit fixture is generated inline below.
-    failed = 0
+    st = SelfTest()
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
         # passing case
-        (root / "Pass.cs").write_text("\n".join(cases[0][0]) + "\n", encoding="utf-8")
-        (root / "Pass2.cs").write_text("\n".join(cases[1][0]) + "\n", encoding="utf-8")
+        (root / "Pass.cs").write_text("\n".join(cases[0]) + "\n", encoding="utf-8")
+        (root / "Pass2.cs").write_text("\n".join(cases[1]) + "\n", encoding="utf-8")
         rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                             DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
-        if rows or notes:
-            print(f"  ✗ conforming files reported: {rows} / {notes}")
-            failed = 1
-        else:
-            print("  ok: conforming files -> pass")
+        st.ok(not rows and not notes, f"conforming files -> pass (rows={rows} notes={notes})")
 
         # F1 is report-only: a > file-limit file yields a note, never an
         # enforced row (ADR code-health-f1-report-only).
@@ -287,11 +283,8 @@ def _self_test() -> int:
         (root / "BigFile.cs").write_text("\n".join(big_file) + "\n", encoding="utf-8")
         rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                             DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
-        if any("F1" in r for r in notes) and not any("F1" in r for r in rows):
-            print("  ok: F1 file-limit overage is a report-only note, not enforced")
-        else:
-            print(f"  ✗ F1 lane wrong: rows={rows} notes={notes}")
-            failed = 1
+        st.ok(any("F1" in r for r in notes) and not any("F1" in r for r in rows),
+              f"F1 file-limit overage is a report-only note, not enforced (rows={rows} notes={notes})")
 
         # failing method case (a method whose body exceeds method-limit)
         body = ["    public void Big() {"] + [
@@ -302,11 +295,7 @@ def _self_test() -> int:
                                            encoding="utf-8")
         rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                             DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
-        if any("F2" in r for r in rows):
-            print("  ok: F2 method-limit violation flagged")
-        else:
-            print(f"  ✗ F2 not flagged: {rows}")
-            failed = 1
+        st.ok(any("F2" in r for r in rows), f"F2 method-limit violation flagged (rows={rows})")
 
         # compose-root method: an AvaloniaHost file whose method exceeds
         # the tighter compose limit even though it is under the general one.
@@ -318,11 +307,7 @@ def _self_test() -> int:
                                               encoding="utf-8")
         rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                             DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
-        if any("F4" in r for r in rows):
-            print("  ok: F4 assembly-surface method violation flagged")
-        else:
-            print(f"  ✗ F4 not flagged: {rows}")
-            failed = 1
+        st.ok(any("F4" in r for r in rows), f"F4 assembly-surface method violation flagged (rows={rows})")
 
         # F3 set-total: compose-root files each under the per-file limit whose
         # SUM exceeds the set budget — the regression F3 exists to catch (per-file
@@ -335,26 +320,16 @@ def _self_test() -> int:
         (root / "Program.cs").write_text("\n".join(padded(250)) + "\n", encoding="utf-8")
         rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                             DEFAULT_COMPOSE_METHOD_LIMIT, DEFAULT_COMPOSE_TOTAL_LIMIT)
-        if any("F3" in r for r in rows) and not any("F1" in r and "App" in r for r in notes):
-            print("  ok: F3 assembly-surface root set-total violation flagged")
-        else:
-            print(f"  ✗ F3 not flagged (or F1 misfired): {rows} / {notes}")
-            failed = 1
+        st.ok(any("F3" in r for r in rows) and not any("F1" in r and "App" in r for r in notes),
+              f"F3 assembly-surface root set-total violation flagged (rows={rows} notes={notes})")
 
         # and the same set passing when the total is under budget
         rows, notes = _scan(root, DEFAULT_FILE_LIMIT, DEFAULT_METHOD_LIMIT,
                             DEFAULT_COMPOSE_METHOD_LIMIT, 700)
-        if not any("F3" in r for r in rows):
-            print("  ok: F3 passes under raised set budget")
-        else:
-            print(f"  ✗ F3 still flagged with raised budget: {rows}")
-            failed = 1
+        st.ok(not any("F3" in r for r in rows),
+              f"F3 passes under raised set budget (rows={rows})")
 
-    if failed == 0:
-        print("== verify-code-health self-test passed ==")
-    else:
-        print("== verify-code-health self-test failed ==", file=sys.stderr)
-    return failed
+    return st.finish("verify-code-health")
 
 
 def main() -> int:

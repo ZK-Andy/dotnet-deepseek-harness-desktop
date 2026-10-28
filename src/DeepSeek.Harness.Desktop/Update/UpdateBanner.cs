@@ -10,7 +10,7 @@ public static class UpdateBanner
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
     public static string ReadyScript(string version, UiLocale? uiLocale = null)
     {
-        string text = UiCopy.UpdateReadyText(version, uiLocale?.IsEnglish == true);
+        string text = UiCopy.UpdateReadyText(version, uiLocale?.Language ?? UiLocale.DefaultLanguage);
         return DesktopBanner.Build(
             DesktopBanner.UpdateReadyBannerId,
             text,

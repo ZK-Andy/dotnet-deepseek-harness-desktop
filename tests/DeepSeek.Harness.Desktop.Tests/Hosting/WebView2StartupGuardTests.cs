@@ -34,8 +34,8 @@ public class WebView2StartupGuardTests
 
         Assert.False(canStart);
         (string title, string message) = Assert.Single(harness.Dialogs);
-        Assert.Equal(UiCopy.WebView2MissingTitle(english: false), title);
-        Assert.Equal(UiCopy.WebView2MissingBody(english: false), message);
+        Assert.Equal(UiCopy.WebView2MissingTitle(lang: UiLanguage.Zh), title);
+        Assert.Equal(UiCopy.WebView2MissingBody(lang: UiLanguage.Zh), message);
         Assert.Equal(WebView2StartupGuard.DownloadPageUrl, Assert.Single(harness.Browser.Opened));
         Assert.Contains(harness.Log, line => line.Contains("缺少 WebView2 运行时", StringComparison.Ordinal));
     }
@@ -63,8 +63,8 @@ public class WebView2StartupGuardTests
 
         Assert.False(canStart);
         (string title, string message) = Assert.Single(harness.Dialogs);
-        Assert.Equal(UiCopy.WebView2MissingTitle(english: true), title);
-        Assert.Equal(UiCopy.WebView2MissingBody(english: true), message);
+        Assert.Equal(UiCopy.WebView2MissingTitle(lang: UiLanguage.En), title);
+        Assert.Equal(UiCopy.WebView2MissingBody(lang: UiLanguage.En), message);
         Assert.DoesNotContain("缺少 WebView2", message, StringComparison.Ordinal);
     }
 

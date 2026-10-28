@@ -44,11 +44,11 @@ internal static class WebView2StartupGuard
             return true;
         }
 
-        bool english = locale.IsEnglish;
+        UiLanguage lang = locale.Language;
         bool openDownloadPage;
         try
         {
-            openDownloadPage = askYes(UiCopy.WebView2MissingTitle(english), UiCopy.WebView2MissingBody(english));
+            openDownloadPage = askYes(UiCopy.WebView2MissingTitle(lang), UiCopy.WebView2MissingBody(lang));
         }
         catch (Exception ex)
         {

@@ -211,7 +211,8 @@ public class DshLoopbackProxyTests
 
     /// <summary>自循环 303 耗尽跳数即 loud 502，不把裸 3xx 交给页面。</summary>
     [Fact]
-    public async Task Proxy_RedirectLoop_StopsWith502()    {
+    public async Task Proxy_RedirectLoop_StopsWith502()
+    {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var stub = new StubDshHandler();
         var forward = new DshShellForward(stub, s_fast);

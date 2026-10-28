@@ -20,11 +20,11 @@ public class StartupFailureFaceTests
 
         Assert.Equal(1, harness.QuitCalls);
         (string title, string message) = Assert.Single(harness.Dialog.Shown);
-        Assert.Equal(UiCopy.StartupFailureTitle(english: false), title);
-        Assert.StartsWith(UiCopy.StartupFailureReason(english: false), message, StringComparison.Ordinal);
+        Assert.Equal(UiCopy.StartupFailureTitle(lang: UiLanguage.Zh), title);
+        Assert.StartsWith(UiCopy.StartupFailureReason(lang: UiLanguage.Zh), message, StringComparison.Ordinal);
         Assert.Contains("tail-line", message);
-        Assert.Contains(UiCopy.StartupFailureActions(english: false), message);
-        Assert.DoesNotContain(UiCopy.RecoveryDialogActions(english: false), message);
+        Assert.Contains(UiCopy.StartupFailureActions(lang: UiLanguage.Zh), message);
+        Assert.DoesNotContain(UiCopy.RecoveryDialogActions(lang: UiLanguage.Zh), message);
     }
 
     /// <summary>留在窗口：不做任何破坏性动作。</summary>
@@ -73,8 +73,8 @@ public class StartupFailureFaceTests
         await harness.CreateFace().ShowAsync(CancellationToken.None);
 
         (string title, string message) = Assert.Single(harness.Dialog.Shown);
-        Assert.Equal(UiCopy.StartupFailureTitle(english: true), title);
-        Assert.Contains(UiCopy.StartupFailureReason(english: true), message);
+        Assert.Equal(UiCopy.StartupFailureTitle(lang: UiLanguage.En), title);
+        Assert.Contains(UiCopy.StartupFailureReason(lang: UiLanguage.En), message);
         Assert.DoesNotContain("运行时未能启动", message);
     }
 

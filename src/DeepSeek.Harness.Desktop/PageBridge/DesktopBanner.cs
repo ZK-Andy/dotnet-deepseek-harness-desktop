@@ -64,7 +64,7 @@ public static class DesktopBanner
     /// 用户主动动作的结论横幅用 true：连续两次结论不同时是刷新而不是静默丢弃。</param>
     public static string Build(string id, string text, BannerTone tone, string? okLabel = null, bool replaceExisting = false)
     {
-        okLabel ??= UiCopy.OkLabel(english: false);
+        okLabel ??= UiCopy.OkLabel(UiLocale.DefaultLanguage);
         string buttonBackground = tone switch
         {
             BannerTone.Warn => "var(--dsw-alias-state-warn-primary,#b45309)",
@@ -102,10 +102,10 @@ public static class DesktopBanner
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
     public static string BuildVersionFloorBanner(string detectedVersion, UiLocale? uiLocale = null)
     {
-        bool english = uiLocale?.IsEnglish == true;
+        UiLanguage lang = uiLocale?.Language ?? UiLocale.DefaultLanguage;
         return Build(
             VersionFloorBannerId,
-            UiCopy.VersionFloorBannerText(detectedVersion, RuntimeVersionGate.MinimumVersion, english),
+            UiCopy.VersionFloorBannerText(detectedVersion, RuntimeVersionGate.MinimumVersion, lang),
             BannerTone.Warn,
             uiLocale?.OkLabel);
     }
@@ -115,10 +115,10 @@ public static class DesktopBanner
     /// <param name="uiLocale">UI 语言单点（可选，缺省中文，ADR host-ui-locale）。</param>
     public static string BuildUncleanExitBanner(UiLocale? uiLocale = null)
     {
-        bool english = uiLocale?.IsEnglish == true;
+        UiLanguage lang = uiLocale?.Language ?? UiLocale.DefaultLanguage;
         return Build(
             RunMarkerBannerId,
-            UiCopy.UncleanExitBannerText(english),
+            UiCopy.UncleanExitBannerText(lang),
             BannerTone.Neutral,
             uiLocale?.OkLabel);
     }

@@ -28,7 +28,9 @@ public sealed class OsLocaleProbe : IHostLocaleProbe
             string? value = _env(key);
             if (!string.IsNullOrWhiteSpace(value))
             {
-                return value;
+                // POSIX 形态（zh_CN.UTF-8）归一到 BCP 47（zh-CN）：语言单点与页面 html[lang]
+                // 都按 BCP 47 消费，原样传出会让 zh_CN 形态落进「未注册 locale」。
+                return ToBcp47(value);
             }
         }
 
@@ -41,5 +43,24 @@ public sealed class OsLocaleProbe : IHostLocaleProbe
             // CurrentUICulture 含非法中性文化名等边缘形态：回缺省
             return "zh-CN";
         }
+    }
+
+    /// <summary>POSIX locale（<c>zh_CN.UTF-8</c>）→ BCP 47（<c>zh-CN</c>）：丢修饰符、<c>_</c> 换 <c>-</c>。</summary>
+    /// <param name="value">环境变量原值。</param>
+    /// <returns>BCP 47 形态标记；形态不成立时原样返回（由消费方按未注册语言回落）。</returns>
+    private static string ToBcp47(string value)
+    {
+        string trimmed = value.Trim();
+        int modifier = trimmed.IndexOf('.', StringComparison.Ordinal);
+        if (modifier >= 0)
+        {
+            trimmed = trimmed[..modifier];
+        }
+
+        // C/POSIX 是「未设置」的正式取值，不是语言：交给消费方按未注册语言回落。
+        return string.Equals(trimmed, "C", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(trimmed, "POSIX", StringComparison.OrdinalIgnoreCase)
+            ? trimmed
+            : trimmed.Replace('_', '-');
     }
 }

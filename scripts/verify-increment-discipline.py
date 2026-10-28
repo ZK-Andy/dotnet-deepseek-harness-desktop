@@ -83,7 +83,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gate_common import (CSharpLineScanner, NEW_EXPR_RE, STATIC_ACCESS_RE,
-                          TYPE_DECL_RE)
+                          SelfTest, TYPE_DECL_RE)
 
 # Caps from the n=100 calibration (2026-09-28..2026-10-12, ADR
 # coupling-increment-baseline): near-p90 lines, unchanged when `--enforce`
@@ -427,36 +427,29 @@ def _check(m: dict, caps: dict) -> list[str]:
 
 
 def _self_test() -> int:
-    failed = 0
+    st = SelfTest()
 
     gross, top, fmax = _metrics("10\t2\ta.cs\n0\t30\tb.cs\n-\t-\tbin.dat\n")
-    if (gross, top, fmax) == (42, "a.cs", 8):
-        print("  ok: numstat gross/file-max (binary skipped)")
-    else:
-        print(f"  ✗ numstat: {(gross, top, fmax)}")
-        failed = 1
+    st.ok((gross, top, fmax) == (42, "a.cs", 8),
+          f"numstat gross/file-max, binary skipped: {(gross, top, fmax)}")
 
     # A file the diff adds is not file growth: only files present at BASE feed
     # file-max, while gross still counts every file (ADR increment-gate-enforce).
     args_all = _numstat_args(["diff", "--cached"])
     args_existing = _numstat_args(["diff", "--cached"], _EXISTING_DIFF_FILTER)
     args_new = _numstat_args(["diff", "--cached"], _NEW_DIFF_FILTER)
-    if (args_all == ["diff", "--cached", "--numstat"]
-            and args_existing == ["diff", "--cached", "--numstat", _EXISTING_DIFF_FILTER]
-            and args_new == ["diff", "--cached", "--numstat", _NEW_DIFF_FILTER]):
-        print("  ok: numstat args carry all/no/exact-add status filters")
-    else:
-        print(f"  ✗ numstat args: all={args_all} existing={args_existing} new={args_new}")
-        failed = 1
+    st.ok(args_all == ["diff", "--cached", "--numstat"]
+          and args_existing == ["diff", "--cached", "--numstat", _EXISTING_DIFF_FILTER]
+          and args_new == ["diff", "--cached", "--numstat", _NEW_DIFF_FILTER],
+          f"numstat args carry all/no/exact-add status filters: all={args_all} "
+          f"existing={args_existing} new={args_new}")
 
     sizes = _sizes("400\t0\tnew.py\n100\t20\texisting.py\n",
                    "100\t20\texisting.py\n",
                    "400\t0\tnew.py\n")
-    if sizes == (520, "existing.py", 80, "new.py", 400):
-        print("  ok: new-file net excluded from file-max, measured by newfile, kept in gross")
-    else:
-        print(f"  ✗ sizes: {sizes}")
-        failed = 1
+    st.ok(sizes == (520, "existing.py", 80, "new.py", 400),
+          "new-file net excluded from file-max, measured by newfile, kept in gross: "
+          f"{sizes}")
 
     # An untracked file is a whole-file addition: a trailing partial line still
     # counts, and binary follows git's sniff window (a NUL past the first 8000
@@ -470,11 +463,8 @@ def _self_test() -> int:
         late_nul.write_bytes(b"x\n" * 4000 + b"\0" + b"y\n" * 10)
         got = (_line_count(partial.read_bytes()), _line_count(binary.read_bytes()),
                _line_count(late_nul.read_bytes()))
-        if got == (2, None, 4010):
-            print("  ok: untracked line count (missing trailing newline / binary sniff window)")
-        else:
-            print(f"  ✗ untracked line count: {got} (want (2, None, 4010))")
-            failed = 1
+        st.ok(got == (2, None, 4010),
+              f"untracked line count (missing trailing newline / binary sniff window): {got}")
 
     # End-to-end on a throwaway repo: the real git path decides which files the
     # filter drops, so a dropped or inverted `--diff-filter` (lowercase letters
@@ -509,12 +499,10 @@ def _self_test() -> int:
         # old.txt +80 is the only pre-existing growth: new.py (added) and
         # rew.txt (added side of a rename split at <50% similarity) are out of
         # file-max and into newfile, whose max is new.py's whole 400 lines.
-        if (m["gross"], m["top_path"], m["file_max"], m["new_file_max"]) == (880, "old.txt", 80, 400):
-            print("  ok: e2e — added files and rename add-side feed newfile, not file-max")
-        else:
-            print(f"  ✗ e2e: gross={m['gross']} file_max={m['file_max']} top={m['top_path']} "
-                  f"new_max={m['new_file_max']} new_top={m['new_top_path']}")
-            failed = 1
+        st.ok((m["gross"], m["top_path"], m["file_max"], m["new_file_max"]) == (880, "old.txt", 80, 400),
+              "e2e — added files and rename add-side feed newfile, not file-max: "
+              f"gross={m['gross']} file_max={m['file_max']} top={m['top_path']} "
+              f"new_max={m['new_file_max']} new_top={m['new_top_path']}")
 
         # `git diff` cannot see untracked files: the default (worktree) moment
         # must add them or a fully unstaged batch reads low (ADR
@@ -531,15 +519,12 @@ def _self_test() -> int:
             staged = _measure("staged", "")
         finally:
             os.chdir(cwd)
-        if (worktree["gross"], worktree["file_max"]) == (1330, 80) and staged["gross"] == 880 \
-                and worktree["new_file_max"] == 450 \
-                and worktree["new_top_path"] == "untracked_extra.txt":
-            print("  ok: e2e — worktree moment adds untracked files into gross and newfile; staged does not")
-        else:
-            print(f"  ✗ e2e untracked: worktree={worktree['gross']}/+{worktree['file_max']}"
-                  f" staged={staged['gross']} new_max={worktree['new_file_max']}"
-                  f" new_top={worktree['new_top_path']}")
-            failed = 1
+        st.ok((worktree["gross"], worktree["file_max"]) == (1330, 80) and staged["gross"] == 880
+              and worktree["new_file_max"] == 450
+              and worktree["new_top_path"] == "untracked_extra.txt",
+              "e2e — worktree moment adds untracked files into gross and newfile; staged does not: "
+              f"worktree={worktree['gross']}/+{worktree['file_max']} staged={staged['gross']} "
+              f"new_max={worktree['new_file_max']} new_top={worktree['new_top_path']}")
 
         # An untracked section keeps its repo-relative key: an untracked
         # Infrastructure file is same-layer growth, not cross-layer fan-out
@@ -555,12 +540,9 @@ def _self_test() -> int:
             same_layer = _measure("worktree", "")
         finally:
             os.chdir(cwd)
-        if same_layer["fanout"] == 0:
-            print("  ok: e2e — untracked same-layer Infrastructure file is not fan-out")
-        else:
-            print(f"  ✗ e2e untracked same-layer fanout: {same_layer['fanout']}"
-                  f" {same_layer['fanout_examples']}")
-            failed = 1
+        st.ok(same_layer["fanout"] == 0,
+              "e2e — untracked same-layer Infrastructure file is not fan-out: "
+              f"{same_layer['fanout']} {same_layer['fanout_examples']}")
 
     inv = {"Engine"}
     n, _ = _fanout([("Shell/Bad.cs", ["var e = new Engine();",
@@ -571,53 +553,34 @@ def _self_test() -> int:
                                       "var x = new Other();"]),
                     ("src/DeepSeek.Harness.Desktop.Infrastructure/Inside.cs",
                      ["Engine.Shared();"])], inv)
-    if n == 2:
-        print("  ok: fanout counts cross-layer code only (comment/string/using/same-layer skipped)")
-    else:
-        print(f"  ✗ fanout counted {n}, want 2")
-        failed = 1
+    st.ok(n == 2, f"fanout counts cross-layer code only (comment/string/using/same-layer skipped): {n}")
 
     # One line can yield several refs; `+++i;`-shaped content survives.
     n, _ = _fanout([("Shell/Dense.cs", ["var e = new Engine(Engine.Default());",
                                         "++i;"])], {"Engine", "i"})
     sections = _plus_sections("diff --git a/f.cs b/f.cs\n+++ b/f.cs\n+++i;\n")
-    if n == 2 and sections == [("f.cs", ["++i;"])]:
-        print("  ok: multi-ref lines count per ref; `+++`-led content kept")
-    else:
-        print(f"  ✗ dense/header edge: n={n} sections={sections}")
-        failed = 1
+    st.ok(n == 2 and sections == [("f.cs", ["++i;"])],
+          f"multi-ref lines count per ref; `+++`-led content kept: n={n} sections={sections}")
 
     inv2 = _infra_inventory(Path("src/App.Infrastructure"), [
         ("src/App.Infrastructure/Platform/Fresh.cs", ["public sealed class Fresh { }"]),
         ("src/App.Core/Thing.cs", ["public sealed class Thing { }"]),
     ])
-    if "Fresh" in inv2 and "Thing" not in inv2:
-        print("  ok: in-diff declarations join the inventory from Infrastructure only")
-    else:
-        print(f"  ✗ inventory scope wrong: {sorted(inv2)}")
-        failed = 1
+    st.ok("Fresh" in inv2 and "Thing" not in inv2,
+          f"in-diff declarations join the inventory from Infrastructure only: {sorted(inv2)}")
 
     # CPM costs two lines per dependency; the cap counts ids, not lines.
-    if _packages(['    <PackageVersion Include="Some.Library" Version="1.0.0" />',
-                  '    <PackageReference Include="Some.Library" />']) == 1:
-        print("  ok: one dependency counted once across CPM's two lines")
-    else:
-        print("  ✗ CPM dependency double-counted")
-        failed = 1
-    if (_packages(['<PackageReference Include="A" />',
-                   '<PackageReference Include="B" />']) == 2
-            and _packages(['<PackageReference />']) == 1):
-        print("  ok: distinct ids counted separately; id-less lines still count")
-    else:
-        print("  ✗ package id counting wrong")
-        failed = 1
-    if _packages(['    <PackageReference Include="coverlet.collector">',
-                  '      <IncludeAssets>all</IncludeAssets>',
-                  '    </PackageReference>']) == 1:
-        print("  ok: multi-line element with children counts once (closing tag not matched)")
-    else:
-        print("  ✗ closing tag double-counted")
-        failed = 1
+    st.ok(_packages(['    <PackageVersion Include="Some.Library" Version="1.0.0" />',
+                     '    <PackageReference Include="Some.Library" />']) == 1,
+          "one dependency counted once across CPM's two lines")
+    st.ok(_packages(['<PackageReference Include="A" />',
+                     '<PackageReference Include="B" />']) == 2
+          and _packages(['<PackageReference />']) == 1,
+          "distinct ids counted separately; id-less lines still count")
+    st.ok(_packages(['    <PackageReference Include="coverlet.collector">',
+                     '      <IncludeAssets>all</IncludeAssets>',
+                     '    </PackageReference>']) == 1,
+          "multi-line element with children counts once (closing tag not matched)")
 
     m = {"gross": 700, "top_path": "a.cs",
          "file_max": 200, "new_top_path": "big-new.py", "new_file_max": 450,
@@ -625,41 +588,47 @@ def _self_test() -> int:
          "packages": 2}
     rows = _check(m, {"gross": 600, "file": 150, "newfile": 400, "fanout": 15,
                       "packages": 1})
-    if len(rows) == 6 and any("gross 700" in r for r in rows) \
-            and any("new-file-max +450" in r for r in rows):
-        print("  ok: all five caps flag")
-    else:
-        print(f"  ✗ caps: {rows}")
-        failed = 1
+    st.ok(len(rows) == 6 and any("gross 700" in r for r in rows)
+          and any("new-file-max +450" in r for r in rows),
+          f"all five caps flag: {rows}")
 
     ex = EXEMPT_RE.search("增量闸豁免：gross ≤ 600，fanout ≤ 15，packages ≤ 3")
     ex2 = EXEMPT_RE.search("增量闸豁免：gross ≤ 600，fanout ≤ 15")
-    if ex and ex.group(3) == "3" and ex.group(4) is None \
-            and ex2 and ex2.group(3) is None and ex2.group(4) is None:
-        print("  ok: exemption marker takes an optional packages cap")
-    else:
-        print(f"  ✗ exemption packages: {ex and ex.groups()} / {ex2 and ex2.groups()}")
-        failed = 1
+    st.ok(ex and ex.group(3) == "3" and ex.group(4) is None
+          and ex2 and ex2.group(3) is None and ex2.group(4) is None,
+          f"exemption marker takes an optional packages cap: {ex and ex.groups()} / {ex2 and ex2.groups()}")
 
     ex3 = EXEMPT_RE.search("增量闸豁免：gross ≤ 900，fanout ≤ 20，packages ≤ 3，newfile ≤ 500")
     ex4 = EXEMPT_RE.search("增量闸豁免：gross ≤ 900，fanout ≤ 20，newfile ≤ 500")
-    if ex3 and ex3.group(4) == "500" and ex4 and ex4.group(3) is None and ex4.group(4) == "500":
-        print("  ok: exemption marker takes an optional newfile cap (with or without packages)")
-    else:
-        print(f"  ✗ exemption newfile: {ex3 and ex3.groups()} / {ex4 and ex4.groups()}")
-        failed = 1
+    st.ok(ex3 and ex3.group(4) == "500" and ex4 and ex4.group(3) is None and ex4.group(4) == "500",
+          "exemption marker takes an optional newfile cap (with or without packages): "
+          f"{ex3 and ex3.groups()} / {ex4 and ex4.groups()}")
 
-    if failed == 0:
-        print("== verify-increment-discipline self-test passed ==")
-    else:
-        print("== verify-increment-discipline self-test failed ==", file=sys.stderr)
-    return failed
+    return st.finish("verify-increment-discipline")
 
 
 EXEMPT_RE = re.compile(
     r"增量闸豁免[：:]\s*gross\s*≤\s*(\d+)[，,]\s*fanout\s*≤\s*(\d+)"
     r"(?:[，,]\s*packages\s*≤\s*(\d+))?"
     r"(?:[，,]\s*newfile\s*≤\s*(\d+))?")
+
+
+def _auto_exemption(mode: str, since: str) -> dict | None:
+    """在本变更集内自动定位豁免依据：唯一一篇「新增行含豁免标记」的 ADR 才生效。
+
+    多篇命中即视为冲突并返回 None（宁可拦下，不让两份豁免互相叠加）。
+    """
+    candidates = []
+    for path in _changed_paths(mode, since):
+        if not path.startswith(".agents/notes/") or not path.endswith(".md"):
+            continue
+        if _exemption(path, mode, since) is not None:
+            candidates.append(path)
+    if len(candidates) == 1:
+        return _exemption(candidates[0], mode, since)
+    if len(candidates) > 1:
+        print(f"  exempt: 变更集内有 {len(candidates)} 篇 ADR 带豁免标记——不生效（一次只认一篇）")
+    return None
 
 
 def _exemption(adr: str, mode: str, since: str) -> dict | None:
@@ -688,11 +657,11 @@ def _exemption(adr: str, mode: str, since: str) -> dict | None:
     # per-cap same-line checks for packages/newfile).
     matched_line = next((ln for ln in text.splitlines() if EXEMPT_RE.search(ln)), "")
     if not marked or matched_line not in marked:
-        print("  exempt: 豁免标记行不在本次新增行内——不生效（旧标记随批次失效）")
+        print("  exempt: 豁免标记行不在本次新增行内——该路径不生效（旧标记随批次失效）；尝试回落")
         return None
     changed = _changed_paths(mode, since)
     if adr not in changed:
-        print(f"  exempt: {adr} 不在本次变更集内——豁免不生效")
+        print(f"  exempt: {adr} 不在本次变更集内——该路径不生效；尝试回落")
         return None
     return {"adr": adr, "gross": int(m.group(1)), "fanout": int(m.group(2)),
             "packages": int(m.group(3)) if m.group(3) else None,
@@ -715,8 +684,9 @@ def main() -> int:
     parser.add_argument("--enforce", action="store_true",
                         help="exit 1 on any OVER (default: report only)")
     parser.add_argument("--exempt", default="",
-                        help="豁免依据 ADR 路径：仅当该 ADR 处于本次变更集内且正文带"
+                        help="豁免依据 ADR 路径：该 ADR 处于本次变更集内且正文带"
                              "「增量闸豁免：gross ≤ N，fanout ≤ N，packages ≤ N，newfile ≤ N」标记时，按该标记放宽上限；"
+                             "该路径失效时回落到本变更集内唯一带标记的 ADR（钩子/CI 钉死路径与批次无关时仍能生效）；"
                              "批次落地后 ADR 进入基线，豁免自动失效（一次性）")
     args = parser.parse_args()
     mode = "staged" if args.staged else ("since" if args.since else "worktree")
@@ -730,7 +700,12 @@ def main() -> int:
     caps = {"gross": args.max_gross, "file": args.max_file,
             "newfile": args.max_new_file,
             "fanout": args.max_fanout, "packages": args.max_packages}
-    exempt = _exemption(args.exempt, mode, args.since)
+    # 豁免依据：先试用显式 --exempt 给的路径；该 ADR 不在本变更集内或没有新增标记行时
+    # （钩子/CI 钉死了别批的路径），回落到「本变更集内唯一一篇带标记的 ADR」——否则一次性
+    # 豁免对任何其它批都形同虚设。显式路径生效时仍以它为准。
+    exempt = _exemption(args.exempt, mode, args.since) if args.exempt else None
+    if exempt is None:
+        exempt = _auto_exemption(mode, args.since)
     if exempt:
         caps["gross"] = max(caps["gross"], exempt["gross"])
         caps["fanout"] = max(caps["fanout"], exempt["fanout"])

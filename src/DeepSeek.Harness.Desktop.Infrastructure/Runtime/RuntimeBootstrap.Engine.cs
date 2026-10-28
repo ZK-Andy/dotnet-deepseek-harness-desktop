@@ -52,13 +52,13 @@ public static partial class RuntimeBootstrap
     }
 
     private static async Task<(int Exit, string Stdout, string Stderr)> RunCaptureAsync(
-        Action<string> log, string exe, IReadOnlyList<string> args, bool english, CancellationToken ct)
+        Action<string> log, string exe, IReadOnlyList<string> args, UiLanguage lang, CancellationToken ct)
     {
         ProcessStartInfo psi = BuildCapturePsi(exe, args);
 
         log?.Invoke($"[bootstrap] run: {psi.FileName} {string.Join(' ', args)}");
         using Process p = Process.Start(psi)
-            ?? throw new InvalidOperationException(UiCopy.BootstrapProcessStartFailed(exe, english));
+            ?? throw new InvalidOperationException(UiCopy.BootstrapProcessStartFailed(exe, lang));
         // stdin 已重定向即关闭写端：子进程读到 EOF 而非阻塞等宿主（见 BuildCapturePsi）。
         p.StandardInput.Close();
         try
@@ -101,14 +101,14 @@ public static partial class RuntimeBootstrap
     /// 对齐 stderr 尾巴惯例）。行泵与整树击杀复用 <see cref="Plugins.PluginProcessRunner"/> 同语义。
     /// </summary>
     internal static async Task<(int Exit, string Stdout, string Stderr)> RunStreamingCaptureAsync(
-        Action<string> log, string exe, IReadOnlyList<string> args, bool english, CancellationToken ct)
+        Action<string> log, string exe, IReadOnlyList<string> args, UiLanguage lang, CancellationToken ct)
     {
         ProcessStartInfo psi = BuildCapturePsi(exe, args);
         string tag = Path.GetFileNameWithoutExtension(StripExtendedPrefix(exe));
 
         log?.Invoke($"[bootstrap] run: {psi.FileName} {string.Join(' ', args)}");
         using Process p = Process.Start(psi)
-            ?? throw new InvalidOperationException(UiCopy.BootstrapProcessStartFailed(exe, english));
+            ?? throw new InvalidOperationException(UiCopy.BootstrapProcessStartFailed(exe, lang));
         // stdin 已重定向即关闭写端：子进程读到 EOF 而非阻塞等宿主（见 BuildCapturePsi）。
         p.StandardInput.Close();
         var outSb = new StringBuilder();
@@ -172,12 +172,12 @@ public static partial class RuntimeBootstrap
     /// npm 前缀 bin 未进进程 PATH 时裸名在 CreateProcess 下不可解析，而垫片文件真实存在）。
     /// spawn 异常一律按验证失败处理进回退，不抛新异常面（run 36310235841 的 09:50:14 Win32Exception 实证）。</summary>
     internal static async Task<string?> VerifyDshAsync(
-        RuntimeBootstrapOptions options, NodeResult node, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
+        RuntimeBootstrapOptions options, NodeResult node, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, UiLanguage lang, CancellationToken ct)
     {
         DshCommand primary = DshCommandFor(null, ["--version"]);
         try
         {
-            (int exit, string? stdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
+            (int exit, string? stdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, lang, ct,
                 token => hooks.RunProcessAsync(primary.Exe, primary.Args, token)).ConfigureAwait(false);
             if (exit == 0 && RuntimeVersionGate.TryParseVersionOutput(stdout ?? string.Empty) is { } v)
             {
@@ -191,7 +191,7 @@ public static partial class RuntimeBootstrap
             report(new BootstrapProgress(BootstrapStep.VerifyDsh, $"PATH 直解失败（{ex.GetType().Name}），回退 npm 全局 bin 垫片直验"));
         }
 
-        return await TryVerifyDshViaNpmBinShimAsync(options, node, report, hooks, english, ct).ConfigureAwait(false);
+        return await TryVerifyDshViaNpmBinShimAsync(options, node, report, hooks, lang, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -201,7 +201,7 @@ public static partial class RuntimeBootstrap
     /// Spawn 自身抛错（缺文件/不可执行）同样返回 null——调用方统一走既有指引失败，不抛新异常面。
     /// </summary>
     internal static async Task<string?> TryVerifyDshViaNpmBinShimAsync(
-        RuntimeBootstrapOptions options, NodeResult node, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, bool english, CancellationToken ct)
+        RuntimeBootstrapOptions options, NodeResult node, Action<BootstrapProgress> report, RuntimeBootstrapHooks hooks, UiLanguage lang, CancellationToken ct)
     {
         string? binDir = await ResolveNpmGlobalBinDirAsync(node, hooks, ct).ConfigureAwait(false);
         string shim = DshShimPath(binDir);
@@ -213,7 +213,7 @@ public static partial class RuntimeBootstrap
         DshCommand cmd = DshCommandFor(binDir, ["--version"]);
         try
         {
-            (int shimExit, string? shimStdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, english, ct,
+            (int shimExit, string? shimStdout, string? _) = await WithStepTimeoutAsync(options.StepTimeoutMinutes, lang, ct,
                 token => hooks.RunProcessAsync(cmd.Exe, cmd.Args, token)).ConfigureAwait(false);
             string? shimVersion = RuntimeVersionGate.TryParseVersionOutput(shimStdout ?? string.Empty);
             if (shimExit != 0 || shimVersion is null)
@@ -234,13 +234,13 @@ public static partial class RuntimeBootstrap
 
     /// <summary>探测 PATH 上系统全局 node（取真实可执行路径）+ 其 npm-cli.js。全局 node 是那份唯一 dsh 的运行时，
     /// 桌面与终端共用（ADR simple-shell-single-global-dsh）。</summary>
-    private static async Task<(string? NodePath, string? NpmCli)> ProbeLocalNodeAsync(Action<string> log, bool english, CancellationToken ct)
+    private static async Task<(string? NodePath, string? NpmCli)> ProbeLocalNodeAsync(Action<string> log, UiLanguage lang, CancellationToken ct)
     {
         try
         {
             // 确认 node 可执行（--version 非零即视为不存在），并取真实路径（process.execPath），
             // npm-cli 紧邻 node 安装在发行包布局内。
-            (int exit, string? stdout, string _) = await RunCaptureAsync(log, "node", ["-e", "console.log(process.execPath)"], english, ct).ConfigureAwait(false);
+            (int exit, string? stdout, string _) = await RunCaptureAsync(log, "node", ["-e", "console.log(process.execPath)"], lang, ct).ConfigureAwait(false);
             if (exit != 0)
             {
                 return (null, null);
@@ -288,14 +288,14 @@ public static partial class RuntimeBootstrap
     }
 
     /// <summary>步骤级超时包装：应用退出（appCt）取消仍以 OCE 上抛；仅步超时转异常走失败重试页。</summary>
-    private static Task WithStepTimeoutAsync(int minutes, bool english, CancellationToken appCt, Func<CancellationToken, Task> action) =>
-        WithStepTimeoutAsync<object?>(minutes, english, appCt, async token =>
+    private static Task WithStepTimeoutAsync(int minutes, UiLanguage lang, CancellationToken appCt, Func<CancellationToken, Task> action) =>
+        WithStepTimeoutAsync<object?>(minutes, lang, appCt, async token =>
         {
             await action(token).ConfigureAwait(false);
             return null;
         });
 
-    private static async Task<T> WithStepTimeoutAsync<T>(int minutes, bool english, CancellationToken appCt, Func<CancellationToken, Task<T>> action)
+    private static async Task<T> WithStepTimeoutAsync<T>(int minutes, UiLanguage lang, CancellationToken appCt, Func<CancellationToken, Task<T>> action)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(appCt);
         cts.CancelAfter(TimeSpan.FromMinutes(minutes));
@@ -305,7 +305,7 @@ public static partial class RuntimeBootstrap
         }
         catch (OperationCanceledException) when (!appCt.IsCancellationRequested)
         {
-            throw new InvalidOperationException(UiCopy.BootstrapStepTimeout(minutes, english));
+            throw new InvalidOperationException(UiCopy.BootstrapStepTimeout(minutes, lang));
         }
     }
 

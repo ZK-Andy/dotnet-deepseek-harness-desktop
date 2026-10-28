@@ -68,8 +68,8 @@ internal sealed class InProcessFailureDialog : IFailureDialog
                 owner,
                 title,
                 message,
-                UiCopy.RecoveryExitButton(_locale.IsEnglish),
-                UiCopy.DialogStayLabel(_locale.IsEnglish)).ConfigureAwait(true);
+                UiCopy.RecoveryExitButton(_locale.Language),
+                UiCopy.DialogStayLabel(_locale.Language)).ConfigureAwait(true);
             completion.TrySetResult(quit);
         }
         catch (Exception ex)

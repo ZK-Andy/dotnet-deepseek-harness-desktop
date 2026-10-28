@@ -5,20 +5,20 @@ public class RecoveryDialogTextTests
 {
     /// <summary>正文载原因（开头）+ 尾部小节头与逐行尾部 + 导出路径 + 动作说明；英文分支不留中文。</summary>
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Build_CarriesReasonTailPathAndActions(bool english)
+    [InlineData(UiLanguage.Zh)]
+    [InlineData(UiLanguage.En)]
+    public void Build_CarriesReasonTailPathAndActions(UiLanguage lang)
     {
-        string reason = UiCopy.ReasonRuntimeCrashed(english);
-        string text = RecoveryDialogText.Build(reason, new[] { "line-1", "line-2" }, "/tmp/diag.zip", english);
+        string reason = UiCopy.ReasonRuntimeCrashed(lang);
+        string text = RecoveryDialogText.Build(reason, new[] { "line-1", "line-2" }, "/tmp/diag.zip", lang);
 
         Assert.StartsWith(reason, text, StringComparison.Ordinal);
-        Assert.Contains(UiCopy.RecoveryDialogTailHeading(english), text);
-        Assert.Contains(UiCopy.RecoveryDialogExportPrefix(english) + "/tmp/diag.zip", text);
-        Assert.Contains(UiCopy.RecoveryDialogActions(english), text);
+        Assert.Contains(UiCopy.RecoveryDialogTailHeading(lang), text);
+        Assert.Contains(UiCopy.RecoveryDialogExportPrefix(lang) + "/tmp/diag.zip", text);
+        Assert.Contains(UiCopy.RecoveryDialogActions(lang), text);
         Assert.Contains("line-1", text);
         Assert.Contains("line-2", text);
-        if (english)
+        if (lang != UiLanguage.Zh)
         {
             // 模态文本无渲染层：英文分支混入中文即缺译
             Assert.DoesNotContain("诊断包", text);
@@ -32,16 +32,16 @@ public class RecoveryDialogTextTests
     public void Build_WithoutExportAndCustomActions_OmitsExportAndUsesGivenActions()
     {
         string text = RecoveryDialogText.Build(
-            UiCopy.StartupFailureReason(english: false),
+            UiCopy.StartupFailureReason(lang: UiLanguage.Zh),
             Array.Empty<string>(),
             exportPath: null,
-            english: false,
-            actions: UiCopy.StartupFailureActions(english: false));
+            lang: UiLanguage.Zh,
+            actions: UiCopy.StartupFailureActions(lang: UiLanguage.Zh));
 
-        Assert.DoesNotContain(UiCopy.RecoveryDialogExportFailed(english: false), text);
-        Assert.DoesNotContain(UiCopy.RecoveryDialogExportPrefix(english: false), text);
-        Assert.Contains(UiCopy.StartupFailureActions(english: false), text);
-        Assert.DoesNotContain(UiCopy.RecoveryDialogActions(english: false), text);
+        Assert.DoesNotContain(UiCopy.RecoveryDialogExportFailed(lang: UiLanguage.Zh), text);
+        Assert.DoesNotContain(UiCopy.RecoveryDialogExportPrefix(lang: UiLanguage.Zh), text);
+        Assert.Contains(UiCopy.StartupFailureActions(lang: UiLanguage.Zh), text);
+        Assert.DoesNotContain(UiCopy.RecoveryDialogActions(lang: UiLanguage.Zh), text);
     }
 
     /// <summary>空尾部不出现尾部小节头、导出失败取失败文案；展示上限＝末 8 行 + 单行 160 字符裁剪
@@ -49,19 +49,19 @@ public class RecoveryDialogTextTests
     [Fact]
     public void Build_DegradesAndClips()
     {
-        string noTail = RecoveryDialogText.Build("原因", Array.Empty<string>(), "/tmp/diag.zip", english: false);
-        Assert.DoesNotContain(UiCopy.RecoveryDialogTailHeading(english: false), noTail);
-        string noExport = RecoveryDialogText.Build("原因", Array.Empty<string>(), string.Empty, english: false);
-        Assert.Contains(UiCopy.RecoveryDialogExportFailed(english: false), noExport);
-        Assert.DoesNotContain(UiCopy.RecoveryDialogExportPrefix(english: false), noExport);
+        string noTail = RecoveryDialogText.Build("原因", Array.Empty<string>(), "/tmp/diag.zip", lang: UiLanguage.Zh);
+        Assert.DoesNotContain(UiCopy.RecoveryDialogTailHeading(lang: UiLanguage.Zh), noTail);
+        string noExport = RecoveryDialogText.Build("原因", Array.Empty<string>(), string.Empty, lang: UiLanguage.Zh);
+        Assert.Contains(UiCopy.RecoveryDialogExportFailed(lang: UiLanguage.Zh), noExport);
+        Assert.DoesNotContain(UiCopy.RecoveryDialogExportPrefix(lang: UiLanguage.Zh), noExport);
 
         string[] tail = Enumerable.Range(1, 20).Select(i => $"line-{i}").ToArray();
-        string clippedTail = RecoveryDialogText.Build("原因", tail, string.Empty, english: false);
+        string clippedTail = RecoveryDialogText.Build("原因", tail, string.Empty, lang: UiLanguage.Zh);
         Assert.DoesNotContain("line-12", clippedTail);
         Assert.Contains("line-20", clippedTail);
 
         string longLine = new('x', 500);
-        string clippedLine = RecoveryDialogText.Build("原因", new[] { longLine }, string.Empty, english: false);
+        string clippedLine = RecoveryDialogText.Build("原因", new[] { longLine }, string.Empty, lang: UiLanguage.Zh);
         Assert.DoesNotContain(longLine, clippedLine);
         Assert.Contains(new string('x', 160), clippedLine);
     }
@@ -71,7 +71,7 @@ public class RecoveryDialogTextTests
     public void Build_CollapsesRepeatedTailLines()
     {
         string text = RecoveryDialogText.Build(
-            "原因", new[] { "a", "b", "a", "a", "c", "b" }, "/tmp/diag.zip", english: false);
+            "原因", new[] { "a", "b", "a", "a", "c", "b" }, "/tmp/diag.zip", lang: UiLanguage.Zh);
 
         Assert.Contains("a (×3)", text);
         Assert.Contains("b (×2)", text);
@@ -84,11 +84,11 @@ public class RecoveryDialogTextTests
     public void Build_FitsTailWithinBudgetNewestFirst()
     {
         string[] tail = Enumerable.Range(1, 8).Select(i => $"tail-{i}-" + new string('z', 150)).ToArray();
-        string text = RecoveryDialogText.Build("原因", tail, "/tmp/diag.zip", english: false);
+        string text = RecoveryDialogText.Build("原因", tail, "/tmp/diag.zip", lang: UiLanguage.Zh);
 
         Assert.True(text.Length <= 600);
         Assert.Contains("tail-8-", text);
         Assert.DoesNotContain("tail-1-", text);
-        Assert.Contains(UiCopy.RecoveryDialogTailHeading(english: false), text);
+        Assert.Contains(UiCopy.RecoveryDialogTailHeading(lang: UiLanguage.Zh), text);
     }
 }

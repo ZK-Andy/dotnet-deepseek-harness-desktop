@@ -39,20 +39,20 @@ internal static class PreBuildRegistration
     /// 页面反馈经 FirstBootUi 注入，宿主/窗口以提供者延迟供给（调用点均晚于赋值），UI 语言同样惰性
     /// （引导任务实际启动时求值）。</summary>
     /// <param name="hostProvider">宿主提供者（窗口/桥就绪后可用）。</param>
-    /// <param name="isEnglishProvider">UI 语言提供者（惰性求值）。</param>
+    /// <param name="languageProvider">UI 语言提供者（惰性求值）。</param>
     /// <param name="shared">装配期共享态（页面注入单点与超时家）。</param>
     /// <param name="scriptTargetProvider">页面脚本求值端口提供者（调用期取值；页面桥的惰性适配器）。</param>
     /// <returns>启动头部产出（引导服务 + 启动配置）。</returns>
     public static Preflight CreatePreflight(
         Func<HarnessRuntimeHost> hostProvider,
-        Func<bool> isEnglishProvider,
+        Func<UiLanguage> languageProvider,
         SharedState shared,
         Func<IWindowScriptTarget> scriptTargetProvider)
     {
         IFirstBootBootstrap bootstrap = new FirstBootBootstrapService(
             hostProvider,
             new FirstBootUi(scriptTargetProvider, shared.Pump),
-            isEnglishProvider,
+            languageProvider,
             shared.Timeouts,
             HostLog.Write);
         bootstrap.Resolve();

@@ -10,13 +10,13 @@ internal static class TrayCheckFeedback
 {
     /// <summary>检查结束态 → 通知正文；返回 null 表示此态不打扰。</summary>
     /// <param name="state">检查结束态。</param>
-    /// <param name="english">是否取英文分支（宿主 UI 语言单点）。</param>
-    public static string? Message(UpdateState state, bool english) => state.Status switch
+    /// <param name="lang">宿主 UI 语言单点。</param>
+    public static string? Message(UpdateState state, UiLanguage lang) => state.Status switch
     {
-        UpdateStatus.UpToDate => UiCopy.TrayCheckUpToDate(english),
-        UpdateStatus.Ready => UiCopy.TrayCheckReady(state.Version ?? string.Empty, english),
-        UpdateStatus.Error => UiCopy.TrayCheckFailedPrefix(english)
-            + (state.Message ?? UiCopy.RecoveryUnknownReason(english)),
+        UpdateStatus.UpToDate => UiCopy.TrayCheckUpToDate(lang),
+        UpdateStatus.Ready => UiCopy.TrayCheckReady(state.Version ?? string.Empty, lang),
+        UpdateStatus.Error => UiCopy.TrayCheckFailedPrefix(lang)
+            + (state.Message ?? UiCopy.RecoveryUnknownReason(lang)),
         _ => null,
     };
 }

@@ -100,7 +100,7 @@ public sealed class RuntimeSupervision
         }
 
         // 原因选择是域决策（UiCopy.RecoveryReason）；尾部截断数是展示面（在承载实现侧）。
-        string reason = UiCopy.RecoveryReason(isLockBlocked, _uiLocale.IsEnglish);
+        string reason = UiCopy.RecoveryReason(isLockBlocked, _uiLocale.Language);
         if (_surface.HasNativeChannel)
         {
             // 一周期一次（闩在 onRecovered 解锁）；上一个模态未处置完则不再叠新的（模态是阻塞原语，会占池线程）。

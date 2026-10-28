@@ -60,9 +60,9 @@ internal sealed class RecoverySurface : IRecoverySurface
         // 原因已由实现记日志（原生对话框正文只展示可读路径，不塞异常栈）。
         DiagnosticsExportOutcome diagnostics = _diagnosticsExport.Export();
         string message = RecoveryDialogText.Build(
-            reason, _host.StderrTail, diagnostics.Ok ? diagnostics.Path : string.Empty, _uiLocale.IsEnglish);
+            reason, _host.StderrTail, diagnostics.Ok ? diagnostics.Path : string.Empty, _uiLocale.Language);
         bool quit = await _dialog
-            .ConfirmAsync(UiCopy.RecoveryDialogTitle(_uiLocale.IsEnglish), message, ct)
+            .ConfirmAsync(UiCopy.RecoveryDialogTitle(_uiLocale.Language), message, ct)
             .ConfigureAwait(false);
         if (quit)
         {
@@ -75,7 +75,7 @@ internal sealed class RecoverySurface : IRecoverySurface
     {
         IReadOnlyList<string> tail = _host.StderrTail;
         _ = _scriptTarget.EvaluateAsync(
-            RecoveryPageBuilder.BuildScript(reason, tail.TakeLast(PageTailLines).ToList(), _uiLocale.IsEnglish),
+            RecoveryPageBuilder.BuildScript(reason, tail.TakeLast(PageTailLines).ToList(), _uiLocale.Language),
             CancellationToken.None);
         return ValueTask.CompletedTask;
     }

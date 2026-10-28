@@ -1,292 +1,113 @@
 namespace DeepSeek.Harness.Desktop.Core.Localization;
 
 /// <summary>
-/// 宿主 UI 文案单一词典（批次 A「表示先行」）：托盘菜单、横幅、恢复页、引导过渡页等
-/// <b>用户可见</b>文案的唯一家。随 locale 切换的文案以 <c>(english, zh)</c> 双参入口提供；
-/// 静态页（<c>wwwroot/index.html</c>）的中文文案以登记常量收容——词典是唯一事实源，
-/// <c>index.html</c> 是被门禁核对的消费方（<c>scripts/verify-ui-copy.py</c>：
-/// 消费文件不得再出现词典之外的 CJK 字面量）。
+/// 宿主 UI 文案单一词典：托盘菜单、横幅、恢复页、引导过渡页等
+/// <b>用户可见</b>文案的唯一家。随 locale 切换的文案以 <see cref="UiLanguage"/> 入口提供，
+/// 覆盖上游随包分发的八种语言（zh/en 基线 + ja/es/fr/de/ru/pt 语言包）；
+/// 静态页（<c>wwwroot/index.html</c>）的文案由页内 <c>var D</c> 表收容；词典是唯一事实源，
+/// <c>index.html</c> 与 <c>client.js</c> 是被门禁核对的消费方（<c>scripts/verify-ui-copy.py</c>）。
 /// host.log 诊断行不属 UI 文案，不入本词典。
-/// 覆盖面无批次遗留：托盘检查通知正文与引导失败 reason（<c>RuntimeBootstrap</c>）均在此，
-/// 引导页（<c>index.html</c>）的中英双语以 zh/en 成对常量登记——消费方与词典的每一侧都由
-/// 门禁核对（<c>index.html</c> 不得出现未登记文案，登记文案也不得从页面上消失）。
 /// </summary>
 /// <remarks>
-/// 词典选型（ADR review-to-machine-gates）：强类型静态类而非 resx——本壳仅中/英两分支、
-/// 由 <see cref="UiLocale.IsEnglish"/> 判定，resx 的卫星装配与 ResourceManager 文化链
-/// 对两分支场景是纯开销；强类型入口让编译器（而非字符串键）保证引用完整性。
+/// 词典选型（ADR review-to-machine-gates）：强类型静态类而非 resx——强类型入口让编译器
+/// （而非字符串键）保证引用完整性。八语言化（ADR ui-copy-eight-locales）后仍不引 resx：
+/// 语言集是封闭枚举，resx 的卫星装配与 ResourceManager 文化链对本场景是纯开销。
+/// 每条文案经 <see cref="Pick"/> 的<b>具名实参</b>列出八种语言：漏一种语言编译即失败，
+/// 不依赖测试兜底。
 /// </remarks>
 public static partial class UiCopy
 {
+    /// <summary>八语言选择器：具名实参强制每个调用点给全八种语言（漏一种即编译期报错）。</summary>
+    /// <param name="lang">目标语言。</param>
+    /// <param name="zh">简体中文。</param>
+    /// <param name="en">English。</param>
+    /// <param name="ja">日本語。</param>
+    /// <param name="es">Español。</param>
+    /// <param name="fr">Français。</param>
+    /// <param name="de">Deutsch。</param>
+    /// <param name="ru">Русский。</param>
+    /// <param name="pt">Português (Brasil)。</param>
+    /// <returns>对应语言的文案。</returns>
+    private static string Pick(
+        UiLanguage lang, string zh, string en, string ja, string es, string fr, string de, string ru, string pt) => lang switch
+        {
+            UiLanguage.Zh => zh,
+            UiLanguage.Ja => ja,
+            UiLanguage.Es => es,
+            UiLanguage.Fr => fr,
+            UiLanguage.De => de,
+            UiLanguage.Ru => ru,
+            UiLanguage.Pt => pt,
+            _ => en,
+        };
+
     // ======== 托盘菜单（TrayMenuActions） ========
 
     /// <summary>托盘：显示主窗。</summary>
-    public static string TrayShowMainWindow(bool english) => english ? "Show Main Window" : "显示主窗";
+    /// <param name="lang">目标语言。</param>
+    /// <returns>菜单项文案。</returns>
+    public static string TrayShowMainWindow(UiLanguage lang) => Pick(lang,
+        zh: "显示主窗", en: "Show Main Window", ja: "メインウィンドウを表示",
+        es: "Mostrar ventana principal", fr: "Afficher la fenêtre principale",
+        de: "Hauptfenster anzeigen", ru: "Показать главное окно", pt: "Mostrar janela principal");
 
     /// <summary>托盘：检查更新。</summary>
-    public static string TrayCheckForUpdates(bool english) => english ? "Check for Updates" : "检查更新";
+    /// <param name="lang">目标语言。</param>
+    /// <returns>菜单项文案。</returns>
+    public static string TrayCheckForUpdates(UiLanguage lang) => Pick(lang,
+        zh: "检查更新", en: "Check for Updates", ja: "更新を確認",
+        es: "Buscar actualizaciones", fr: "Rechercher des mises à jour",
+        de: "Nach Updates suchen", ru: "Проверить обновления", pt: "Verificar atualizações");
 
     /// <summary>托盘：退出。</summary>
-    public static string TrayQuit(bool english) => english ? "Quit" : "退出";
+    /// <param name="lang">目标语言。</param>
+    /// <returns>菜单项文案。</returns>
+    public static string TrayQuit(UiLanguage lang) => Pick(lang,
+        zh: "退出", en: "Quit", ja: "終了",
+        es: "Salir", fr: "Quitter",
+        de: "Beenden", ru: "Выход", pt: "Sair");
 
     /// <summary>托盘：重启应用。</summary>
-    public static string TrayRestart(bool english) => english ? "Restart" : "重启";
+    /// <param name="lang">目标语言。</param>
+    /// <returns>菜单项文案。</returns>
+    public static string TrayRestart(UiLanguage lang) => Pick(lang,
+        zh: "重启", en: "Restart", ja: "再起動",
+        es: "Reiniciar", fr: "Redémarrer",
+        de: "Neu starten", ru: "Перезапустить", pt: "Reiniciar");
 
     // ======== 托盘「检查更新」结果通知（TrayCheckFeedback） ========
 
     /// <summary>托盘通知：已是最新版本。</summary>
-    public static string TrayCheckUpToDate(bool english) => english ? "Already up to date" : "已是最新版本";
+    /// <param name="lang">目标语言。</param>
+    /// <returns>通知正文。</returns>
+    public static string TrayCheckUpToDate(UiLanguage lang) => Pick(lang,
+        zh: "已是最新版本", en: "Already up to date", ja: "最新バージョンです",
+        es: "Ya está actualizado", fr: "Déjà à jour",
+        de: "Bereits aktuell", ru: "Обновление не требуется", pt: "Já está atualizado");
 
     /// <summary>托盘通知：新版本就绪，可在设置页安装。</summary>
-    public static string TrayCheckReady(string version, bool english) => english
-        ? $"New version {version} is ready; install it in Settings → Desktop Settings."
-        : $"新版本 {version} 已就绪，可在 设置 → 桌面设置 安装";
+    /// <param name="version">新版本号。</param>
+    /// <param name="lang">目标语言。</param>
+    /// <returns>通知正文。</returns>
+    public static string TrayCheckReady(string version, UiLanguage lang) => string.Format(
+        System.Globalization.CultureInfo.InvariantCulture,
+        Pick(lang,
+            zh: "新版本 {0} 已就绪，可在 设置 → 桌面设置 安装",
+            en: "New version {0} is ready; install it in Settings → Desktop Settings.",
+            ja: "新しいバージョン {0} の準備ができました。設定 → デスクトップ設定 からインストールできます。",
+            es: "La nueva versión {0} está lista; instálela en Ajustes → Ajustes de escritorio.",
+            fr: "La nouvelle version {0} est prête ; installez-la dans Réglages → Réglages du bureau.",
+            de: "Die neue Version {0} ist bereit; installieren Sie sie unter Einstellungen → Desktop-Einstellungen.",
+            ru: "Новая версия {0} готова; установите её в разделе Настройки → Настройки рабочего стола.",
+            pt: "A nova versão {0} está pronta; instale-a em Configurações → Configurações da área de trabalho."),
+        version);
 
     /// <summary>托盘通知：检查更新失败前缀（后接原因）。</summary>
-    public static string TrayCheckFailedPrefix(bool english) => english ? "Update check failed: " : "检查更新失败：";
-
-    // ======== 引导失败原因（RuntimeBootstrap → wwwroot 引导页错误框） ========
-
-    /// <summary>引导：npm 装全局 dsh 需提升权限（附手动命令）。</summary>
-    public static string BootstrapNpmNeedsElevation(string dshSpec, string detail, bool english) => english
-        ? $"npm install needs elevated permissions. Run it manually in a terminal: sudo npm install -g {dshSpec} ({detail})"
-        : $"npm install 需要提升权限。请在终端手动执行：sudo npm install -g {dshSpec}（{detail}）";
-
-    /// <summary>引导：npm install 非零退出。</summary>
-    public static string BootstrapNpmFailed(int exit, string detail, bool english) => english
-        ? $"npm install failed with exit={exit}: {detail}"
-        : $"npm install 失败 exit={exit}：{detail}";
-
-    /// <summary>引导：装完仍解析不到全局 dsh 版本（PATH/前缀错位指引）。</summary>
-    public static string BootstrapDshUnresolved(string dshSpec, bool english) => english
-        ? $"Could not resolve the global dsh version after install ({dshSpec}). Make sure the npm global bin of that node (the bin under `npm config get prefix`) is on PATH, or run `npm install -g {dshSpec}` manually."
-        : $"安装后未能解析全局 dsh 版本（{dshSpec}）。请确认该 node 的 npm 全局 bin（`npm config get prefix` 下的 bin）已加入 PATH，或手动执行 `npm install -g {dshSpec}`。";
-
-    /// <summary>引导：DshSpec 非 registry 形态（caret range 等 pnpm 不支持形，ADR pnpm-caret-spec-rejection）。</summary>
-    public static string BootstrapInvalidDshSpec(string dshSpec, string reason, bool english) => english
-        ? $"Invalid DshSpec ({dshSpec}): {reason}. Use a registry spec like @deepseek-ai/dsh@next."
-        : $"DshSpec 非法（{dshSpec}）：{reason}。请用 registry 形态，如 @deepseek-ai/dsh@next。";
-
-    /// <summary>引导：当前平台无 Node 发行包坐标。</summary>
-    public static string BootstrapUnsupportedPlatform(bool english) => english
-        ? "No Node distribution archive coordinates for this platform"
-        : "当前平台无对应的 Node 发行包坐标（fail loud）";
-
-    /// <summary>引导：Node 发行包 SHA256 与官方摘要不符（安全中止）。</summary>
-    public static string BootstrapNodeHashMismatch(string expected, string actual, bool english) => english
-        ? $"Node distribution SHA256 mismatch (expected {expected}, actual {actual}); aborting for safety"
-        : $"Node 发行包 SHA256 不匹配（期望 {expected}，实际 {actual}），安全中止";
-
-    /// <summary>引导：Node 发行包解压后无内容目录。</summary>
-    public static string BootstrapNodeDistEmpty(bool english) => english
-        ? "Node distribution archive extracted no content directory"
-        : "Node 发行包解压结果无内容目录";
-
-    /// <summary>引导：Node 落位后入口缺失（布局异常）。</summary>
-    public static string BootstrapNodeEntryMissing(string prefix, bool english) => english
-        ? $"node entry missing after installing into the system-global {prefix} (layout anomaly)"
-        : $"node 装到系统全局 {prefix} 后入口缺失（布局异常）";
-
-    /// <summary>引导：系统全局 node 安装位不可写（权限不足，附管理员指引）。</summary>
-    public static string BootstrapNodeInstallDenied(string prefix, string detail, bool english) => english
-        ? $"Cannot write to the system-global node location {prefix} (permission denied: {detail}). Install Node.js with administrator rights (official installer at https://nodejs.org or your package manager), or grant write access to {prefix} and retry."
-        : $"无法写入系统全局 node 安装位 {prefix}（权限不足：{detail}）。请以管理员权限安装 Node.js（https://nodejs.org 官方安装包/系统包管理器），或放开 {prefix} 写入权限后重试。";
-
-    /// <summary>引导：nodejs.org index.json 解析不出最新 Node 版本。</summary>
-    public static string BootstrapNodeVersionUnresolved(bool english) => english
-        ? "Could not parse the latest Node version from the nodejs.org index.json"
-        : "无法从 nodejs.org index.json 解析最新 Node 版本";
-
-    /// <summary>引导：取官方 SHA256 摘要失败。</summary>
-    public static string BootstrapShasumsFetchFailed(string detail, bool english) => english
-        ? $"Failed to fetch the official Node distribution SHA256 digest: {detail}"
-        : $"获取 Node 发行包官方 SHA256 摘要失败：{detail}";
-
-    /// <summary>引导：SHASUMS256.txt 缺目标文件摘要（安全中止）。</summary>
-    public static string BootstrapShasumsMissing(string fileName, bool english) => english
-        ? $"SHASUMS256.txt has no digest for {fileName}; aborting for safety"
-        : $"SHASUMS256.txt 缺少 {fileName} 的摘要，安全中止";
-
-    /// <summary>引导：Node 发行包所有候选源下载失败。</summary>
-    public static string BootstrapNodeDownloadFailed(string failures, bool english) => english
-        ? $"Node distribution download: every candidate source failed ({failures})"
-        : $"Node 发行包下载：所有候选源均失败（{failures}）";
-
-    /// <summary>引导：tar 解压失败。</summary>
-    public static string BootstrapExtractFailed(int exit, string detail, bool english) => english
-        ? $"tar extraction failed with exit={exit}: {detail}"
-        : $"tar 解压失败 exit={exit}：{detail}";
-
-    /// <summary>引导：子进程启动失败。</summary>
-    public static string BootstrapProcessStartFailed(string exe, bool english) => english
-        ? $"Cannot start process {exe}"
-        : $"无法启动进程 {exe}";
-
-    /// <summary>引导：步骤级超时（网络停滞/资源受限，可重试）。</summary>
-    public static string BootstrapStepTimeout(int minutes, bool english) => english
-        ? $"Step timed out (>{minutes} min): the network stalled or resources are constrained — you can retry"
-        : $"步骤超时（>{minutes} 分钟），网络停滞或资源受限，可重试";
-
-    /// <summary>引导：失败但无原因文本时的兜底。</summary>
-    public static string BootstrapUnknownError(bool english) => english ? "Unknown error" : "未知错误";
-
-    /// <summary>引导：单一下载源失败明细（多源失败时逐条拼接的条目）。</summary>
-    public static string BootstrapDownloadSourceFailed(string url, string detail, bool english) => english
-        ? $"{url}: {detail}"
-        : $"{url}：{detail}";
-
-    // ======== 横幅（DesktopBanner / UpdateBanner / UiLocale） ========
-
-    /// <summary>横幅确认按钮（横幅共用，随当前 locale）。</summary>
-    public static string OkLabel(bool english) => english ? "OK" : "知道了";
-
-    /// <summary>自更新就绪横幅正文。</summary>
-    public static string UpdateReadyText(string version, bool english) => english
-        ? $"New version {version} is ready. Install it in Settings → Desktop Settings."
-        : "新版本 " + version + " 已就绪，可在 设置 → 桌面设置 中一键安装。";
-
-    /// <summary>dsh 版本底线横幅正文（检测版本低于底线）。</summary>
-    public static string VersionFloorBannerText(string detectedVersion, string minimumVersion, bool english) => english
-        ? $"Current dsh version {detectedVersion} is below the minimum supported by this desktop ({minimumVersion}); data or behavior may be incompatible. Upgrade dsh to the next channel."
-        : "当前 dsh 版本 " + detectedVersion +
-          " 低于桌面支持的最低版本 " + minimumVersion +
-          "，可能出现数据或行为不兼容；请升级 dsh 至 next 通道。";
-
-    /// <summary>非受控退出横幅正文。</summary>
-    public static string UncleanExitBannerText(bool english) => english
-        ? "The app did not exit cleanly last time (e.g. the process was killed). If it behaves oddly, export diagnostics in Settings."
-        : "上次运行未正常退出（如手动结束进程）。若应用行为异常，请在设置页导出诊断信息。";
-
-    // ======== 恢复页（RecoveryPageBuilder；原生对话框不可用时的回落承载面） ========
-
-    /// <summary>恢复页：导出诊断包按钮。</summary>
-    public static string RecoveryExportButton(bool english) => english ? "Export Diagnostics" : "导出诊断包";
-
-    /// <summary>恢复页：退出应用按钮。</summary>
-    public static string RecoveryExitButton(bool english) => english ? "Quit App" : "退出应用";
-
-    /// <summary>恢复页：自动重试说明行。</summary>
-    public static string RecoveryAutoRetryNote(bool english) => english
-        ? "Auto-retry in progress; this page will disappear once recovered."
-        : "系统正在自动重试；恢复后本页会自动消失。";
-
-    /// <summary>恢复页：导出中状态。</summary>
-    public static string RecoveryExporting(bool english) => english ? "Exporting…" : "正在导出…";
-
-    /// <summary>恢复页：已导出状态前缀（后接路径数据）。</summary>
-    public static string RecoveryExportedPrefix(bool english) => english ? "Exported: " : "已导出：";
-
-    /// <summary>恢复页：导出失败状态前缀（后接原因数据）。</summary>
-    public static string RecoveryExportFailedPrefix(bool english) => english ? "Export failed: " : "导出失败：";
-
-    /// <summary>恢复页：未知原因兜底。</summary>
-    public static string RecoveryUnknownReason(bool english) => english ? "unknown reason" : "未知原因";
-
-    /// <summary>恢复页：崩溃原因（宿主侧注入，随包英文文案）。</summary>
-    public static string ReasonRuntimeCrashed(bool english) => english
-        ? "The runtime process exited unexpectedly; restarting…"
-        : "运行时进程意外退出，正在自动重启";
-
-    /// <summary>恢复页：残留锁死原因（ADR residue-lock-fail-loud——残留占住文件/端口且无法安全回收，
-    /// 跳过重启防碰撞；用户手动结束残留进程后监督器下轮自动恢复）。</summary>
-    public static string ReasonDshResidueLocked(bool english) => english
-        ? "A leftover runtime process is holding files/ports and cannot be safely reaped; restart is paused to avoid a collision. End the leftover process and recovery will resume on its own."
-        : "检测到无法安全回收的残留运行时进程（占住文件/端口），已暂停自动重启以防冲突；手动结束残留进程后将自动恢复";
-
-    /// <summary>恢复页失败原因选择（域决策，ADR diag-masking-and-recovery-page）：残留锁死取锁文案，
-    /// 否则普通崩溃原因——选择口径单点，承载面只消费。</summary>
-    /// <param name="isLockBlocked">是否因残留锁死而跳过重启。</param>
-    /// <param name="english">是否取英文分支。</param>
-    /// <returns>与原因分支对应的文案。</returns>
-    public static string RecoveryReason(bool isLockBlocked, bool english) =>
-        isLockBlocked ? ReasonDshResidueLocked(english) : ReasonRuntimeCrashed(english);
-
-    // ======== 自绘标题栏（caption bar；PageBridge/CaptionBar + wwwroot/index.html 静态条同源）========
-    // 三个窗口按钮的可达名（aria-label）：按钮无可见文本（细线符号），读屏依赖此名；
-    // zh 侧同时登记 index.html 静态条的 aria 字面量，EN 侧进 index.html EN 字典（verify-ui-copy 双向核对）。
-
-    /// <summary>标题栏：最小化按钮可达名。</summary>
-    public const string CaptionMinimizeEn = "Minimize";
-
-    /// <summary>标题栏：最小化按钮可达名（zh）。</summary>
-    public const string CaptionMinimize = "最小化";
-
-    /// <summary>标题栏：最大化/还原按钮可达名。</summary>
-    public const string CaptionMaximizeEn = "Maximize";
-
-    /// <summary>标题栏：最大化/还原按钮可达名（zh）。</summary>
-    public const string CaptionMaximize = "最大化";
-
-    /// <summary>标题栏：关闭按钮可达名。</summary>
-    public const string CaptionCloseEn = "Close";
-
-    /// <summary>标题栏：关闭按钮可达名（zh）。</summary>
-    public const string CaptionClose = "关闭";
-
-    /// <summary>标题栏按钮可达名按宿主语言取值。</summary>
-    /// <param name="english">是否取英文分支。</param>
-    /// <returns>（最小化，最大化，关闭）三元组。</returns>
-    public static (string Minimize, string Maximize, string Close) CaptionButtonNames(bool english) => english
-        ? (CaptionMinimizeEn, CaptionMaximizeEn, CaptionCloseEn)
-        : (CaptionMinimize, CaptionMaximize, CaptionClose);
-
-    /// <summary>标题栏：绿灯按钮在 macOS 的可达名——macOS 绿灯是<i>原生全屏</i>语义（官方行为），
-    /// 非 macOS 仍走 <see cref="CaptionButtonNames"/> 的最大化/还原。不成对常量：index.html 的静态条
-    /// 三端统一为最大化语义（代理未起时的引导页），无 EN 字典对账对象。</summary>
-    /// <param name="english">是否取英文分支。</param>
-    /// <returns>绿灯按钮的可达名。</returns>
-    public static string CaptionFullscreenName(bool english) => english ? "Full Screen" : "全屏";
-
-    // ======== 静态引导页登记（wwwroot/index.html；zh 常量 + EN 字典，被 verify-ui-copy 双向核对） ========
-    // index.html 是静态文档，文案改动必须同步此登记（zh 字面量留在 HTML、英文收在 EN 字典），否则 verify-ui-copy 拦截。
-
-    /// <summary>引导页：确保系统全局 Node 步骤。</summary>
-    public const string IndexStepEnsureNode = "确保系统全局 Node";
-
-    /// <summary>引导页：npm 安装全局 dsh 步骤。</summary>
-    public const string IndexStepInstallDsh = "npm 安装全局 dsh（需联网）";
-
-    /// <summary>引导页：验证 dsh 版本步骤。</summary>
-    public const string IndexStepVerifyDsh = "验证 dsh 版本";
-
-    /// <summary>引导页：重试按钮。</summary>
-    public const string IndexBootRetry = "重试";
-
-    /// <summary>引导页：运行时未就绪回退行前段（后接 <c>&lt;code&gt;dsh web&lt;/code&gt;</c>）。</summary>
-    public const string IndexFallbackText = "运行时未就绪（";
-
-    /// <summary>引导页：运行时未就绪回退行尾段。</summary>
-    public const string IndexFallbackTextTail = "未在时限内给出 URL）。";
-
-    /// <summary>引导页：回退提示行前段（后接 <c>&lt;code&gt;DEEPSEEK_API_KEY&lt;/code&gt;</c>）。</summary>
-    public const string IndexFallbackHint = "请检查";
-
-    /// <summary>引导页：回退提示行尾。</summary>
-    public const string IndexFallbackHintTail = "与日志，或重启应用。";
-
-    // ---- 引导页英文侧（index.html 的 EN 字典；与上方 zh 常量一一对应） ----
-
-    /// <summary>引导页 EN：确保系统全局 Node 步骤。</summary>
-    public const string IndexStepEnsureNodeEn = "Ensure system-global Node";
-
-    /// <summary>引导页 EN：npm 安装全局 dsh 步骤。</summary>
-    public const string IndexStepInstallDshEn = "Install global dsh via npm (network required)";
-
-    /// <summary>引导页 EN：验证 dsh 版本步骤。</summary>
-    public const string IndexStepVerifyDshEn = "Verify dsh version";
-
-    /// <summary>引导页 EN：重试按钮。</summary>
-    public const string IndexBootRetryEn = "Retry";
-
-    /// <summary>引导页 EN：运行时未就绪回退行前段。</summary>
-    public const string IndexFallbackTextEn = "Runtime not ready (";
-
-    /// <summary>引导页 EN：运行时未就绪回退行尾段。</summary>
-    public const string IndexFallbackTextTailEn = "did not yield a URL in time).";
-
-    /// <summary>引导页 EN：回退提示行前段。</summary>
-    public const string IndexFallbackHintEn = "Check";
-
-    /// <summary>引导页 EN：回退提示行尾。</summary>
-    public const string IndexFallbackHintTailEn = "and the logs, or restart the app.";
+    /// <param name="lang">目标语言。</param>
+    /// <returns>前缀文案。</returns>
+    public static string TrayCheckFailedPrefix(UiLanguage lang) => Pick(lang,
+        zh: "检查更新失败：", en: "Update check failed: ", ja: "更新の確認に失敗しました：",
+        es: "Error al buscar actualizaciones: ", fr: "Échec de la recherche de mises à jour : ",
+        de: "Update-Prüfung fehlgeschlagen: ", ru: "Не удалось проверить обновления: ",
+        pt: "Falha ao verificar atualizações: ");
 }

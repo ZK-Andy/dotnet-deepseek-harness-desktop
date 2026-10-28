@@ -9,7 +9,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
 {
     private readonly Func<HarnessRuntimeHost> _host;
     private readonly IFirstBootUi _ui;
-    private readonly Func<bool> _isEnglish;
+    private readonly Func<UiLanguage> _language;
     private readonly Action<string> _log;
     private RuntimeBootstrapOptions _options = new();
     private readonly RuntimeTimeouts _timeouts;
@@ -21,20 +21,20 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
     /// <summary>创建首启引导服务。</summary>
     /// <param name="host">运行时宿主提供者（宿主在引导服务之后构造，故为惰性委托）。</param>
     /// <param name="ui">引导页反馈端口（实现侧注入）。</param>
-    /// <param name="isEnglish">失败文案是否取英文分支（惰性委托：宿主 UI 语言单点在装配面稍后构造，
+    /// <param name="language">失败文案取哪种语言（惰性委托：宿主 UI 语言单点在装配面稍后构造，
     /// 引导任务启动时已就绪——与 <paramref name="host"/> 同一延迟捕获理由）。</param>
     /// <param name="log">日志回调。</param>
     /// <param name="timeouts">运行时超时/重试配置（装配期唯一创建点传入，服务不再自行解析 appsettings）。</param>
     public FirstBootBootstrapService(
         Func<HarnessRuntimeHost> host,
         IFirstBootUi ui,
-        Func<bool> isEnglish,
+        Func<UiLanguage> language,
         RuntimeTimeouts timeouts,
         Action<string> log)
     {
         _host = host;
         _ui = ui;
-        _isEnglish = isEnglish;
+        _language = language;
         _timeouts = timeouts;
         _log = log;
     }
@@ -202,7 +202,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
             attempt++;
             Gate.Reset();
             // hooks 逐次构造：用户在失败等待期切换语言后重试，hooks 层文案与页面同取最新 locale
-            RuntimeBootstrapHooks hooks = RuntimeBootstrap.CreateDefaultHooks(_log, _isEnglish(), options);
+            RuntimeBootstrapHooks hooks = RuntimeBootstrap.CreateDefaultHooks(_log, _language(), options);
             // ②冒烟信号契约：`引导开始：` 子串必须保留（smoke-install-*.sh 的 BOOT_RE 锚定它）。
             _log.Invoke($"[bootstrap] 引导开始：第 {attempt} 次尝试，dshSpec={options.DshSpec}（用系统全局 node 的 npm 装到全局）");
             var attemptTimer = System.Diagnostics.Stopwatch.StartNew();
@@ -218,7 +218,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
                         _ = _ui.BootstrapStepAsync(progress.Step, progress.Message, progress.Failed);
                     },
                     hooks,
-                    _isEnglish(),
+                    _language(),
                     ct);
             }
             catch (OperationCanceledException)
@@ -232,7 +232,7 @@ public sealed class FirstBootBootstrapService : IFirstBootBootstrap
                 return version;
             }
 
-            string reason = outcome.Error ?? UiCopy.BootstrapUnknownError(_isEnglish());
+            string reason = outcome.Error ?? UiCopy.BootstrapUnknownError(_language());
             _log.Invoke($"[bootstrap] 引导失败（第 {attempt} 次，耗时 {attemptTimer.Elapsed.TotalSeconds:0}s）：{reason}（等待用户重试或退出）");
             // 推实际失败步骤：进度页据此红色高亮失败环节（推 "Ready" 会让高亮不可达）
             await _ui.BootstrapStepAsync(outcome.Step, reason, failed: true);

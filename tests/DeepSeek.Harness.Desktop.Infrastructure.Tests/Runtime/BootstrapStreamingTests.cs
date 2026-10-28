@@ -43,7 +43,7 @@ public class BootstrapStreamingTests
     public async Task DefaultHooks_RunProcess_StreamsLinesToLog()
     {
         List<string> lines = [];
-        RuntimeBootstrapHooks hooks = RuntimeBootstrap.CreateDefaultHooks(lines.Add, english: false, new RuntimeBootstrapOptions());
+        RuntimeBootstrapHooks hooks = RuntimeBootstrap.CreateDefaultHooks(lines.Add, lang: UiLanguage.Zh, new RuntimeBootstrapOptions());
         (int exit, string? stdout, string? _) = await hooks.RunProcessAsync("dotnet", ["--version"], CancellationToken.None);
         Assert.Equal(0, exit);
         Assert.NotNull(stdout);

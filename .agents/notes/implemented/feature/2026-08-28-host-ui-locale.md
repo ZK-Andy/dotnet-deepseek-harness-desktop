@@ -13,8 +13,8 @@ companion 客户端已接入 dsh i18n（中⇄英随语言切换），但宿主�
 宿主建立**UiLocale 单点**（`Core/Localization/UiLocale`），语言值经 dsh→companion→宿主单向桥接：
 
 - **locale 源**：dsh locale runtime 在插件激活与每次切换时把 `<html lang>` 指向当前 locale（`zh-CN`/`en`，上游已实证的行为）——companion `client.js` 以 MutationObserver 监听 `html[lang]`，经既有 `window.__ryn.invoke` 通道上报 `desktop.companion.setLocale {locale}`；不上报业务状态，宿主不反向依赖 dsh 内部 API。
-- **宿主单点**：`UiLocale` 保存当前 locale（初始值 = 上次上报的持久值 → OS locale 兜底；companion 每次上报即更新并按 `IUiLocaleStore` 落盘，见 ADR [ui-copy-bilingual-completion](2026-09-16-ui-copy-bilingual-completion.md)），`IsEnglish` 派生（非 `en*` 一律按中文——对齐 dsh 字典查找链 ns → common → en 的兜底方向）；locale 变更事件驱动托盘菜单重建。
-- **托盘**：`TrayMenuActions.BuildItems` 出 zh/en 双字典标签；`UiLocale.Changed` 订阅（Program 接线）调 `TrayService.SetMenu` 重建——Ryn 菜单 API 原生支持运行时重建（先例：启动期 SetMenu），无上游改动。
+- **宿主单点**：`UiLocale` 保存当前 locale（初始值 = 上次上报的持久值 → OS locale 兜底；companion 每次上报即更新并按 `IUiLocaleStore` 落盘，见 ADR [ui-copy-bilingual-completion](2026-09-16-ui-copy-bilingual-completion.md)），`Language` 由 `UiLanguageResolver` 从 locale 主语言子标签派生（八语言封闭集，未注册语言回落英文——与上游 `FALLBACK_LOCALE` 同向，见 ADR [ui-copy-eight-locales](2026-10-28-ui-copy-eight-locales.md)）；locale 变更事件驱动托盘菜单重建。
+- **托盘**：`TrayMenuActions.BuildEntries` 出八语言标签（经 `UiCopy` 的 `UiLanguage` 入口）；`UiLocale.Changed` 由 `TrayMenuRebuild` 订阅并按当前语言重建菜单。
 - **横幅**：三类横幅文案 + 「知道了」按钮进 `DesktopBanner` 注入时刻的 locale 选择（横幅是一次性注入，无运行时切换面）；`DesktopBanner.Build` 增按钮文案参数。
 
 ## Alternatives considered
@@ -31,7 +31,7 @@ companion 客户端已接入 dsh i18n（中⇄英随语言切换），但宿主�
 
 ### Testing
 
-`UiLocaleTests`（归一化/事件/IsEnglish）、`CompanionLocaleCommandRouterTests`（合法上报更新/坏 JSON 与非法 locale 忽略/触发 Changed）、`TrayMenuActions` 双语标签与缺省、三类横幅英文文案断言。Program 的 `Changed`→`SetMenu` 重建路径不单测（Main 编排历来不单测），随下次发版实机验收：dsh 切英文 → 托盘菜单变英文。
+`UiLocaleTests`（归一化/事件/`Language` 八语言解析与未注册回落）、`CompanionLocaleCommandRouterTests`（合法上报更新/坏 JSON 与非法 locale 忽略/触发 Changed）、托盘菜单条目随语言重建、三类横幅文案的语言分支断言。Program 的 `Changed`→`SetMenu` 重建路径不单测（Main 编排历来不单测），随下次发版实机验收：dsh 切英文 → 托盘菜单变英文。
 
 ### Related
 

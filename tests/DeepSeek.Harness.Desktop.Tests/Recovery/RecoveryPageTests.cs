@@ -9,7 +9,7 @@ public class RecoveryPageBuilderTests
     [Fact]
     public void Script_ContainsSkeleton_Buttons_AndPayload()
     {
-        string script = RecoveryPageBuilder.BuildScript("运行时进程意外退出", new[] { "line-1", "line-2" }, english: false);
+        string script = RecoveryPageBuilder.BuildScript("运行时进程意外退出", new[] { "line-1", "line-2" }, lang: UiLanguage.Zh);
 
         Assert.Contains("ddc-reason", script);
         Assert.Contains("ddc-tail", script);
@@ -20,12 +20,24 @@ public class RecoveryPageBuilderTests
         Assert.Contains("\\u8FD0\\u884C\\u65F6", script); // reason 经 JSON 序列化（非 ASCII 转义）
     }
 
+    /// <summary>法语词条含 ASCII 撇号（Échec de l&#39;exportation）：文案必须以 JSON 字面量嵌入，
+    /// 手拼单引号会让整段注入脚本解析失败、导出按钮整条不接线。</summary>
+    [Fact]
+    public void French_ApostropheInCopy_StaysInsideJsonLiteral()
+    {
+        string script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>(), lang: UiLanguage.Fr);
+
+        // 词典里的撇号在脚本里只能是转义形态，不得出现裸的 'l'exportation'
+        Assert.DoesNotContain("l'exportation", script);
+        Assert.Contains("l\\u0027exportation", script, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>验证恶意 stderr 行以 JSON 转义形态（&lt; → \u003C）落地、无裸 &lt;script&gt;，且数据回填走 textContent 而非 innerHTML。</summary>
     [Fact]
     public void StderrLines_Escaped_NotRawHtml_InjectionSafe()
     {
         const string evil = "</div><script>alert(1)</script><img src=x onerror=alert(2)>";
-        string script = RecoveryPageBuilder.BuildScript("reason", new[] { evil }, english: false);
+        string script = RecoveryPageBuilder.BuildScript("reason", new[] { evil }, lang: UiLanguage.Zh);
 
         // 恶意行必须以 JSON 字符串转义形态存在（< → \u003C），不存在裸 <script>
         Assert.DoesNotContain("<script>alert(1)</script>", script);
@@ -39,7 +51,7 @@ public class RecoveryPageBuilderTests
     [Fact]
     public void EmptyTail_TailHidden_NoCrash()
     {
-        string script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>(), english: false);
+        string script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>(), lang: UiLanguage.Zh);
 
         Assert.Contains("D.tail&&D.tail.length", script);
     }
@@ -48,7 +60,7 @@ public class RecoveryPageBuilderTests
     [Fact]
     public void Script_InvokesShellBridge()
     {
-        string script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>(), english: false);
+        string script = RecoveryPageBuilder.BuildScript("reason", Array.Empty<string>(), lang: UiLanguage.Zh);
 
         Assert.Contains("window.__shell", script);
         Assert.DoesNotContain("window.__ryn", script);
@@ -56,11 +68,11 @@ public class RecoveryPageBuilderTests
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(script, HostCommandIds.RecoveryExit));
     }
 
-    /// <summary>验证 english=true 时整页文案取英文分支（按钮/重试说明/导出状态，不留中文半面）。</summary>
+    /// <summary>验证 lang=true 时整页文案取英文分支（按钮/重试说明/导出状态，不留中文半面）。</summary>
     [Fact]
     public void English_BuildScript_UsesEnglishCopy()
     {
-        string script = RecoveryPageBuilder.BuildScript("runtime crashed", Array.Empty<string>(), english: true);
+        string script = RecoveryPageBuilder.BuildScript("runtime crashed", Array.Empty<string>(), lang: UiLanguage.En);
 
         Assert.Contains("Export Diagnostics", script);
         Assert.Contains("Quit App", script);
@@ -72,11 +84,11 @@ public class RecoveryPageBuilderTests
     [Fact]
     public void ResidueLockedReason_Escaped_Payload_Bilingual()
     {
-        string script = RecoveryPageBuilder.BuildScript(UiCopy.ReasonDshResidueLocked(english: false), Array.Empty<string>(), english: false);
+        string script = RecoveryPageBuilder.BuildScript(UiCopy.ReasonDshResidueLocked(lang: UiLanguage.Zh), Array.Empty<string>(), lang: UiLanguage.Zh);
 
         Assert.Contains("u6B8B", script, StringComparison.OrdinalIgnoreCase); // “残”字转义，中文以 JSON 形态落地
 
-        string en = RecoveryPageBuilder.BuildScript(UiCopy.ReasonDshResidueLocked(english: true), Array.Empty<string>(), english: true);
+        string en = RecoveryPageBuilder.BuildScript(UiCopy.ReasonDshResidueLocked(lang: UiLanguage.En), Array.Empty<string>(), lang: UiLanguage.En);
 
         Assert.Contains("cannot be safely reaped", en);
         Assert.DoesNotContain("残留", en);

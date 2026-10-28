@@ -41,7 +41,7 @@ internal static class AvaloniaHost
             // 引导进度经页面桥求值端口推送——桥在代理绑定后构造，提供者到推送时才取值（调用点晚于建窗）。
             Preflight preflight = PreBuildRegistration.CreatePreflight(
                 () => host,
-                () => shared.UiLocale.IsEnglish,
+                () => shared.UiLocale.Language,
                 shared,
                 () => bridgeHost?.ScriptTarget ?? throw new InvalidOperationException("页面桥尚未装配"));
 

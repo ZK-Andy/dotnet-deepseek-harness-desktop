@@ -141,30 +141,38 @@ public class CaptionBarTests
         Assert.DoesNotContain("innerHTML='<", script, StringComparison.Ordinal);
     }
 
-    /// <summary>可达名：两套语言都进脚本、执行期按 <c>html[lang]</c> 现取（注册式脚本由引擎在<b>每次页面
-    /// 加载</b>时执行，构建期语言不再是执行期语言）；<c>html[lang]</c> 缺失时回落宿主当时 locale——该参数的
-    /// 真实作用点就是这一处回落布尔（英文集恒在脚本里，故「含 Minimize」不再能判 locale）。字面量单一
-    /// 事实源仍是 UiCopy：中文经 JsString 转义，不以裸 CJK 出现。</summary>
-    /// <param name="hostEnglish">宿主 locale 是否英文（null locale 即缺省中文）。</param>
-    /// <param name="hostFallback">期望写进脚本的回落布尔字面量。</param>
+    /// <summary>可达名：八语言都进脚本、执行期按 <c>html[lang]</c> 现取（注册式脚本由引擎在<b>每次页面
+    /// 加载</b>时执行，构建期语言不再是执行期语言）；<c>html[lang]</c> 缺失时回落宿主构建期语言——
+    /// 该参数的真实作用点就是链尾那一项回落键。字面量单一事实源仍是 UiCopy：中文经 JsString 转义，
+    /// 不以裸 CJK 出现。</summary>
+    /// <param name="hostLocale">宿主 locale（null 即未设，按缺省中文）。</param>
+    /// <param name="hostFallback">期望写进脚本的回落键。</param>
     [Theory]
-    [InlineData(false, "false")]
-    [InlineData(true, "true")]
-    public void Build_AriaLabels_TwoLocaleSetsWithDocumentPick(bool hostEnglish, string hostFallback)
+    [InlineData(null, "zh")]
+    [InlineData("en", "en")]
+    [InlineData("ja", "ja")]
+    public void Build_AriaLabels_EightLocaleTablesWithDocumentPick(string? hostLocale, string hostFallback)
     {
         UiLocale? locale = null;
-        if (hostEnglish)
+        if (hostLocale is not null)
         {
             locale = new UiLocale();
-            locale.Set("en");
+            locale.Set(hostLocale);
         }
 
         string script = CaptionBar.Build(52, locale);
-        Assert.Contains("var L={zh:[", script, StringComparison.Ordinal);
-        Assert.Contains("en:[", script, StringComparison.Ordinal);
+        // 八语言表键全部在位（TableKey 由枚举成员名派生，改名会让页面索引静默落空）。
+        foreach (string key in new[] { "zh", "en", "ja", "es", "fr", "de", "ru", "pt" })
+        {
+            Assert.Contains($"\"{key}\":[", script, StringComparison.Ordinal);
+        }
         Assert.Contains("Minimize", script, StringComparison.Ordinal);
         Assert.Contains("var lg=document.documentElement.lang||'';", script, StringComparison.Ordinal);
-        Assert.Contains($"indexOf('en')===0):{hostFallback})?L.en:L.zh;", script, StringComparison.Ordinal);
+        // 分隔符与页面侧一致（-/_/.）：只按 '-' 切会把 POSIX 形态整串当主标签。
+        Assert.Contains("var k=lg.split(/[-_.]/)[0].toLowerCase();", script, StringComparison.Ordinal);
+        // 回落两段：文档有语言但未注册 → en；文档根本没给语言（k 为空）→ 宿主构建期语言。
+        // 旧形态 `L[k]||L.en||L[fb]` 的第三段恒不可达（L.en 恒存在），故此处钉的是可达形态。
+        Assert.Contains($"var names=L[k]||(k?L.en:L[\"{hostFallback}\"]);", script, StringComparison.Ordinal);
         // 中文可达名经 JsString 转义（「最」= U+6700）——构建期不落裸 CJK 字面量
         Assert.DoesNotContain("最小化", script, StringComparison.Ordinal);
         Assert.DoesNotContain("关闭", script, StringComparison.Ordinal);

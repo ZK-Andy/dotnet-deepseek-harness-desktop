@@ -200,7 +200,7 @@ public class RuntimeSupervisionTests
 
         Assert.Equal("http://127.0.0.1:6666", revalidated.Authority);
         Assert.Equal(1, mint.Invalidations);
-        Assert.Equal([UiCopy.ReasonRuntimeCrashed(false)], surface.NativeReasons);
+        Assert.Equal([UiCopy.ReasonRuntimeCrashed(UiLanguage.Zh)], surface.NativeReasons);
         Assert.Empty(surface.PageReasons);
         Assert.False(navigator.Navigated.Task.IsCompleted);
 
@@ -220,7 +220,7 @@ public class RuntimeSupervisionTests
         Task task = Create(new FakeBootstrap(), surface, mint, new FakeNavigator(), stuckThreshold: 1).RunAsync(host, cts.Token);
         await surface.Shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Equal([UiCopy.ReasonDshResidueLocked(false)], surface.NativeReasons);
+        Assert.Equal([UiCopy.ReasonDshResidueLocked(UiLanguage.Zh)], surface.NativeReasons);
         Assert.Equal(0, host.RestartCalls);
         Assert.False(mint.Revalidated.Task.IsCompleted);
 
@@ -242,7 +242,7 @@ public class RuntimeSupervisionTests
         Uri target = await navigator.Navigated.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(s_proxyUrl, target);
-        Assert.Equal([UiCopy.ReasonRuntimeCrashed(false)], surface.PageReasons);
+        Assert.Equal([UiCopy.ReasonRuntimeCrashed(UiLanguage.Zh)], surface.PageReasons);
         Assert.Empty(surface.NativeReasons);
         await mint.Revalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -264,7 +264,7 @@ public class RuntimeSupervisionTests
         Uri target = await navigator.Navigated.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(s_proxyUrl, target);
-        Assert.Equal([UiCopy.ReasonRuntimeCrashed(false)], surface.PageReasons);
+        Assert.Equal([UiCopy.ReasonRuntimeCrashed(UiLanguage.Zh)], surface.PageReasons);
 
         cts.Cancel();
         await task.WaitAsync(TimeSpan.FromSeconds(5));

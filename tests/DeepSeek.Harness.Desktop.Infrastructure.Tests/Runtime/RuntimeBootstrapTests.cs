@@ -198,7 +198,7 @@ public class RuntimeBootstrapTests
             new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" },
             progress.Add,
             hooks,
-            english: false,
+            lang: UiLanguage.Zh,
             CancellationToken.None);
 
         Assert.True(outcome.Success, outcome.Error);
@@ -218,7 +218,7 @@ public class RuntimeBootstrapTests
             new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" },
             _ => { },
             hooks,
-            english: false,
+            lang: UiLanguage.Zh,
             CancellationToken.None);
 
         Assert.True(outcome.Success, outcome.Error);
@@ -233,7 +233,7 @@ public class RuntimeBootstrapTests
     public async Task RunAsync_NpmInstallFails_FailsLoudWithStderr()
     {
         (RuntimeBootstrapHooks hooks, _) = GlobalNodeHooks(installResult: (1, "E404: not found"));
-        BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), _ => { }, hooks, english: false, CancellationToken.None);
+        BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), _ => { }, hooks, lang: UiLanguage.Zh, CancellationToken.None);
         Assert.False(outcome.Success);
         Assert.Equal(BootstrapStep.InstallDsh, outcome.Step);
         Assert.Contains("E404", outcome.Error);
@@ -245,7 +245,7 @@ public class RuntimeBootstrapTests
     {
         (RuntimeBootstrapHooks hooks, _) = GlobalNodeHooks(installResult: (1, "npm error code EACCES: permission denied"));
         BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" }, _ => { }, hooks, english: false, CancellationToken.None);
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" }, _ => { }, hooks, lang: UiLanguage.Zh, CancellationToken.None);
         Assert.False(outcome.Success);
         Assert.Equal(BootstrapStep.InstallDsh, outcome.Step);
         Assert.Contains("sudo npm install -g @deepseek-ai/dsh@next", outcome.Error);
@@ -257,7 +257,7 @@ public class RuntimeBootstrapTests
     {
         (RuntimeBootstrapHooks hooks, List<string> calls) = GlobalNodeHooks();
         BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@^0.1.2" }, _ => { }, hooks, english: false, CancellationToken.None);
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@^0.1.2" }, _ => { }, hooks, lang: UiLanguage.Zh, CancellationToken.None);
         Assert.False(outcome.Success);
         Assert.Equal(BootstrapStep.InstallDsh, outcome.Step);
         Assert.Contains("ERR_PNPM_SPEC_NOT_SUPPORTED", outcome.Error);
@@ -265,7 +265,7 @@ public class RuntimeBootstrapTests
 
         (RuntimeBootstrapHooks enHooks, _) = GlobalNodeHooks();
         BootstrapOutcome en = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@^0.1.2" }, _ => { }, enHooks, english: true, CancellationToken.None);
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@^0.1.2" }, _ => { }, enHooks, lang: UiLanguage.En, CancellationToken.None);
         Assert.Contains("Invalid DshSpec", en.Error);
         Assert.DoesNotContain("非法", en.Error);
     }
@@ -275,7 +275,7 @@ public class RuntimeBootstrapTests
     public async Task RunAsync_VerifyFails_ReturnsError()
     {
         (RuntimeBootstrapHooks hooks, _) = GlobalNodeHooks(version: null);
-        BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), _ => { }, hooks, english: false, CancellationToken.None);
+        BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), _ => { }, hooks, lang: UiLanguage.Zh, CancellationToken.None);
         Assert.False(outcome.Success);
         Assert.Equal(BootstrapStep.VerifyDsh, outcome.Step);
         Assert.Null(outcome.DshVersion);
@@ -331,7 +331,7 @@ public class RuntimeBootstrapTests
                 },
                 ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((Path.Combine("/fake", "node"), Path.Combine("/fake", "npm-cli.js"))));
             var progress = new List<BootstrapProgress>();
-            BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), progress.Add, hooks, english: false, CancellationToken.None);
+            BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), progress.Add, hooks, lang: UiLanguage.Zh, CancellationToken.None);
             Assert.True(outcome.Success);
             Assert.Equal("0.1.2-alpha.3", outcome.DshVersion);
             Assert.Contains(progress, p => p.Message.Contains("垫片", StringComparison.Ordinal));
@@ -389,7 +389,7 @@ public class RuntimeBootstrapTests
                     return Task.FromResult((0, "0.1.2-alpha.3" + Environment.NewLine, string.Empty));
                 },
                 ProbeLocalNodeAsync: ct => Task.FromResult<(string?, string?)>((Path.Combine("/fake", "node"), Path.Combine("/fake", "npm-cli.js"))));
-            BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), _ => { }, hooks, english: false, CancellationToken.None);
+            BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), _ => { }, hooks, lang: UiLanguage.Zh, CancellationToken.None);
             Assert.True(outcome.Success);
             Assert.Equal("0.1.2-alpha.3", outcome.DshVersion);
         }
@@ -417,24 +417,24 @@ public class RuntimeBootstrapTests
     public async Task RunAsync_NpmInstall_EmitsProgressFlag()
     {
         (RuntimeBootstrapHooks hooks, List<string> calls) = GlobalNodeHooks();
-        BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), _ => { }, hooks, english: false, CancellationToken.None);
+        BootstrapOutcome outcome = await RuntimeBootstrap.RunAsync(new RuntimeBootstrapOptions(), _ => { }, hooks, lang: UiLanguage.Zh, CancellationToken.None);
         Assert.True(outcome.Success);
         Assert.Contains(calls, c => c.Contains("--progress=true", StringComparison.Ordinal));
     }
 
-    /// <summary>验证 english=true 时失败文案（npm 失败/权限指引）走英文分支——引导页错误框随宿主 UI 语言。</summary>
+    /// <summary>验证 lang=true 时失败文案（npm 失败/权限指引）走英文分支——引导页错误框随宿主 UI 语言。</summary>
     [Fact]
     public async Task RunAsync_English_FailureCopyTakesEnglishBranch()
     {
         (RuntimeBootstrapHooks hooks, _) = GlobalNodeHooks(installResult: (1, "E404: not found"));
         BootstrapOutcome npm = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" }, _ => { }, hooks, english: true, CancellationToken.None);
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" }, _ => { }, hooks, lang: UiLanguage.En, CancellationToken.None);
         Assert.Contains("npm install failed with exit=1", npm.Error);
         Assert.DoesNotContain("失败", npm.Error);
 
         (RuntimeBootstrapHooks permHooks, _) = GlobalNodeHooks(installResult: (1, "npm error code EACCES: permission denied"));
         BootstrapOutcome perm = await RuntimeBootstrap.RunAsync(
-            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" }, _ => { }, permHooks, english: true, CancellationToken.None);
+            new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" }, _ => { }, permHooks, lang: UiLanguage.En, CancellationToken.None);
         Assert.Contains("elevated permissions", perm.Error);
         Assert.Contains("sudo npm install -g @deepseek-ai/dsh@next", perm.Error);
     }
@@ -454,7 +454,7 @@ public class RuntimeBootstrapTests
                 new RuntimeBootstrapOptions { NodeGlobalPrefix = prefix },
                 progress.Add,
                 hooks,
-                english: false,
+                lang: UiLanguage.Zh,
                 CancellationToken.None);
 
             Assert.True(outcome.Success, outcome.Error);
@@ -503,7 +503,7 @@ public class RuntimeBootstrapTests
                 new RuntimeBootstrapOptions { NodeGlobalPrefix = prefix },
                 _ => { },
                 hooks,
-                english: false,
+                lang: UiLanguage.Zh,
                 CancellationToken.None);
 
             Assert.True(outcome.Success, outcome.Error);
@@ -534,7 +534,7 @@ public class RuntimeBootstrapTests
                 new RuntimeBootstrapOptions { NodeGlobalPrefix = blockedPrefix },
                 _ => { },
                 hooks,
-                english: false,
+                lang: UiLanguage.Zh,
                 CancellationToken.None);
 
             Assert.False(outcome.Success);
@@ -581,7 +581,7 @@ public class RuntimeBootstrapTests
             new RuntimeBootstrapOptions { StepTimeoutMinutes = 0, NodeGlobalPrefix = prefix },
             _ => { },
             hooks,
-            english: false,
+            lang: UiLanguage.Zh,
             CancellationToken.None);
 
         Assert.False(outcome.Success);

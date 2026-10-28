@@ -100,7 +100,7 @@ public class NpmPrefixExposeTests
                 new RuntimeBootstrapOptions { DshSpec = "@deepseek-ai/dsh@next" },
                 _ => { },
                 hooks,
-                english: false,
+                lang: UiLanguage.Zh,
                 CancellationToken.None);
             Assert.True(outcome.Success, outcome.Error);
             Assert.Contains(

@@ -194,7 +194,7 @@ internal sealed class UpdateCheckPresenter
             return;
         }
 
-        string? text = TrayCheckFeedback.Message(state, _uiLocale.IsEnglish);
+        string? text = TrayCheckFeedback.Message(state, _uiLocale.Language);
         if (text is null)
         {
             return;

@@ -37,7 +37,7 @@ public class RecoverySurfaceTests
         // 顺序契约取「关窗瞬间」的闸门态：只在事后看最终态的话，把「先批准再关窗」两行对调也全绿。
         Assert.True(harness.ClosedWithGateReleased);
         (string title, string message) = Assert.Single(harness.Dialog.Shown);
-        Assert.Equal(UiCopy.RecoveryDialogTitle(english: false), title);
+        Assert.Equal(UiCopy.RecoveryDialogTitle(lang: UiLanguage.Zh), title);
         Assert.Contains("运行时进程意外退出", message);
         Assert.Contains("/tmp/diag.zip", message);
     }
@@ -66,7 +66,7 @@ public class RecoverySurfaceTests
         await surface.ShowNativeAsync("原因", CancellationToken.None);
 
         (_, string message) = Assert.Single(harness.Dialog.Shown);
-        Assert.Contains(UiCopy.RecoveryDialogExportFailed(english: false), message);
+        Assert.Contains(UiCopy.RecoveryDialogExportFailed(lang: UiLanguage.Zh), message);
         Assert.DoesNotContain("disk full", message);
     }
 
@@ -81,8 +81,8 @@ public class RecoverySurfaceTests
         await surface.ShowNativeAsync("crash", CancellationToken.None);
 
         (string title, string message) = Assert.Single(harness.Dialog.Shown);
-        Assert.Equal(UiCopy.RecoveryDialogTitle(english: true), title);
-        Assert.Contains(UiCopy.RecoveryDialogExportPrefix(english: true), message);
+        Assert.Equal(UiCopy.RecoveryDialogTitle(lang: UiLanguage.En), title);
+        Assert.Contains(UiCopy.RecoveryDialogExportPrefix(lang: UiLanguage.En), message);
     }
 
     /// <summary>关窗动作抛异常：只留日志不外抛（失败面已在退出路上，再抛会把异常丢给监督循环）。</summary>
@@ -122,7 +122,7 @@ public class RecoverySurfaceTests
         await harness.CreateSurface().ShowPageAsync("恢复原因");
 
         string script = Assert.Single(harness.Target.Scripts);
-        Assert.Equal(RecoveryPageBuilder.BuildScript("恢复原因", [], english: false), script);
+        Assert.Equal(RecoveryPageBuilder.BuildScript("恢复原因", [], lang: UiLanguage.Zh), script);
     }
 
     /// <summary>被测适配器与可观测面（日志/关窗计数/闸门）的一次性组装。</summary>

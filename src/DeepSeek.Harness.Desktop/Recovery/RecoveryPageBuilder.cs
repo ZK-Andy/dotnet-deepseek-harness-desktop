@@ -20,17 +20,17 @@ public static class RecoveryPageBuilder
     /// 里时天然不含可执行 HTML 形态。</summary>
     /// <param name="reason">人读失败原因（如「运行时进程意外退出」）。</param>
     /// <param name="stderrTail">子进程 stderr 尾部行（supervisor 已在重启前留证）。</param>
-    /// <param name="english">按钮/状态文案是否取英文分支（宿主 UI 语言单点）。</param>
-    public static string BuildScript(string reason, IReadOnlyList<string> stderrTail, bool english)
+    /// <param name="lang">按钮/状态文案的语言（宿主 UI 语言单点）。</param>
+    public static string BuildScript(string reason, IReadOnlyList<string> stderrTail, UiLanguage lang)
     {
         string payload = JsonSerializer.Serialize(new Payload(reason, stderrTail), AppJsonContext.Default.Payload);
 
         return new StringBuilder("document.documentElement.innerHTML=")
-            .Append(AppJsonContext.JsString(Skeleton(english)))
+            .Append(AppJsonContext.JsString(Skeleton(lang)))
             .Append(";var D=")
             .Append(payload)
             .Append(';')
-            .Append(Wire(english))
+            .Append(Wire(lang))
             .ToString();
     }
 
@@ -39,7 +39,7 @@ public static class RecoveryPageBuilder
     /// <param name="Tail">子进程 stderr 尾部行。</param>
     internal sealed record Payload(string Reason, IReadOnlyList<string> Tail);
 
-    private static string Skeleton(bool english) =>
+    private static string Skeleton(UiLanguage lang) =>
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>DeepSeek Harness Desktop</title><style>" +
         // 与 boot 页（wwwroot/index.html）同一套 --dshdt-* 回退调色板：亮基暗覆 + Canvas 底 +
         // 墨色单色系；两处各自内联自足（骨架是编译期常量，不外链、不依赖 dsh 主题 CSS）。
@@ -65,24 +65,29 @@ public static class RecoveryPageBuilder
         "#ddc-status{color:var(--dshdt-label-secondary);min-height:1.2em}</style></head>" +
         "<body><div class=\"spin\"></div><h2>DeepSeek Harness Desktop</h2>" +
         "<p id=\"ddc-reason\"></p><div id=\"ddc-tail\"></div><p id=\"ddc-status\"></p>" +
-        "<div class=\"row\"><button id=\"ddc-export\">" + UiCopy.RecoveryExportButton(english) + "</button><button id=\"ddc-exit\">" + UiCopy.RecoveryExitButton(english) + "</button></div>" +
-        "<p style=\"font-size:12px;color:var(--dshdt-label-tertiary)\">" + UiCopy.RecoveryAutoRetryNote(english) + "</p></body></html>";
+        "<div class=\"row\"><button id=\"ddc-export\">" + UiCopy.RecoveryExportButton(lang) + "</button><button id=\"ddc-exit\">" + UiCopy.RecoveryExitButton(lang) + "</button></div>" +
+        "<p style=\"font-size:12px;color:var(--dshdt-label-tertiary)\">" + UiCopy.RecoveryAutoRetryNote(lang) + "</p></body></html>";
 
     /// <summary>命令调用表达式：页面桥 <c>window.__shell</c> 由宿主注入，与 dsh 存活无关；桥缺失即拒绝。</summary>
     private const string Invoke =
         "(function(c,a){var s=window.__shell;if(s&&s.invoke){return s.invoke(c,a||{});}" +
         "return Promise.reject(new Error('no bridge'));})";
 
-    private static string Wire(bool english) =>
+    // 文案一律经 AppJsonContext.JsString 落成 JS 字符串字面量：词典里有法语的 ASCII 撇号
+    // （Échec de l'exportation），手拼单引号会让整段注入脚本解析失败、导出按钮整条不接线。
+    private static string Wire(UiLanguage lang) =>
         "document.getElementById('ddc-reason').textContent=D.reason;" +
         "var t=document.getElementById('ddc-tail');" +
         "if(D.tail&&D.tail.length){D.tail.forEach(function(l){var d=document.createElement('div');d.textContent=l;t.appendChild(d);});t.style.display='block';}" +
         "function frame(r){try{return (typeof r==='string')?JSON.parse(r):(r||{});}catch(e){return {error:String(e)};}}" +
         "document.getElementById('ddc-export').onclick=async function(){var s=document.getElementById('ddc-status');" +
-        "s.textContent='" + UiCopy.RecoveryExporting(english) + "';this.disabled=true;" +
-        "try{var o=frame(await " + Invoke + "('" + HostCommandIds.DiagnosticsExport + "',{}));" +
-        "s.textContent=o.path?('" + UiCopy.RecoveryExportedPrefix(english) + "'+o.path):('" + UiCopy.RecoveryExportFailedPrefix(english) + "'+(o.error||'" + UiCopy.RecoveryUnknownReason(english) + "'));}catch(e){s.textContent='" + UiCopy.RecoveryExportFailedPrefix(english) + "'+e;}" +
+        "s.textContent=" + AppJsonContext.JsString(UiCopy.RecoveryExporting(lang)) + ";this.disabled=true;" +
+        "try{var o=frame(await " + Invoke + "(" + AppJsonContext.JsString(HostCommandIds.DiagnosticsExport) + ",{}));" +
+        "s.textContent=o.path?(" + AppJsonContext.JsString(UiCopy.RecoveryExportedPrefix(lang)) + "+o.path):(" +
+        AppJsonContext.JsString(UiCopy.RecoveryExportFailedPrefix(lang)) + "+(o.error||" +
+        AppJsonContext.JsString(UiCopy.RecoveryUnknownReason(lang)) + "));}catch(e){s.textContent=" +
+        AppJsonContext.JsString(UiCopy.RecoveryExportFailedPrefix(lang)) + "+e;}" +
         "this.disabled=false;};" +
         "document.getElementById('ddc-exit').onclick=async function(){this.disabled=true;" +
-        "try{await " + Invoke + "('" + HostCommandIds.RecoveryExit + "',{});}catch(e){}};";
+        "try{await " + Invoke + "(" + AppJsonContext.JsString(HostCommandIds.RecoveryExit) + ",{});}catch(e){}};";
 }

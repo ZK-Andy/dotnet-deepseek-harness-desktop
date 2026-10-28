@@ -51,13 +51,13 @@ public class ShellTrayActionTests
     [Fact]
     public void BuildMenu_EnglishLocale_UsesEnglishLabels()
     {
-        var english = new UiLocale();
-        english.Set("en");
+        var lang = new UiLocale();
+        lang.Set("en");
 
-        NativeMenu menu = ShellTray.BuildMenu(english, () => { }, () => { }, () => { }, () => { });
+        NativeMenu menu = ShellTray.BuildMenu(lang, () => { }, () => { }, () => { }, () => { });
 
         Assert.Equal(
-            TrayMenuActions.BuildEntries(includeUpdateItem: true, english).Select(entry => entry.Label),
+            TrayMenuActions.BuildEntries(includeUpdateItem: true, lang).Select(entry => entry.Label),
             Headers(menu));
         Assert.NotEqual(
             TrayMenuActions.BuildEntries(includeUpdateItem: true, new UiLocale()).Select(entry => entry.Label),

@@ -82,19 +82,20 @@ internal static class CaptionBar
         bool edgeResize = true,
         bool maximized = false)
     {
-        bool english = uiLocale?.IsEnglish == true;
-        // 两套语言的按钮可达名都进脚本：脚本注册后由引擎在**每次页面加载**时执行（注入时机见类注），
+        // 缺省（未传语言单点）按中文：与 <paramref name="uiLocale"/> 的契约一致。
+        UiLanguage lang = uiLocale?.Language ?? UiLocale.DefaultLanguage;
+        // 八语言按钮可达名都进脚本：脚本注册后由引擎在**每次页面加载**时执行（注入时机见类注），
         // 执行期语言只能从文档取（dsh 把语言写在 html[lang]，companion 上报同源），故不在构建期钉死；
-        // html[lang] 缺失时回落到宿主当时 locale（构建期取值）。文案字面量单一事实源仍是 UiCopy。
-        (string minimizeZh, string maximizeZh, string closeZh) = UiCopy.CaptionButtonNames(english: false);
-        (string minimizeEn, string maximizeEn, string closeEn) = UiCopy.CaptionButtonNames(english: true);
-        // 绿灯属性与可达名同源切换：绿底 CSS、innerHTML、aria 三处同源该变量（点击处理按第三子位置直绑，
-        // 不取属性），避免「属性对、语义错」。
+        // 脚本按 html[lang] 的主语言子标签选表，未注册语言回落英文，html[lang] 缺失时回落到宿主
+        // 当时 locale（构建期取值）。文案字面量单一事实源仍是 UiCopy（ADR ui-copy-eight-locales）。
+        // 绿灯属性与可达名同源切换：绿底 CSS、innerHTML、aria 三处同源同一判定（点击处理按第三子位置
+        // 直绑，不取属性），避免「属性对、语义错」。
         string greenAttr = macChrome ? MacGreenAttr : ZoomGreenAttr;
-        string greenZh = macChrome ? UiCopy.CaptionFullscreenName(english: false) : maximizeZh;
-        string greenEn = macChrome ? UiCopy.CaptionFullscreenName(english: true) : maximizeEn;
-        // 三变量几何归 Core 纯函数（ADR window-chrome-depatch-core-ports）：本壳无全屏状态源，
-        // 恒按非全屏解；data-fullscreen 静态不发（运行时状态，静态发即对上游 CSS 说谎）。
+        string labelsJson = BuildLabelsJson(macChrome);
+        // 文档未给可识别语言时的回落键取宿主构建期语言：中文用户的文档若缺 html[lang]，
+        // 顶栏按钮该读中文而不是掉到英文。
+        string fallbackKey = AppJsonContext.JsString(TableKey(lang));
+
         var insets = ChromeInsets.Resolve(heightPx, fullscreen: false);
 
         // 命令名一律从 HostCommandIds 生成（单一事实源）：页面脚本里的 JS 字面量复写会让改名静默失配。
@@ -128,12 +129,10 @@ internal static class CaptionBar
                "bar=document.createElement('div');" +
                "bar.id=id;" +
                "bar.innerHTML=" + AppJsonContext.JsString(BuildBarInnerHtml(greenAttr)) + ";" +
-               "var L={zh:[" + AppJsonContext.JsString(closeZh) + "," + AppJsonContext.JsString(minimizeZh) + ","
-                   + AppJsonContext.JsString(greenZh) + "]," +
-               "en:[" + AppJsonContext.JsString(closeEn) + "," + AppJsonContext.JsString(minimizeEn) + ","
-                   + AppJsonContext.JsString(greenEn) + "]};" +
+               "var L=" + labelsJson + ";" +
                "var lg=document.documentElement.lang||'';" +
-               "var names=(lg?(lg.toLowerCase().indexOf('en')===0):" + (english ? "true" : "false") + ")?L.en:L.zh;" +
+               "var k=lg.split(/[-_.]/)[0].toLowerCase();" +
+               "var names=L[k]||(k?L.en:L[" + fallbackKey + "]);" +
                "bar.children[0].setAttribute('aria-label',names[0]);" +
                "bar.children[1].setAttribute('aria-label',names[1]);" +
                "bar.children[2].setAttribute('aria-label',names[2]);" +
@@ -254,6 +253,34 @@ internal static class CaptionBar
 
     /// <summary>边缘缩放命中宽度（CSS 像素）：无边框窗口的边缘缩放由页面判定（宿主按边发平台消息）。</summary>
     internal const int ResizeEdgePx = 6;
+
+    /// <summary>八语言可达名表 JSON（键 = <see cref="TableKey"/>，值 = [关闭, 最小化, 绿灯]）。
+    /// 编译期枚举驱动、单趟产出：键与文案都直接取 <see cref="UiLanguage"/> 与 <see cref="UiCopy"/>，
+    /// 不经中间字典（也就没有「字典键写错才发现」的运行期查找面）。</summary>
+    /// <param name="macChrome">是否 macOS 原生窗口装饰（决定绿灯语义：原生全屏 vs 窗口缩放）。</param>
+    /// <returns>可直接拼进注入脚本的对象字面量。</returns>
+    private static string BuildLabelsJson(bool macChrome)
+    {
+        IEnumerable<string> entries = Enum.GetValues<UiLanguage>().Select(tableLang =>
+        {
+            string key = TableKey(tableLang);
+            (string Minimize, string Maximize, string Close) names = UiCopy.CaptionButtonNames(tableLang);
+            string green = macChrome ? UiCopy.CaptionFullscreenName(tableLang) : names.Maximize;
+            return AppJsonContext.JsString(key) + ":[" + string.Join(",",
+                new[]
+                {
+                    AppJsonContext.JsString(names.Close),
+                    AppJsonContext.JsString(names.Minimize),
+                    AppJsonContext.JsString(green),
+                }) + "]";
+        });
+        return "{" + string.Join(", ", entries) + "}";
+    }
+
+    /// <summary>注入表与页面索引共用的键：语言标签的主语言子标签（zh-CN → zh）。</summary>
+    /// <param name="lang">目标语言。</param>
+    /// <returns>表键。</returns>
+    private static string TableKey(UiLanguage lang) => lang.ToString().ToLowerInvariant();
 
     /// <summary>红绿灯三点标记：关闭/最小化走窗口命令属性，绿灯属性随平台给（见 <see cref="MacGreenAttr"/>）。</summary>
     /// <param name="greenAttr">绿灯按钮属性名。</param>

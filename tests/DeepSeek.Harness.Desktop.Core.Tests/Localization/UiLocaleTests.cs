@@ -21,19 +21,102 @@ public class UiLocaleTests
         Assert.Equal(2, fired);
     }
 
-    /// <summary>验证仅 en 前缀（en/en-GB）判定为英文，zh-CN 与 fr 等其余语言均不判定为英文。</summary>
-    [Fact]
-    public void IsEnglish_OnlyEnPrefix()
+    /// <summary>八语言封闭集：已注册语言各归其位，未注册语言回落英文
+    /// （ADR ui-copy-eight-locales；旧实现「非 en 一律中文」会让 ja/es/fr/de/ru/pt 用户看到中文）。</summary>
+    /// <param name="locale">locale 标记。</param>
+    /// <param name="expected">期望语言。</param>
+    [Theory]
+    [InlineData("en", UiLanguage.En)]
+    [InlineData("en-GB", UiLanguage.En)]
+    [InlineData("zh-CN", UiLanguage.Zh)]
+    [InlineData("zh-Hans", UiLanguage.Zh)]
+    [InlineData("ja-JP", UiLanguage.Ja)]
+    [InlineData("es-ES", UiLanguage.Es)]
+    [InlineData("fr-FR", UiLanguage.Fr)]
+    [InlineData("de-DE", UiLanguage.De)]
+    [InlineData("ru-RU", UiLanguage.Ru)]
+    [InlineData("pt-BR", UiLanguage.Pt)]
+    [InlineData("ko-KR", UiLanguage.En)]
+    [InlineData("", UiLanguage.En)]
+    public void Language_ResolvesEightLocaleClosedSet(string locale, UiLanguage expected)
     {
         var ui = new UiLocale();
-        ui.Set("en");
-        Assert.True(ui.IsEnglish);
-        ui.Set("en-GB");
-        Assert.True(ui.IsEnglish);
-        ui.Set("zh-CN");
-        Assert.False(ui.IsEnglish);
-        ui.Set("fr");
-        Assert.False(ui.IsEnglish);
+        ui.Set(string.IsNullOrEmpty(locale) ? "en" : locale);
+        Assert.Equal(expected, ui.Language);
+    }
+
+    /// <summary>POSIX 形态的 locale（OS 探测面给的就是这一族：<c>LC_ALL</c>/<c>LANG</c> 的
+    /// <c>zh_CN.UTF-8</c>/<c>ja_JP.UTF-8</c>）必须按主语言子标签落到对应语言——只认 BCP 47 的
+    /// <c>-</c> 会把整串当主标签，把中文用户的宿主壳甩到英文回落。</summary>
+    /// <param name="locale">POSIX 风格 locale 标记。</param>
+    /// <param name="expected">期望语言。</param>
+    [Theory]
+    [InlineData("zh_CN.UTF-8", UiLanguage.Zh)]
+    [InlineData("zh_CN", UiLanguage.Zh)]
+    [InlineData("zh_TW.Big5", UiLanguage.Zh)]
+    [InlineData("ja_JP.UTF-8", UiLanguage.Ja)]
+    [InlineData("pt_BR.UTF-8", UiLanguage.Pt)]
+    [InlineData("de_DE.UTF-8", UiLanguage.De)]
+    [InlineData("en_US.UTF-8", UiLanguage.En)]
+    [InlineData("ko_KR.UTF-8", UiLanguage.En)]
+    public void Language_ResolvesPosixLocaleForms(string locale, UiLanguage expected)
+    {
+        var ui = new UiLocale();
+        ui.Set(locale);
+        Assert.Equal(expected, ui.Language);
+    }
+
+    /// <summary>非中文语言不得落回中文分支：六种新增语言全部走各自的字典。</summary>
+    [Fact]
+    public void Language_NonChineseLocales_NeverFallBackToChinese()
+    {
+        var ui = new UiLocale();
+        foreach ((string tag, UiLanguage expected) in new[]
+        {
+            ("ja", UiLanguage.Ja), ("es", UiLanguage.Es), ("fr", UiLanguage.Fr),
+            ("de", UiLanguage.De), ("ru", UiLanguage.Ru), ("pt-BR", UiLanguage.Pt),
+        })
+        {
+            ui.Set(tag);
+            Assert.Equal(expected, ui.Language);
+            // 关键回归：托盘/横幅不再拿中文文案糊弄这些用户。
+            Assert.NotEqual(UiCopy.TrayQuit(UiLanguage.Zh), UiCopy.TrayQuit(ui.Language));
+        }
+    }
+
+    /// <summary>八语言字典逐条非空且互不相同（漏译会退化成同一条英文/中文串）。</summary>
+    [Fact]
+    public void UiCopy_AllEightLanguages_DistinctNonEmpty()
+    {
+        UiLanguage[] all = Enum.GetValues<UiLanguage>();
+        foreach (UiLanguage lang in all)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(UiCopy.TrayShowMainWindow(lang)));
+            Assert.False(string.IsNullOrWhiteSpace(UiCopy.RecoveryDialogTitle(lang)));
+            Assert.False(string.IsNullOrWhiteSpace(UiCopy.WebView2MissingBody(lang)));
+        }
+
+        // 抽查三处：八种语言两两不同（同名串即漏译）。OkLabel 不入此列——日语「OK」与英文同形是
+        // 正确译法而非漏译，语言间同形只能逐条判断，不能机械断言。
+        Assert.Equal(8, all.Select(UiCopy.TrayQuit).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(8, all.Select(UiCopy.RecoveryExitButton).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(8, all.Select(UiCopy.RecoveryAutoRetryNote).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    /// <summary>列表分隔符八语言逐值钉住：全角分号仅 zh/ja，fr 用法式前置空格，其余为半角分号加空格。</summary>
+    [Fact]
+    public void ListSeparator_EachLanguageExactValue()
+    {
+        Assert.Equal("；", UiCopy.ListSeparator(UiLanguage.Zh));
+        Assert.Equal("；", UiCopy.ListSeparator(UiLanguage.Ja));
+        Assert.Equal(" ; ", UiCopy.ListSeparator(UiLanguage.Fr));
+        foreach (UiLanguage lang in new[]
+                 {
+                     UiLanguage.En, UiLanguage.Es, UiLanguage.De, UiLanguage.Ru, UiLanguage.Pt,
+                 })
+        {
+            Assert.Equal("; ", UiCopy.ListSeparator(lang));
+        }
     }
 
     /// <summary>验证空白语言标记被拒绝并抛出 ArgumentException。</summary>
@@ -60,7 +143,7 @@ public class UiLocaleTests
         var ui = new UiLocale(new FakeStore("en"));
 
         Assert.Equal("en", ui.Current);
-        Assert.True(ui.IsEnglish);
+        Assert.Equal(UiLanguage.En, ui.Language);
     }
 
     /// <summary>验证持久值形态非法（坏文件内容）时不采信，回退 OS locale 而非原样使用。</summary>
