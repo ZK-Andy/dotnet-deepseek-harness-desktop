@@ -69,6 +69,11 @@ python3 scripts/verify-host-command-ids.py --enforce
 echo "-> verify-core-purity.py"
 python3 scripts/verify-core-purity.py --enforce
 
+# 9a6) 随包插件版本 bump 闸（换入只看版本号：出货面改了而版本没动，已装用户永久留在旧内容；
+#      2026-10-28 八语言化事故形态——见 ADR bundled-plugin-version-bump-gate）
+echo "-> verify-bundled-plugin-version.py --staged"
+python3 scripts/verify-bundled-plugin-version.py --staged --enforce
+
 # 9b) 脚本规范门禁（docs/script-standards.md 的机器强制面 S1-S6，含 shellcheck -S warning）。
 #     执行点与 CI 的 docs job 同源；缺 shellcheck 判红并提示 scripts/install-linters.sh
 #     （门禁悄悄不执行 = 假绿，故宁可挡住提交）。

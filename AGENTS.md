@@ -87,6 +87,7 @@ python3 scripts/verify-readme-badges.py  # README 双语 tests/coverage 徽章 =
 python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/待办文件与预算/冷归档卷；存在即校验）
 python3 scripts/verify-governance.py     # Issue/PR 模板治理字段 + 工作流/composite action 的 run: 禁插值事件载荷/env 回读
 python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（F1=单文件行数仅报告不拦；F2/F4 方法帽与 F3=装配面根集合计 ≤500 强制，--enforce 才 fail）
+python3 scripts/verify-bundled-plugin-version.py # 随包插件版本 bump 闸（出货面改而 package.json 版本未升即红；清单取自 BundledPluginSupply、出货面由 tgz 脚本的 cp 源现解析；--enforce 才 fail）
 python3 scripts/verify-compose-root.py   # 装配面语义闸（根集=Program+Hosting/AvaloniaHost*；装配面另含 PreBuildRegistration/ShellResources/ShellWiringRegistration；根集只装配 C1-C3/C5：方法清单封闭/new 自有类型 ≤6/单 dot 分部/构造清单；C7 装配期构造清单：PreBuildRegistration*.cs 的构造须在册；C8 文件在册：清单 `scripts/domain-files.manifest.json` 双向，根级 .cs 只许根集或装配面，装配面声明须存在，一个文件只登记一处；C4/C6 随旧编排器退役；--enforce 才 fail）
 python3 scripts/verify-registration-discipline.py # 注册点纪律闸（R1：基础设施具体类型只许出现在注册处：Presentation 注册外直接 new ≤1/静态调用 ≤11；--enforce 才 fail）
 python3 scripts/verify-increment-discipline.py # 增量纪律闸（耦合左移②：gross/既有文件净增/新文件/跨层扇出/新包引用五帽 600/150/400/15/1；--enforce 已接 pre-commit/pre-push/CI）

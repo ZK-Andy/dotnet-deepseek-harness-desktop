@@ -104,6 +104,19 @@ OUTSCOPE_HEADING = "## Explicitly out of scope"
 REPORT_HEADING = "## Report contract"
 REPORT_SENTENCE = "Blocker[]/Suggestion[]"
 CHECK_ITEM_RE = re.compile(r"^\s*-\s*\[ \]\s+.+")
+# 断言表（ADR review-brief-scoping-and-freeze）：定向检查从问句改为可判真假的命题，
+# 每行形如「- [ ] A1 <命题> ——证据：<文件:行>」。编号 A1/A2… 让代理的答案集封闭：
+# 它要回答的问题在出发时就固定，猜问句的空间消失。问句形态（以「是否/会不会/有无」收尾
+# 且无证据锚）由 _assertion_problems 判红。
+ASSERTION_RE = re.compile(r"^\s*-\s*\[ \]\s*A(?P<no>\d+)\s+(?P<body>.+)$")
+EVIDENCE_ANCHOR_RE = re.compile(r"证据[:：]\s*\S+")
+# hunk 锚点：需深审面的每条须写成「文件 <start>-<end>」或「文件:<行>」，不许只写文件名
+# （文件级授权 = 全文精读许可，是发散的入口）。
+HUNK_ANCHOR_RE = re.compile(r"(?P<file>[\w./\-]+\.(?:py|cs|md|yml|sh|js|json))\s*[:：]?\s*(?P<start>\d+)(?:\s*-\s*(?P<end>\d+))?")
+# 时间盒（用户 2026-10-29 定）：单路评审 2 分钟，超时即判该路不合格（无产出 = 未审计）。
+# 行首认，形如「时间盒：2 分钟」。
+TIMEOUT_RE = re.compile(r"^[-*]?\s*时间盒[:：]\s*(?P<min>\d+)\s*分钟", re.MULTILINE)
+REVIEW_TIMEBOX_MINUTES = 2
 BASE_RE = re.compile(r"base:\s*\S+")
 HEAD_RE = re.compile(r"head:\s*\S+")
 DEEP_RE = re.compile(r"需深审面[^\n]*?[:：]")
@@ -206,6 +219,7 @@ def _violations_for_lane(path: Path, lane: str) -> list[str]:
 
     # 轮次纪律（ADR review-round-convergence）：验轮只核处置闭合；轮次有界；轮次自证须互校。
     rnd = _round_of(path)
+    v.extend(_scoping_violations(path, text, lane, rnd))
     declared = ROUND_DECLARED_RE.search(text)
     if declared and int(declared.group("round")) != rnd:
         v.append(f"{lane}: {path.name} 标题声明的第 {declared.group('round')} 轮与文件名 `-r{rnd}` 不一致"
@@ -283,6 +297,35 @@ def _section_has_items(text: str, heading_re: re.Pattern[str]) -> bool:
     return False
 
 
+def _list_lines(text: str, key_re: re.Pattern[str]) -> list[str]:
+    """Bullet lines of a keyed list (key line plus indented sub-lines), stopping at
+    the next Scope key — the hunk-anchor rule reads 需深审面 through this."""
+    m = key_re.search(text)
+    if m is None:
+        return []
+    line_end = text.find("\n", m.end())
+    lines: list[str] = []
+    inline = text[m.end(): line_end if line_end >= 0 else len(text)].strip()
+    if inline not in ("", "无"):
+        lines.append(inline)
+    rest = text[line_end if line_end >= 0 else len(text):]
+    stop_keys = ("陪跑文件", "门禁自证", "diff 面相邻件", "时间盒", "上一轮结论的处置")
+    for ln in rest.splitlines():
+        stripped = ln.strip()
+        if stripped.startswith("## "):
+            break
+        # Scope 的其余键（陪跑文件/门禁自证/相邻件）不是需深审面的条目，遇到即停。
+        if any(k in stripped for k in stop_keys):
+            break
+        if stripped.startswith(("-", "*")):
+            body = stripped.lstrip("-* ").strip()
+            if body:
+                lines.append(stripped)
+        elif stripped and not ln.startswith((" ", "\t")):
+            break
+    return lines
+
+
 def _list_content_is_nonempty(text: str, key_re: re.Pattern[str]) -> bool:
     """True when the keyed list carries at least one named item.
 
@@ -333,6 +376,46 @@ def _brief_paths(repo: Path) -> tuple[dict[str, Path], list[str]]:
             else:
                 found[lane] = f
     return {lane: found.get(lane) for lane in LANES}, duplicates
+
+
+def _scoping_violations(path: Path, text: str, lane: str, rnd: int) -> list[str]:
+    """Boundedness rules (ADR review-brief-scoping-and-freeze): hunk anchors,
+    numbered assertions, a mandatory timebox, and a closed round-report shape."""
+    v: list[str] = []
+
+    for ln in _list_lines(text, DEEP_RE):
+        if HUNK_ANCHOR_RE.search(ln) is None:
+            v.append(f"{lane}: {path.name} 需深审面须带 hunk 锚点（`<文件>:<起>-<止>`）：{ln.strip()[:60]}"
+                     "——文件级授权等于全文精读许可，是发散的入口")
+
+    seen: set[str] = set()
+    for ln in _zone(text, CHECKS_HEADING, OUTSCOPE_HEADING).splitlines():
+        if not CHECK_ITEM_RE.match(ln):
+            continue
+        m = ASSERTION_RE.match(ln)
+        if m is None:
+            v.append(f"{lane}: {path.name} Directed check 须写成 `- [ ] A<N> <命题> ——证据：<文件:行>`：{ln.strip()[:50]}")
+            continue
+        no, body = m.group("no"), m.group("body")
+        if no in seen:
+            v.append(f"{lane}: {path.name} 断言编号 A{no} 重复（编号是答案集的键）")
+        seen.add(no)
+        if EVIDENCE_ANCHOR_RE.search(body) is None:
+            v.append(f"{lane}: {path.name} A{no} 缺证据锚（须写「证据：<文件:行>」或「证据：<命令>」）")
+
+    m = TIMEOUT_RE.search(text)
+    if m is None:
+        v.append(f"{lane}: {path.name} 缺「时间盒：<N> 分钟」行——单路评审 {REVIEW_TIMEBOX_MINUTES} 分钟，"
+                 "超时即判该路不合格（无产出 = 未审计）")
+    elif int(m.group("min")) > REVIEW_TIMEBOX_MINUTES:
+        v.append(f"{lane}: {path.name} 时间盒 {m.group('min')} 分钟超过上限 {REVIEW_TIMEBOX_MINUTES} 分钟")
+
+    if rnd >= 2:
+        report_zone = text[text.find(REPORT_HEADING):]
+        if "新发现" in report_zone:
+            v.append(f"{lane}: {path.name} 验轮 Report contract 不得保留「新发现」出口——"
+                     "处置表只回答上一轮每条是否闭合（新问题转下批）")
+    return v
 
 
 def _freeze_violations(repo: Path) -> list[str]:
@@ -469,22 +552,25 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
         # Fixture 1: well-formed R1/R2/R3 briefs -> pass.
-        def w(name: str, lane: str, scope_body: str, checks: str = "- [ ] c\n",
-              outscope: str = "- d\n") -> Path:
+        CHECK_OK = "- [ ] A1 命题可判真假 ——证据：src/A.cs:12\n"
+        BOX = "- 时间盒：2 分钟\n"
+
+        def w(name: str, lane: str, scope_body: str, checks: str = CHECK_OK,
+              outscope: str = "- d\n", box: str = BOX, report: str = "") -> Path:
             """Write one brief fixture with fixed report contract + gate self-assertion."""
             p = root / BRIEFS_DIR / name
             p.write_text(
-                f"# {lane} 评审简报（lane）\n\n## Scope\n- base: a  head: b\n{scope_body}\n"
+                f"# {lane} 评审简报（lane）\n\n## Scope\n- base: a  head: b\n{scope_body}\n{box}"
                 f"- 门禁自证：dotnet-format:0，dotnet-test:0\n\n"
                 f"## Directed checks\n{checks}\n## Explicitly out of scope\n{outscope}\n"
-                "## Report contract\n- 返回 `Blocker[]/Suggestion[]`；空即无发现\n",
+                "## Report contract\n- 返回 `Blocker[]/Suggestion[]`；空即无发现\n" + report,
                 encoding="utf-8")
             return p
 
         (root / BRIEFS_DIR).mkdir()
-        w("R1-a.md", "R1", "- 需深审面：src/A.cs\n- 陪跑文件：tests/B.cs\n- diff 面相邻件：无")
-        w("R2-a.md", "R2", "- 需深审面：src/A.cs\n- 陪跑文件：无")
-        w("R3-a.md", "R3", "- 需深审面：.agents/notes/x.md\n- 陪跑文件：无")
+        w("R1-a.md", "R1", "- 需深审面：src/A.cs:10-20\n- 陪跑文件：tests/B.cs\n- diff 面相邻件：无")
+        w("R2-a.md", "R2", "- 需深审面：src/A.cs:10-20\n- 陪跑文件：无")
+        w("R3-a.md", "R3", "- 需深审面：.agents/notes/x.md:1-8\n- 陪跑文件：无")
         if check_repo(root, lanes=list(LANES)):
             failures.append("fixture 1 (well-formed R1/R2/R3) should pass")
 
@@ -492,8 +578,8 @@ def self_test() -> int:
         root2 = Path(td) / "f2"
         (root2 / BRIEFS_DIR).mkdir(parents=True)
         (root2 / BRIEFS_DIR / "R2-a.md").write_text(
-            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：x\n- 陪跑文件：无\n\n"
-            "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
+            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：src/A.cs:1-2\n- 时间盒：2 分钟\n- 陪跑文件：无\n\n"
+            "## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
             "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         vs = check_repo(root2, lanes=list(LANES))
         if not any("R1: missing brief" in s for s in vs):
@@ -503,8 +589,8 @@ def self_test() -> int:
         root3 = Path(td) / "f3"
         (root3 / BRIEFS_DIR).mkdir(parents=True)
         (root3 / BRIEFS_DIR / "R2-a.md").write_text(
-            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：x\n- 陪跑文件：无\n\n"
-            "## Directed checks\n- [ ] c\n\n"
+            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：src/A.cs:1-2\n- 时间盒：2 分钟\n- 陪跑文件：无\n\n"
+            "## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n"
             "## Report contract\n- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         vs3 = check_repo(root3, lanes=list(LANES))
         if not any("R2" in s and "out of scope" in s for s in vs3):
@@ -514,7 +600,7 @@ def self_test() -> int:
         root4 = Path(td) / "f4"
         (root4 / BRIEFS_DIR).mkdir(parents=True)
         (root4 / BRIEFS_DIR / "R1-a.md").write_text(
-            "# R1 评审简报（simplifications）\n\n## Scope\n- base: a  head: b\n- 需深审面：x\n- 陪跑文件：无\n\n"
+            "# R1 评审简报（simplifications）\n\n## Scope\n- base: a  head: b\n- 需深审面：src/A.cs:1-2\n- 时间盒：2 分钟\n- 陪跑文件：无\n\n"
             "## Directed checks\n" + "".join(f"- [ ] c{i}\n" for i in range(6)) +
             "\n## Explicitly out of scope\n- d\n\n## Report contract\n"
             "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
@@ -527,7 +613,7 @@ def self_test() -> int:
         (root5 / BRIEFS_DIR).mkdir(parents=True)
         (root5 / BRIEFS_DIR / "R2-a.md").write_text(
             "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 陪跑文件：x\n- 门禁自证：dotnet-format:0\n\n"
-            "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
+            "## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
             "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         vs5 = check_repo(root5, lanes=list(LANES))
         if not any("R2" in s and "需深审面" in s for s in vs5):
@@ -538,7 +624,7 @@ def self_test() -> int:
         (root6 / BRIEFS_DIR).mkdir(parents=True)
         (root6 / BRIEFS_DIR / "R2-a.md").write_text(
             "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：无\n- 陪跑文件：无\n\n"
-            "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
+            "## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
             "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         vs6 = check_repo(root6, lanes=list(LANES))
         if not any("R2" in s and "需深审面 must name ≥1 file" in s for s in vs6):
@@ -548,8 +634,8 @@ def self_test() -> int:
         root7 = Path(td) / "f7"
         (root7 / BRIEFS_DIR).mkdir(parents=True)
         (root7 / BRIEFS_DIR / "R2-a.md").write_text(
-            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：x\n- 陪跑文件：src/A.cs（机器门禁已盖）\n\n"
-            "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
+            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：src/A.cs:1-2\n- 时间盒：2 分钟\n- 陪跑文件：src/A.cs（机器门禁已盖）\n\n"
+            "## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
             "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         vs7 = check_repo(root7, lanes=list(LANES))
         if not any("R2" in s and "门禁自证" in s for s in vs7):
@@ -561,7 +647,7 @@ def self_test() -> int:
         (root8 / BRIEFS_DIR / "R2-a.md").write_text(
             "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：x\n- 陪跑文件：src/A.cs（机器门禁已盖）\n"
             "- 门禁自证：dotnet-format:2，dotnet-test:0\n\n"
-            "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
+            "## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
             "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         vs8 = check_repo(root8, lanes=list(LANES))
         if not any("R2" in s and "非 0 exit" in s for s in vs8):
@@ -605,8 +691,8 @@ def self_test() -> int:
         # 那批连续四轮各带一次复扫，Blocker 数因此越滚越高）。
         root10 = Path(td) / "f10"
         (root10 / BRIEFS_DIR).mkdir(parents=True)
-        r2_head = "# R2 评审简报（code-review）· 第 2 轮\n\n## Scope\n- base: a  head: b\n- 需深审面：x\n- 陪跑文件：无\n\n"
-        r2_tail = "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
+        r2_head = "# R2 评审简报（code-review）· 第 2 轮\n\n## Scope\n- base: a  head: b\n- 需深审面：src/A.cs:1-2\n- 时间盒：2 分钟\n- 陪跑文件：无\n\n"
+        r2_tail = "## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n## Explicitly out of scope\n- d\n\n## Report contract\n"
         (root10 / BRIEFS_DIR / "R2-a-r2.md").write_text(
             r2_head + r2_tail + "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         vs10 = check_repo(root10, lanes=["R2"])
@@ -623,7 +709,7 @@ def self_test() -> int:
         root11 = Path(td) / "f11"
         (root11 / BRIEFS_DIR).mkdir(parents=True)
         r4_body = (f"# R1 评审简报（simplifications）· 第 4 轮\n\n## Scope\n- base: a  head: b\n- 需深审面：x\n"
-                   f"- 陪跑文件：无\n\n{DISPOSITIONS_HEADING}\n- B1 已改\n\n## Directed checks\n- [ ] c\n\n"
+                   f"- 陪跑文件：无\n\n{DISPOSITIONS_HEADING}\n- B1 已改\n\n## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n"
                    "## Explicitly out of scope\n- d\n\n## Report contract\n"
                    "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n")
         (root11 / BRIEFS_DIR / "R1-a-r4.md").write_text(r4_body, encoding="utf-8")
@@ -670,7 +756,7 @@ def self_test() -> int:
             (root12 / BRIEFS_DIR / "R2-a-r2.md").write_text(
                 f"# R2 评审简报（code-review）· 第 2 轮\n\n## Scope\n- base: {base}  head: 暂存集\n"
                 f"- 需深审面：a.txt\n- 陪跑文件：无\n\n{DISPOSITIONS_HEADING}\n- B1 已改\n\n"
-                "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n"
+                "## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n## Explicitly out of scope\n- d\n\n"
                 "## Report contract\n- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         _brief12(batch_base)
         if not any("不是 tree 对象" in s for s in _round_delta_violations(root12, ["R2"])):
@@ -690,7 +776,7 @@ def self_test() -> int:
         def _brief13(title_round: str) -> None:
             (root13 / BRIEFS_DIR / "R2-a.md").write_text(
                 f"# R2 评审简报（code-review）{title_round}\n\n## Scope\n- base: a  head: b\n"
-                "- 需深审面：x\n- 陪跑文件：无\n\n## Directed checks\n- [ ] c\n\n"
+                "- 需深审面：src/A.cs:1-2\n- 时间盒：2 分钟\n- 陪跑文件：无\n\n## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n"
                 "## Explicitly out of scope\n- d\n\n## Report contract\n"
                 "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         _brief13("· 第 2 轮")
@@ -701,8 +787,8 @@ def self_test() -> int:
             failures.append(f"fixture 13b (title carries no round token) should pass; got {check_repo(root13, lanes=['R2'])}")
         # 13c: 轮次令牌只在正文出现（标题无令牌）不算轮次声明——标题/正文须分清。
         (root13 / BRIEFS_DIR / "R2-a.md").write_text(
-            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：x\n- 陪跑文件：无\n\n"
-            "## Directed checks\n- [ ] 核上一轮（第 2 轮）的处置是否闭合\n\n"
+            "# R2 评审简报（code-review）\n\n## Scope\n- base: a  head: b\n- 需深审面：src/A.cs:1-2\n- 时间盒：2 分钟\n- 陪跑文件：无\n\n"
+            "## Directed checks\n- [ ] A1 上一轮 2 条处置均闭合 ——证据：ADR:20\n\n"
             "## Explicitly out of scope\n- d\n\n"
             "## Report contract\n- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         if check_repo(root13, lanes=["R2"]):
@@ -715,7 +801,7 @@ def self_test() -> int:
         def _brief14(name: str, title: str, body: str) -> None:
             (root14 / BRIEFS_DIR / name).write_text(
                 f"# R2 评审简报（code-review）{title}\n\n## Scope\n- base: a  head: b\n"
-                f"- 需深审面：x\n- 陪跑文件：无\n\n{body}\n## Directed checks\n- [ ] c\n\n"
+                f"- 需深审面：src/A.cs:1-2\n- 时间盒：2 分钟\n- 陪跑文件：无\n\n{body}\n## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n"
                 "## Explicitly out of scope\n- d\n\n## Report contract\n"
                 "- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         _brief14("R2-a.md", "", f"{DISPOSITIONS_HEADING}\n- B1 已改\n")
@@ -748,19 +834,73 @@ def self_test() -> int:
         (root15 / BRIEFS_DIR / "R2-a-r2.md").write_text(
             f"# R2 评审简报（code-review）· 第 2 轮\n\n## Scope\n- base: {batch_base15}  head: 暂存集\n"
             f"- 需深审面：a.txt\n- 陪跑文件：无\n\n{DISPOSITIONS_HEADING}\n- B1 已改\n\n"
-            "## Directed checks\n- [ ] c\n\n## Explicitly out of scope\n- d\n\n"
+            "## Directed checks\n- [ ] A1 命题 ——证据：src/A.cs:1\n\n## Explicitly out of scope\n- d\n\n"
             "## Report contract\n- 返回 `Blocker[]/Suggestion[]`；空即无发现\n", encoding="utf-8")
         both15 = _freeze_violations(root15) + _round_delta_violations(root15, ["R2"])
         if not (any("re-stage or discard" in s for s in both15)
                 and any("不是 tree 对象" in s for s in both15)):
             failures.append("fixture 15 (drift + batch-commit base) should report freeze AND round violations together")
 
+        # Fixture 16: 四条限界判据各自可证伪（hunk 锚 / 断言表 / 时间盒 / 验轮新发现出口）。
+        with tempfile.TemporaryDirectory() as td16:
+            root16 = Path(td16)
+            ok_scope = "- 需深审面：src/A.cs:1-2\n- 时间盒：2 分钟\n- 陪跑文件：无\n"
+            ok_check = "- [ ] A1 命题 ——证据：src/A.cs:1\n"
+            for i, (scope, check, needle) in enumerate((
+                    ("- 需深审面：src/A.cs\n- 时间盒：2 分钟\n- 陪跑文件：无\n", ok_check, "hunk 锚点"),
+                    (ok_scope, "- [ ] 该判据是否会误判？\n", "Directed check 须写成"),
+                    (ok_scope, "- [ ] A1 命题\n", "缺证据锚"),
+                    ("- 需深审面：src/A.cs:1-2\n- 陪跑文件：无\n", ok_check, "缺「时间盒"),
+                    ("- 需深审面：src/A.cs:1-2\n- 时间盒：9 分钟\n- 陪跑文件：无\n", ok_check, "超过上限"))):
+                text = (f"# R2 评审简报（x）\n\n## Scope\n- base: a  head: b\n{scope}\n"
+                        f"- 门禁自证：dotnet-format:0\n\n## Directed checks\n{check}\n"
+                        "## Explicitly out of scope\n- d\n\n"
+                        "## Report contract\n- 返回 `Blocker[]/Suggestion[]`\n")
+                got = _scoping_violations(root16 / f"x{i}.md", text, "R2", 1)
+                if not any(needle in g for g in got):
+                    failures.append(f"fixture 16 #{i} should flag '{needle}'; got {got}")
+
+            r2text = ("# R2 评审简报（x）· 第 2 轮\n\n## Scope\n- base: a  head: b\n"
+                      "- 需深审面：src/A.cs:1-2\n- 时间盒：2 分钟\n- 陪跑文件：无\n\n"
+                      f"{DISPOSITIONS_HEADING}\n- B1 已改\n\n## Directed checks\n"
+                      f"{ok_check}\n## Explicitly out of scope\n- d\n\n"
+                      "## Report contract\n- 另报新发现\n")
+            got = _scoping_violations(root16 / "x6-r2.md", r2text, "R2", 2)
+            if not any("新发现" in g for g in got):
+                failures.append(f"fixture 16b (verification round with 新发现 outlet) should flag; got {got}")
+
     if failures:
         print("self-test: FAIL")
         for f in failures:
             print(" -", f)
         return 1
-    print("self-test: OK (15 fixtures)")
+    print("self-test: OK (16 fixtures)")
+    return 0
+
+
+def _export_frozen(repo: Path, dest: str) -> int:
+    """Materialize the frozen tree as a detached worktree (ADR review-brief-scoping-and-freeze)."""
+    tree, target = _frozen_tree(repo), Path(dest)
+    if tree is None or target.exists():
+        print(f"review-freeze: 无法导出（tree={tree}，目标存在={target.exists()}）：{target}",
+              file=sys.stderr)
+        return 1
+    def git(*a: str) -> str:
+        proc = subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(f"{a[0]}: {proc.stderr.strip()}")
+        return proc.stdout.strip()
+    try:
+        git("worktree", "prune")
+        commit = git("commit-tree", tree, "-p", git("rev-parse", "HEAD"),
+                     "-m", "review object (frozen)")
+        # commit 必须显式传给 add：漏了它 `--detach` 会静默检出 HEAD，评审对象变成旧树
+        # ——2026-10-29 三轮评审零产出的根因。
+        git("worktree", "add", "--detach", str(target), commit)
+    except RuntimeError as exc:
+        print(f"review-freeze: {exc}", file=sys.stderr)
+        return 1
+    print(f"{target}\n本轮评审对象 tree: {tree}（代理只读 {target}，主工作树改动碰不到它）")
     return 0
 
 
@@ -769,12 +909,17 @@ def main() -> int:
     parser.add_argument("--repo", default=".", help="repo root (default cwd)")
     parser.add_argument("--enforce", action="store_true", help="exit 1 on any violation")
     parser.add_argument("--self-test", action="store_true", help="run offline fixtures")
+    parser.add_argument("--export", default="",
+                        help="把冻结 tree 检出为 detached worktree 并打印路径——评审对象从此不在"
+                             "主工作树里，执行者后续改动碰不到它（ADR review-brief-scoping-and-freeze）")
     args = parser.parse_args()
 
     if args.self_test:
         return self_test()
 
     repo = Path(args.repo).resolve()
+    if args.export:
+        return _export_frozen(repo, args.export)
     lanes = _tier_lanes(repo)
     violations = check_repo(repo, lanes)
     for lane in LANES:

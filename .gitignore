@@ -38,6 +38,11 @@ resources/runtime/
 
 # 评审简报（本地工作文档，主会话启动评审前产出，供 verify-review-brief.py 校验）
 /.review-briefs/
+# 评审对象物理隔离副本（verify-review-brief.py --export 的 detached worktree）。
+# 通配而非精确名：导出目录是临时产物，任何 .review-object* 变体都不该被 `git add -A` 吃进索引
+# （2026-10-29 实证：`.review-object2` 未匹配精确规则，被当成嵌入式仓库写进 index）。
+.review-object*/
+.review-object*
 # workspace memory (dsh-continual-evolve)
 .evolve/
 
