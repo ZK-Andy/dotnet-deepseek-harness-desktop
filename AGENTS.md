@@ -44,9 +44,8 @@ DeepSeek Harness Desktop for .NET：DeepSeek Harness 的 .NET 桌面客户端（
 
 ## 评审检查项（AI 兜底）
 
-以下**「留评审/语义」规则机器无法强制**（机械化门禁未覆盖），由三重审核代理在**仓库约定**下额外执行——上游 dsh-code-review 技能只含通用清单、不含本项目规则，须显式补审（见 [feature-flow](.agents/workflows/feature-flow.md) 步骤 5）：
+以下**「留评审/语义」规则机器无法强制**，由三重审核代理在**仓库约定**下额外执行——上游 dsh-code-review 技能只含通用清单、不含本项目规则，须显式补审（见 [feature-flow](.agents/workflows/feature-flow.md) 步骤 5）。编码风格类（`Async` 尾缀、`async void`、无类型空 `catch`）已机器化进 build 门禁（VSTHRD200 / VSTHRD100 / DSH0001），不在此列。
 
-- **D003**：`catch` 空体须命名所吞（[coding-standards](docs/coding-standards.md) 行为契约）。D001（`Async` 尾缀 = VSTHRD200）/D002（`async void` = VSTHRD100）/D003（无类型空 `catch` = 自研 DSH0001，error 即红）已机器化进 build 门禁，评审不再兜底。
 - **R1 装配面只装配**：`Hosting/AvaloniaHost`/`Program` 不得夹带业务/领域逻辑（[architecture-standards](docs/architecture-standards.md) R1）。
 - **R3 边界抽象完备**：外部交互（native/WebView、dsh 进程、companion IPC、文件/网络、更新 feed、注册表/rc）是否都经接口、未直漏进业务层（R3）。
 - **IPC 强类型**：跨界/事件帧 ID 不用裸 `string` 跨包；帧形状经源生成上下文（`AppJsonContext`/`UpdateJsonContext`，R3）。
@@ -73,51 +72,13 @@ web 检索一律 anysearch 插件（唯一搜索后端，已 Provider 级接管�
 - push 前最小证据：按 diff 面选最窄检查（先用 `scripts/change-scope.sh`）；禁止默认全量跑、禁止为掩盖未覆盖文件收窄覆盖率。
 - hooks 只做快检查，CI 拥有穷尽矩阵。
 
-## 质量门（当前可执行）
+## 质量门
 
-```sh
-python3 scripts/verify-adr-format.py     # ADR 头/骨架/状态-目录一致性
-python3 scripts/verify-cookbook.py       # 踩坑记录格式/阶段标签封闭集（缺省校验主档 + 冷归档层）
-python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json # 字数预算
-python3 scripts/verify-md-links.py       # 相对链接/锚点（目标须入库，本地专有文件链了即红；skills/ 与 .plan/ 排除；排除面唯一家是脚本 docstring）
-bash scripts/install-linters.sh          # 装 shellcheck + actionlint（钉版 + sha256 校验；下两条的前置）
-actionlint -shellcheck="shellcheck -S warning" # 工作流静态检查（对 run: 块跑 shellcheck）
-bash scripts/verify-shell-standards.sh   # 脚本规范 S1-S6（含 shellcheck -S warning；规范见 docs/script-standards.md）
-python3 scripts/verify-readme-badges.py  # README 双语 tests/coverage 徽章 == scripts/test-baseline.json
-python3 scripts/verify-handoff-structure.py # HANDOFF 家庭（入口/摘要窗/待办文件与预算/冷归档卷；存在即校验）
-python3 scripts/verify-governance.py     # Issue/PR 模板治理字段 + 工作流/composite action 的 run: 禁插值事件载荷/env 回读
-python3 scripts/verify-code-health.py    # 尺寸健康闸 F1-F4（F1=单文件行数仅报告不拦；F2/F4 方法帽与 F3=装配面根集合计 ≤500 强制，--enforce 才 fail）
-python3 scripts/verify-bundled-plugin-version.py # 随包插件版本 bump 闸（出货面改而 package.json 版本未升即红；清单取自 BundledPluginSupply、出货面由 tgz 脚本的 cp 源现解析；--enforce 才 fail）
-python3 scripts/verify-compose-root.py   # 装配面语义闸（根集=Program+Hosting/AvaloniaHost*；装配面另含 PreBuildRegistration/ShellResources/ShellWiringRegistration；根集只装配 C1-C3/C5：方法清单封闭/new 自有类型 ≤6/单 dot 分部/构造清单；C7 装配期构造清单：PreBuildRegistration*.cs 的构造须在册；C8 文件在册：清单 `scripts/domain-files.manifest.json` 双向，根级 .cs 只许根集或装配面，装配面声明须存在，一个文件只登记一处；C4/C6 随旧编排器退役；--enforce 才 fail）
-python3 scripts/verify-registration-discipline.py # 注册点纪律闸（R1：基础设施具体类型只许出现在注册处：Presentation 注册外直接 new ≤1/静态调用 ≤11；--enforce 才 fail）
-python3 scripts/verify-increment-discipline.py # 增量纪律闸（耦合左移②：gross/既有文件净增/新文件/跨层扇出/新包引用五帽 600/150/400/15/1；--enforce 已接 pre-commit/pre-push/CI）
-python3 scripts/verify-code-conventions.py # 契约扫描 D004/D005（report 默认；--enforce 才 fail）
-python3 scripts/verify-ui-copy.py    # UI 文案单一词典（UiCopy*.cs 为唯一家；四条不变量：消费文件零 CJK 字面量 + index.html 节点有首屏文案 + 页内 `var D` 七语言表自洽（语言闭集/键集全等/双向覆盖/非空/孪生可达名）+ client.js 八本字典键集与值面）
-python3 scripts/verify-skill-format.py    # 技能格式（frontmatter/目录束/内链/结构）
-python3 scripts/verify-review-tier.py     # 评审档机械判定（--staged/--since；FULL 缺 Review 证据即拦——进 pre-commit/pre-push/CI）
-python3 scripts/verify-review-brief.py    # 评审简报（本地评审启动门禁：FULL 需 R1/R2/R3 简报齐、LIGHT 需 R2；简报 gitignore 不入 CI——见 review-scope-narrowing §4）
-scripts/change-scope.sh [<base> <head>]  # 变更范围（评审/push 前置）
-```
+门禁清单、每道闸的判据、以及「`hooks` 快检查 / `CI` 穷尽矩阵」的分档，唯一事实源是 [docs/testing.md](docs/testing.md)。push 前的最小证据集按 [dsh-pre-push-checks](.agents/skills/dsh-pre-push-checks/SKILL.md) 选取，禁止默认全量跑。
 
 ## 字数预算
 
-| 文件 | 上限 |
-|---|---|
-| 本文件（AGENTS.md） | ≤ 800 词 |
-| .agents/AGENTS.md | ≤ 300 词 |
-| .agents/notes/README.md | ≤ 400 词 |
-| docs/cookbook.md | ≤ 2900 词 |
-| docs/cookbook-archive.md（冻结冷归档层） | ≤ 400 词 |
-| docs/coding-standards.md | ≤ 700 词 |
-| docs/architecture-standards.md | ≤ 620 词 |
-| docs/script-standards.md | ≤ 500 词 |
-| docs/architecture.md | ≤ 990 词 |
-| docs/testing.md | ≤ 850 词 |
-| docs/development.md | ≤ 550 词 |
-
-上限清单与判据的唯一实现在 `scripts/doc-budgets.manifest.json`（本表为其视图；改额走 manifest 并附 `_justify_bump`）。
-
-超限：迁移到其他层（留一行链接）→ 精简 → 才允许提额度（PR 说明理由）。
+上限清单与判据的唯一实现在 [`scripts/doc-budgets.manifest.json`](scripts/doc-budgets.manifest.json)（本文件亦在其中，≤ 800 词）。改额走 manifest 并附 `_justify_bump`；超限先迁移到其他层（留一行链接）→ 精简 → 才提额度（PR 说明理由）。
 
 ## 参考
 

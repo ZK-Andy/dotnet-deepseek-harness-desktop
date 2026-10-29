@@ -31,7 +31,7 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 |---|---|---|
 | `verify-adr-format.py` | `ADR` 头/骨架/状态-目录一致 + 命名校验 | `python3 scripts/verify-adr-format.py` |
 | `verify-cookbook.py` | 踩坑记录格式/阶段标签封闭集（缺省校验主档 + 冷归档层） | `python3 scripts/verify-cookbook.py` |
-| `verify-doc-budgets.py` | durable 文档字数预算（上限表见根 `AGENTS.md`，清单在 manifest） | `python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json` |
+| `verify-doc-budgets.py` | durable 文档字数预算（上限清单与判据见 `scripts/doc-budgets.manifest.json`——唯一实现） | `python3 scripts/verify-doc-budgets.py --manifest scripts/doc-budgets.manifest.json` |
 | `verify-md-links.py` | 相对链接/锚点/目标须入库 | `python3 scripts/verify-md-links.py` |
 | `verify-readme-badges.py` | README 双语 `tests`/`coverage` 徽章 == `scripts/test-baseline.json` | `python3 scripts/verify-readme-badges.py` |
 | `verify-handoff-structure.py` | HANDOFF 滚动窗/状态区 | `python3 scripts/verify-handoff-structure.py` |
@@ -43,6 +43,8 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `install-linters.sh` + `actionlint` | 脚本层静态检查工具（shellcheck + actionlint，版本与 sha256 双钉）与工作流静态检查（对 `run:` 块跑 `shellcheck -S warning`） | `bash scripts/install-linters.sh` → `actionlint -shellcheck="shellcheck -S warning"` |
 | `verify-bundled-plugin-version.py` | 随包插件版本 bump 闸（出货面改而版本未升即红；清单取自 `BundledPluginSupply`、出货面由 `build-companion-tgz.sh` 的 cp 源现解析；`--enforce` 才 fail） | `python3 scripts/verify-bundled-plugin-version.py`（`--self-test` 夹具） |
 | `verify-compose-root.py` | 装配面语义闸（根只装配：方法清单封闭 / new 自有类型 ≤6 / 单 dot 分部 / 禁同步编排）+ 排序器形状（C6；`--enforce` 才 fail） | `python3 scripts/verify-compose-root.py` |
+| `verify-registration-discipline.py` | 注册点纪律闸（R1：基础设施具体类型只许出现在注册处——`Presentation` 注册外直接 `new` ≤1 / 静态调用 ≤11；`--enforce` 才 fail） | `python3 scripts/verify-registration-discipline.py --enforce` |
+| `verify-increment-discipline.py` | 增量纪律闸（耦合左移②：gross/既有文件净增/新文件/跨层扇出/新包引用五帽 600/150/400/15/1；`--enforce` 已接 `pre-commit`/`pre-push`/`CI`） | `python3 scripts/verify-increment-discipline.py --staged --enforce` |
 | `verify-review-brief.py` | 评审简报形状 + 评审对象冻结 + 轮次纪律（轮次上限、标题↔文件名互校、处置段与条目、验轮 `base` 须为上一轮冻结 tree 且增量非空）（`--enforce`；简报是 gitignore 本地文档） | `python3 scripts/verify-review-brief.py --enforce` |
 | `change-scope.sh` | `push` 前最小证据（`merge-base` diff） | `scripts/change-scope.sh` |
 
@@ -67,6 +69,8 @@ dotnet test dotnet-deepseek-harness-desktop.slnx -c Release   # 本地跑测；�
 | `verify-host-command-ids.py` | ✓（`--self-test` + 全量 `--enforce`） | ✓ | — |
 | `verify-core-purity.py` | ✓（`--self-test` + 全量 `--enforce`） | ✓ | — |
 | `verify-bundled-plugin-version.py` | ✓（`--self-test` + `--since` `--enforce`） | ✓（`--staged`） | ✓（`--since <merge-base origin/main>`） |
+| `verify-registration-discipline.py` | ✓（`--enforce`） | ✓（`--enforce`） | — |
+| `verify-increment-discipline.py` | ✓（`--self-test` + `--since` `--enforce`） | ✓（`--staged` `--enforce`） | ✓（`--since <merge-base origin/main>` `--enforce`） |
 | `package-version.sh` | ✓（`--self-test`；判据本体在打包腿调用链上） | — | — |
 | `release-preflight.sh` | ✓（`--self-test`；判据本体在 tag 触发的发布腿调用链上） | — | — |
 | `release-notes.sh` | ✓（`--self-test`；判据本体在 tag 触发的发布腿调用链上） | — | — |
